@@ -1,0 +1,10 @@
+{
+  "name": "biomek-tools",
+  "version": "0.0.0",
+  "description": "Tools for developing methods on the Biomek i5 with a Span-8 pod.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
