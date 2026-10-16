@@ -76,10 +76,14 @@ biomek-tools/
   golden file to make a test pass.
 
 ## Git
+- Never commit directly to `main`. Do each task on its own branch, created from the latest `main`
+  and named for the task (e.g. `well-grid`).
 - Commit after each completed, working change.
 - Commit messages: a short summary line saying what changed and why, with details in the body if
   needed.
-- Push after every commit, since work happens on more than one computer.
+- Push the branch after every commit, since work happens on more than one computer.
+- When the task is done, open a pull request. Only Andy merges into `main`.
+- Start the next task's branch only after the previous one is merged, unless Andy says otherwise.
 - Never commit secrets (passwords, keys) or personal data.
 
 ## Releases
