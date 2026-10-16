@@ -1,2 +1,2 @@
 # biomek-tools
-Tool suite for biomek method development
+Tools for developing methods on the Biomek i5 with a Span-8 pod.
