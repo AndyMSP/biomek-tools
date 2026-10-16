@@ -45,7 +45,7 @@ biomek-tools/
 │   ├── adr/               architecture decision records, one per decision
 │   └── domain/            domain knowledge: verified facts, one file per subject (e.g. biomek.md)
 ├── src/
-│   ├── shared/            modules used by more than one tool
+│   ├── shared/<module>/   one directory per module used by more than one tool
 │   └── tools/<tool>/      one directory per tool
 ├── tests/
 │   └── fixtures/          test fixtures, including golden files (verified-correct outputs)
@@ -53,8 +53,8 @@ biomek-tools/
 ├── scripts/               build script and other development scripts
 └── dist/                  build output; not committed
 ```
-- **Co-location.** Each module's source, unit tests, and specification sit together:
-  `name.js`, `name.test.js`, and `name.md`. Never use `.spec.` in file names.
+- **Co-location.** Each module's source, unit tests, and specification sit together in the module's
+  directory: `name.js`, `name.test.js`, and `name.md`. Never use `.spec.` in file names.
 - **Specifications.** Each tool and each shared module has a specification (`name.md`). It is the
   source of truth for the module's required behavior; implement against it. To change a module's
   behavior, update its specification first, then the code and tests.
