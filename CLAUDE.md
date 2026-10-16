@@ -25,7 +25,8 @@ Requirement: each finished tool must open in Edge or Chrome on a lab PC with not
   and how to fix it.
 - **Comment the why.** Each file starts with a short note on its purpose. Comment anything whose
   reason isn't obvious from the code.
-- **Build only what's needed now.** Don't add features or flexibility "for later".
+- **Design for growth, build what's specified.** Structure code so new features can be added as new
+  pieces later, but only build what the current spec asks for.
 - **Ask before adding a library** (outside code). Say what it does, why it's needed, and the alternative.
 
 ## Testing
