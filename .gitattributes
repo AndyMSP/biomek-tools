@@ -1,0 +1,5 @@
+# Tells Git how to handle certain kinds of files.
+
+# Never change line endings in CSV files. The Biomek software reads and writes
+# these files, so they must stay byte-for-byte as they were saved.
+*.csv -text
