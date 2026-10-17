@@ -85,8 +85,9 @@ Every possible arrangement is equally likely.
 
 **Reproducibility.** The same condition list *in the same order*, the same fixed wells, contents,
 overrides and filler, and the same seed always give the same plate, on any computer. Changing the
-order of the conditions or renaming one can change the plate, even with the same seed. To recreate
-a plate exactly, record the inputs in full along with the seed. (Saving and reloading inputs is on
+order of the conditions, or any replicate count, can change the plate, even with the same seed.
+Renaming a condition doesn't: the same wells receive the new name. To recreate a plate exactly,
+record the inputs in full along with the seed. (Saving and reloading inputs is on
 the roadmap.)
 
 ## 6. Outputs
