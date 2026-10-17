@@ -26,24 +26,33 @@ Order of work:
 6. **Outputs**: the randomized layout and the well key.
 7. **The page**: the screen that connects the modules.
 
-Expected for version 1 (to be confirmed in `randomizer.md`):
-- Paste an organized plate layout from Excel.
+Expected for version 1 (to be confirmed in `randomizer.md`), one 96-well plate:
+- List the conditions and how many replicates each needs. There is no organized plate: samples
+  don't start in one, so the replicates are dealt directly into random wells.
 - Choose which wells stay fixed and which are shuffled; "fix the outer ring" as a preset
   (built on `isEdgeWell`). Contents never decide whether a well moves; only its position does.
-- Seeded shuffle, so the same seed and layout always give the same result.
-- Outputs: the randomized layout and a well key in both directions (where each well came from and
-  where it went).
+- Name the contents of the fixed wells (no preset), with optional exceptions for individual wells.
+- Name a filler for spare shuffled wells; filler wells are shuffled with the conditions.
+- Seeded shuffle, so the same inputs and seed always give the same result.
+- Outputs: the randomized plate, and a key from each condition to its wells and from each well to
+  its contents.
 
 Later, as separate modules:
-- Several plates: one pattern for all plates, or a new shuffle per plate.
+- Several plates:
+  - the same arrangement on every plate (as in Exp37);
+  - a new shuffle on every plate, each plate holding a complete set;
+  - one set of replicates spread across plates, either fully random or blocked by plate (each plate
+    gets an equal share of every condition). Blocking needs a rule for uneven splits.
 - Constrained shuffles, e.g. each condition once per quadrant, or each condition getting a share of
   edge wells (Sophie's question).
 - Celigo labeling: label a pasted Celigo export with each well's contents.
-- Biomek Transfer From File CSV to move samples from the organized plate to the randomized one.
+- Biomek Transfer From File CSV to dispense each condition into its randomized wells (needs the
+  source labware and positions of each condition).
 
 Shared modules it needs:
-- **`layout`**: what is in each well of a grid. Contents should be designed so they can later carry
-  volumes and mixtures (see volume tracking below), even if version 1 only needs text labels.
+- **`layout`**: what is in each well of a grid. In the randomizer it holds and shows the result
+  rather than being typed in. Contents should be designed so they can later carry volumes and
+  mixtures (see volume tracking below), even if version 1 only needs text labels.
 - **`random`**: seeded random numbers that give the same sequence on any computer.
 
 ## Later: transfer designer
