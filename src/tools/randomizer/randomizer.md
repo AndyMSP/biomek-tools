@@ -16,16 +16,18 @@ replicate per quadrant), other plate formats, saving and reloading inputs, Celig
 Biomek output.
 
 ## 3. Terms
-| Term | Meaning |
-|---|---|
-| **Fixed well** | A well whose contents the user sets. |
-| **Open well** | A well filled by the random assignment. |
-| **Replicate well** | An open well holding one replicate of a condition. |
-| **Filler well** | An open well left over after the replicates, holding the filler. |
-| **Fixed contents** | The contents given to every fixed well that isn't overridden. |
-| **Override well** | A fixed well given its own contents instead of the fixed contents. |
+**Open wells** are filled by the random assignment. Each is either:
+- a **replicate well**, holding one replicate of a condition, or
+- a **filler well**, holding the filler.
 
-Every well in the result has exactly one **well type**: replicate, filler, fixed or override.
+**Fixed wells** have contents set by the user. Each is either:
+- a **fixed-contents well**, holding the fixed contents, or
+- an **override well**, holding its own override contents.
+
+**Fixed contents**: the contents given to every fixed well that isn't overridden.
+
+Every well in the result is exactly one of the four **well types**: replicate, filler,
+fixed-contents or override.
 
 ## 4. Inputs
 
@@ -141,8 +143,8 @@ work even when names are shared.
 1. **Replicate wells**: each condition has exactly as many replicate wells as its replicate count.
 2. **Filler wells**: the number of filler wells equals the open wells minus the replicates, and every
    filler well holds the filler.
-3. **Fixed wells**: every well the user fixed is a fixed well holding the fixed contents, or an
-   override well holding its override.
+3. **Fixed wells**: every well the user fixed is either a fixed-contents well holding the fixed
+   contents, or an override well holding its override.
 4. **Complete**: all 96 wells have contents and a type, and the open wells are exactly the replicate
    and filler wells.
 5. **Reproducible**: running the same inputs and seed twice gives identical plates.
@@ -157,7 +159,7 @@ work even when names are shared.
 - **Overrides**: the main example with A1 overridden to `Override 1` and H12 to `Override 2`.
 - **Shared names**: the main example plus a condition `PBS` with 4 replicates, and filler `PBS`
   (52 replicates, 8 filler wells). The contents → wells list shows `PBS` once, with all 48 of its
-  wells (36 fixed, 4 replicate, 8 filler).
+  wells (36 fixed-contents, 4 replicate, 8 filler).
 
 ### Seeds
 - **Different seeds**: two chosen seeds give different plates on the main example. (Different seeds
