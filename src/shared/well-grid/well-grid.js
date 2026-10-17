@@ -13,6 +13,13 @@ const ROW_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const WELL_NAME_PATTERN = /^([A-Z])(0|[1-9][0-9]*)$/;
 
 export class WellGrid {
+  // Fields whose names start with # are private: only code inside this class can read or change
+  // them. Outside code reads them through the `rows` and `columns` getters below, which have no
+  // matching setters, so a valid grid can never become invalid. (Private fields are used instead
+  // of Object.freeze so that a subclass can still add its own properties.)
+  #rows;
+  #columns;
+
   constructor(rows, columns) {
     const rowsAreValid = isWholeNumber(rows) && rows >= 1 && rows <= ROW_LETTERS.length;
     const columnsAreValid = isWholeNumber(columns) && columns >= 1;
@@ -22,10 +29,16 @@ export class WellGrid {
           `of at least 1, but got rows ${describeValue(rows)}, columns ${describeValue(columns)}.`,
       );
     }
-    this.rows = rows;
-    this.columns = columns;
-    // Freezing makes rows and columns read-only, so a valid grid can never become invalid.
-    Object.freeze(this);
+    this.#rows = rows;
+    this.#columns = columns;
+  }
+
+  get rows() {
+    return this.#rows;
+  }
+
+  get columns() {
+    return this.#columns;
   }
 
   // All well names in standard (rows-first) order: A1, A2 … A12, B1 … H12.
@@ -77,7 +90,7 @@ export class WellGrid {
     return row === 1 || row === this.rows || column === 1 || column === this.columns;
   }
 
-  // Methods whose names start with # are private: only code inside this class can call them.
+  // Private methods (# names, like the private fields above): only code inside this class can call them.
 
   #isOnGrid({ row, column }) {
     return row <= this.rows && column >= 1 && column <= this.columns;
