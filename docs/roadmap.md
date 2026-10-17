@@ -11,8 +11,20 @@ Last updated: 2026-10-17
   `src/shared/well-grid/well-grid.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`.
 
-## Next: the randomizer
-A general version of the Exp37 plate randomizer (`randomizer_V2.xlsx`), built as modules.
+## Current goal: the randomizer
+A general version of the Exp37 plate randomizer (`randomizer_V2.xlsx`). The randomizer is a tool made
+of several modules; work happens one module at a time, each with its own specification, branch and
+pull request.
+
+Order of work:
+1. **`randomizer.md`**: the tool specification — what goes in, what comes out, what version 1
+   includes. Written first, because it sets the requirements for the modules below.
+2. **`random`** (shared): seeded random numbers.
+3. **`layout`** (shared): what is in each well.
+4. **`select`**: which wells are fixed and which are shuffled.
+5. **`shuffle`**: producing the randomized layout.
+6. **Outputs**: the randomized layout and the well key.
+7. **The page**: the screen that connects the modules.
 
 Expected for version 1 (to be confirmed in `randomizer.md`):
 - Paste an organized plate layout from Excel.
