@@ -28,6 +28,10 @@ installed.
   fix it.
 - **Comment the why.** Each module starts with a header comment stating its purpose. Comment anything
   whose reason isn't obvious from the code.
+- **Describe every function.** Every function, including constructors, getters, private methods and
+  helpers, has a comment above it saying what it does, with an example where it helps. Exception:
+  the unnamed functions passed to `test(...)` don't get a comment, because the test's name already
+  says what it does.
 - **Extensible design, no speculative features (YAGNI).** Structure code so new features can be added
   as new modules, but implement only what the current specification requires.
 - **Ask before adding a dependency.** Say what it does, why it's needed, and the alternative.
