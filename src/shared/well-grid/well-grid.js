@@ -20,6 +20,8 @@ export class WellGrid {
   #rows;
   #columns;
 
+  // Creates a grid with the given number of rows and columns, e.g. new WellGrid(8, 12).
+  // Throws if either is not a whole number in range, so an invalid grid can never exist.
   constructor(rows, columns) {
     const rowsAreValid = isWholeNumber(rows) && rows >= 1 && rows <= ROW_LETTERS.length;
     const columnsAreValid = isWholeNumber(columns) && columns >= 1;
@@ -33,10 +35,12 @@ export class WellGrid {
     this.#columns = columns;
   }
 
+  // The number of rows, e.g. 8. Read with `grid.rows` (no brackets); it can't be changed.
   get rows() {
     return this.#rows;
   }
 
+  // The number of columns, e.g. 12. Read with `grid.columns` (no brackets); it can't be changed.
   get columns() {
     return this.#columns;
   }
@@ -92,10 +96,15 @@ export class WellGrid {
 
   // Private methods (# names, like the private fields above): only code inside this class can call them.
 
+  // True if a { row, column } position read from a well name lies within this grid.
+  // There's no `row >= 1` check: a parsed name always starts with a letter, so its row is at least 1.
+  // Column 0 is possible ("A0"), so the column is checked at both ends.
   #isOnGrid({ row, column }) {
     return row <= this.rows && column >= 1 && column <= this.columns;
   }
 
+  // Builds the error message for a badly formatted well name, adding "Did you mean …?" when a
+  // corrected version of the name is a valid well on this grid.
   #wrongFormatMessage(name) {
     const message =
       `"${name}" is not a valid well name. Well names are an uppercase row letter followed by ` +
@@ -113,6 +122,7 @@ export const GRID_96 = new WellGrid(8, 12);
 
 // --- Helpers used only inside this module ---
 
+// True if `value` is a number with no fractional part, e.g. 8 (but not 1.5, "8" or null).
 function isWholeNumber(value) {
   return Number.isInteger(value);
 }
@@ -122,6 +132,8 @@ function describeValue(value) {
   return typeof value === "string" ? `"${value}"` : String(value);
 }
 
+// Builds a well name from a row and column, e.g. (4, 3) → "D3".
+// Doesn't check its inputs; callers pass only numbers already known to be on the grid.
 function formatWellName(row, column) {
   return `${ROW_LETTERS[row - 1]}${column}`;
 }
