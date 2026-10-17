@@ -5,6 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "repl": "node scripts/well-grid-repl.js"
   }
 }
