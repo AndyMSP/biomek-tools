@@ -22,7 +22,7 @@ Biomek output.
 | **Open well** | A well filled by the random assignment. |
 | **Replicate well** | An open well holding one replicate of a condition. |
 | **Filler well** | An open well left over after the replicates, holding the filler. |
-| **Fixed contents** | The contents named for all fixed wells. |
+| **Fixed contents** | The contents given to every fixed well that isn't overridden. |
 | **Override well** | A fixed well given its own contents instead of the fixed contents. |
 
 Every well in the result has exactly one **well type**: replicate, filler, fixed or override.
