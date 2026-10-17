@@ -154,7 +154,8 @@ work even when names are shared.
 
 ### Setups
 - The main example.
-- **Empty list**: no conditions; every open well holds `Spare`.
+- **Empty list**: the main example with no conditions; 36 `Static` fixed-contents wells and 60
+  `Spare` filler wells.
 - **No fixed wells**: all 96 wells open; `Condition 1` … `Condition 12`, 4 replicates each, so 48
   `Spare`.
 - **Exact fit**: no fixed wells; `Condition 1` … `Condition 12`, 8 replicates each, exactly filling
