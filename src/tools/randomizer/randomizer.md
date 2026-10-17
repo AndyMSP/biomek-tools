@@ -155,8 +155,14 @@ work even when names are shared.
 ### Setups
 - The main example.
 - **Empty list**: no conditions; every open well holds `Spare`.
-- **No fixed wells**: all 96 wells open.
-- **Exact fit**: replicates exactly fill the open wells; no filler is needed and none appears.
+- **No fixed wells**: all 96 wells open; `Condition 1` … `Condition 12`, 4 replicates each, so 48
+  `Spare`.
+- **Exact fit**: no fixed wells; `Condition 1` … `Condition 12`, 8 replicates each, exactly filling
+  all 96 wells. No filler is needed and none appears.
+- **Scattered fixed wells**: fixed wells A1, B5, D6, E7, G11 and H12 (edge and interior), holding
+  `Static`; 90 open wells; `Condition 1` … `Condition 12`, 7 replicates each (84), so 6 `Spare`.
+  Checks that open wells are filled correctly around fixed wells anywhere on the plate, not only at
+  the ends of rows.
 - **Overrides**: the main example with A1 overridden to `Override 1` and H12 to `Override 2`.
 - **Shared names**: the main example plus a condition `Static` with 4 replicates, and filler `Static`
   (52 replicates, 8 filler wells). The contents → wells list shows `Static` once, with all 48 of its
