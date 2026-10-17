@@ -80,12 +80,14 @@ After randomizing, the tool shows:
 - **Contents → wells**: each distinct contents with the wells that hold it, in standard well order,
   e.g. `Condition 1: B4, D9, F2, G7`. Listed in this order: conditions as listed, then the filler,
   then the fixed-well contents, then overrides; a name already listed isn't repeated. This is the
-  list used at the bench, and later for Biomek output.
+  list used at the bench while plating.
 - **Well → contents**: all 96 wells in standard order, each with its contents. This is the list used
-  to label results, and later for Celigo labeling.
+  to label results; pasted into Excel, it can also be sorted or filtered by contents.
 
 Each list has a **Copy** button that copies it as tab-separated text with a header row, so it pastes
-into Excel as columns:
+into Excel as columns. The copied lists are for people. Later integrations, such as Biomek output and
+Celigo labeling, will use the same information directly from the plate data inside the tool, not
+the copied text.
 - Contents → wells: two columns, `Contents` and `Wells`, one row per contents, with its wells in one
   cell separated by commas and spaces.
 - Well → contents: two columns, `Well` and `Contents`, one row per well.
