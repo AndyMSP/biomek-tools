@@ -134,7 +134,7 @@ An empty condition list is not an error (see section 4).
 Tests use names that are clearly test data, not real experiments.
 
 ### Main example
-- Fixed wells: the outer ring (36 wells), contents `PBS`.
+- Fixed wells: the outer ring (36 wells), contents `Static`.
 - Conditions: `Condition 1` … `Condition 12`, 4 replicates each (48 replicates).
 - Open wells: 60, so 12 are spare; filler `Spare`.
 
@@ -158,8 +158,8 @@ work even when names are shared.
 - **No fixed wells**: all 96 wells open.
 - **Exact fit**: replicates exactly fill the open wells; no filler is needed and none appears.
 - **Overrides**: the main example with A1 overridden to `Override 1` and H12 to `Override 2`.
-- **Shared names**: the main example plus a condition `PBS` with 4 replicates, and filler `PBS`
-  (52 replicates, 8 filler wells). The contents → wells list shows `PBS` once, with all 48 of its
+- **Shared names**: the main example plus a condition `Static` with 4 replicates, and filler `Static`
+  (52 replicates, 8 filler wells). The contents → wells list shows `Static` once, with all 48 of its
   wells (36 fixed-contents, 4 replicate, 8 filler).
 
 ### Seeds
