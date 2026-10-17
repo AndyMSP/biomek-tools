@@ -21,19 +21,20 @@ Order of work:
    includes. Written first, because it sets the requirements for the modules below.
 2. **`random`** (shared): seeded random numbers.
 3. **`layout`** (shared): what is in each well.
-4. **`select`**: which wells are fixed and which are shuffled.
-5. **`shuffle`**: producing the randomized layout.
+4. **`select`**: which wells are fixed and which are open.
+5. **`assign`**: shuffling the list of replicates and filling the open wells with it.
 6. **Outputs**: the randomized layout and the well key.
 7. **The page**: the screen that connects the modules.
 
 Expected for version 1 (to be confirmed in `randomizer.md`), one 96-well plate:
 - List the conditions and how many replicates each needs. There is no organized plate: samples
   don't start in one, so the replicates are dealt directly into random wells.
-- Choose which wells stay fixed and which are shuffled; "fix the outer ring" as a preset
-  (built on `isEdgeWell`). Contents never decide whether a well moves; only its position does.
+- Choose which wells are fixed and which are open; "fix the outer ring" as a preset
+  (built on `isEdgeWell`). The user decides which wells are fixed; contents never do.
 - Name the contents of the fixed wells (no preset), with optional exceptions for individual wells.
-- Name a filler for spare shuffled wells; filler wells are shuffled with the conditions.
-- Seeded shuffle, so the same inputs and seed always give the same result.
+- Name a filler for spare open wells; the filler is randomized together with the conditions.
+- Replicates (and filler) are put in a random order and placed into the open wells. The order is
+  seeded, so the same inputs and seed always give the same result.
 - Outputs: the randomized plate, and a key from each condition to its wells and from each well to
   its contents.
 
