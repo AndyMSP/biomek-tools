@@ -46,6 +46,9 @@ Later, as separate modules:
     gets an equal share of every condition). Blocking needs a rule for uneven splits.
 - Constrained shuffles, e.g. each condition once per quadrant, or each condition getting a share of
   edge wells (Sophie's question).
+- Saving and reloading inputs: save the full inputs (condition list in order, fixed wells, contents,
+  overrides, filler, seed) with the results, so a plate can be recreated by loading them rather
+  than retyping. Avoids accidental changes from reordering conditions or changing replicate counts.
 - Celigo labeling: label a pasted Celigo export with each well's contents.
 - Biomek Transfer From File CSV to dispense each condition into its randomized wells (needs the
   source labware and positions of each condition).
