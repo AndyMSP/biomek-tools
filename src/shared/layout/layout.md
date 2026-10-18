@@ -7,13 +7,13 @@ about how the contents were chosen.
 
 ## 2. Scope
 Version 1 records each well's contents as a name only, such as `"Condition 3"` or `"PBS"` (see
-section 3). That's all the randomizer needs. A layout works with any `WellGrid`; the randomizer uses `GRID_96`.
+section 3).
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Volumes and mixtures**, such as "50 µL of Condition 3 plus 50 µL of PBS". Volume tracking will
   need these later.
-- **Changes over time.** A layout records the contents at one moment. Working out what wells hold
-  after a series of transfers belongs to volume tracking.
+- **History.** A layout holds only the current contents; it doesn't remember earlier ones. Working
+  out what wells hold after a series of transfers belongs to volume tracking.
 
 ## 3. Data model
 - A layout is an instance of the `Layout` class, created with `new Layout(grid)`, where `grid` is a
