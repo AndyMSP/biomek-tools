@@ -30,8 +30,8 @@ installed.
   whose reason isn't obvious from the code.
 - **Describe every function.** Every function, including constructors, getters, private methods and
   helpers, has a comment above it saying what it does, with an example where it helps. Exception:
-  the unnamed functions passed to `test(...)` don't get a comment, because the test's name already
-  says what it does.
+  the unnamed functions passed to `test(...)` and `describe(...)` don't get a comment, because the
+  test's or group's name already says what it does.
 - **Extensible design, no speculative features (YAGNI).** Structure code so new features can be added
   as new modules, but implement only what the current specification requires.
 - **Ask before adding a dependency.** Say what it does, why it's needed, and the alternative.
@@ -73,6 +73,8 @@ biomek-tools/
 
 ## Testing
 - Every module that computes something has unit tests.
+- Each test file wraps its tests in one `describe(...)` group named after the module (e.g.
+  `describe("well-grid", …)`), so the test output shows which module each test belongs to.
 - Test fixtures go in `tests/fixtures/`.
 - When fixing a bug, first write a failing test that reproduces it, then fix it.
 - Run the full test suite (`npm test`) before every commit. Never commit with failing tests.
