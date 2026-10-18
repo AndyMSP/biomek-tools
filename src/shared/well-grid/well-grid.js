@@ -5,6 +5,8 @@
 // Rows and columns are numbered from 1, as printed on the plate.
 // Specification: well-grid.md. Design: docs/adr/0001-well-grid-as-class.md.
 
+import { describeValue } from "../error-messages/error-messages.js";
+
 const ROW_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 // One uppercase row letter, then a column number with no leading zeros.
@@ -23,8 +25,8 @@ export class WellGrid {
   // Creates a grid with the given number of rows and columns, e.g. new WellGrid(8, 12).
   // Throws if either is not a whole number in range, so an invalid grid can never exist.
   constructor(rows, columns) {
-    const rowsAreValid = isWholeNumber(rows) && rows >= 1 && rows <= ROW_LETTERS.length;
-    const columnsAreValid = isWholeNumber(columns) && columns >= 1;
+    const rowsAreValid = Number.isInteger(rows) && rows >= 1 && rows <= ROW_LETTERS.length;
+    const columnsAreValid = Number.isInteger(columns) && columns >= 1;
     if (!rowsAreValid || !columnsAreValid) {
       throw new Error(
         `A well grid must have whole-number rows from 1 to ${ROW_LETTERS.length} and columns ` +
@@ -122,16 +124,6 @@ export const GRID_96 = new WellGrid(8, 12);
 
 // --- Helpers used only inside this module ---
 
-// True if `value` is a number with no fractional part, e.g. 8 (but not 1.5, "8" or null).
-function isWholeNumber(value) {
-  return Number.isInteger(value);
-}
-
-// Shows a value in an error message: text in quotes, anything else as it is (5, null, 2.5).
-function describeValue(value) {
-  return typeof value === "string" ? `"${value}"` : String(value);
-}
-
 // Builds a well name from a row and column, e.g. (4, 3) → "D3".
 // Doesn't check its inputs; callers pass only numbers already known to be on the grid.
 function formatWellName(row, column) {
@@ -164,7 +156,7 @@ function correctWellName(name) {
 // Throws if a row or column number is not a whole number from 1 to `max`.
 // `label` is "Row" or "Column" and is used in the error message.
 function checkPositionNumber(label, value, max) {
-  if (!isWholeNumber(value)) {
+  if (!Number.isInteger(value)) {
     throw new Error(`${label} must be a whole number, but got ${describeValue(value)}.`);
   }
   if (value < 1 || value > max) {
