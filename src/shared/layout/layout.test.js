@@ -159,6 +159,21 @@ describe("layout", () => {
     });
   });
 
+  test("a name that comes from a class, not the object itself, counts as missing", () => {
+    // A test-only class whose name comes from a getter on the class, so the object itself holds
+    // no `name` property.
+    class Sample {
+      // Returns the name from the class, not from the object.
+      get name() {
+        return "Static";
+      }
+    }
+    const layout = new Layout(GRID_96);
+    assert.throws(() => layout.setContents("A1", new Sample()), {
+      message: "The contents name must be text, but got undefined.",
+    });
+  });
+
   test("a blank name throws the blank error", () => {
     const layout = new Layout(GRID_96);
     const message =

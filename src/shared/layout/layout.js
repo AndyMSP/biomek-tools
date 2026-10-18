@@ -81,7 +81,9 @@ function checkContents(contents) {
       `Contents must be an object with a name, like { name: "PBS" }, but got ${describeValue(contents)}.`,
     );
   }
-  const { name } = contents;
+  // Only a name the object holds itself counts. One it gets from elsewhere (e.g. a getter on a
+  // class) would pass these checks but not be copied, leaving the layout with no name stored.
+  const name = Object.hasOwn(contents, "name") ? contents.name : undefined;
   if (typeof name !== "string") {
     throw new Error(`The contents name must be text, but got ${describeValue(name)}.`);
   }
