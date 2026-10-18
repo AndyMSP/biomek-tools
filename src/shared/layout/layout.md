@@ -69,7 +69,7 @@ appears in quotes, a list as `a list` and any other object as `an object`.
 | `name` missing or not text | `The contents name must be text, but got undefined.` |
 | `name` is blank (empty or only whitespace) | `The contents name is blank. Give it at least one character that isn't a space.` |
 | `name` has whitespace at the start or end | `The contents name " PBS" has spaces at the start or end. Remove them.` |
-| Contents has properties other than `name` | `Contents can only have a name, but also got "volme".` With several, all are listed in the order they appear: `but also got "volme", "colour".` |
+| Contents has properties other than `name` | `Contents can only have a name, but also got "volme".` With several, all are listed in the order they appear: `but also got "volme", "color".` |
 
 The checks run in the order of the table, and the first problem found is reported.
 
@@ -105,11 +105,15 @@ Each becomes at least one unit test in `layout.test.js`.
 **Errors**
 - `setContents` and `contentsOf` with `"I1"` give the "not on this grid" message; with `"b2"`, the
   message includes `Did you mean "B2"?`.
-- Contents `null`, `"PBS"`, `5` and `[]` throw the object error; `[]` gives a message ending
+- Contents `null`, `"Static"`, `5` and `[]` throw the object error; `[]` gives a message ending
   `but got a list.`
 - `{}` and `{ name: 5 }` throw the text error.
 - `{ name: "" }` and `{ name: "   " }` throw the blank error.
-- `{ name: " PBS" }` and `{ name: "PBS " }` throw the whitespace error.
-- Extra properties are rejected: `{ name: "PBS", volme: 50 }` throws the extra-property error naming
-  `"volme"`; `{ name: "PBS", volme: 50, colour: "blue" }` names both, in that order.
-- A failed `setContents` leaves the well's contents unchanged.
+- `{ name: " Static" }` and `{ name: "Static " }` throw the whitespace error.
+- Extra properties are rejected: `{ name: "Static", volme: 50 }` throws the extra-property error
+  naming `"volme"`; `{ name: "Static", volme: 50, color: "blue" }` names both, in that order.
+- Checks run in order: `{ name: "", volme: 50 }` gives the blank error, not the extra-property
+  error.
+- A failed `setContents` leaves the well's contents unchanged: after `setContents("D4",
+  { name: "Condition 3" })`, `setContents("D4", { name: "" })` throws, and D4 still holds
+  `{ name: "Condition 3" }`.
