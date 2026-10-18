@@ -29,7 +29,8 @@ loop or swap. In code, the standard Fisher–Yates shuffle is exactly fair by co
 ties to break.
 
 ## Decision
-- Generate random numbers with **mulberry32**, implemented exactly as the standard published version.
+- Generate random numbers with **mulberry32**, matching the standard published version's outputs,
+  but wrapping the state to 32 bits explicitly so it stays exact over any number of calls.
 - Shuffle with **Fisher–Yates**, from the last position to the second, as specified in
   `src/shared/random/random.md`.
 
@@ -42,4 +43,7 @@ ties to break.
 - **The algorithm and shuffle must never change.** If a change is ever unavoidable, it needs a new ADR
   and a way to tell old seeds from new ones (e.g. a version recorded with each seed), so recorded
   plates stay reproducible.
+- A 32-bit state means at most 4,294,967,296 different starting points, so long lists can only be
+  shuffled into a fraction of all possible orders (13 items already have more orders than that).
+  Each shuffle is still fair position by position, which is what randomizing plates needs.
 - Not suitable for security uses; it isn't meant for them.

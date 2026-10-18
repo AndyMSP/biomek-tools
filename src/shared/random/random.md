@@ -40,14 +40,19 @@ A whole number from 0 to 4,294,967,295 (the largest 32-bit whole number).
 
 ### `next()` — mulberry32
 Each call:
-1. Adds `0x6D2B79F5` to the state, keeping the result within 32 bits.
+1. Adds `0x6D2B79F5` to the state and wraps the result to 32 bits (like a clock: past the largest
+   value, it continues from the bottom).
 2. Scrambles the new state and returns it divided by 4,294,967,296, giving a number from 0 up to
    (not including) 1.
 
-The exact arithmetic is the standard published mulberry32; the implementation must produce exactly
-these outputs, which the test cases pin down:
+The arithmetic is the standard published mulberry32, with one difference: the state is wrapped to
+32 bits explicitly (`| 0`). The published version lets the stored number grow on every call; its
+outputs are the same, but after about 4.9 million calls the number becomes too large for JavaScript
+to store exactly, and the outputs go wrong. The implementation must produce exactly these outputs,
+which the test cases pin down:
 ```js
-t = state += 0x6D2B79F5;
+state = (state + 0x6D2B79F5) | 0;
+t = state;
 t = Math.imul(t ^ t >>> 15, t | 1);
 t ^= t + Math.imul(t ^ t >>> 7, t | 61);
 return ((t ^ t >>> 14) >>> 0) / 4294967296;
@@ -63,7 +68,10 @@ return ((t ^ t >>> 14) >>> 0) / 4294967296;
    `j = #randomIndex(i + 1)` and swap the items at `i` and `j`.
 3. Return the copy.
 
-Every possible order is equally likely. A list of n items uses exactly n − 1 calls to `next()`. The
+Each step is a fair choice, so given evenly spread random numbers, every item is equally likely to
+land in every position. (For long lists, a 32-bit generator can produce only a fraction of all
+possible orders, since there are more orders than starting states; this doesn't affect randomizing
+plates. See ADR 0003.) A list of n items uses exactly n − 1 calls to `next()`. The
 direction (last position first) is part of the specification, because it decides which random
 number goes with which position.
 
@@ -91,6 +99,10 @@ mulberry32; both agree exactly.
 - **Range**: 1,000 numbers from seed 37 all lie from 0 up to (not including) 1.
 - **Reproducible**: two generators with the same seed give the same 1,000 numbers.
 - **Largest seed**: `new SeededRandom(4294967295)` works.
+- **Long runs stay exact**: from seed 37, after 5,000,000 calls, the next number is
+  `0.24837870616465807` (computed with exact 32-bit arithmetic in Python). The published version
+  without the explicit wrap gives `0.12518582912161946` here, so this test catches the stored number
+  growing past what JavaScript can store exactly.
 
 ### `shuffled(list)`
 - **Reference shuffle**: with seed 37, `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]` gives
