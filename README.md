@@ -2,7 +2,7 @@
 Tools for developing methods on the Biomek i5 with a Span-8 pod.
 
 ## Setup
-Install [Node.js](https://nodejs.org/) (version 18 or later). There are no other dependencies.
+Install [Node.js](https://nodejs.org/) (version 20 or later). There are no other dependencies.
 
 ## Running the tests
 ```
