@@ -23,9 +23,11 @@ Not in version 1 (see `docs/roadmap.md`):
   a different grid.
 - A new layout starts with every well empty. An empty well is a normal state, not an error.
 - A layout is mutable: setting a well's contents changes the layout itself.
-- Contents are an object with one property, `name`, which is text that isn't blank (it has at least
-  one character that isn't whitespace) and has no whitespace at the start or end, e.g.
-  `{ name: "Condition 3" }`. Later versions may add properties such as volume.
+- Contents are an object with exactly one property, `name`, which is text that isn't blank (it has
+  at least one character that isn't whitespace) and has no whitespace at the start or end, e.g.
+  `{ name: "Condition 3" }`. Any other property is rejected, so a typo such as `volme` is caught
+  rather than stored. Later versions may add properties such as volume; the specification will
+  allow them first.
 - The layout stores and returns contents by well. It doesn't compare, search or group them; that's
   left to the modules that use it.
 
@@ -64,6 +66,9 @@ appears in quotes.
 | `name` missing or not text | `The contents name must be text, but got undefined.` |
 | `name` is blank (empty or only whitespace) | `The contents name is blank. Give it at least one character that isn't a space.` |
 | `name` has whitespace at the start or end | `The contents name " PBS" has spaces at the start or end. Remove them.` |
+| Contents has properties other than `name` | `Contents can only have a name, but also got "volme".` With several, all are listed in the order they appear: `but also got "volme", "colour".` |
+
+The checks run in the order of the table, and the first problem found is reported.
 
 In JavaScript a list (an array) and `null` both count as objects, so they are named in the contents
 row to make sure they get that message. For a list, the message ends `but got a list.`, because
@@ -86,7 +91,6 @@ Each becomes at least one unit test in `layout.test.js`.
   `{ name: "Condition 3" }`, and every other well is still `null`.
 - Setting D4 again replaces its contents.
 - Accepted names include `"+"`, `"α"` and `"Condition 3"`.
-- Extra properties are kept: `{ name: "PBS", colour: "blue" }` comes back unchanged.
 
 **`listWells()`**
 - Returns every well in standard order, with set wells showing their contents and the rest `null`.
@@ -100,4 +104,6 @@ Each becomes at least one unit test in `layout.test.js`.
 - `{}` and `{ name: 5 }` throw the text error.
 - `{ name: "" }` and `{ name: "   " }` throw the blank error.
 - `{ name: " PBS" }` and `{ name: "PBS " }` throw the whitespace error.
+- Extra properties are rejected: `{ name: "PBS", volme: 50 }` throws the extra-property error naming
+  `"volme"`; `{ name: "PBS", volme: 50, colour: "blue" }` names both, in that order.
 - A failed `setContents` leaves the well's contents unchanged.
