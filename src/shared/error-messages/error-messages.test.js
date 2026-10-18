@@ -24,4 +24,18 @@ describe("error-messages", () => {
     assert.equal(describeValue(undefined), "undefined");
     assert.equal(describeValue(true), "true");
   });
+
+  test("describeValue() shows any list as 'a list'", () => {
+    assert.equal(describeValue([]), "a list");
+    assert.equal(describeValue(["A", "B"]), "a list");
+  });
+
+  test("describeValue() shows any other object as 'an object'", () => {
+    assert.equal(describeValue({}), "an object");
+    assert.equal(describeValue({ rows: 8, columns: 12 }), "an object");
+  });
+
+  test("describeValue() never throws, even for an object String() can't convert", () => {
+    assert.equal(describeValue(Object.create(null)), "an object");
+  });
 });
