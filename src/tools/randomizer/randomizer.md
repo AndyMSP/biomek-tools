@@ -81,7 +81,8 @@ records which role put it there.
 4. Fixed wells get the fixed contents, or their override.
 5. Each well in the result records both its contents and its well type (see Terms).
 
-Every possible arrangement is equally likely.
+Each well is equally likely to receive any of the items. (A 32-bit seed can't reach every possible
+arrangement of a full plate, but every arrangement it produces is a fair shuffle; see ADR 0003.)
 
 **Reproducibility.** The same condition list *in the same order*, the same fixed wells, contents,
 overrides and filler, and the same seed always give the same plate, on any computer. Changing the
