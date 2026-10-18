@@ -8,6 +8,18 @@ Requirement: each tool handed out to the lab must open in Edge or Chrome on a la
 installed.
 
 ## Working together
+Andy is learning, so explanations matter as much as the code.
+- **Go slowly when explaining.** Explain one piece at a time and wait before moving on. When
+  reviewing code, go line by line if asked. Don't cover several topics in one reply.
+- **Use standard industry terms.** Explain each term the first time it comes up. Don't invent
+  terms; if there's no standard one, say so.
+- **Don't assume understanding.** Treat a topic as understood only if Andy says so. Explain
+  anything that depends on an earlier topic from scratch, not by referring back.
+- **Be honest.** Give a real opinion and push back when something seems wrong. Don't agree just
+  because Andy suggested it, and don't change a recommendation without a new reason; say what the
+  reason is.
+- **Make questions clear.** Say whether a question asks for Andy's decision or checks his
+  understanding.
 - Before changing anything, say what you'll change and why, in plain language.
 - Keep each change small and about one thing. Don't mix unrelated changes.
 - If a request is unclear or seems like a bad idea, say so and ask before proceeding.
