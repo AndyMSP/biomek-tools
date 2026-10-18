@@ -3,12 +3,18 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
   well names, converting between names and row/column, edge wells. See
   `src/shared/well-grid/well-grid.md`.
+- **`error-messages`** (shared module): helpers for writing error messages (`describeValue`). See
+  `src/shared/error-messages/error-messages.md`.
+- **`random`** (shared module): seeded random numbers (mulberry32) and a Fisher–Yates shuffle. See
+  `src/shared/random/random.md` and ADR 0003.
+- **`randomizer.md`**: the randomizer's tool specification. See
+  `src/tools/randomizer/randomizer.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`.
 
 ## Current goal: the randomizer
