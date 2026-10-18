@@ -59,7 +59,7 @@ layout.listWells();        // [{ well: "A1", contents: null }, … { well: "D4",
 ## 5. Errors
 Every public method checks its input and throws an `Error` whose message says what is wrong and how
 to fix it. Values in messages are shown with `describeValue` (`error-messages` module), so text
-appears in quotes.
+appears in quotes, a list as `a list` and any other object as `an object`.
 
 | Problem | Message |
 |---|---|
@@ -74,8 +74,7 @@ appears in quotes.
 The checks run in the order of the table, and the first problem found is reported.
 
 In JavaScript a list (an array) and `null` both count as objects, so they are named in the contents
-row to make sure they get that message. For a list, the message ends `but got a list.`, because
-`describeValue` shows a list's items without brackets (`[]` would appear as nothing at all).
+row to make sure the contents check rejects them explicitly and they get that message.
 
 ## 6. Test cases
 Each becomes at least one unit test in `layout.test.js`.
@@ -87,7 +86,7 @@ Each becomes at least one unit test in `layout.test.js`.
 - The grid can't be replaced: assigning to `layout.grid` throws, and `layout.grid` is still
   `GRID_96`.
 - `new Layout(96)`, `new Layout(null)` and `new Layout({ rows: 8, columns: 12 })` throw the
-  WellGrid error.
+  WellGrid error; the last message ends `but got an object.`
 
 **`setContents` and `contentsOf`**
 - After `setContents("D4", { name: "Condition 3" })`, `contentsOf("D4")` returns
