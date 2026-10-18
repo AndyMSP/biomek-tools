@@ -69,8 +69,8 @@ describe("layout", () => {
   test("setting a well again replaces its contents", () => {
     const layout = new Layout(GRID_96);
     layout.setContents("D4", { name: "Condition 3" });
-    layout.setContents("D4", { name: "PBS" });
-    assert.deepEqual(layout.contentsOf("D4"), { name: "PBS" });
+    layout.setContents("D4", { name: "Static" });
+    assert.deepEqual(layout.contentsOf("D4"), { name: "Static" });
   });
 
   test("names of any non-blank text are accepted", () => {
@@ -100,11 +100,11 @@ describe("layout", () => {
 
   test("listWells() gives every well in standard order, with set wells showing their contents", () => {
     const layout = new Layout(new WellGrid(2, 2));
-    layout.setContents("A2", { name: "PBS" });
+    layout.setContents("A2", { name: "Static" });
     layout.setContents("B1", { name: "Condition 3" });
     assert.deepEqual(layout.listWells(), [
       { well: "A1", contents: null },
-      { well: "A2", contents: { name: "PBS" } },
+      { well: "A2", contents: { name: "Static" } },
       { well: "B1", contents: { name: "Condition 3" } },
       { well: "B2", contents: null },
     ]);
@@ -112,12 +112,12 @@ describe("layout", () => {
 
   test("changing the list from listWells(), or the contents in it, doesn't change the layout", () => {
     const layout = new Layout(new WellGrid(1, 2));
-    layout.setContents("A1", { name: "PBS" });
+    layout.setContents("A1", { name: "Static" });
     const wells = layout.listWells();
     wells[0].contents.name = "Changed";
     wells.pop();
     assert.deepEqual(layout.listWells(), [
-      { well: "A1", contents: { name: "PBS" } },
+      { well: "A1", contents: { name: "Static" } },
       { well: "A2", contents: null },
     ]);
   });
@@ -127,13 +127,13 @@ describe("layout", () => {
   test("a well off the grid gives the grid's not-on-this-grid message", () => {
     const layout = new Layout(GRID_96);
     const message = '"I1" is not on this grid. Valid wells are rows A–H, columns 1–12.';
-    assert.throws(() => layout.setContents("I1", { name: "PBS" }), { message });
+    assert.throws(() => layout.setContents("I1", { name: "Static" }), { message });
     assert.throws(() => layout.contentsOf("I1"), { message });
   });
 
   test("a lowercase well name gets the grid's suggestion", () => {
     const layout = new Layout(GRID_96);
-    assert.throws(() => layout.setContents("b2", { name: "PBS" }), { message: /Did you mean "B2"\?/ });
+    assert.throws(() => layout.setContents("b2", { name: "Static" }), { message: /Did you mean "B2"\?/ });
     assert.throws(() => layout.contentsOf("b2"), { message: /Did you mean "B2"\?/ });
   });
 
