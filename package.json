@@ -6,6 +6,6 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "repl": "node scripts/well-grid-repl.js"
+    "repl": "node scripts/repl.js"
   }
 }
