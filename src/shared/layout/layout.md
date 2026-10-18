@@ -30,6 +30,9 @@ Not in version 1 (see `docs/roadmap.md`):
   allow them first.
 - The layout stores and returns contents by well. It doesn't compare, search or group them; that's
   left to the modules that use it.
+- The layout stores a copy of the contents it's given and returns copies, so changing an object
+  after passing it in, or one received from the layout, never changes the layout. (Otherwise outside
+  code could change a well's contents without `setContents`, skipping its checks.)
 
 ## 4. Interface
 The module exports one class, `Layout`.
@@ -91,10 +94,14 @@ Each becomes at least one unit test in `layout.test.js`.
   `{ name: "Condition 3" }`, and every other well is still `null`.
 - Setting D4 again replaces its contents.
 - Accepted names include `"+"`, `"α"` and `"Condition 3"`.
+- The layout keeps its own copy: changing the object passed to `setContents` afterwards doesn't
+  change the layout.
+- Changing the object returned by `contentsOf` doesn't change the layout.
 
 **`listWells()`**
 - Returns every well in standard order, with set wells showing their contents and the rest `null`.
-- Returns a new list each time: changing the returned list doesn't change the layout.
+- Returns a new list each time: changing the returned list, or the contents inside it, doesn't
+  change the layout.
 
 **Errors**
 - `setContents` and `contentsOf` with `"I1"` give the "not on this grid" message; with `"b2"`, the
