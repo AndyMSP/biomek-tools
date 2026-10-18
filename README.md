@@ -10,12 +10,13 @@ npm test
 ```
 This runs every `*.test.js` file using Node's built-in test runner.
 
-## Trying out the well grid
+## Trying out the modules
 ```
 npm run repl
 ```
-This opens an interactive Node session with `WellGrid` and `GRID_96` loaded, e.g.
-`GRID_96.wellPosition("D3")`. Type `.exit` to quit.
+This opens an interactive Node session with the shared modules loaded (`WellGrid`, `GRID_96` and
+`SeededRandom`), e.g. `GRID_96.wellPosition("D3")` or `new SeededRandom(37).next()`. Type `.exit`
+to quit.
 
 ## Where to find things
 - **What each module does**: its specification, `name.md`, sits next to its code
