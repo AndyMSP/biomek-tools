@@ -17,6 +17,9 @@ Last updated: 2026-10-18
   `src/tools/randomizer/randomizer.md`.
 - **`layout`** (shared module): what is in each well of a grid, with each well's contents recorded
   as a name. See `src/shared/layout/layout.md`.
+- **`well-selection`** (shared module): which wells of a grid are selected — select, deselect and
+  toggle single wells, and list selected and unselected wells. See
+  `src/shared/well-selection/well-selection.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`.
 
 ## Current goal: the randomizer
