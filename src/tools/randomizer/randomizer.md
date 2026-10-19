@@ -251,8 +251,10 @@ work even when names are shared.
   always gives the same answer.)
 - **Golden file**: the main example with seed 37 is run once and recorded in `tests/fixtures/`. A
   test confirms the result never changes. (It is a snapshot, not a comparison with the Exp37
-  spreadsheet, which used a different algorithm; the checks above already confirm it is correct.) If it ever fails, the cause must be
-  found; the golden file is never edited to make the test pass.
+  spreadsheet, which used a different algorithm; the checks above already confirm it is correct.)
+  It is generated as JSON, one entry `{ well, contents, type }` per well in standard order, by
+  `scripts/write-golden-files.js`, which is run by hand; tests only read it. If the test ever fails,
+  the cause must be found; the golden file is never edited or regenerated to make the test pass.
 
 ### Errors
 One test per error in section 7, checking the message:
