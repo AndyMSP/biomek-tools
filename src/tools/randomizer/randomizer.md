@@ -57,7 +57,7 @@ randomly ordered replicate or the filler).
 ### Fixed contents and overrides
 If any wells are fixed, the user names their contents (e.g. "PBS"); there is no preset. The user can
 then **override** individual fixed wells with different contents (e.g. A1: "Blank",
-H12: "Standard"). Overrides apply only to fixed wells.
+H12: "Standard"). Overrides apply only to fixed wells: opening a fixed well removes its override.
 
 ### Filler
 If the open wells outnumber the replicates, the user names a filler (e.g. "PBS") for the spare open
