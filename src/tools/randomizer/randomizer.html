@@ -149,6 +149,9 @@ td.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .list-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .list-head h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
 .copied { color: var(--muted); font-size: 0.8rem; }
+.biomek { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+.biomek .row .field { flex: 0 1 220px; }
+.notes { margin: 0; padding-left: 1.2em; font-size: 0.875rem; display: grid; gap: 2px; }
 @media (prefers-reduced-motion: no-preference) { button { transition: border-color 0.15s; } }
 </style>
 </head>
@@ -253,6 +256,23 @@ td.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
     </div>
     <div class="list-box"><table><thead><tr><th>Well</th><th>Contents</th></tr></thead><tbody id="wells-list"></tbody></table></div>
     <textarea id="copy-wells-text" readonly hidden></textarea>
+
+    <div class="biomek">
+      <div class="list-head">
+        <h3>Biomek files: Exp37 method</h3>
+      </div>
+      <p class="hint">Media, PBS, cell and mix Transfer From File files and the cell worklist, for the MsNAC and SF9 plates. Unzip the folder to C:\Users\Beckman Coulter\Desktop\ on the Biomek PC, and run the method in simulation first.</p>
+      <div class="row">
+        <div class="field">
+          <label for="experiment-id">Experiment ID</label>
+          <input type="text" id="experiment-id" value="Exp37" autocomplete="off">
+        </div>
+        <button type="button" class="primary" id="download-biomek">Download Biomek files</button>
+      </div>
+      <p class="counts" id="biomek-summary"></p>
+      <ul class="problems" id="biomek-problems"></ul>
+      <ul class="notes" id="biomek-uncovered"></ul>
+    </div>
   </section>
 </div>
 <script type="module" src="page.js"></script>

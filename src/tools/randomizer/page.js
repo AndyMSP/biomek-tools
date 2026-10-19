@@ -7,6 +7,9 @@ import { WellSelection } from "../../shared/well-selection/well-selection.js";
 import { findProblems, randomize } from "./assign.js";
 import { contentsToWells, wellToContents, contentsToWellsText, wellToContentsText } from "./outputs.js";
 import { parseConditionRows, replicatesFromText } from "./paste.js";
+import { buildBiomekFiles, findBiomekProblems, uncoveredContents } from "./biomek-files.js";
+import { createZip } from "../../shared/zip/zip.js";
+import { EXP37_METHOD } from "../../../config/exp37-method.js";
 
 const GRID = GRID_96;
 
@@ -47,15 +50,15 @@ function currentInputs() {
   };
 }
 
-// Fills the page with the main example from randomizer.md: outer ring fixed with Static,
-// Condition 1–12 with 4 replicates each, filler Spare.
+// Fills the page with an example like Exp37: outer ring fixed,
+// Condition 1–12 with 4 replicates each, PBS as fixed contents and filler (as in Exp37).
 function loadExample() {
   state.conditions = Array.from({ length: 12 }, (_, i) => ({ name: `Condition ${i + 1}`, replicatesText: "4" }));
   state.fixedWells = new WellSelection(GRID);
   fixOuterRing();
   state.overrides = [];
-  byId("fixed-contents").value = "Static";
-  byId("filler").value = "Spare";
+  byId("fixed-contents").value = "PBS";
+  byId("filler").value = "PBS";
 }
 
 // Clears every input, keeping a new suggested seed.
@@ -247,6 +250,47 @@ function renderResult() {
   const wellRows = wellToContents(result);
   fillTable("wells-list", wellRows.map((row) => [row.well, row.contents]), 0);
   byId("copy-wells-text").value = wellToContentsText(wellRows);
+  renderBiomek();
+}
+
+// Shows what the Biomek download will contain, or what stops it, for the current result.
+function renderBiomek() {
+  if (state.result === null) {
+    return;
+  }
+  const { inputs, result } = state.result;
+  const experimentId = byId("experiment-id").value.trim();
+  const problems = findBiomekProblems(inputs, result, EXP37_METHOD, experimentId);
+  byId("biomek-problems").replaceChildren(...problems.map((message) => listItem(message)));
+  byId("download-biomek").disabled = problems.length > 0;
+  byId("biomek-summary").textContent =
+    problems.length > 0 ? "" : `${buildBiomekFiles(inputs, result, EXP37_METHOD, experimentId).length} files`;
+  byId("biomek-uncovered").replaceChildren(
+    ...uncoveredContents(inputs, result, EXP37_METHOD).map(({ contents, wells }) =>
+      listItem(`No file fills ${contents} (${wells.join(", ")}). Add it by hand or in the method.`),
+    ),
+  );
+}
+
+// A list item holding text.
+function listItem(text) {
+  const item = document.createElement("li");
+  item.textContent = text;
+  return item;
+}
+
+// Downloads every Biomek file for the current result as one zip, e.g. Exp37_Biomek_seed37.zip.
+function downloadBiomekFiles() {
+  const { inputs, result } = state.result;
+  const experimentId = byId("experiment-id").value.trim();
+  const zip = createZip(buildBiomekFiles(inputs, result, EXP37_METHOD, experimentId));
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([zip], { type: "application/zip" }));
+  link.download = `${experimentId}_Biomek_seed${result.seed}.zip`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
 // Fills a table body with rows of cells; the column at `monoColumn` uses the data font.
@@ -345,6 +389,8 @@ function connectControls() {
   });
   byId("copy-contents").addEventListener("click", () => copyText("copy-contents-text", "copied-contents"));
   byId("copy-wells").addEventListener("click", () => copyText("copy-wells-text", "copied-wells"));
+  byId("experiment-id").addEventListener("input", renderBiomek);
+  byId("download-biomek").addEventListener("click", downloadBiomekFiles);
 }
 
 // A separate WellSelection with the same wells selected.
