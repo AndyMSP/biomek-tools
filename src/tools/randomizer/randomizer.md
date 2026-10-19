@@ -251,8 +251,9 @@ work even when names are shared.
   *can* give the same plate in tiny setups, so this is checked only for specific seeds on the main
   example, where a match is effectively impossible. Because results are reproducible, the test
   always gives the same answer.)
-- **Golden file**: the main example with seed 37 is run once, checked by Andy, and recorded in
-  `tests/fixtures/`. A test confirms the result never changes. If it ever fails, the cause must be
+- **Golden file**: the main example with seed 37 is run once and recorded in `tests/fixtures/`. A
+  test confirms the result never changes. (It is a snapshot, not a comparison with the Exp37
+  spreadsheet, which used a different algorithm; the checks above already confirm it is correct.) If it ever fails, the cause must be
   found; the golden file is never edited to make the test pass.
 
 ### Errors
