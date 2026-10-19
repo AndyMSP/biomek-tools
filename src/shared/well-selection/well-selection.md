@@ -6,11 +6,13 @@
 tool decides what being selected means (e.g. fixed wells, or wells to transfer from).
 
 ## 2. Scope
-Version 1 can select and deselect single wells, select all edge wells in one step, and list the
-selected and unselected wells in standard order.
+Version 1 can select and deselect single wells, and list the selected and unselected wells in
+standard order.
 
 Not in version 1:
 - Selecting a rectangle of wells, or a whole row or column, at once.
+- Presets such as selecting all edge wells. A tool that needs one builds it from `select` and the
+  grid (e.g. `isEdgeWell` in `well-grid.md`).
 - Remembering the order in which wells were selected. A selection is a set, listed in standard
   order.
 
@@ -35,7 +37,6 @@ The module exports one class, `WellSelection`.
 | `deselect(well)` | public | Deselects a well. Deselecting a well that isn't selected changes nothing and isn't an error. |
 | `toggle(well)` | public | Selects the well if it isn't selected, and deselects it if it is. |
 | `isSelected(well)` | public | Returns `true` if the well is selected, `false` if not. |
-| `selectEdgeWells()` | public | Selects every edge well of the grid (see `isEdgeWell` in `well-grid.md`). Wells already selected stay selected. |
 | `selectedWells()` | public | Returns the selected wells as a list of well names in standard order. |
 | `unselectedWells()` | public | Returns the wells that aren't selected as a list of well names in standard order. |
 | `#grid` | private | The grid passed to the constructor. |
@@ -44,11 +45,11 @@ The module exports one class, `WellSelection`.
 Example:
 ```js
 const selection = new WellSelection(GRID_96);
-selection.selectEdgeWells();
+selection.select("A1");
 selection.toggle("D4");          // D4 is now selected
 selection.isSelected("D4");      // true
-selection.selectedWells().length;    // 37 (36 edge wells and D4)
-selection.unselectedWells().length;  // 59
+selection.selectedWells();       // ["A1", "D4"]
+selection.unselectedWells().length;  // 94
 ```
 
 ## 5. Errors
@@ -84,11 +85,6 @@ Each becomes at least one unit test in `well-selection.test.js`.
 - `toggle("D4")` on an unselected well selects it; toggling again deselects it.
 - Selecting D4 twice causes no error, and D4 appears once in `selectedWells()`.
 - Deselecting a well that isn't selected causes no error and changes nothing.
-
-**`selectEdgeWells()`**
-- On `GRID_96`, it selects exactly the 36 edge wells.
-- Wells already selected stay selected: after `select("D4")` and `selectEdgeWells()`, 37 wells are
-  selected, including D4.
 
 **Lists**
 - `selectedWells()` and `unselectedWells()` are in standard order, e.g. after selecting H12, A2 and
