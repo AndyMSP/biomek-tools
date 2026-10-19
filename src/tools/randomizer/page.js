@@ -280,13 +280,25 @@ function listItem(text) {
 }
 
 // Downloads every Biomek file for the current result as one zip, e.g. Exp37_Biomek_seed37.zip.
-function downloadBiomekFiles() {
+async function downloadBiomekFiles() {
   const { inputs, result } = state.result;
   const experimentId = byId("experiment-id").value.trim();
   const zip = createZip(buildBiomekFiles(inputs, result, EXP37_METHOD, experimentId));
+  const filename = `${experimentId}_Biomek_seed${result.seed}.zip`;
+  // Inside the claude.ai viewer, downloads go through its own save prompt; opened from disk on a
+  // lab PC, window.claude doesn't exist and the browser's ordinary download is used.
+  const downloads = window.claude?.use ? await window.claude.use("downloads") : null;
+  if (downloads !== null) {
+    try {
+      await downloads.save({ filename, data: zip });
+    } catch (error) {
+      byId("biomek-summary").textContent = error.code === "declined" ? "Download cancelled." : `Download failed: ${error.message}`;
+    }
+    return;
+  }
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([zip], { type: "application/zip" }));
-  link.download = `${experimentId}_Biomek_seed${result.seed}.zip`;
+  link.download = filename;
   document.body.append(link);
   link.click();
   link.remove();
