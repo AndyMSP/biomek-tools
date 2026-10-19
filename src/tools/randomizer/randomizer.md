@@ -131,12 +131,28 @@ Randomizing gives:
 - **The randomized plate**: every well's contents and type (the result, section 5).
 - **The seed** used, from the result's copy of the inputs.
 - **Contents → wells**: each distinct contents with the wells that hold it, in standard well order,
-  e.g. `Condition 1: B4, D9, F2, G7`. Listed in this order: conditions as listed, then the filler,
-  then the fixed-contents entries as listed; a name already listed isn't repeated, and a name no well
-  holds isn't listed. The order comes from the result's copy of the inputs. This is the list used at
-  the bench while plating.
+  e.g. `Condition 1: B4, D9, F2, G7`, listed in the listing order below, skipping names no well
+  holds. The order comes from the result's copy of the inputs. This is the list used at the bench
+  while plating.
 - **Well → contents**: all 96 wells in standard order, each with its contents. This is the list used
   to label results; pasted into Excel, it can also be sorted or filtered by contents.
+
+**Listing order.** `listingOrder(inputs)` gives every name in the inputs once, in this order:
+conditions as listed, then the filler, then the fixed-contents entries as listed. Empty names are
+left out, and a name already listed isn't repeated, so a shared name keeps the first role it appears
+in. Each name comes with that **role** (`condition`, `filler` or `fixed`) and its **position** in that
+role's own list, counting from 0. For example, with conditions `Condition 1` and `Static`, filler
+`Spare`, and fixed contents `Static` then `Blank`:
+```js
+[
+  { name: "Condition 1", role: "condition", position: 0 },
+  { name: "Static",      role: "condition", position: 1 },  // the fixed "Static" shares this one
+  { name: "Spare",       role: "filler",    position: 0 },
+  { name: "Blank",       role: "fixed",     position: 1 },  // Blank is fixed contents 2
+]
+```
+It includes names no well holds. Contents → wells uses it for its order; the page uses it to give
+each name a color that stays the same while other roles are edited (see `randomizer-page.md`).
 
 Each list also has a **copy text**: the list as tab-separated text, so it pastes into Excel as
 columns. The copy text has **no header row**, because it is often pasted into other programs that
@@ -216,6 +232,7 @@ The logic takes the inputs as one object:
 | `openWells(fixedContents, wells)` | Nothing; makes the wells open (section 4). |
 | `randomize(inputs)` | The result (section 5). Throws an `Error` whose message is the first problem, if there are any. |
 | `matchesInputs(result, inputs)` | `true` if `inputs` are exactly the result's inputs (section 5). |
+| `listingOrder(inputs)` | Every name once, as `{ name, role, position }`, in listing order (section 6). |
 | `contentsToWells(result)` | The contents → wells list as rows `{ contents, wells }`, in the order of section 6. |
 | `wellToContents(result)` | The well → contents list as rows `{ well, contents }`, in standard well order. |
 | `contentsToWellsText(result)` | The contents → wells copy text (section 6). |
@@ -282,6 +299,13 @@ work even when names are shared.
   `true` again after changing it back.
 - The result's inputs are a copy: calling `placeName` or renaming an entry after `randomize` doesn't
   change `result.inputs`.
+
+### Listing order
+- For the example in section 6, `listingOrder` returns exactly the list shown.
+- Empty names (an unnamed fixed-contents entry, an empty filler) are left out.
+- Positions count within each role and include unused entries: with fixed contents `Unused` (no
+  wells) then `Blank`, `Blank` has position 1.
+- Adding a condition doesn't change any filler or fixed-contents position.
 
 ### Seeds
 - **Different seeds**: two chosen seeds give different plates on the main example. (Different seeds
