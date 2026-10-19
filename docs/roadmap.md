@@ -29,7 +29,8 @@ Order of work:
    includes. Written first, because it sets the requirements for the modules below.
 2. **`random`** (shared): seeded random numbers.
 3. **`layout`** (shared): what is in each well.
-4. **`select`**: which wells are fixed and which are open.
+4. **`well-selection`** (shared): which wells of a grid are selected. The randomizer uses it for
+   its fixed wells.
 5. **`assign`**: shuffling the list of replicates and filling the open wells with it.
 6. **Outputs**: the randomized layout and the well key.
 7. **The page**: the screen that connects the modules.
@@ -66,6 +67,8 @@ Shared modules it needs:
   rather than being typed in. Contents should be designed so they can later carry volumes and
   mixtures (see volume tracking below), even if version 1 only needs text labels.
 - **`random`**: seeded random numbers that give the same sequence on any computer.
+- **`well-selection`**: which wells of a grid are selected; the randomizer treats selected wells
+  as fixed. The transfer designer can use it to pick wells too.
 
 ## Later: transfer designer
 A tool for planning transfers by clicking and dragging from one well to another.
