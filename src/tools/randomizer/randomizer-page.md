@@ -2,7 +2,14 @@
 
 ## 1. Purpose
 The randomizer's page: the screen people use. This specification covers all three page files:
-`randomizer.html` (structure), `randomizer.css` (styling) and `randomizer-page.js` (behavior).
+
+| File | Job |
+|---|---|
+| `randomizer.html` | The page's structure: the boxes, buttons and plate grids. |
+| `randomizer.css` | The page's styling. |
+| `randomizer-page.js` | The page's behavior: reads the inputs, calls `randomizer.js`, draws the results and copies text to the clipboard. |
+
+The build step joins the page files and the modules they use into one file.
 
 The page has no randomizer logic of its own. It reads the inputs from the screen, passes them to
 `randomizer.js` as the inputs object in `randomizer.md` (section 8), and shows what comes back. The
@@ -24,6 +31,8 @@ shortcut, and a button for a new random seed.
   override.
 - **Seed**: when the page opens, the seed box holds a random suggestion (using `Math.random()`); the
   user can keep it or type another.
+- **Passing them on**: replicates and the seed typed as digits are passed as numbers, and anything
+  else as the text typed, so the logic can report it (e.g. `but got "four"`).
 
 ## 4. Checking the inputs
 The page runs the check (`findProblems`) after every change (typing, clicking a well, editing the

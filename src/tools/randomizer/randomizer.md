@@ -65,7 +65,7 @@ A whole number from 1 to 999,999.
 
 ### Shared names
 The same name may appear in several places: "PBS" could be the fixed contents, the filler and a
-condition at once. The copied lists treat them as the same contents, while each well's type still
+condition at once. The two lists treat them as the same contents, while each well's type still
 records which role put it there.
 
 ## 5. Assignment rules
@@ -113,11 +113,11 @@ Randomizing gives:
 - **Well → contents**: all 96 wells in standard order, each with its contents. This is the list used
   to label results; pasted into Excel, it can also be sorted or filtered by contents.
 
-Each list can be copied as tab-separated text, so it pastes into Excel as columns. The copied text
-has **no header row**, because it is often pasted into other programs that wouldn't know what to do
-with one. The copied lists are for people. Later integrations, such as Biomek output and Celigo
-labeling, will use the same information directly from the plate data inside the tool, not the
-copied text.
+Each list also has a **copy text**: the list as tab-separated text, so it pastes into Excel as
+columns. The copy text has **no header row**, because it is often pasted into other programs that
+wouldn't know what to do with one. The copy texts are for people. Later integrations, such as Biomek
+output and Celigo labeling, will use the same information directly from the plate data inside the
+tool, not the copy texts.
 - Contents → wells: two columns (contents, wells), one row per contents, with its wells in one cell
   separated by commas and spaces, e.g. `Condition 1⇥B4, D9, F2, G7` (⇥ is a tab).
 - Well → contents: two columns (well, contents), one row per well, e.g. `A1⇥Static`.
@@ -161,14 +161,10 @@ The randomizer's folder, `src/tools/randomizer/`, holds:
 | File | Job |
 |---|---|
 | `randomizer.md` | This specification: the tool's logic. |
-| `randomizer-page.md` | The page's specification, covering the three page files below. |
+| `randomizer-page.md` | The page's specification. |
 | `randomizer.js` | The logic: checking the inputs, randomizing, and building the two lists and their copy text. No screen code, so it is tested in Node. |
 | `randomizer.test.js` | Its tests. |
-| `randomizer.html` | The page's structure: the boxes, buttons and plate grids. |
-| `randomizer.css` | The page's styling. |
-| `randomizer-page.js` | The page's behavior: reads the inputs, calls `randomizer.js`, draws the results and copies text to the clipboard. |
-
-The build step joins the page files and the modules they use into one file.
+| `randomizer.html`, `randomizer.css`, `randomizer-page.js` | The page; see `randomizer-page.md`. |
 
 ### Inputs
 The logic takes the inputs as one object:
@@ -182,8 +178,8 @@ The logic takes the inputs as one object:
 | `filler` | Text; `""` if none was named. |
 | `seed` | The seed. |
 
-The page passes replicates and the seed typed as digits as numbers, and anything else as the text
-typed, so it can be reported (e.g. `but got "four"`).
+`replicates` and `seed` may be any value; anything that isn't valid is reported as it was given
+(e.g. `but got "four"`).
 
 ### Functions
 `randomizer.js` exports:
