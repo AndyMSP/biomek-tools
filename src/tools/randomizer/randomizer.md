@@ -15,6 +15,9 @@ Not in version 1 (see `docs/roadmap.md`): several plates, constrained randomizat
 replicate per quadrant), other plate formats, saving and reloading inputs, Celigo labeling, and
 Biomek output.
 
+To keep the first build simple, each input has **one way to enter it**. Not in version 1: pasting
+conditions from Excel, a "fix the outer ring" shortcut, and a button for a new random seed.
+
 ## 3. Terms
 **Open wells** are filled by the random assignment. Each is either:
 - a **replicate well**, holding one replicate of a condition, or
@@ -32,9 +35,8 @@ fixed-contents or override.
 ## 4. Inputs
 
 ### Condition list
-Each condition has a name and a number of replicates. The user can type conditions in one row at a
-time, or paste rows copied from Excel (two columns: name, then replicates), then edit, add or remove
-rows in the tool. Pasted rows are added to any already there.
+Each condition has a name and a number of replicates. The user types conditions in a table, one row
+at a time, and can edit, add or remove rows.
 - Names are text, at least one character. A name with a space (or other whitespace) at the start or
   end is rejected, not trimmed, so a name always matches its source exactly, e.g. when it is later
   matched against another tool's file. The same applies to the fixed contents, overrides and the
@@ -42,15 +44,12 @@ rows in the tool. Pasted rows are added to any already there.
 - Replicates are whole numbers of at least 1.
 - Two conditions in the list can't have the same name. A condition may share its name with the
   filler or the fixed contents (see Shared names).
-- Header rows are not skipped; a pasted header is reported as an error like any other bad row.
 - The list may be empty. Every open well then gets the filler.
 
 ### Fixed and open wells
 Every well is either **fixed** (its contents are set by the user) or **open** (it receives a
 randomly ordered replicate or the filler).
-- The user clicks wells on a drawn plate to mark them fixed or open.
-- A "fix the outer ring" button marks the 36 edge wells (`isEdgeWell`) as fixed in one step; they
-  can still be clicked individually afterwards.
+- The user clicks wells on a drawn plate to mark them fixed or open, one well at a time.
 - By default no wells are fixed.
 - Whether a well is fixed or open is chosen by the user, never by its contents.
 
@@ -65,9 +64,8 @@ wells. Filler wells are placed randomly, so they can't be overridden individuall
 spare open wells, no filler is needed.
 
 ### Seed
-A whole number from 1 to 999,999. When the tool opens, it suggests a random seed (using
-`Math.random()`), shown in an editable box; the user can keep it or type another, and a button picks
-a new random one.
+A whole number from 1 to 999,999. When the tool opens, the seed box holds a random suggestion (using
+`Math.random()`); the user can keep it or type another.
 
 ### Shared names
 The same name may appear in several places: "PBS" could be the fixed contents, the filler and a
