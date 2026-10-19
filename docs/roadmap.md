@@ -34,15 +34,16 @@ Order of work:
 3. **`layout`** (shared): what is in each well.
 4. **`well-selection`** (shared): which wells of a grid are selected. The randomizer uses it for
    its fixed wells.
-5. **`assign`**: shuffling the list of replicates and filling the open wells with it.
-6. **Outputs**: the randomized layout and the well key.
-7. **The page**: the screen that connects the modules.
+5. **`randomizer.js`**: the tool's logic — checking the inputs, shuffling the replicates and filling
+   the open wells, and building the two lists and their copy text.
+6. **The page**: `randomizer.html`, `randomizer.css` and `randomizer-page.js`, the screen that
+   connects the modules.
 
 Expected for version 1 (to be confirmed in `randomizer.md`), one 96-well plate:
 - List the conditions and how many replicates each needs. There is no organized plate: samples
   don't start in one, so the replicates are dealt directly into random wells.
-- Choose which wells are fixed and which are open; "fix the outer ring" as a preset
-  (built on `isEdgeWell`). The user decides which wells are fixed; contents never do.
+- Choose which wells are fixed and which are open, by clicking wells. The user decides which wells
+  are fixed; contents never do.
 - Name the contents of the fixed wells (no preset), with optional exceptions for individual wells.
 - Name a filler for spare open wells; the filler is randomized together with the conditions.
 - Replicates (and filler) are put in a random order and placed into the open wells. The order is
@@ -56,6 +57,8 @@ Later, as separate modules:
   - a new shuffle on every plate, each plate holding a complete set;
   - one set of replicates spread across plates, either fully random or blocked by plate (each plate
     gets an equal share of every condition). Blocking needs a rule for uneven splits.
+- More ways to enter inputs: pasting conditions from Excel, a "fix the outer ring" shortcut (built on
+  `isEdgeWell`), and a button for a new random seed.
 - Constrained shuffles, e.g. each condition once per quadrant, or each condition getting a share of
   edge wells (Sophie's question).
 - Saving and reloading inputs: save the full inputs (condition list in order, fixed wells, contents,
