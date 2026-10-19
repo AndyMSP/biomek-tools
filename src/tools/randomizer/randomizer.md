@@ -2,8 +2,8 @@
 
 ## 1. Purpose
 The randomizer assigns an experiment's conditions to random wells on a plate, to spread position
-effects such as edge drying or uneven seeding evenly across conditions. The user lists the conditions
-and how many replicates each needs, and chooses which wells are fixed and what they contain. The
+effects such as edge drying or uneven seeding evenly across conditions. It takes a list of
+conditions with how many replicates each needs, and which wells are fixed and what they contain. The
 replicates are put in a random order and placed into the remaining (open) wells. The result is
 reproducible: the same inputs and seed always give the same plate. The outputs are the randomized
 plate and two lists: where each condition went, and what each well contains.
@@ -23,7 +23,7 @@ How the inputs are entered on screen, and what version 1 of the page leaves out,
 - a **replicate well**, holding one replicate of a condition, or
 - a **filler well**, holding the filler.
 
-**Fixed wells** have contents set by the user. Each is either:
+**Fixed wells** have contents given in the inputs. Each is either:
 - a **fixed-contents well**, holding the fixed contents, or
 - an **override well**, holding its own override contents.
 
@@ -35,8 +35,7 @@ fixed-contents or override.
 ## 4. Inputs
 
 ### Condition list
-Each condition has a name and a number of replicates. The conditions are in the order the user
-listed them.
+Each condition has a name and a number of replicates. The conditions are in the order given.
 - Names are text, at least one character. A name with a space (or other whitespace) at the start or
   end is rejected, not trimmed, so a name always matches its source exactly, e.g. when it is later
   matched against another tool's file. The same applies to the fixed contents, overrides and the
@@ -47,18 +46,17 @@ listed them.
 - The list may be empty. Every open well then gets the filler.
 
 ### Fixed and open wells
-Every well is either **fixed** (its contents are set by the user) or **open** (it receives a
-randomly ordered replicate or the filler). Whether a well is fixed or open is chosen by the user,
-never by its contents.
+Every well is either **fixed** (its contents are given in the inputs) or **open** (it receives a
+randomly ordered replicate or the filler). Whether a well is fixed or open is given in the inputs
+(`fixedWells`), never worked out from its contents.
 
 ### Fixed contents and overrides
-If any fixed well isn't overridden, the user names the fixed contents (e.g. "PBS"); there is no
-preset. If every fixed well is overridden, no fixed contents are needed. The user can
-then **override** individual fixed wells with different contents (e.g. A1: "Blank",
-H12: "Standard"). Overrides apply only to fixed wells.
+If any fixed well isn't overridden, the fixed contents must be named (e.g. "PBS"); there is no
+default. If every fixed well is overridden, no fixed contents are needed. Individual fixed wells can
+be **overridden** with different contents (e.g. A1: "Blank", H12: "Standard"). Overrides apply only to fixed wells.
 
 ### Filler
-If the open wells outnumber the replicates, the user names a filler (e.g. "PBS") for the spare open
+If the open wells outnumber the replicates, a filler must be named (e.g. "PBS") for the spare open
 wells. Filler wells are placed randomly, so they can't be overridden individually. If there are no
 spare open wells, no filler is needed.
 
@@ -213,7 +211,7 @@ work even when names are shared.
 1. **Replicate wells**: each condition has exactly as many replicate wells as its replicate count.
 2. **Filler wells**: the number of filler wells equals the open wells minus the replicates, and every
    filler well holds the filler.
-3. **Fixed wells**: every well the user fixed is either a fixed-contents well holding the fixed
+3. **Fixed wells**: every fixed well is either a fixed-contents well holding the fixed
    contents, or an override well holding its override.
 4. **Complete**: all 96 wells have contents and a type, and the open wells are exactly the replicate
    and filler wells.
