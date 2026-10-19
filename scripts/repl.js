@@ -6,8 +6,9 @@
 import repl from "node:repl";
 import { WellGrid, GRID_96 } from "../src/shared/well-grid/well-grid.js";
 import { SeededRandom } from "../src/shared/random/random.js";
+import { Layout } from "../src/shared/layout/layout.js";
 
-console.log(`WellGrid, GRID_96 and SeededRandom are loaded. Try:
+console.log(`WellGrid, GRID_96, SeededRandom and Layout are loaded. Try:
   GRID_96.wellNames()
   GRID_96.wellPosition("D3")
   GRID_96.wellNameAt(4, 3)
@@ -18,6 +19,11 @@ console.log(`WellGrid, GRID_96 and SeededRandom are loaded. Try:
   generator.next()
   generator.shuffled(["A", "B", "C", "D"])
   new SeededRandom(37).shuffled(GRID_96.wellNames())
+  const layout = new Layout(GRID_96)
+  layout.setContents("D4", { name: "Condition 3" })
+  layout.contentsOf("D4")
+  layout.listWells()
+  layout.setContents("D4", { name: " PBS" })
 `);
 
 // Strict mode makes the REPL behave like our module code: for example, `GRID_96.rows = 4` throws
@@ -26,3 +32,4 @@ const session = repl.start({ prompt: "biomek> ", replMode: repl.REPL_MODE_STRICT
 session.context.WellGrid = WellGrid;
 session.context.GRID_96 = GRID_96;
 session.context.SeededRandom = SeededRandom;
+session.context.Layout = Layout;

@@ -27,7 +27,8 @@ Not in version 1 (see `docs/roadmap.md`):
   at least one character that isn't whitespace) and has no whitespace at the start or end, e.g.
   `{ name: "Condition 3" }`. Any other property is rejected, so a typo such as `volme` is caught
   rather than stored. Later versions may add properties such as volume; the specification will
-  allow them first.
+  allow them first. Only properties the object holds itself (its own properties) count: a `name`
+  it gets from elsewhere, such as a class, is treated as missing, because it wouldn't be copied.
 - The layout stores and returns contents by well. It doesn't compare, search or group them; that's
   left to the modules that use it.
 - The layout stores a copy of the contents it's given and returns copies, so changing an object
@@ -108,6 +109,9 @@ Each becomes at least one unit test in `layout.test.js`.
 - Contents `null`, `"Static"`, `5` and `[]` throw the object error; `[]` gives a message ending
   `but got a list.`
 - `{}` and `{ name: 5 }` throw the text error.
+- Contents whose `name` comes from its class rather than the object itself, e.g. an instance of
+  `class Sample { get name() { return "Static"; } }`, throw the text error, ending
+  `but got undefined.`
 - `{ name: "" }` and `{ name: "   " }` throw the blank error.
 - `{ name: " Static" }` and `{ name: "Static " }` throw the whitespace error.
 - Extra properties are rejected: `{ name: "Static", volme: 50 }` throws the extra-property error
