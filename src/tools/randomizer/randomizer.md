@@ -15,8 +15,8 @@ Not in version 1 (see `docs/roadmap.md`): several plates, constrained randomizat
 replicate per quadrant), other plate formats, saving and reloading inputs, Celigo labeling, and
 Biomek output.
 
-To keep the first build simple, each input has **one way to enter it**. Not in version 1: pasting
-conditions from Excel, a "fix the outer ring" shortcut, and a button for a new random seed.
+How the inputs are entered on screen, and what version 1 of the page leaves out, is in
+`randomizer-page.md`.
 
 ## 3. Terms
 **Open wells** are filled by the random assignment. Each is either:
@@ -35,8 +35,8 @@ fixed-contents or override.
 ## 4. Inputs
 
 ### Condition list
-Each condition has a name and a number of replicates. The user types conditions in a table, one row
-at a time, and can edit, add or remove rows.
+Each condition has a name and a number of replicates. The conditions are in the order the user
+listed them.
 - Names are text, at least one character. A name with a space (or other whitespace) at the start or
   end is rejected, not trimmed, so a name always matches its source exactly, e.g. when it is later
   matched against another tool's file. The same applies to the fixed contents, overrides and the
@@ -48,16 +48,14 @@ at a time, and can edit, add or remove rows.
 
 ### Fixed and open wells
 Every well is either **fixed** (its contents are set by the user) or **open** (it receives a
-randomly ordered replicate or the filler).
-- The user clicks wells on a drawn plate to mark them fixed or open, one well at a time.
-- By default no wells are fixed.
-- Whether a well is fixed or open is chosen by the user, never by its contents.
+randomly ordered replicate or the filler). Whether a well is fixed or open is chosen by the user,
+never by its contents.
 
 ### Fixed contents and overrides
 If any fixed well isn't overridden, the user names the fixed contents (e.g. "PBS"); there is no
 preset. If every fixed well is overridden, no fixed contents are needed. The user can
 then **override** individual fixed wells with different contents (e.g. A1: "Blank",
-H12: "Standard"). Overrides apply only to fixed wells: opening a fixed well removes its override.
+H12: "Standard"). Overrides apply only to fixed wells.
 
 ### Filler
 If the open wells outnumber the replicates, the user names a filler (e.g. "PBS") for the spare open
@@ -65,8 +63,7 @@ wells. Filler wells are placed randomly, so they can't be overridden individuall
 spare open wells, no filler is needed.
 
 ### Seed
-A whole number from 1 to 999,999. When the tool opens, the seed box holds a random suggestion (using
-`Math.random()`); the user can keep it or type another.
+A whole number from 1 to 999,999.
 
 ### Shared names
 The same name may appear in several places: "PBS" could be the fixed contents, the filler and a
@@ -108,9 +105,8 @@ record the inputs in full along with the seed. (Saving and reloading inputs is o
 the roadmap.)
 
 ## 6. Outputs
-After randomizing, the tool shows:
-- **The randomized plate**: a drawn 96-well plate showing every well's contents, with each well's
-  type shown (e.g. by shading).
+Randomizing gives:
+- **The randomized plate**: every well's contents and type (the result, section 5).
 - **The seed** used.
 - **Contents → wells**: each distinct contents with the wells that hold it, in standard well order,
   e.g. `Condition 1: B4, D9, F2, G7`. Listed in this order: conditions as listed, then the filler,
@@ -119,11 +115,11 @@ After randomizing, the tool shows:
 - **Well → contents**: all 96 wells in standard order, each with its contents. This is the list used
   to label results; pasted into Excel, it can also be sorted or filtered by contents.
 
-Each list has a **Copy** button that copies it as tab-separated text, so it pastes into Excel as
-columns. The copied text has **no header row**, because it is often pasted into other programs that
-wouldn't know what to do with one; the lists on screen still show their column headings. The copied lists are for people. Later integrations, such as Biomek output and
-Celigo labeling, will use the same information directly from the plate data inside the tool, not
-the copied text.
+Each list can be copied as tab-separated text, so it pastes into Excel as columns. The copied text
+has **no header row**, because it is often pasted into other programs that wouldn't know what to do
+with one. The copied lists are for people. Later integrations, such as Biomek output and Celigo
+labeling, will use the same information directly from the plate data inside the tool, not the
+copied text.
 - Contents → wells: two columns (contents, wells), one row per contents, with its wells in one cell
   separated by commas and spaces, e.g. `Condition 1⇥B4, D9, F2, G7` (⇥ is a tab).
 - Well → contents: two columns (well, contents), one row per well, e.g. `A1⇥Static`.
@@ -134,10 +130,7 @@ be used by other tools. A checking function returns **every** problem at once, a
 that say what is wrong and how to fix it (an empty list if there are none). Randomizing with
 inputs that have problems throws an `Error` whose message is the first problem.
 
-On screen, the page runs the check after every change (typing, clicking a well, editing the seed)
-and shows the messages beside the Randomize button, which stays disabled until the list is empty.
-The messages are guidance for what is still needed, so they are shown as a calm, plain-language
-to-do list (e.g. "Name the contents of the fixed wells."), not as alarming errors.
+How the page shows these messages is in `randomizer-page.md`.
 
 | Problem | Message |
 |---|---|
@@ -153,9 +146,8 @@ to-do list (e.g. "Name the contents of the fixed wells."), not as alarming error
 
 An empty condition list is not an error (see section 4).
 
-**Overrides.** The page makes bad overrides impossible: an override is added only by clicking a fixed
-well, takes effect only once its name is typed and confirmed, and is removed if its name is cleared.
-The logic still checks them as a safety net, with these messages:
+**Overrides.** The page is designed so that bad overrides can't be entered (see
+`randomizer-page.md`). The logic still checks them as a safety net, with these messages:
 
 | Problem | Message |
 |---|---|
@@ -170,7 +162,8 @@ The randomizer's folder, `src/tools/randomizer/`, holds:
 
 | File | Job |
 |---|---|
-| `randomizer.md` | This specification, for the whole tool. |
+| `randomizer.md` | This specification: the tool's logic. |
+| `randomizer-page.md` | The page's specification, covering the three page files below. |
 | `randomizer.js` | The logic: checking the inputs, randomizing, and building the two lists and their copy text. No screen code, so it is tested in Node. |
 | `randomizer.test.js` | Its tests. |
 | `randomizer.html` | The page's structure: the boxes, buttons and plate grids. |

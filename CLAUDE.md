@@ -73,7 +73,8 @@ biomek-tools/
   directory: `name.js`, `name.test.js`, and `name.md`. Never use `.spec.` in file names.
 - **Specifications.** Each tool and each shared module has a specification (`name.md`). It is the
   source of truth for the module's required behavior; implement against it. To change a module's
-  behavior, update its specification first, then the code and tests.
+  behavior, update its specification first, then the code and tests. A tool's page (its HTML, CSS
+  and page script) has one specification, `<tool>-page.md`.
 - **Create directories only when their first file is needed.**
 
 ## Domain knowledge
