@@ -34,9 +34,10 @@ Order of work:
 3. **`layout`** (shared): what is in each well.
 4. **`well-selection`** (shared): which wells of a grid are selected. The randomizer uses it for
    its fixed wells.
-5. **`assign`**: shuffling the list of replicates and filling the open wells with it.
-6. **Outputs**: the randomized layout and the well key.
-7. **The page**: the screen that connects the modules.
+5. **`randomizer.js`**: the tool's logic — checking the inputs, shuffling the replicates and filling
+   the open wells, and building the two lists and their copy text.
+6. **The page**: `randomizer.html`, `randomizer.css` and `randomizer-page.js`, the screen that
+   connects the modules.
 
 Expected for version 1 (to be confirmed in `randomizer.md`), one 96-well plate:
 - List the conditions and how many replicates each needs. There is no organized plate: samples
