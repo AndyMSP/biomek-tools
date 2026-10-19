@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-18
+Last updated: 2026-10-19
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
@@ -20,6 +20,9 @@ Last updated: 2026-10-18
 - **`well-selection`** (shared module): which wells of a grid are selected — select, deselect and
   toggle single wells, and list selected and unselected wells. See
   `src/shared/well-selection/well-selection.md`.
+- **`randomizer.js`**: the randomizer's logic — checking the inputs, shuffling the replicates and
+  filling the open wells, and building the two lists and their copy text. See
+  `src/tools/randomizer/randomizer.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`.
 
 ## Current goal: the randomizer
