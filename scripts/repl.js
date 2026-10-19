@@ -8,8 +8,16 @@ import { WellGrid, GRID_96 } from "../src/shared/well-grid/well-grid.js";
 import { SeededRandom } from "../src/shared/random/random.js";
 import { Layout } from "../src/shared/layout/layout.js";
 import { WellSelection } from "../src/shared/well-selection/well-selection.js";
+import {
+  findProblems,
+  randomize,
+  contentsToWells,
+  wellToContents,
+  contentsToWellsText,
+  wellToContentsText,
+} from "../src/tools/randomizer/randomizer.js";
 
-console.log(`WellGrid, GRID_96, SeededRandom, Layout and WellSelection are loaded. Try:
+console.log(`WellGrid, GRID_96, SeededRandom, Layout, WellSelection and the randomizer's functions are loaded. Try:
   GRID_96.wellNames()
   GRID_96.wellPosition("D3")
   GRID_96.wellNameAt(4, 3)
@@ -31,6 +39,15 @@ console.log(`WellGrid, GRID_96, SeededRandom, Layout and WellSelection are loade
   selection.selectedWells()
   selection.unselectedWells().length
   selection.select("I1")
+  const inputs = { fixedWells: new WellSelection(GRID_96), conditions: [{ name: "Condition 1", replicates: 4 }], fixedContents: "", overrides: [], filler: "Spare", seed: 37 }
+  findProblems(inputs)
+  const result = randomize(inputs)
+  result.wellTypes
+  contentsToWells(inputs, result)
+  wellToContents(result)
+  console.log(contentsToWellsText(inputs, result))
+  console.log(wellToContentsText(result))
+  findProblems({ ...inputs, filler: "", seed: 0 })
 `);
 
 // Strict mode makes the REPL behave like our module code: for example, `GRID_96.rows = 4` throws
@@ -41,3 +58,9 @@ session.context.GRID_96 = GRID_96;
 session.context.SeededRandom = SeededRandom;
 session.context.Layout = Layout;
 session.context.WellSelection = WellSelection;
+session.context.findProblems = findProblems;
+session.context.randomize = randomize;
+session.context.contentsToWells = contentsToWells;
+session.context.wellToContents = wellToContents;
+session.context.contentsToWellsText = contentsToWellsText;
+session.context.wellToContentsText = wellToContentsText;
