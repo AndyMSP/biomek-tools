@@ -1,9 +1,10 @@
 // randomizer-golden-setups.js — the randomizer's test inputs that are recorded as golden files, and
 // how a result becomes a golden file's entries.
 //
-// Used by scripts/write-golden-files.js, which writes the golden files, and by randomizer.test.js,
-// which checks that the randomizer still gives the same results. Keeping them in one place means the
-// script and the test can never use different inputs.
+// Used by randomizer.test.js, which checks that the randomizer still gives the same results as the
+// golden files. The files were generated once from these inputs; there is deliberately no script to
+// regenerate them (see randomizer.md, section 9). Keeping the inputs here, labelled as golden-file
+// data, records exactly how the files were made.
 // Specification: src/tools/randomizer/randomizer.md, section 9.
 
 import { GRID_96 } from "../../src/shared/well-grid/well-grid.js";
