@@ -38,6 +38,12 @@ All methods are pure: they don't modify the instance and return the same output 
 | `wellPosition(name)` | a well name | its row and column | `"D3"` → `{ row: 4, column: 3 }` |
 | `wellNameAt(row, column)` | a row and a column | the well name | `(4, 3)` → `"D3"` |
 | `isEdgeWell(name)` | a well name | `true` if the well is in the first or last row or column | `"A5"` → `true`, `"B2"` → `false` |
+| `wellsInBox(corner, oppositeCorner)` | two well names | every well in the rectangle between them, in standard order | `("B2", "C4")` → `["B2", "B3", "B4", "C2", "C3", "C4"]` |
+
+`wellsInBox` includes both corners. The corners may be any two opposite corners, given in either
+order: `("B2", "C4")`, `("C4", "B2")`, `("B4", "C2")` and `("C2", "B4")` all give the same box. Two
+equal corners give a box of one well: `("D7", "D7")` → `["D7"]`. Each corner is checked the same way
+as in `wellPosition`, with the same messages.
 
 Well names are matched strictly. `"b2"`, `"B02"` and `" B2"` are not valid; they are never silently
 corrected.
@@ -92,6 +98,16 @@ Each becomes at least one unit test in `well-grid.test.js`.
 - True: `"A1"`, `"A5"`, `"H12"`, `"D1"`, `"D12"`.
 - False: `"B2"`, `"G11"`, `"D6"`.
 - Exactly 36 wells on `GRID_96` are edge wells.
+
+**`wellsInBox(corner, oppositeCorner)`**
+- `("B2", "C4")` returns `B2, B3, B4, C2, C3, C4`, in standard order.
+- The same box from all four directions: `("C4", "B2")`, `("B4", "C2")` and `("C2", "B4")` give the
+  same list.
+- `("D7", "D7")` returns `["D7"]`; `("A1", "H12")` returns all 96 wells in standard order.
+- A single row and a single column: `("A3", "A5")` → `A3, A4, A5`; `("B2", "D2")` → `B2, C2, D2`.
+- Works on other grids: on `new WellGrid(2, 3)`, `("A1", "B3")` returns all 6 wells.
+- A bad corner throws the same message as `wellPosition`: `("I1", "A1")` gives the "not on this grid"
+  message, and `("A1", "b2")` includes `Did you mean "B2"?`.
 
 **Error messages**
 - `GRID_96.wellPosition("b2")` throws a message containing `Did you mean "B2"?`
