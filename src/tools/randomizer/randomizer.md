@@ -35,7 +35,10 @@ fixed-contents or override.
 Each condition has a name and a number of replicates. The user can type conditions in one row at a
 time, or paste rows copied from Excel (two columns: name, then replicates), then edit, add or remove
 rows in the tool. Pasted rows are added to any already there.
-- Names are text, at least one character. Spaces at the start or end are removed.
+- Names are text, at least one character. A name with a space (or other whitespace) at the start or
+  end is rejected, not trimmed, so a name always matches its source exactly, e.g. when it is later
+  matched against another tool's file. The same applies to the fixed contents, overrides and the
+  filler.
 - Replicates are whole numbers of at least 1.
 - Two conditions in the list can't have the same name. A condition may share its name with the
   filler or the fixed contents (see Shared names).
@@ -76,10 +79,24 @@ records which role put it there.
    order the conditions are listed, followed by the filler once for each spare open well.
 2. Put the list in a random order with a Fisher–Yates shuffle, driven by the seeded random number
    generator (`random` module) started from the seed.
-3. Fill the open wells in standard well order (A1, A2 … H12, skipping fixed wells), taking the next
-   item from the shuffled list for each.
+3. Create a new, empty layout (`layout` module) on `GRID_96`. Fill the open wells in standard well
+   order (A1, A2 … H12, skipping fixed wells), taking the next item from the shuffled list for each.
 4. Fixed wells get the fixed contents, or their override.
-5. Each well in the result records both its contents and its well type (see Terms).
+
+The inputs are never changed, and each run creates a new layout. The **result** holds three things:
+- **the layout**: what each well contains;
+- **the well types**: each well's type (see Terms), recorded alongside the layout because the layout
+  holds only names, and a shared name such as "PBS" doesn't say which role put it in a well;
+- **the seed** used.
+
+For example, on a two-well plate where A1 is fixed and A2 is open:
+```js
+{
+  layout,      // a Layout where A1 holds { name: "Static" } and A2 holds { name: "Condition 1" }
+  wellTypes: { A1: "fixed-contents", A2: "replicate" },
+  seed: 37,
+}
+```
 
 Each well is equally likely to receive any of the items. (A 32-bit seed can't reach every possible
 arrangement of a full plate, but every arrangement it produces is a fair shuffle; see ADR 0003.)
@@ -103,35 +120,94 @@ After randomizing, the tool shows:
 - **Well → contents**: all 96 wells in standard order, each with its contents. This is the list used
   to label results; pasted into Excel, it can also be sorted or filtered by contents.
 
-Each list has a **Copy** button that copies it as tab-separated text with a header row, so it pastes
-into Excel as columns. The copied lists are for people. Later integrations, such as Biomek output and
+Each list has a **Copy** button that copies it as tab-separated text, so it pastes into Excel as
+columns. The copied text has **no header row**, because it is often pasted into other programs that
+wouldn't know what to do with one; the lists on screen still show their column headings. The copied lists are for people. Later integrations, such as Biomek output and
 Celigo labeling, will use the same information directly from the plate data inside the tool, not
 the copied text.
-- Contents → wells: two columns, `Contents` and `Wells`, one row per contents, with its wells in one
-  cell separated by commas and spaces.
-- Well → contents: two columns, `Well` and `Contents`, one row per well.
+- Contents → wells: two columns (contents, wells), one row per contents, with its wells in one cell
+  separated by commas and spaces, e.g. `Condition 1⇥B4, D9, F2, G7` (⇥ is a tab).
+- Well → contents: two columns (well, contents), one row per well, e.g. `A1⇥Static`.
 
 ## 7. Errors
-The calculation code checks every input itself and throws an `Error` with a message that says what
-is wrong and how to fix it, because it is tested in Node without the screen and may later be used by
-other tools.
+The logic checks every input itself, because it is tested in Node without the screen and may later
+be used by other tools. A checking function returns **every** problem at once, as a list of messages
+that say what is wrong and how to fix it (an empty list if there are none). Randomizing with
+inputs that have problems throws an `Error` whose message is the first problem.
 
-On screen, the same messages act as guidance: the Randomize button stays disabled while any input
-is incomplete or invalid, and the messages are shown beside it, saying what is still needed.
+On screen, the page runs the check after every change (typing, clicking a well, editing the seed)
+and shows the messages beside the Randomize button, which stays disabled until the list is empty.
+The messages are guidance for what is still needed, so they are shown as a calm, plain-language
+to-do list (e.g. "Name the contents of the fixed wells."), not as alarming errors.
 
 | Problem | Message |
 |---|---|
 | Condition name empty | `Row 3: the condition name is empty.` |
+| Condition name with a space at the start or end | `Row 3: the condition name has a space at the start or end. Remove it.` |
 | Replicates not a whole number of at least 1 | `Row 3: replicates must be a whole number of at least 1, but got "four".` |
 | Duplicate condition name | `Row 5: "Condition 2" is already listed in row 2.` |
 | Too many replicates | `The conditions need 64 wells, but only 60 are open. Remove 4 replicates or open 4 more wells.` |
 | Spare open wells, no filler | `12 open wells are left over. Name a filler for them.` |
 | Fixed wells, no contents | `Name the contents of the fixed wells.` |
+| Fixed contents or filler with a space at the start or end | `The fixed contents have a space at the start or end. Remove it.` / `The filler has a space at the start or end. Remove it.` |
 | Seed not a whole number, or out of range | `The seed must be a whole number from 1 to 999,999, but got 0.` |
 
 An empty condition list is not an error (see section 4).
 
-## 8. Test cases
+**Overrides.** The page makes bad overrides impossible: an override is added only by clicking a fixed
+well, takes effect only once its name is typed and confirmed, and is removed if its name is cleared.
+The logic still checks them as a safety net, with these messages:
+
+| Problem | Message |
+|---|---|
+| Override well not on the grid | The grid's own message, e.g. `"I1" is not on this grid. Valid wells are rows A–H, columns 1–12.` |
+| Override well isn't fixed | `D4 has an override but isn't a fixed well.` |
+| Same well overridden twice | `A1 is overridden more than once.` |
+| Override name empty | `The override for A1 has no name.` |
+| Override name with a space at the start or end | `The override for A1 has a space at the start or end. Remove it.` |
+
+## 8. Files and interface
+The randomizer's folder, `src/tools/randomizer/`, holds:
+
+| File | Job |
+|---|---|
+| `randomizer.md` | This specification, for the whole tool. |
+| `randomizer.js` | The logic: checking the inputs, randomizing, and building the two lists and their copy text. No screen code, so it is tested in Node. |
+| `randomizer.test.js` | Its tests. |
+| `randomizer.html` | The page's structure: the boxes, buttons and plate grids. |
+| `randomizer.css` | The page's styling. |
+| `randomizer-page.js` | The page's behavior: reads the inputs, calls `randomizer.js`, draws the results and copies text to the clipboard. |
+
+The build step joins the page files and the modules they use into one file.
+
+### Inputs
+The logic takes the inputs as one object:
+
+| Property | Description |
+|---|---|
+| `fixedWells` | A `WellSelection` (`well-selection` module) on `GRID_96`; selected wells are fixed, the rest open. |
+| `conditions` | A list of `{ name, replicates }`, in the order the conditions are listed. |
+| `fixedContents` | Text; `""` if none was named. |
+| `overrides` | A list of `{ well, name }`. |
+| `filler` | Text; `""` if none was named. |
+| `seed` | The seed. |
+
+The page passes replicates and the seed typed as digits as numbers, and anything else as the text
+typed, so it can be reported (e.g. `but got "four"`).
+
+### Functions
+`randomizer.js` exports:
+
+| Function | Returns |
+|---|---|
+| `findProblems(inputs)` | Every problem as a list of messages (section 7); `[]` if there are none. |
+| `randomize(inputs)` | The result (section 5). Throws an `Error` whose message is the first problem, if there are any. |
+| `contentsToWells(inputs, result)` | The contents → wells list as rows `{ contents, wells }`, in the order of section 6. |
+| `wellToContents(result)` | The well → contents list as rows `{ well, contents }`, in standard well order. |
+| `contentsToWellsText(inputs, result)` | The contents → wells copy text (section 6). |
+| `wellToContentsText(result)` | The well → contents copy text (section 6). |
+
+## 9. Test cases
 Tests use names that are clearly test data, not real experiments.
 
 ### Main example
@@ -186,6 +262,20 @@ One test per error in section 7, checking the message:
 - Too many replicates for the open wells.
 - Spare open wells with no filler; fixed wells with no contents.
 - Seed out of range (`0`, `1000000`) or not a whole number (`2.5`).
+- Names with a space at the start or end: a condition (`" Condition 1"`), the fixed contents
+  (`"Static "`) and the filler (`" Spare"`).
+- Overrides (the safety-net messages): a well not on the grid (`"I1"`), a well that isn't fixed,
+  a well overridden twice, an empty name, and a name with a space at the start or end.
+
+### Checking
+- `findProblems` returns `[]` for every setup above.
+- With several problems at once (e.g. an empty condition name, no fixed contents and seed `0`), it
+  returns all of them, in the order of section 7's tables.
+- `randomize` throws the first problem's message.
+
+### Inputs unchanged
+- After `randomize`, the conditions list, overrides and fixed wells passed in are unchanged, and two
+  runs give two separate layouts.
 
 ### Copy text
-- Copying each list gives tab-separated text with a header row and the rows described in section 6.
+- Each copy text is tab-separated, one line per row as described in section 6, with no header row.
