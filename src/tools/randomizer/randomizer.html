@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plate Randomizer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: inputs in numbered steps on the left, the plate map and results on the right; one column when narrow. */
+:root {
+  --bg: #f3f6f7;
+  --surface: #ffffff;
+  --fg: #16232b;
+  --muted: #586973;
+  --line: #d3dce1;
+  --accent: #0e6a87;
+  --accent-fg: #ffffff;
+  --replicate: #d4eaf2;
+  --filler: #edf0f2;
+  --fixed: #c3ced5;
+  --override: #f3dca8;
+  --danger: #ab2a1f;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1418; --surface: #162028; --fg: #e2e9ed; --muted: #94a5af; --line: #2a3943;
+    --accent: #4db0d1; --accent-fg: #062330; --replicate: #173a4b; --filler: #1d272e;
+    --fixed: #34434d; --override: #574317; --danger: #ff8f84; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1418; --surface: #162028; --fg: #e2e9ed; --muted: #94a5af; --line: #2a3943;
+  --accent: #4db0d1; --accent-fg: #062330; --replicate: #173a4b; --filler: #1d272e;
+  --fixed: #34434d; --override: #574317; --danger: #ff8f84; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 var(--font-body);
+  padding-block: 24px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.page { max-width: 1240px; margin: 0 auto; display: grid; gap: 24px; }
+header h1 { margin: 0; font-size: 1.6rem; font-weight: 600; letter-spacing: -0.01em; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 65ch; }
+.columns { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 24px; align-items: start; }
+@media (max-width: 900px) { .columns { grid-template-columns: minmax(0, 1fr); } }
+.stack { display: grid; gap: 16px; min-width: 0; }
+
+section.step {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.step h2 { margin: 0; font-size: 1rem; font-weight: 600; display: flex; gap: 10px; align-items: baseline; }
+.step h2 .number { font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); }
+.hint { margin: 0; color: var(--muted); font-size: 0.875rem; }
+.example-note {
+  margin: 0; font-size: 0.875rem; color: var(--fg);
+  background: var(--override); border-radius: var(--radius); padding: 8px 12px;
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between;
+}
+
+label { font-size: 0.8rem; color: var(--muted); font-weight: 500; letter-spacing: 0.02em; }
+input[type="text"], textarea {
+  font: inherit; color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; width: 100%; min-width: 0;
+}
+textarea { font-family: var(--font-mono); font-size: 0.85rem; min-height: 4.5em; resize: vertical; }
+input:focus-visible, textarea:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field { display: grid; gap: 4px; }
+.row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.row .field { flex: 1 1 160px; }
+
+button {
+  font: inherit; font-size: 0.875rem; cursor: pointer; border-radius: 4px; padding: 6px 12px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg);
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; padding: 10px 18px; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+button.remove { padding: 4px 8px; color: var(--muted); }
+
+.table-rows { display: grid; gap: 6px; }
+.table-row { display: grid; grid-template-columns: 2rem minmax(0, 1fr) 6rem auto; gap: 6px; align-items: center; }
+.table-row.override { grid-template-columns: 2rem 6rem minmax(0, 1fr) auto; }
+.row-number { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); text-align: right; }
+.table-head { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* Plate maps */
+.plate-scroll { overflow-x: auto; }
+.plate {
+  display: grid; grid-template-columns: 1.5rem repeat(var(--columns), minmax(2.6rem, 1fr));
+  gap: 3px; font-family: var(--font-mono); font-size: 0.75rem; min-width: max-content;
+}
+.plate.result { grid-template-columns: 1.5rem repeat(var(--columns), minmax(4.2rem, 1fr)); }
+.axis { color: var(--muted); display: grid; place-items: center; font-size: 0.7rem; }
+.well {
+  border: 1px solid var(--line); border-radius: 50%; aspect-ratio: 1; max-width: 100%;
+  display: grid; place-items: center; padding: 0; background: var(--surface); color: var(--muted);
+  font-family: var(--font-mono); font-size: 0.68rem;
+}
+.well[aria-pressed="true"] { background: var(--fixed); color: var(--fg); border-color: var(--fixed); font-weight: 500; }
+.result .cell {
+  border-radius: 4px; min-height: 3.2rem; padding: 4px; display: grid; align-content: center; gap: 1px;
+  border: 1px solid transparent; overflow: hidden;
+}
+.cell .well-name { color: var(--muted); font-size: 0.62rem; }
+.cell .contents { font-family: var(--font-body); font-size: 0.72rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cell.replicate { background: var(--replicate); }
+.cell.filler { background: var(--filler); border: 1px dashed var(--line); }
+.cell.filler .contents { font-style: italic; }
+.cell.fixed-contents { background: var(--fixed); }
+.cell.override { background: var(--override); border-color: var(--fg); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+.swatch.replicate { background: var(--replicate); }
+.swatch.filler { background: var(--filler); border: 1px dashed var(--muted); }
+.swatch.fixed-contents { background: var(--fixed); }
+.swatch.override { background: var(--override); border: 1px solid var(--fg); }
+
+.counts { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.problems { margin: 0; padding-left: 1.2em; color: var(--danger); font-size: 0.875rem; display: grid; gap: 2px; }
+.ready { color: var(--muted); font-size: 0.875rem; margin: 0; }
+.stale { color: var(--danger); font-size: 0.875rem; margin: 0; }
+.results.is-stale .plate { opacity: 0.45; }
+.seed-shown { font-family: var(--font-mono); font-size: 1.1rem; }
+
+.list-box { max-height: 18rem; overflow: auto; border: 1px solid var(--line); border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+th, td { text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { position: sticky; top: 0; background: var(--surface); font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+td.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.list-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.list-head h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+.copied { color: var(--muted); font-size: 0.8rem; }
+@media (prefers-reduced-motion: no-preference) { button { transition: border-color 0.15s; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>Plate Randomizer</h1>
+    <p>List your conditions, choose which wells are fixed, and the replicates are dealt into the open wells in a random order that the seed makes repeatable.</p>
+  </header>
+
+  <p class="example-note" id="example-note">
+    <span>These are example inputs: 12 conditions, 4 replicates each, outer ring fixed. Replace them with yours.</span>
+    <button type="button" id="start-empty">Start empty</button>
+  </p>
+
+  <div class="columns">
+    <div class="stack">
+      <section class="step" aria-labelledby="conditions-title">
+        <h2 id="conditions-title"><span class="number">1</span>Conditions</h2>
+        <div class="table-rows" id="condition-rows"></div>
+        <div class="row">
+          <button type="button" id="add-condition">Add condition</button>
+        </div>
+        <div class="field">
+          <label for="paste-box">Paste rows from Excel (name, then replicates)</label>
+          <textarea id="paste-box" placeholder="Condition 1&#9;4"></textarea>
+        </div>
+        <div class="row"><button type="button" id="add-pasted">Add pasted rows</button></div>
+      </section>
+
+      <section class="step" aria-labelledby="fixed-title">
+        <h2 id="fixed-title"><span class="number">2</span>Fixed wells and their contents</h2>
+        <p class="hint">Click wells on the plate map to fix them or open them again.</p>
+        <div class="field">
+          <label for="fixed-contents">Contents of fixed wells</label>
+          <input type="text" id="fixed-contents" autocomplete="off">
+        </div>
+        <div class="field">
+          <span class="table-head">Overrides: fixed wells with their own contents</span>
+          <div class="table-rows" id="override-rows"></div>
+        </div>
+        <div class="row"><button type="button" id="add-override">Add override</button></div>
+      </section>
+
+      <section class="step" aria-labelledby="filler-title">
+        <h2 id="filler-title"><span class="number">3</span>Filler and seed</h2>
+        <div class="row">
+          <div class="field">
+            <label for="filler">Filler for spare open wells</label>
+            <input type="text" id="filler" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="seed">Seed (1 to 999,999)</label>
+            <input type="text" id="seed" inputmode="numeric" autocomplete="off">
+          </div>
+          <button type="button" id="new-seed">New seed</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="stack">
+      <section class="step" aria-labelledby="map-title">
+        <h2 id="map-title">Plate map</h2>
+        <div class="row">
+          <button type="button" id="fix-outer-ring">Fix the outer ring</button>
+          <span class="counts" id="counts"></span>
+        </div>
+        <div class="plate-scroll"><div class="plate" id="picker" role="group" aria-label="Fixed wells"></div></div>
+        <div class="row">
+          <button type="button" class="primary" id="randomize">Randomize</button>
+        </div>
+        <ul class="problems" id="problems"></ul>
+        <p class="ready" id="ready" hidden>Ready to randomize.</p>
+      </section>
+
+    </div>
+  </div>
+  <section class="step results" id="results" hidden aria-labelledby="results-title">
+    <div class="list-head">
+      <h2 id="results-title">Randomized plate</h2>
+      <span>Seed <span class="seed-shown" id="seed-shown"></span></span>
+    </div>
+    <p class="stale" id="stale" hidden>The inputs have changed since this plate was randomized. Randomize again to update it.</p>
+    <div class="legend">
+      <span><i class="swatch replicate"></i>Replicate</span>
+      <span><i class="swatch filler"></i>Filler</span>
+      <span><i class="swatch fixed-contents"></i>Fixed contents</span>
+      <span><i class="swatch override"></i>Override</span>
+    </div>
+    <div class="plate-scroll"><div class="plate result" id="result-plate"></div></div>
+
+    <div class="list-head">
+      <h3>Contents → wells</h3>
+      <span><span class="copied" id="copied-contents"></span> <button type="button" id="copy-contents">Copy</button></span>
+    </div>
+    <div class="list-box"><table><thead><tr><th>Contents</th><th>Wells</th></tr></thead><tbody id="contents-list"></tbody></table></div>
+    <textarea id="copy-contents-text" readonly hidden></textarea>
+
+    <div class="list-head">
+      <h3>Well → contents</h3>
+      <span><span class="copied" id="copied-wells"></span> <button type="button" id="copy-wells">Copy</button></span>
+    </div>
+    <div class="list-box"><table><thead><tr><th>Well</th><th>Contents</th></tr></thead><tbody id="wells-list"></tbody></table></div>
+    <textarea id="copy-wells-text" readonly hidden></textarea>
+  </section>
+</div>
+<script type="module" src="page.js"></script>
+</body>
+</html>

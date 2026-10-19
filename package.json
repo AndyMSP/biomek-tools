@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "repl": "node scripts/repl.js"
+    "repl": "node scripts/repl.js",
+    "build": "node scripts/build.js"
   }
 }
