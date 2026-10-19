@@ -27,7 +27,8 @@ How the inputs are entered on screen, and what version 1 of the page leaves out,
 **fixed-contents entry** it belongs to.
 
 **Fixed-contents entry**: one name together with the wells that hold it, e.g. `Static` in the 36 outer
-wells, or `Blank` in A1 and H12. The fixed contents are a list of these entries.
+wells, or `Blank` in A1 and H12 (in code, `{ name, wells }`, where `wells` is a `WellSelection`). The
+fixed contents are a list of these entries.
 
 Every well in the result is exactly one of the three **well types**: replicate, filler or fixed.
 
