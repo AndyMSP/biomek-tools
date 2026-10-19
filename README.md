@@ -14,9 +14,9 @@ This runs every `*.test.js` file using Node's built-in test runner.
 ```
 npm run repl
 ```
-This opens an interactive Node session with the shared modules loaded (`WellGrid`, `GRID_96` and
-`SeededRandom`), e.g. `GRID_96.wellPosition("D3")` or `new SeededRandom(37).next()`. Type `.exit`
-to quit.
+This opens an interactive Node session with the shared modules and the randomizer's functions
+loaded, e.g. `GRID_96.wellPosition("D3")` or `new SeededRandom(37).next()`. When it starts, it lists
+everything loaded and some examples to try. Type `.exit` to quit.
 
 ## Where to find things
 - **What each module does**: its specification, `name.md`, sits next to its code
