@@ -22,7 +22,8 @@ npm run repl
 ```
 This opens an interactive Node session with the shared modules and the randomizer's functions
 loaded, e.g. `GRID_96.wellPosition("D3")` or `new SeededRandom(37).next()`. When it starts, it lists
-everything loaded and some examples to try. Type `.exit` to quit.
+what's loaded, grouped by topic (one per module, such as `layout` or `operation-list`). Type
+`.examples` and a topic, e.g. `.examples layout`, to see examples to try. Type `.exit` to quit.
 
 ## Trying the randomizer page
 ```
