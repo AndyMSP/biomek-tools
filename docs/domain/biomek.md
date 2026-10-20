@@ -57,6 +57,29 @@ A loop: it runs the steps inside it once per row of a text file, setting variabl
 - A Transfer From File step inside a Worklist can take its file name from a worklist column, so
   one worklist row can run one file. *(How the Exp37 method was built; see `exp37.md`.)*
 
+## If steps, variables and expressions
+- The **If** step runs its "Then" substeps if a condition is true and its "Else" substeps if it is
+  false. The condition must be a VBScript or JScript expression and can refer to variables defined
+  in other steps. *(B56358AF, 25-6 to 25-8.)*
+- A variable is used by typing `=` and its name into a step's configuration, for example `=AspValue`
+  in a Transfer step's Volume field. *(B56358AF, 26-2.)* It can go in any field where its value is a
+  valid entry; text can't go in a field that expects a number. *(B56358AF, 26-6.)*
+- An expression can go anywhere a variable can, for example `="P" & count` to name positions P1 to
+  P10 in a Loop. VBScript expressions start with `=`, JScript expressions with `==`.
+  *(B56358AF, 26-6 and 26-7.)*
+- Expressions in step fields and If conditions are documented features. Only the Script and
+  Scripted Let steps carry the note "not currently supported for end-user applications".
+  *(B56358AF, 27-9 and 27-11.)*
+- **Wells from a variable:** in the Span-8 Aspirate and Dispense steps, "Specify Selection as Text"
+  (right-click the labware) may take a variable or expression. It sets the **first** well: the
+  first selected probe uses it, and other probes follow from it by the Spacing setting. Wells are
+  given as numbers, counted left to right and then down (A1 = 1, A12 = 12, B1 = 13 on a 96-well
+  plate). *(B56358AF, 22-50 and 22-58; the Serial Dilution step says the same, 22-32.)* The manual
+  doesn't say this for the Transfer step, and it hasn't been tried on the instrument.
+- The other documented way to choose wells from a file is the **Define Pattern** step, which can
+  read a pattern from a comma-delimited file. In a Loop, the pattern can change on each iteration
+  as defined by the file. *(B56358AF, 27-14 onward.)*
+
 ## Methods and their files
 - A method can be exported as a `.bmf` file, which carries everything needed to run it, or as a
   `.json` file, which carries only the steps and their settings; labware and techniques must already
@@ -96,3 +119,5 @@ Questions to answer before relying on the answer:
   only our convention from Exp37?
 - The largest volume, and the number of decimal places, accepted in a volume column.
 - What happens when a worklist row names a file that doesn't exist: an error, or a skipped row?
+- Whether a variable well in a Span-8 Aspirate or Dispense step works as the manual describes, and
+  whether the Transfer step accepts one too.

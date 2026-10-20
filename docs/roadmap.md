@@ -8,17 +8,22 @@ Last updated: 2026-10-20
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
   starting with 0 mean it may still change, for example to work with the next tool.
-- **Decided (ADR 0005):** the tool writes only Transfer From File files, matched to a saved
-  **method description**; methods are built in Biomek Software.
-- **Next step:** the specification for the **`transfer-list`** shared module: an ordered list of
-  transfers (from labware and well, to labware and well, volume), held in memory. It is the core of
-  the Biomek output, volume tracking and the transfer designer, and needs no instrument time.
-  - It holds only moves. Tip handling, mixing and techniques are Biomek step settings, and
-    concentrations are calculated from the list by volume tracking, never stored in it.
-  - One list can become several Transfer From File files (the file writer's job).
+- **Proposed: ADR 0006** (amending ADR 0005): the tool defines the whole method. Experiments run as
+  a worklist the tool writes, for **one general-purpose method** built once in Biomek Software, whose
+  steps take their settings from the worklist's columns. Andy is asking Beckman whether they offer a
+  programming interface (API).
+- **Next step:** the specification for the **`operation-list`** shared module: an ordered list of
+  everything the tool decides, held in memory. It is the single source of truth for the Biomek
+  output, volume tracking and the transfer designer, and needs no instrument time.
+  - Each operation is an object whose `type` says what kind it is; each module reads only the types
+    it uses. Version 1 has one type, `transfer` (from labware and well, to labware and well, volume).
+  - **Tip changes will be set by this tool**, as a later operation type, once it is known how the
+    Span-8 changes tips (see "Open decisions").
+  - Only things this tool decides become operation types. Concentrations are calculated from the
+    list by volume tracking, never stored in it.
 - **After that, undecided:** volume tracking (towards the transfer designer) or the Biomek file
-  writer and method description specification (towards Biomek output, best done with access to
-  the instrument).
+  writer and the general-purpose method (towards Biomek output, best done with access to the
+  instrument).
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
@@ -72,16 +77,16 @@ Later additions, each as its own change:
   text (such as leading zeros) may be enough. Andy to check a real Celigo export.
 
 ## Next goal: Biomek output for the randomizer
-Turn a randomized plate into Transfer From File files, so nobody edits Biomek files by hand. In Exp37
+Turn a randomized plate into the files the Biomek runs, so nobody edits Biomek files by hand. In Exp37
 that file-making was the hardest and most error-prone part (`docs/domain/exp37.md`).
 
 Why this comes before the transfer designer: most of what it needs, the designer needs too.
 
 | Piece | Biomek output | Transfer designer |
 |---|---|---|
-| Transfer list: from which well, to which well, how much | needed | needed |
-| Biomek file writer: transfer list → Transfer From File file | needed | needed |
-| Method description: labware names and positions, which steps read which files | needed | needed |
+| Operation list: every transfer (from which well, to which well, how much), later tip changes | needed | needed |
+| Biomek file writer: operation list → worklist and the files it names | needed | needed |
+| General-purpose method, built once in Biomek Software, and its description | needed | needed |
 | Randomizer link: one transfer per replicate, from each condition's source | needed | — |
 | Labware types with well volumes | — | needed |
 | Volume tracking | — | needed |
@@ -96,7 +101,15 @@ was chosen, with descriptions saved and loaded, so B stays possible as one share
 Generating the method itself was ruled out: its file format isn't documented and Script steps aren't
 supported for end users.
 
-**First step: the method description specification.** A first sketch of what it holds:
+**Proposed: ADR 0006, one general-purpose method, driven by a worklist.** The tool should define the
+whole method, including tip changes. Within the limits above, the plan is one method built once in
+Biomek Software: a Worklist loop whose steps take their settings from the worklist's columns. The
+tool writes the worklist, which becomes the experiment's method. Generating the method's `.json`
+file is not pursued for now; scripting Biomek Software's interface is ruled out; a Beckman
+programming interface would be reconsidered if one exists.
+
+**Method description.** It now mainly describes the general-purpose method. A first sketch of what it
+holds (written before ADR 0006; to revisit):
 - the labware the method uses: each name exactly as in the method, and its wells (so the tool can
   catch a well that doesn't exist before the Biomek does);
 - which Transfer From File steps read files, and which transfers go in each (by condition, by
@@ -122,19 +135,34 @@ A tool for planning transfers by clicking and dragging from one well to another.
 ## Later: volume tracking
 Show what each well will contain after a series of transfers, and warn about problems such as
 overfilling a well or drawing more than it holds.
-- Proposed design: **replay**. Keep the starting layout and the transfer list, and compute the
-  current state by applying the transfers in order, rather than keeping an object that changes.
+- Proposed design: **replay**. Keep the starting layout and the operation list, and compute the
+  current state by applying its transfers in order, rather than keeping an object that changes.
   This gives undo for free (remove the last transfer), is a pure function and easy to test, and
-  keeps the transfer list as the single source of truth — the same list that becomes the Biomek CSV.
+  keeps the operation list as the single source of truth — the same list that becomes the Biomek
+  files.
 - Well capacities come from the labware types.
 
 ## Ideas not yet planned
 - **Checking a method with dye.** Every well's contents are the sum of the transfers into it, so a
   tool could predict what a plate reader should see when some sources are dyed, and compare that
   with the real reading. This would check any method, both how much went where and whether it went
-  to the right well, without designing a new test each time. It builds on the transfer list and
+  to the right well, without designing a new test each time. It builds on the operation list and
   volume tracking.
 
 ## Open decisions
+- **How tip changes are represented** in the operation list: a `tipChange` operation, a property of
+  a transfer, or something else. Depends on how the Span-8 changes tips (all eight together or per
+  channel) and how the Biomek assigns transfers to channels; not yet in `docs/domain/biomek.md`.
+- **What the general-purpose method can vary per worklist row.** Decides which operation types the
+  tool can offer, and whether ADR 0006 is accepted. Found so far (`docs/domain/biomek.md`):
+  - Conditional steps exist: an If step can run different steps depending on a column's value, such
+    as "change tips only if this column says yes".
+  - A row can likely set its wells, through Span-8 Aspirate and Dispense steps given a well number
+    from a variable. Not confirmed for the Transfer step; to verify in simulation.
+  - What a row holds also affects run time. A Transfer From File step can plan how to use the probes
+    efficiently across many transfers, while transfers carried out one row at a time may not use
+    them as well.
+- **A programming interface from Beckman**: Andy is asking whether one exists. If it does, ADR 0006's
+  option 3 would be reconsidered.
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)
   would need a specification change.
