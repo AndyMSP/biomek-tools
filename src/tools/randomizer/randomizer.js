@@ -43,6 +43,10 @@ function conditionProblems(conditions) {
   const problems = [];
   const earlierIndexes = earlierIndexesOfSameName(conditions.map(({ name }) => name));
   conditions.forEach(({ name, replicates }, index) => {
+    // A completely empty row is skipped (section 4), but still counts for the row numbers.
+    if (isEmptyRow({ name, replicates })) {
+      return;
+    }
     // Rows are numbered from 1, as the user sees them in the table.
     const row = index + 1;
     if (isBlank(name)) {
@@ -72,7 +76,8 @@ function conditionProblems(conditions) {
 // The problem with the number of open wells, if any: too few for the replicates, or spare wells
 // with no filler named. Nothing is reported while any replicate count is invalid, because the
 // number of replicates needed isn't known yet (the invalid count is reported on its own row).
-function openWellProblems({ conditions, fixedContents, filler }) {
+function openWellProblems({ conditions: allConditions, fixedContents, filler }) {
+  const conditions = filledConditions(allConditions);
   if (!conditions.every(({ replicates }) => isValidReplicateCount(replicates))) {
     return [];
   }
@@ -256,7 +261,7 @@ function openWellAssignments({ conditions, fixedContents, filler, seed }) {
 // e.g. 2 replicates of "Condition 1" in 3 open wells → Condition 1, Condition 1, Spare.
 function itemsToPlace(conditions, filler, openWellCount) {
   const items = [];
-  for (const { name, replicates } of conditions) {
+  for (const { name, replicates } of filledConditions(conditions)) {
     for (let copy = 1; copy <= replicates; copy++) {
       items.push({ name, type: REPLICATE });
     }
@@ -336,7 +341,8 @@ function sameEntry(first, second) {
 // The number of spare open wells (section 4): the open wells minus the total replicates, or 0 if
 // the replicates don't fit; null while any replicate count isn't valid, because the total isn't
 // known yet. e.g. the main example (60 open wells, 48 replicates) → 12.
-export function spareWellCount({ conditions, fixedContents }) {
+export function spareWellCount({ conditions: allConditions, fixedContents }) {
+  const conditions = filledConditions(allConditions);
   if (!conditions.every(({ replicates }) => isValidReplicateCount(replicates))) {
     return null;
   }
@@ -457,6 +463,18 @@ function isBlank(name) {
 // e.g. hasSpaceAtEnds(" Spare") → true. trim() removes it from both ends, so the text changes.
 function hasSpaceAtEnds(text) {
   return text !== text.trim();
+}
+
+// True if a condition row is completely empty: no name and missing replicates (section 4),
+// e.g. { name: "", replicates: "" } → true, { name: "", replicates: 4 } → false.
+function isEmptyRow({ name, replicates }) {
+  return isBlank(name) && isMissing(replicates);
+}
+
+// The conditions without completely empty rows, in order. The empty rows are skipped when counting
+// and placing replicates, so they never change the plate.
+function filledConditions(conditions) {
+  return conditions.filter((condition) => !isEmptyRow(condition));
 }
 
 // True if a replicate count or seed is missing (section 7): "", text of only spaces, undefined or

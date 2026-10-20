@@ -81,6 +81,32 @@ describe("randomizer", () => {
 
   // --- Setups with their own expectations ---
 
+  test("empty rows: completely empty rows are skipped and the plate is the main example's", () => {
+    const inputs = emptyRowsInputs();
+    assert.deepEqual(findProblems(inputs), []);
+    assert.equal(spareWellCount(inputs), 12);
+    assert.deepEqual(
+      wellToContents(randomize(inputs)),
+      wellToContents(randomize(mainExampleInputs(SEED))),
+    );
+  });
+
+  test("empty rows: a row with only a name or only replicates is checked, not skipped", () => {
+    const inputs = mainExampleInputs(SEED);
+    inputs.conditions.push({ name: "", replicates: 4 }, { name: "Condition 14", replicates: "" });
+    assert.deepEqual(findProblems(inputs), [
+      "Row 13: the condition name is empty.",
+      "Row 14: the number of replicates is missing.",
+    ]);
+  });
+
+  test("empty rows: row numbers in messages still count the empty rows", () => {
+    // Condition 3 is on row 5, below two empty rows.
+    const inputs = emptyRowsInputs();
+    inputs.conditions[4].name = "";
+    assert.deepEqual(findProblems(inputs), ["Row 5: the condition name is empty."]);
+  });
+
   test("the result's inputs hold the seed used", () => {
     assert.equal(randomize(mainExampleInputs(SEED)).inputs.seed, SEED);
   });
@@ -232,6 +258,11 @@ describe("randomizer", () => {
         "which wells an entry holds",
         () => openWells(inputs.fixedContents, ["A12"]),
         () => placeName(inputs.fixedContents, ["A12"], inputs.fixedContents[0]),
+      ],
+      [
+        "the conditions by adding a completely empty row",
+        () => inputs.conditions.push({ name: "", replicates: "" }),
+        () => inputs.conditions.pop(),
       ],
     ];
     for (const [description, change, changeBack] of changes) {
@@ -590,6 +621,21 @@ describe("randomizer", () => {
 });
 
 // --- Setups (section 9) ---
+
+// Empty rows: the main example with completely empty rows before the first condition, between
+// conditions 2 and 3, and after the last (section 9).
+function emptyRowsInputs() {
+  const inputs = mainExampleInputs(SEED);
+  const empty = () => ({ name: "", replicates: "" });
+  inputs.conditions = [
+    empty(),
+    ...inputs.conditions.slice(0, 2),
+    empty(),
+    ...inputs.conditions.slice(2),
+    empty(),
+  ];
+  return inputs;
+}
 
 // Empty list: the main example with no conditions, so every open well gets the filler.
 function emptyListInputs() {
