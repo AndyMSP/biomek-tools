@@ -16,9 +16,6 @@ The page has no randomizer logic of its own. It keeps the inputs object describe
 the inputs, the assignment, the outputs and the error messages are in `randomizer.md`. Anything that
 can be described without mentioning the screen belongs there, not here.
 
-A design mockup was made while settling this specification. It is a picture of the intent only;
-where they differ, this specification is right.
-
 ## 2. Scope
 Version 1 enters the inputs by typing (with Enter moving to the next box), by pasting from a
 spreadsheet (section 4), and by clicking or dragging on the plate. On the plate, a click and a drag
@@ -225,8 +222,8 @@ modules, which are. Before each release, check by hand in Edge and Chrome, openi
   roles.
 
 ## 10. Visual design
-The page should look calm and be easy to scan. These values come from the design mockup; the page's
-own colors and sizes are defined once, in `randomizer.css`, as named CSS variables.
+The page should look calm and be easy to scan. The page's own colors and sizes are defined once,
+in `randomizer.css`, as named CSS variables.
 
 **Panels.** The page background is a soft off-white (`#F6F5F1`). Each area is a white panel with a
 thin border (`#E2E0D8`), rounded corners (10px) and generous padding (24px): one panel for the
