@@ -60,8 +60,8 @@ Later, as separate modules:
   - a new shuffle on every plate, each plate holding a complete set;
   - one set of replicates spread across plates, either fully random or blocked by plate (each plate
     gets an equal share of every condition). Blocking needs a rule for uneven splits.
-- More ways to enter inputs: pasting conditions from Excel, a "fix the outer ring" shortcut (built on
-  `isEdgeWell`), and a button for a new random seed.
+- More ways to enter inputs: a "fix the outer ring" shortcut (built on `isEdgeWell`) and a button for
+  a new random seed. (Pasting from Excel is in version 1.)
 - Constrained shuffles, e.g. each condition once per quadrant, or each condition getting a share of
   edge wells (Sophie's question).
 - Saving and reloading inputs: save the full inputs (condition list in order, fixed wells, contents,

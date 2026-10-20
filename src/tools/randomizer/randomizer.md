@@ -43,6 +43,11 @@ Each condition has a name and a number of replicates. The conditions are in the 
 - Two conditions in the list can't have the same name. A condition may share its name with the
   filler or a fixed-contents entry (see Shared names).
 - The list may be empty. Every open well then gets the filler.
+- A **completely empty row**, with no name and missing replicates (section 7), is skipped: it gets no
+  messages, places nothing, and doesn't count toward the replicates or spare wells. It still counts
+  for the row numbers in messages, so they match the table, and `matchesInputs` still compares it
+  exactly, so adding or removing an empty row makes a result out of date. A row with only a name, or
+  only replicates, is not empty and is checked as usual.
 
 ### Fixed contents
 The fixed contents are a list of entries, in the order given. Each entry has a name and a set of wells
@@ -305,6 +310,9 @@ work even when names are shared.
 - **Fixed contents on two wells each**: the golden-file setup with seed 999,000 below.
 - **Unused entries**: the main example plus an entry `Unused` with no wells and an entry named `""`
   with no wells. There are no problems, and neither appears in the outputs.
+- **Empty rows**: the main example with completely empty rows (`{ name: "", replicates: "" }`)
+  before the first condition, between two conditions and after the last. No problems are reported,
+  and the plate is exactly the main example's.
 - **Shared names**: the main example plus a condition `Static` with 4 replicates, and filler `Static`
   (52 replicates, 8 filler wells). The contents → wells list shows `Static` once, with all 48 of its
   wells (36 fixed, 4 replicate, 8 filler).
@@ -323,8 +331,8 @@ work even when names are shared.
 ### Matching inputs
 - `matchesInputs(result, inputs)` is `true` for the inputs the result was made from.
 - It is `false` after changing the seed, the filler, a condition's name or replicates, the order of
-  the conditions, an entry's name, the order of the entries, or which wells an entry holds; and
-  `true` again after changing it back.
+  the conditions, an entry's name, the order of the entries, or which wells an entry holds, or after
+  adding a completely empty row; and `true` again after changing it back.
 - The result's inputs are a copy: calling `placeName` or renaming an entry after `randomize` doesn't
   change `result.inputs`.
 
@@ -337,7 +345,8 @@ work even when names are shared.
 
 ### Spare wells and random seeds
 - `spareWellCount` is 12 for the main example, 0 for the exact fit, 0 when the replicates don't fit,
-  and `null` when a replicate count is `"four"` or missing.
+  and `null` when a replicate count is `"four"` or missing (in a row that isn't completely empty).
+  Completely empty rows don't change it.
 - `randomSeed(0)` is 1, `randomSeed(0.5)` is 500000 and `randomSeed(0.9999999999)` is 999999; for many
   numbers from 0 up to 1 the seed is always a whole number from 1 to 999,999, and `findProblems` accepts
   it.
@@ -377,7 +386,8 @@ the assignment didn't change.
 
 ### Errors
 One test per error in section 7, checking the message:
-- Condition list: an empty name, missing replicates (`""`, `"  "`), replicates that aren't a whole
+- Condition list (a row with only a name or only replicates is checked, not skipped): an empty
+  name, missing replicates (`""`, `"  "`), replicates that aren't a whole
   number of at least 1 (e.g. `0`, `1.5`, `"four"`), and a duplicate name, each reported with its row.
 - Too many replicates for the open wells.
 - Spare open wells with no filler.
