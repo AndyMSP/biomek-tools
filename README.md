@@ -42,9 +42,25 @@ page's styling and all its code inside. That file is what goes to the lab: it op
 with a double-click, with nothing installed and no internet needed. `dist/` is not committed. See
 ADR 0004.
 
+## Making a release
+Releases follow semantic versioning (MAJOR.MINOR.PATCH); versions starting with 0 may still change.
+1. On a branch, add an entry to `CHANGELOG.md` and set the new version with
+   `npm version <version> --no-git-tag-version` (this updates `package.json` and
+   `package-lock.json`). Open a pull request and merge it.
+2. On `main`, pull, then run `npm ci` and `npm run build`.
+3. On GitHub, under Releases, choose "Create a new release":
+   - Tag: type the new version (e.g. `v0.2.0`) and choose "Create new tag … on publish"; target
+     `main`.
+   - Title: the version. Notes: what changed, written for lab users.
+   - Attach each tool's file from `dist/` (not the one in `src/`).
+   - Release label: None, unless the release isn't meant for use yet (Pre-release).
+   - Publish.
+
 ## Where to find things
 - **What each module does**: its specification, `name.md`, sits next to its code
   (e.g. `src/shared/well-grid/well-grid.md`).
 - **Where the project is headed**: [`docs/roadmap.md`](docs/roadmap.md).
 - **Why things are the way they are**: decision records in [`docs/adr/`](docs/adr/).
+- **Facts about the Biomek and the lab's methods**: [`docs/domain/`](docs/domain/).
+- **What changed in each release**: [`CHANGELOG.md`](CHANGELOG.md).
 - **How we work**: [`CLAUDE.md`](CLAUDE.md).

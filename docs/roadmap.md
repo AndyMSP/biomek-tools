@@ -3,7 +3,22 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-19
+Last updated: 2026-10-20
+
+## Where things stand
+- The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
+  starting with 0 mean it may still change, for example to work with the next tool.
+- **Decided (ADR 0005):** the tool writes only Transfer From File files, matched to a saved
+  **method description**; methods are built in Biomek Software.
+- **Next step:** the specification for the **`transfer-list`** shared module: an ordered list of
+  transfers (from labware and well, to labware and well, volume), held in memory. It is the core of
+  the Biomek output, volume tracking and the transfer designer, and needs no instrument time.
+  - It holds only moves. Tip handling, mixing and techniques are Biomek step settings, and
+    concentrations are calculated from the list by volume tracking, never stored in it.
+  - One list can become several Transfer From File files (the file writer's job).
+- **After that, undecided:** volume tracking (towards the transfer designer) or the Biomek file
+  writer and method description specification (towards Biomek output, best done with access to
+  the instrument).
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
@@ -29,39 +44,16 @@ Last updated: 2026-10-19
   that connects the modules. See `src/tools/randomizer/randomizer-page.md`.
 - **Build step**: `npm run build` makes one self-contained HTML file per tool in `dist/`, which opens
   in Edge or Chrome with nothing installed. See ADR 0004.
+- **Release v0.1.0** of the randomizer, 2026-10-20.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
   `npm run serve`.
 
-## Current goal: the randomizer
-A general version of the Exp37 plate randomizer (`randomizer_V2.xlsx`). The randomizer is a tool made
-of several modules; work happens one module at a time, each with its own specification, branch and
-pull request.
+## The randomizer
+A general version of the Exp37 plate randomizer (`randomizer_V2.xlsx`), for one 96-well plate.
+Version 1 is done and released; what it does is in `src/tools/randomizer/randomizer.md` and
+`randomizer-page.md`.
 
-Order of work:
-1. **`randomizer.md`**: the tool specification — what goes in, what comes out, what version 1
-   includes. Written first, because it sets the requirements for the modules below.
-2. **`random`** (shared): seeded random numbers.
-3. **`layout`** (shared): what is in each well.
-4. **`well-selection`** (shared): which wells of a grid are selected. The randomizer uses it for
-   its fixed wells.
-5. **`randomizer.js`**: the tool's logic — checking the inputs, shuffling the replicates and filling
-   the open wells, and building the two lists and their copy text.
-6. **The page**: `randomizer.html`, `randomizer.css` and `randomizer-page.js`, the screen that
-   connects the modules.
-
-Expected for version 1 (to be confirmed in `randomizer.md`), one 96-well plate:
-- List the conditions and how many replicates each needs. There is no organized plate: samples
-  don't start in one, so the replicates are dealt directly into random wells.
-- Choose which wells are fixed by listing fixed contents (no preset) and placing each on wells by
-  clicking or dragging a box; the other wells are open. The user decides which wells are fixed;
-  contents never do.
-- Name a filler for spare open wells; the filler is randomized together with the conditions.
-- Replicates (and filler) are put in a random order and placed into the open wells. The order is
-  seeded, so the same inputs and seed always give the same result.
-- Outputs: the randomized plate, and a key from each condition to its wells and from each well to
-  its contents.
-
-Later, as separate modules:
+Later additions, each as its own change:
 - Several plates:
   - the same arrangement on every plate (as in Exp37);
   - a new shuffle on every plate, each plate holding a complete set;
@@ -74,17 +66,46 @@ Later, as separate modules:
 - Saving and reloading inputs: save the full inputs (condition list in order, fixed wells, contents,
   overrides, filler, seed) with the results, so a plate can be recreated by loading them rather
   than retyping. Avoids accidental changes from reordering conditions or changing replicate counts.
-- Celigo labeling: label a pasted Celigo export with each well's contents.
-- Biomek Transfer From File CSV to dispense each condition into its randomized wells (needs the
-  source labware and positions of each condition).
+- Celigo labeling: probably not needed as a separate tool. The "well → contents" list can be pasted
+  next to a Celigo export in Excel, as long as the export lists one row per well, in the same order,
+  with the same well names (`A1`, not `A01`). If it doesn't, a small option in the randomizer's copy
+  text (such as leading zeros) may be enough. Andy to check a real Celigo export.
 
-Shared modules it needs:
-- **`layout`**: what is in each well of a grid. In the randomizer it holds and shows the result
-  rather than being typed in. Contents should be designed so they can later carry volumes and
-  mixtures (see volume tracking below), even if version 1 only needs text labels.
-- **`random`**: seeded random numbers that give the same sequence on any computer.
-- **`well-selection`**: which wells of a grid are selected; the randomizer treats selected wells
-  as fixed. The transfer designer can use it to pick wells too.
+## Next goal: Biomek output for the randomizer
+Turn a randomized plate into Transfer From File files, so nobody edits Biomek files by hand. In Exp37
+that file-making was the hardest and most error-prone part (`docs/domain/exp37.md`).
+
+Why this comes before the transfer designer: most of what it needs, the designer needs too.
+
+| Piece | Biomek output | Transfer designer |
+|---|---|---|
+| Transfer list: from which well, to which well, how much | needed | needed |
+| Biomek file writer: transfer list → Transfer From File file | needed | needed |
+| Method description: labware names and positions, which steps read which files | needed | needed |
+| Randomizer link: one transfer per replicate, from each condition's source | needed | — |
+| Labware types with well volumes | — | needed |
+| Volume tracking | — | needed |
+| Drag-and-drop page | — | needed |
+
+For the randomizer this is a new output, with its current lists unchanged, so it would be a MINOR
+release (0.2.0).
+
+**Decided: any method, described to the tool (ADR 0005).** Options considered were Exp37's method
+only (A), one general method with a standard deck (B), and any method described to the tool (C). C
+was chosen, with descriptions saved and loaded, so B stays possible as one shared description.
+Generating the method itself was ruled out: its file format isn't documented and Script steps aren't
+supported for end users.
+
+**First step: the method description specification.** A first sketch of what it holds:
+- the labware the method uses: each name exactly as in the method, and its wells (so the tool can
+  catch a well that doesn't exist before the Biomek does);
+- which Transfer From File steps read files, and which transfers go in each (by condition, by
+  reagent, or kept in order through a worklist) — the hardest part to describe in general;
+- where the files go on the Biomek PC and how they are named; worklists need full paths.
+
+It is saved as a file (likely JSON) kept with the Biomek method, and holds nothing about an
+experiment's contents. Deck positions are probably unnecessary, because files can name labware
+instead. The specification decides all of this.
 
 ## Later: transfer designer
 A tool for planning transfers by clicking and dragging from one well to another.
@@ -106,6 +127,13 @@ overfilling a well or drawing more than it holds.
   This gives undo for free (remove the last transfer), is a pure function and easy to test, and
   keeps the transfer list as the single source of truth — the same list that becomes the Biomek CSV.
 - Well capacities come from the labware types.
+
+## Ideas not yet planned
+- **Checking a method with dye.** Every well's contents are the sum of the transfers into it, so a
+  tool could predict what a plate reader should see when some sources are dyed, and compare that
+  with the real reading. This would check any method, both how much went where and whether it went
+  to the right well, without designing a new test each time. It builds on the transfer list and
+  volume tracking.
 
 ## Open decisions
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)
