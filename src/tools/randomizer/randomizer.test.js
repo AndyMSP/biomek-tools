@@ -5,7 +5,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   findProblems,
+  placeName,
+  openWells,
   randomize,
+  matchesInputs,
+  listingOrder,
   contentsToWells,
   wellToContents,
   contentsToWellsText,
@@ -15,15 +19,18 @@ import { GRID_96 } from "../../shared/well-grid/well-grid.js";
 import {
   GOLDEN_FILES,
   mainExampleInputs,
-  overridesExampleInputs,
+  fixedEntriesExampleInputs,
   numberedConditions,
-  selectionOf,
+  entry,
   goldenEntries,
   goldenFileUrl,
 } from "../../../tests/fixtures/randomizer-golden-setups.js";
 
 // The seed used by the setups below, unless a test says otherwise.
 const SEED = 37;
+
+// The 36 wells of the outer ring, in standard order.
+const OUTER_RING = GRID_96.wellNames().filter((well) => GRID_96.isEdgeWell(well));
 
 // The setups from section 9, each with a function that creates its inputs. Every setup must pass
 // the checks and have no problems.
@@ -33,9 +40,9 @@ const SETUPS = [
   { name: "no fixed wells", makeInputs: noFixedWellsInputs },
   { name: "exact fit", makeInputs: exactFitInputs },
   { name: "scattered fixed wells", makeInputs: scatteredFixedWellsInputs },
-  { name: "overrides", makeInputs: mainExampleWithOverridesInputs },
-  { name: "overrides on two wells each", makeInputs: overridesExampleInputs },
-  { name: "every fixed well overridden", makeInputs: everyFixedWellOverriddenInputs },
+  { name: "several fixed contents", makeInputs: severalFixedContentsInputs },
+  { name: "fixed contents on two wells each", makeInputs: fixedEntriesExampleInputs },
+  { name: "unused entries", makeInputs: unusedEntriesInputs },
   { name: "shared names", makeInputs: sharedNamesInputs },
 ];
 
@@ -64,22 +71,21 @@ describe("randomizer", () => {
     });
 
     test(`${name}: both output lists match the plate`, () => {
-      const inputs = makeInputs();
-      const result = randomize(inputs);
+      const result = randomize(makeInputs());
       checkWellToContents(result);
-      checkContentsToWells(inputs, result);
+      checkContentsToWells(result);
     });
   }
 
   // --- Setups with their own expectations ---
 
-  test("the result holds the seed used", () => {
-    assert.equal(randomize(mainExampleInputs(SEED)).seed, SEED);
+  test("the result's inputs hold the seed used", () => {
+    assert.equal(randomize(mainExampleInputs(SEED)).inputs.seed, SEED);
   });
 
-  test("empty list: 36 Static fixed-contents wells and 60 Spare filler wells", () => {
+  test("empty list: 36 Static fixed wells and 60 Spare filler wells", () => {
     const result = randomize(emptyListInputs());
-    assert.equal(countWells(result, "Static", "fixed-contents"), 36);
+    assert.equal(countWells(result, "Static", "fixed"), 36);
     assert.equal(countWells(result, "Spare", "filler"), 60);
   });
 
@@ -91,7 +97,7 @@ describe("randomizer", () => {
     const inputs = exactFitInputs();
     const result = randomize(inputs);
     assert.ok(!Object.values(result.wellTypes).includes("filler"));
-    const listed = contentsToWells(inputs, result).map(({ contents }) => contents);
+    const listed = contentsToWells(result).map(({ contents }) => contents);
     assert.deepEqual(listed, inputs.conditions.map(({ name }) => name));
   });
 
@@ -99,34 +105,201 @@ describe("randomizer", () => {
     const result = randomize(scatteredFixedWellsInputs());
     for (const well of ["A1", "B5", "D6", "E7", "G11", "H12"]) {
       assert.equal(result.layout.contentsOf(well).name, "Static", well);
-      assert.equal(result.wellTypes[well], "fixed-contents", well);
+      assert.equal(result.wellTypes[well], "fixed", well);
     }
     assert.equal(countWells(result, "Spare", "filler"), 6);
   });
 
-  test("overrides: A1 and H12 hold their overrides and the rest of the ring holds Static", () => {
-    const result = randomize(mainExampleWithOverridesInputs());
-    assert.equal(result.layout.contentsOf("A1").name, "Override 1");
-    assert.equal(result.wellTypes.A1, "override");
-    assert.equal(result.layout.contentsOf("H12").name, "Override 2");
-    assert.equal(result.wellTypes.H12, "override");
-    assert.equal(countWells(result, "Static", "fixed-contents"), 34);
+  test("several fixed contents: A1 and H12 hold their entries and the rest of the ring holds Static", () => {
+    const result = randomize(severalFixedContentsInputs());
+    assert.equal(result.layout.contentsOf("A1").name, "Fixed 1");
+    assert.equal(result.layout.contentsOf("H12").name, "Fixed 2");
+    assert.equal(countWells(result, "Static", "fixed"), 34);
   });
 
-  test("every fixed well overridden: no fixed-contents wells", () => {
-    const result = randomize(everyFixedWellOverriddenInputs());
-    assert.ok(!Object.values(result.wellTypes).includes("fixed-contents"));
+  test("unused entries: neither appears in the outputs", () => {
+    const result = randomize(unusedEntriesInputs());
+    const listed = contentsToWells(result).map(({ contents }) => contents);
+    assert.ok(!listed.includes("Unused"));
+    assert.ok(!listed.includes(""));
+    assert.ok(!wellToContents(result).some(({ contents }) => contents === "Unused"));
   });
 
   test("shared names: Static is listed once, with all 48 of its wells", () => {
-    const inputs = sharedNamesInputs();
-    const result = randomize(inputs);
-    const staticRows = contentsToWells(inputs, result).filter(({ contents }) => contents === "Static");
+    const result = randomize(sharedNamesInputs());
+    const staticRows = contentsToWells(result).filter(({ contents }) => contents === "Static");
     assert.equal(staticRows.length, 1);
     assert.equal(staticRows[0].wells.length, 48);
-    assert.equal(countWells(result, "Static", "fixed-contents"), 36);
+    assert.equal(countWells(result, "Static", "fixed"), 36);
     assert.equal(countWells(result, "Static", "replicate"), 4);
     assert.equal(countWells(result, "Static", "filler"), 8);
+  });
+
+  // --- Placing and opening wells ---
+
+  test("placeName puts open wells in the entry, and moves a well from another entry", () => {
+    const fixedContents = [entry("Static", []), entry("Blank", [])];
+    placeName(fixedContents, ["A1", "A2"], fixedContents[0]);
+    assert.deepEqual(fixedContents[0].wells.selectedWells(), ["A1", "A2"]);
+    placeName(fixedContents, ["A2"], fixedContents[1]);
+    assert.deepEqual(fixedContents[0].wells.selectedWells(), ["A1"]);
+    assert.deepEqual(fixedContents[1].wells.selectedWells(), ["A2"]);
+  });
+
+  test("placeName with a box from wellsInBox places all 6 wells", () => {
+    const fixedContents = [entry("Static", [])];
+    placeName(fixedContents, GRID_96.wellsInBox("B2", "C4"), fixedContents[0]);
+    assert.deepEqual(fixedContents[0].wells.selectedWells(), ["B2", "B3", "B4", "C2", "C3", "C4"]);
+  });
+
+  test("placing a well already in the entry, or opening an open well, changes nothing", () => {
+    const fixedContents = [entry("Static", ["A1"]), entry("Blank", ["H12"])];
+    placeName(fixedContents, ["A1"], fixedContents[0]);
+    openWells(fixedContents, ["D4"]);
+    assert.deepEqual(fixedContents[0].wells.selectedWells(), ["A1"]);
+    assert.deepEqual(fixedContents[1].wells.selectedWells(), ["H12"]);
+  });
+
+  test("openWells removes wells from whichever entry holds them", () => {
+    const fixedContents = [entry("Static", ["A1", "A2"]), entry("Blank", ["H12"])];
+    openWells(fixedContents, ["A2", "H12"]);
+    assert.deepEqual(fixedContents[0].wells.selectedWells(), ["A1"]);
+    assert.deepEqual(fixedContents[1].wells.selectedWells(), []);
+  });
+
+  test("renaming an entry keeps its wells", () => {
+    const fixedContents = [entry("Static", ["A1", "A2"])];
+    fixedContents[0].name = "Renamed";
+    assert.deepEqual(fixedContents[0].wells.selectedWells(), ["A1", "A2"]);
+  });
+
+  test("an invalid well throws the grid's message and changes nothing", () => {
+    const fixedContents = [entry("Static", ["A1"]), entry("Blank", ["H12"])];
+    assert.throws(() => placeName(fixedContents, ["A3", "I1"], fixedContents[0]), {
+      message: '"I1" is not on this grid. Valid wells are rows A–H, columns 1–12.',
+    });
+    assert.throws(() => placeName(fixedContents, ["H12", "b2"], fixedContents[0]), {
+      message: /Did you mean "B2"\?/,
+    });
+    assert.throws(() => openWells(fixedContents, ["A1", "I1"]), {
+      message: '"I1" is not on this grid. Valid wells are rows A–H, columns 1–12.',
+    });
+    assert.deepEqual(fixedContents[0].wells.selectedWells(), ["A1"]);
+    assert.deepEqual(fixedContents[1].wells.selectedWells(), ["H12"]);
+  });
+
+  test("an entry that isn't in fixedContents throws its message", () => {
+    const fixedContents = [entry("Static", [])];
+    const lookalike = entry("Static", []);
+    assert.throws(() => placeName(fixedContents, ["A1"], lookalike), {
+      message: "The entry to place must be one of the fixed contents.",
+    });
+  });
+
+  // --- Matching inputs ---
+
+  test("matchesInputs is true for the inputs the result was made from", () => {
+    const inputs = fixedEntriesExampleInputs();
+    assert.equal(matchesInputs(randomize(inputs), inputs), true);
+  });
+
+  test("matchesInputs is false after any change to the inputs, and true after changing it back", () => {
+    const inputs = fixedEntriesExampleInputs();
+    const result = randomize(inputs);
+    const changes = [
+      ["the seed", () => (inputs.seed = 1), () => (inputs.seed = 999000)],
+      ["the filler", () => (inputs.filler = "PBS"), () => (inputs.filler = "Spare")],
+      [
+        "a condition's name",
+        () => (inputs.conditions[0].name = "Renamed"),
+        () => (inputs.conditions[0].name = "Condition 1"),
+      ],
+      [
+        "a condition's replicates",
+        () => (inputs.conditions[0].replicates = 6),
+        () => (inputs.conditions[0].replicates = 7),
+      ],
+      ["the order of the conditions", () => inputs.conditions.reverse(), () => inputs.conditions.reverse()],
+      [
+        "an entry's name",
+        () => (inputs.fixedContents[0].name = "Renamed"),
+        () => (inputs.fixedContents[0].name = "Static"),
+      ],
+      ["the order of the entries", () => inputs.fixedContents.reverse(), () => inputs.fixedContents.reverse()],
+      [
+        "which wells an entry holds",
+        () => openWells(inputs.fixedContents, ["A12"]),
+        () => placeName(inputs.fixedContents, ["A12"], inputs.fixedContents[0]),
+      ],
+    ];
+    for (const [description, change, changeBack] of changes) {
+      change();
+      assert.equal(matchesInputs(result, inputs), false, `after changing ${description}`);
+      changeBack();
+      assert.equal(matchesInputs(result, inputs), true, `after changing back ${description}`);
+    }
+  });
+
+  test("the result's inputs are a copy: placing a name or renaming an entry doesn't change them", () => {
+    const inputs = mainExampleInputs(SEED);
+    const result = randomize(inputs);
+    placeName(inputs.fixedContents, ["D4"], inputs.fixedContents[0]);
+    inputs.fixedContents[0].name = "Renamed";
+    inputs.conditions[0].name = "Renamed";
+    assert.equal(result.inputs.fixedContents[0].name, "Static");
+    assert.deepEqual(result.inputs.fixedContents[0].wells.selectedWells(), OUTER_RING);
+    assert.equal(result.inputs.conditions[0].name, "Condition 1");
+  });
+
+  // --- Listing order ---
+
+  test("listingOrder gives the example in section 6 exactly", () => {
+    const inputs = {
+      conditions: [
+        { name: "Condition 1", replicates: 4 },
+        { name: "Static", replicates: 4 },
+      ],
+      fixedContents: [entry("Static", []), entry("Blank", [])],
+      filler: "Spare",
+      seed: SEED,
+    };
+    assert.deepEqual(listingOrder(inputs), [
+      { name: "Condition 1", role: "condition", position: 0 },
+      { name: "Static", role: "condition", position: 1 },
+      { name: "Spare", role: "filler", position: 0 },
+      { name: "Blank", role: "fixed", position: 1 },
+    ]);
+  });
+
+  test("listingOrder leaves out empty names", () => {
+    const inputs = {
+      conditions: [],
+      fixedContents: [entry("", []), entry("Blank", [])],
+      filler: "",
+      seed: SEED,
+    };
+    assert.deepEqual(listingOrder(inputs), [{ name: "Blank", role: "fixed", position: 1 }]);
+  });
+
+  test("listingOrder positions count within each role and include unused entries", () => {
+    const inputs = {
+      conditions: [],
+      fixedContents: [entry("Unused", []), entry("Blank", ["A1"])],
+      filler: "",
+      seed: SEED,
+    };
+    assert.deepEqual(listingOrder(inputs), [
+      { name: "Unused", role: "fixed", position: 0 },
+      { name: "Blank", role: "fixed", position: 1 },
+    ]);
+  });
+
+  test("adding a condition doesn't change any filler or fixed-contents position", () => {
+    const inputs = severalFixedContentsInputs();
+    const otherRoles = () => listingOrder(inputs).filter(({ role }) => role !== "condition");
+    const before = otherRoles();
+    inputs.conditions.push({ name: "Condition 13", replicates: 1 });
+    assert.deepEqual(otherRoles(), before);
   });
 
   // --- Seeds ---
@@ -146,16 +319,17 @@ describe("randomizer", () => {
     });
   }
 
-  test("the overrides golden setup contains all four well types", () => {
-    const types = new Set(Object.values(randomize(overridesExampleInputs()).wellTypes));
-    assert.deepEqual([...types].sort(), ["filler", "fixed-contents", "override", "replicate"]);
+  test("the fixed-entries golden setup contains all three well types", () => {
+    const types = new Set(Object.values(randomize(fixedEntriesExampleInputs()).wellTypes));
+    assert.deepEqual([...types].sort(), ["filler", "fixed", "replicate"]);
   });
 
   // --- Output lists ---
 
-  test("contents → wells lists conditions, then the filler, the fixed contents and the overrides", () => {
-    const inputs = overridesExampleInputs();
-    const listed = contentsToWells(inputs, randomize(inputs)).map(({ contents }) => contents);
+  test("contents → wells lists conditions, then the filler, then the fixed contents", () => {
+    const listed = contentsToWells(randomize(fixedEntriesExampleInputs())).map(
+      ({ contents }) => contents,
+    );
     assert.deepEqual(listed, [
       ...numberedConditions(10, 7).map(({ name }) => name),
       "Spare",
@@ -200,7 +374,15 @@ describe("randomizer", () => {
     assert.deepEqual(findProblems(inputs), ['Row 5: "Condition 2" is already listed in row 2.']);
   });
 
-  // --- Errors: open wells, fixed contents and filler ---
+  test("a condition name with a space at the start", () => {
+    const inputs = mainExampleInputs(SEED);
+    inputs.conditions[0].name = " Condition 1";
+    assert.deepEqual(findProblems(inputs), [
+      "Row 1: the condition name has a space at the start or end. Remove it.",
+    ]);
+  });
+
+  // --- Errors: open wells ---
 
   test("too many replicates for the open wells", () => {
     const inputs = mainExampleInputs(SEED);
@@ -233,13 +415,41 @@ describe("randomizer", () => {
     assert.deepEqual(findProblems(inputs), ["1 open well is left over. Name a filler for it."]);
   });
 
-  test("fixed wells with no contents", () => {
+  // --- Errors: fixed contents ---
+
+  test("an entry with wells but no name is reported with its number", () => {
     const inputs = mainExampleInputs(SEED);
-    inputs.fixedContents = "";
-    assert.deepEqual(findProblems(inputs), ["Name the contents of the fixed wells."]);
+    inputs.fixedContents.push(entry("", ["D4"]));
+    assert.deepEqual(findProblems(inputs), [
+      "Fixed contents 2 is placed on the plate but has no name.",
+    ]);
   });
 
-  // --- Errors: seed ---
+  test("an entry name with a space at the end is reported with its number", () => {
+    const inputs = mainExampleInputs(SEED);
+    inputs.fixedContents.push(entry("Static ", ["D4"]));
+    assert.deepEqual(findProblems(inputs), [
+      "Fixed contents 2 has a space at the start or end. Remove it.",
+    ]);
+  });
+
+  test("a duplicate entry name is reported with both numbers", () => {
+    const inputs = mainExampleInputs(SEED);
+    inputs.fixedContents.push(entry("Blank", ["D4"]), entry("Static", ["D5"]));
+    assert.deepEqual(findProblems(inputs), [
+      'Fixed contents 3: "Static" is already listed in fixed contents 1.',
+    ]);
+  });
+
+  // --- Errors: filler and seed ---
+
+  test("a filler with a space at the start", () => {
+    const inputs = mainExampleInputs(SEED);
+    inputs.filler = " Spare";
+    assert.deepEqual(findProblems(inputs), [
+      "The filler has a space at the start or end. Remove it.",
+    ]);
+  });
 
   test("a seed out of range or not a whole number", () => {
     for (const [seed, shown] of [
@@ -247,8 +457,7 @@ describe("randomizer", () => {
       [1000000, "1000000"],
       [2.5, "2.5"],
     ]) {
-      const inputs = mainExampleInputs(seed);
-      assert.deepEqual(findProblems(inputs), [
+      assert.deepEqual(findProblems(mainExampleInputs(seed)), [
         `The seed must be a whole number from 1 to 999,999, but got ${shown}.`,
       ]);
     }
@@ -259,103 +468,44 @@ describe("randomizer", () => {
     assert.deepEqual(findProblems(mainExampleInputs(999999)), []);
   });
 
-  // --- Errors: names with a space at the start or end ---
+  // --- Errors: the safety net ---
 
-  test("a condition name with a space at the start", () => {
+  test("a well in two entries is reported once, naming both entries", () => {
     const inputs = mainExampleInputs(SEED);
-    inputs.conditions[0].name = " Condition 1";
-    assert.deepEqual(findProblems(inputs), [
-      "Row 1: the condition name has a space at the start or end. Remove it.",
-    ]);
-  });
-
-  test("fixed contents with a space at the end", () => {
-    const inputs = mainExampleInputs(SEED);
-    inputs.fixedContents = "Static ";
-    assert.deepEqual(findProblems(inputs), [
-      "The fixed contents have a space at the start or end. Remove it.",
-    ]);
-  });
-
-  test("a filler with a space at the start", () => {
-    const inputs = mainExampleInputs(SEED);
-    inputs.filler = " Spare";
-    assert.deepEqual(findProblems(inputs), [
-      "The filler has a space at the start or end. Remove it.",
-    ]);
-  });
-
-  // --- Errors: overrides (the safety net) ---
-
-  test("an override well not on the grid gives the grid's message", () => {
-    const inputs = mainExampleInputs(SEED);
-    inputs.overrides = [{ well: "I1", name: "Override 1" }];
-    assert.deepEqual(findProblems(inputs), [
-      '"I1" is not on this grid. Valid wells are rows A–H, columns 1–12.',
-    ]);
-  });
-
-  test("an override on a well that isn't fixed", () => {
-    const inputs = mainExampleInputs(SEED);
-    inputs.overrides = [{ well: "D4", name: "Override 1" }];
-    assert.deepEqual(findProblems(inputs), ["D4 has an override but isn't a fixed well."]);
-  });
-
-  test("a well overridden twice", () => {
-    const inputs = mainExampleInputs(SEED);
-    inputs.overrides = [
-      { well: "A1", name: "Override 1" },
-      { well: "A1", name: "Override 2" },
-    ];
-    assert.deepEqual(findProblems(inputs), ["A1 is overridden more than once."]);
-  });
-
-  test("an override with an empty name", () => {
-    const inputs = mainExampleInputs(SEED);
-    inputs.overrides = [{ well: "A1", name: "" }];
-    assert.deepEqual(findProblems(inputs), ["The override for A1 has no name."]);
-  });
-
-  test("an override name with a space at the start", () => {
-    const inputs = mainExampleInputs(SEED);
-    inputs.overrides = [{ well: "A1", name: " Override 1" }];
-    assert.deepEqual(findProblems(inputs), [
-      "The override for A1 has a space at the start or end. Remove it.",
-    ]);
+    inputs.fixedContents.push(entry("Blank", ["A1"]));
+    assert.deepEqual(findProblems(inputs), ['A1 is in two fixed contents: "Static" and "Blank".']);
   });
 
   // --- Checking ---
 
-  test("several problems are all returned, in the order of section 7's tables", () => {
+  test("several problems are all returned, in table order, then wells in two entries", () => {
     const inputs = mainExampleInputs(0);
     inputs.conditions[0].name = "";
-    inputs.fixedContents = "";
+    inputs.fixedContents.push(entry("", ["D4"]), entry("Blank", ["A1"]));
     assert.deepEqual(findProblems(inputs), [
       "Row 1: the condition name is empty.",
-      "Name the contents of the fixed wells.",
+      "Fixed contents 2 is placed on the plate but has no name.",
       "The seed must be a whole number from 1 to 999,999, but got 0.",
+      'A1 is in two fixed contents: "Static" and "Blank".',
     ]);
   });
 
   test("randomize throws the first problem's message", () => {
     const inputs = mainExampleInputs(0);
     inputs.conditions[0].name = "";
-    inputs.fixedContents = "";
     assert.throws(() => randomize(inputs), { message: "Row 1: the condition name is empty." });
   });
 
   // --- Inputs unchanged ---
 
   test("randomize doesn't change the inputs, and two runs give two separate layouts", () => {
-    const inputs = mainExampleWithOverridesInputs();
+    const inputs = severalFixedContentsInputs();
     const conditionsBefore = structuredClone(inputs.conditions);
-    const overridesBefore = structuredClone(inputs.overrides);
-    const fixedWellsBefore = inputs.fixedWells.selectedWells();
+    const entriesBefore = describeEntries(inputs.fixedContents);
     const first = randomize(inputs);
     const second = randomize(inputs);
     assert.deepEqual(inputs.conditions, conditionsBefore);
-    assert.deepEqual(inputs.overrides, overridesBefore);
-    assert.deepEqual(inputs.fixedWells.selectedWells(), fixedWellsBefore);
+    assert.deepEqual(describeEntries(inputs.fixedContents), entriesBefore);
     assert.notEqual(second.layout, first.layout);
   });
 
@@ -370,16 +520,14 @@ describe("randomizer", () => {
   });
 
   test("contents → wells copy text: one tab-separated line per contents, no header row", () => {
-    const inputs = mainExampleInputs(SEED);
-    const result = randomize(inputs);
-    const lines = contentsToWellsText(inputs, result).split("\n");
-    const expected = contentsToWells(inputs, result).map(
+    const result = randomize(mainExampleInputs(SEED));
+    const lines = contentsToWellsText(result).split("\n");
+    const expected = contentsToWells(result).map(
       ({ contents, wells }) => `${contents}\t${wells.join(", ")}`,
     );
     assert.deepEqual(lines, expected);
     assert.ok(lines[0].startsWith("Condition 1\t"));
-    const outerRing = GRID_96.wellNames().filter((well) => GRID_96.isEdgeWell(well));
-    assert.equal(lines.at(-1), `Static\t${outerRing.join(", ")}`);
+    assert.equal(lines.at(-1), `Static\t${OUTER_RING.join(", ")}`);
   });
 });
 
@@ -390,53 +538,46 @@ function emptyListInputs() {
   return { ...mainExampleInputs(SEED), conditions: [] };
 }
 
-// No fixed wells: all 96 wells open; 12 conditions × 4 replicates, so 48 Spare.
+// No fixed wells: no entries, so all 96 wells are open; 12 conditions × 4 replicates, so 48 Spare.
 function noFixedWellsInputs() {
-  return { ...mainExampleInputs(SEED), fixedWells: selectionOf([]) };
+  return { ...mainExampleInputs(SEED), fixedContents: [] };
 }
 
 // Exact fit: no fixed wells; 12 conditions × 8 replicates exactly fill the plate, so no filler.
 function exactFitInputs() {
   return {
     ...mainExampleInputs(SEED),
-    fixedWells: selectionOf([]),
+    fixedContents: [],
     conditions: numberedConditions(12, 8),
     filler: "",
   };
 }
 
-// Scattered fixed wells: six fixed wells on the edge and inside the plate, holding Static;
+// Scattered fixed wells: one entry, Static, in six wells on the edge and inside the plate;
 // 12 conditions × 7 replicates (84) in 90 open wells, so 6 Spare.
 function scatteredFixedWellsInputs() {
   return {
     ...mainExampleInputs(SEED),
-    fixedWells: selectionOf(["A1", "B5", "D6", "E7", "G11", "H12"]),
+    fixedContents: [entry("Static", ["A1", "B5", "D6", "E7", "G11", "H12"])],
     conditions: numberedConditions(12, 7),
   };
 }
 
-// Overrides: the main example with A1 overridden to Override 1 and H12 to Override 2.
-function mainExampleWithOverridesInputs() {
+// Several fixed contents: the main example with A1 in "Fixed 1", H12 in "Fixed 2", and the other
+// 34 outer wells in "Static".
+function severalFixedContentsInputs() {
+  const otherOuterWells = OUTER_RING.filter((well) => well !== "A1" && well !== "H12");
   return {
     ...mainExampleInputs(SEED),
-    overrides: [
-      { well: "A1", name: "Override 1" },
-      { well: "H12", name: "Override 2" },
-    ],
+    fixedContents: [entry("Static", otherOuterWells), entry("Fixed 1", ["A1"]), entry("Fixed 2", ["H12"])],
   };
 }
 
-// Every fixed well overridden: A1 and H12 fixed and overridden, so no fixed contents are needed.
-function everyFixedWellOverriddenInputs() {
-  return {
-    ...mainExampleInputs(SEED),
-    fixedWells: selectionOf(["A1", "H12"]),
-    fixedContents: "",
-    overrides: [
-      { well: "A1", name: "Override 1" },
-      { well: "H12", name: "Override 2" },
-    ],
-  };
+// Unused entries: the main example plus an entry "Unused" and an unnamed entry, both with no wells.
+function unusedEntriesInputs() {
+  const inputs = mainExampleInputs(SEED);
+  inputs.fixedContents.push(entry("Unused", []), entry("", []));
+  return inputs;
 }
 
 // Shared names: the main example plus a condition "Static" with 4 replicates, and filler "Static"
@@ -458,6 +599,13 @@ function countWells(result, name, type) {
   ).length;
 }
 
+// The open wells: those in no entry, in standard order.
+function openWellsOf(inputs) {
+  return GRID_96.wellNames().filter(
+    (well) => !inputs.fixedContents.some(({ wells }) => wells.isSelected(well)),
+  );
+}
+
 // Check 1: each condition has exactly as many replicate wells as its replicate count, and there
 // are no other replicate wells.
 function checkReplicateWells(inputs, result) {
@@ -473,37 +621,35 @@ function checkReplicateWells(inputs, result) {
 // Check 2: the number of filler wells is the open wells minus the replicates, and every filler well
 // holds the filler.
 function checkFillerWells(inputs, result) {
-  const openWellCount = inputs.fixedWells.unselectedWells().length;
   const totalReplicates = inputs.conditions.reduce((total, { replicates }) => total + replicates, 0);
   const fillerWells = Object.keys(result.wellTypes).filter(
     (well) => result.wellTypes[well] === "filler",
   );
-  assert.equal(fillerWells.length, openWellCount - totalReplicates);
+  assert.equal(fillerWells.length, openWellsOf(inputs).length - totalReplicates);
   for (const well of fillerWells) {
     assert.equal(result.layout.contentsOf(well).name, inputs.filler, well);
   }
 }
 
-// Check 3: every fixed well is an override well holding its override, or a fixed-contents well
-// holding the fixed contents.
+// Check 3: every well in an entry is a fixed well holding that entry's name, and there are no other
+// fixed wells.
 function checkFixedWells(inputs, result) {
-  const overrideNameByWell = new Map(inputs.overrides.map(({ well, name }) => [well, name]));
-  for (const well of inputs.fixedWells.selectedWells()) {
-    const name = result.layout.contentsOf(well).name;
-    if (overrideNameByWell.has(well)) {
-      assert.equal(result.wellTypes[well], "override", well);
-      assert.equal(name, overrideNameByWell.get(well), well);
-    } else {
-      assert.equal(result.wellTypes[well], "fixed-contents", well);
-      assert.equal(name, inputs.fixedContents, well);
+  let fixedWellCount = 0;
+  for (const { name, wells } of inputs.fixedContents) {
+    for (const well of wells.selectedWells()) {
+      assert.equal(result.wellTypes[well], "fixed", well);
+      assert.equal(result.layout.contentsOf(well).name, name, well);
+      fixedWellCount += 1;
     }
   }
+  const allFixedWells = Object.values(result.wellTypes).filter((type) => type === "fixed");
+  assert.equal(allFixedWells.length, fixedWellCount);
 }
 
-// Check 4: all 96 wells have contents and one of the four types, and the open wells are exactly
+// Check 4: all 96 wells have contents and one of the three types, and the open wells are exactly
 // the replicate and filler wells.
 function checkComplete(inputs, result) {
-  const wellTypes = ["replicate", "filler", "fixed-contents", "override"];
+  const wellTypes = ["replicate", "filler", "fixed"];
   assert.deepEqual(Object.keys(result.wellTypes), GRID_96.wellNames());
   for (const { well, contents } of result.layout.listWells()) {
     assert.notEqual(contents, null, well);
@@ -512,7 +658,7 @@ function checkComplete(inputs, result) {
   const randomWells = GRID_96.wellNames().filter((well) =>
     ["replicate", "filler"].includes(result.wellTypes[well]),
   );
-  assert.deepEqual(randomWells, inputs.fixedWells.unselectedWells());
+  assert.deepEqual(randomWells, openWellsOf(inputs));
 }
 
 // Check 6, well → contents: all 96 wells in standard order, each with its contents on the plate.
@@ -526,8 +672,8 @@ function checkWellToContents(result) {
 
 // Check 6, contents → wells: each contents is listed once, its wells are in standard order and all
 // hold it, and together the rows list every well exactly once.
-function checkContentsToWells(inputs, result) {
-  const rows = contentsToWells(inputs, result);
+function checkContentsToWells(result) {
+  const rows = contentsToWells(result);
   const listedContents = rows.map(({ contents }) => contents);
   assert.equal(new Set(listedContents).size, listedContents.length);
   for (const { contents, wells } of rows) {
@@ -539,4 +685,10 @@ function checkContentsToWells(inputs, result) {
   }
   const allListedWells = rows.flatMap(({ wells }) => wells);
   assert.deepEqual([...allListedWells].sort(), [...GRID_96.wellNames()].sort());
+}
+
+// The entries as plain data that can be compared, e.g. [{ name: "Static", wells: ["A1", …] }].
+// A WellSelection keeps its wells private, so deepEqual can't compare two selections directly.
+function describeEntries(fixedContents) {
+  return fixedContents.map(({ name, wells }) => ({ name, wells: wells.selectedWells() }));
 }

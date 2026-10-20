@@ -1,5 +1,6 @@
-// randomizer.js — the randomizer's logic: checking the inputs, assigning the conditions' replicates
-// to random open wells, and building the two output lists and their copy text.
+// randomizer.js — the randomizer's logic: checking the inputs, placing and opening fixed wells,
+// assigning the conditions' replicates to random open wells, matching a result to its inputs, and
+// building the two output lists and their copy text.
 //
 // It contains no screen code, so it can be tested in Node. The page (randomizer-page.js) reads the
 // inputs from the screen, calls these functions and draws the results.
@@ -9,29 +10,30 @@ import { describeValue } from "../../shared/error-messages/error-messages.js";
 import { GRID_96 } from "../../shared/well-grid/well-grid.js";
 import { Layout } from "../../shared/layout/layout.js";
 import { SeededRandom } from "../../shared/random/random.js";
+import { WellSelection } from "../../shared/well-selection/well-selection.js";
 
-// The range of seeds the user may enter, set by the specification (section 4).
+// The range of seeds allowed, set by the specification (section 4).
 const SMALLEST_SEED = 1;
 const LARGEST_SEED = 999999;
 
-// The four well types (section 3), as recorded in a result's wellTypes.
+// The three well types (section 3), as recorded in a result's wellTypes.
 const REPLICATE = "replicate";
 const FILLER = "filler";
-const FIXED_CONTENTS = "fixed-contents";
-const OVERRIDE = "override";
+const FIXED = "fixed";
 
 // --- Checking the inputs ---
 
-// Every problem with the inputs, as a list of messages in the order of section 7's tables, or []
-// if there are none, e.g. ["Row 3: the condition name is empty.", "Name the contents of the fixed wells."].
+// Every problem with the inputs, as a list of messages in the order of section 7's table, followed
+// by any wells in two entries, or [] if there are none,
+// e.g. ["Row 3: the condition name is empty.", "Fixed contents 2 is placed on the plate but has no name."].
 export function findProblems(inputs) {
   return [
     ...conditionProblems(inputs.conditions),
     ...openWellProblems(inputs),
-    ...fixedContentsProblems(inputs),
+    ...fixedContentsProblems(inputs.fixedContents),
     ...fillerProblems(inputs.filler),
     ...seedProblems(inputs.seed),
-    ...overrideProblems(inputs),
+    ...wellsInTwoEntriesProblems(inputs.fixedContents),
   ];
 }
 
@@ -39,7 +41,7 @@ export function findProblems(inputs) {
 // A duplicate is reported on the later row, naming the row where the name first appears.
 function conditionProblems(conditions) {
   const problems = [];
-  const firstRowByName = new Map();
+  const earlierIndexes = earlierIndexesOfSameName(conditions.map(({ name }) => name));
   conditions.forEach(({ name, replicates }, index) => {
     // Rows are numbered from 1, as the user sees them in the table.
     const row = index + 1;
@@ -56,15 +58,10 @@ function conditionProblems(conditions) {
           `but got ${describeValue(replicates)}.`,
       );
     }
-    // An empty name is already reported above, so it isn't also reported as a duplicate.
-    if (!isBlank(name)) {
-      if (firstRowByName.has(name)) {
-        problems.push(
-          `Row ${row}: ${describeValue(name)} is already listed in row ${firstRowByName.get(name)}.`,
-        );
-      } else {
-        firstRowByName.set(name, row);
-      }
+    if (earlierIndexes[index] !== null) {
+      problems.push(
+        `Row ${row}: ${describeValue(name)} is already listed in row ${earlierIndexes[index] + 1}.`,
+      );
     }
   });
   return problems;
@@ -73,12 +70,12 @@ function conditionProblems(conditions) {
 // The problem with the number of open wells, if any: too few for the replicates, or spare wells
 // with no filler named. Nothing is reported while any replicate count is invalid, because the
 // number of replicates needed isn't known yet (the invalid count is reported on its own row).
-function openWellProblems({ conditions, fixedWells, filler }) {
+function openWellProblems({ conditions, fixedContents, filler }) {
   if (!conditions.every(({ replicates }) => isValidReplicateCount(replicates))) {
     return [];
   }
   const needed = totalReplicates(conditions);
-  const open = fixedWells.unselectedWells().length;
+  const open = openWellNames(fixedContents).length;
   if (needed > open) {
     const excess = needed - open;
     return [
@@ -97,18 +94,29 @@ function openWellProblems({ conditions, fixedWells, filler }) {
   return [];
 }
 
-// The problem with the fixed contents, if any: missing although a fixed well needs it, or a name
-// with a space at the start or end.
-function fixedContentsProblems({ fixedWells, overrides, fixedContents }) {
-  if (isBlank(fixedContents)) {
-    return hasFixedWellWithoutOverride(fixedWells, overrides)
-      ? ["Name the contents of the fixed wells."]
-      : [];
-  }
-  if (hasSpaceAtEnds(fixedContents)) {
-    return ["The fixed contents have a space at the start or end. Remove it."];
-  }
-  return [];
+// The problems with the fixed-contents entries, entry by entry; within an entry, in the order of
+// section 7's table. Entries are numbered from 1 in the order listed. An entry with no wells and
+// no name is allowed (section 4).
+function fixedContentsProblems(fixedContents) {
+  const problems = [];
+  const earlierIndexes = earlierIndexesOfSameName(fixedContents.map(({ name }) => name));
+  fixedContents.forEach(({ name, wells }, index) => {
+    const number = index + 1;
+    if (isBlank(name)) {
+      if (wells.selectedWells().length > 0) {
+        problems.push(`Fixed contents ${number} is placed on the plate but has no name.`);
+      }
+    } else if (hasSpaceAtEnds(name)) {
+      problems.push(`Fixed contents ${number} has a space at the start or end. Remove it.`);
+    }
+    if (earlierIndexes[index] !== null) {
+      problems.push(
+        `Fixed contents ${number}: ${describeValue(name)} is already listed in ` +
+          `fixed contents ${earlierIndexes[index] + 1}.`,
+      );
+    }
+  });
+  return problems;
 }
 
 // The problem with the filler, if any: a name with a space at the start or end. (A missing filler
@@ -128,67 +136,95 @@ function seedProblems(seed) {
   return [`The seed must be a whole number from 1 to 999,999, but got ${describeValue(seed)}.`];
 }
 
-// The problems with the overrides, override by override; within an override, in the order of
-// section 7's second table. The page prevents all of these, so this is a safety net.
-// A well overridden several times is reported once, at its second override.
-function overrideProblems({ overrides, fixedWells }) {
+// The safety net (section 7): one message per well that is in more than one entry, in standard
+// well order, e.g. 'A1 is in two fixed contents: "Static" and "Blank".' placeName and openWells
+// never let this happen, so it can only come from entries built some other way.
+// If a well is in three or more entries, the message names the first two.
+function wellsInTwoEntriesProblems(fixedContents) {
   const problems = [];
-  const timesSeenByWell = new Map();
-  for (const { well, name } of overrides) {
-    const wellProblem = overrideWellProblem(well, fixedWells);
-    if (wellProblem !== null) {
-      problems.push(wellProblem);
-    } else {
-      const timesSeen = (timesSeenByWell.get(well) ?? 0) + 1;
-      timesSeenByWell.set(well, timesSeen);
-      if (timesSeen === 2) {
-        problems.push(`${well} is overridden more than once.`);
-      }
-    }
-    if (isBlank(name)) {
-      problems.push(`The override for ${well} has no name.`);
-    } else if (hasSpaceAtEnds(name)) {
-      problems.push(`The override for ${well} has a space at the start or end. Remove it.`);
+  for (const [well, entries] of entriesByWell(fixedContents)) {
+    if (entries.length > 1) {
+      const [first, second] = entries;
+      problems.push(
+        `${well} is in two fixed contents: ${describeValue(first.name)} and ` +
+          `${describeValue(second.name)}.`,
+      );
     }
   }
   return problems;
 }
 
-// The problem with an override's well, or null if there is none: the well must be on the grid and
-// fixed, e.g. "D4 has an override but isn't a fixed well."
-function overrideWellProblem(well, fixedWells) {
-  // wellPosition() throws the grid's own message for a well that isn't on the grid, and the spec
-  // asks for that message, so it's caught and returned rather than written again here.
-  try {
-    fixedWells.grid.wellPosition(well);
-  } catch (error) {
-    return error.message;
-  }
-  if (!fixedWells.isSelected(well)) {
-    return `${well} has an override but isn't a fixed well.`;
-  }
-  return null;
+// For each name in a list, the index of an earlier copy of the same name, or null if there is none
+// or the name is blank (a blank name is reported as empty, not as a duplicate),
+// e.g. ["A", "B", "A", ""] → [null, null, 0, null].
+function earlierIndexesOfSameName(names) {
+  const firstIndexByName = new Map();
+  return names.map((name, index) => {
+    if (isBlank(name)) {
+      return null;
+    }
+    if (firstIndexByName.has(name)) {
+      return firstIndexByName.get(name);
+    }
+    firstIndexByName.set(name, index);
+    return null;
+  });
 }
 
-// True if some fixed well has no override, so it needs the fixed contents.
-function hasFixedWellWithoutOverride(fixedWells, overrides) {
-  const overriddenWells = new Set(overrides.map(({ well }) => well));
-  return fixedWells.selectedWells().some((well) => !overriddenWells.has(well));
+// --- Placing and opening wells ---
+
+// Puts an entry's name in the given wells (section 4): each well is removed from every other entry,
+// then added to `entry`, e.g. placeName(fixedContents, ["A2"], fixedContents[0]).
+// Changes the entries' selections in place. Throws, changing nothing, if `entry` isn't one of the
+// fixed contents or any well name is invalid.
+export function placeName(fixedContents, wells, entry) {
+  // includes() compares objects by identity, so this checks it's the very same entry object.
+  if (!fixedContents.includes(entry)) {
+    throw new Error("The entry to place must be one of the fixed contents.");
+  }
+  checkWells(wells);
+  openWells(fixedContents, wells);
+  for (const well of wells) {
+    entry.wells.select(well);
+  }
+}
+
+// Makes the given wells open by removing each from every entry, e.g. openWells(fixedContents, ["A2"]).
+// Changes the entries' selections in place. Throws, changing nothing, if any well name is invalid.
+export function openWells(fixedContents, wells) {
+  checkWells(wells);
+  for (const entry of fixedContents) {
+    for (const well of wells) {
+      entry.wells.deselect(well);
+    }
+  }
+}
+
+// Throws the grid's own message for the first invalid well name, e.g. "I1". All wells are checked
+// before anything changes, so a call with one bad well among good ones changes nothing.
+function checkWells(wells) {
+  for (const well of wells) {
+    GRID_96.wellPosition(well);
+  }
 }
 
 // --- Randomizing ---
 
-// Assigns the conditions' replicates (and the filler) to random open wells, and the fixed contents
-// and overrides to the fixed wells. Returns the result: { layout, wellTypes, seed }, e.g.
-// wellTypes { A1: "fixed-contents", A2: "replicate", … }. Throws the first problem, if there are any.
-// The inputs are never changed, and each call creates a new layout.
+// Assigns the conditions' replicates (and the filler) to random open wells, and each fixed well
+// its entry's name. Returns the result: { layout, wellTypes, inputs }, e.g.
+// wellTypes { A1: "fixed", A2: "replicate", … }, where inputs is a copy of the inputs used.
+// Throws the first problem, if there are any. The inputs are never changed, and each call creates a
+// new layout.
 export function randomize(inputs) {
   const problems = findProblems(inputs);
   if (problems.length > 0) {
     throw new Error(problems[0]);
   }
   // Each assignment is [well, { name, type }]; a Map built from them looks up any well's assignment.
-  const assignments = new Map([...openWellAssignments(inputs), ...fixedWellAssignments(inputs)]);
+  const assignments = new Map([
+    ...openWellAssignments(inputs),
+    ...fixedWellAssignments(inputs.fixedContents),
+  ]);
   const layout = new Layout(GRID_96);
   const wellTypes = {};
   // Filled in standard order, so wellTypes lists its wells in that order too.
@@ -197,14 +233,14 @@ export function randomize(inputs) {
     layout.setContents(well, { name });
     wellTypes[well] = type;
   }
-  return { layout, wellTypes, seed: inputs.seed };
+  return { layout, wellTypes, inputs: copyInputs(inputs) };
 }
 
 // The open wells' assignments (section 5, steps 1–3): the items to place are shuffled with the
 // seed, then dealt to the open wells in standard order,
 // e.g. [["A2", { name: "Condition 7", type: "replicate" }], ["A3", { name: "Spare", type: "filler" }], …].
-function openWellAssignments({ conditions, filler, fixedWells, seed }) {
-  const openWells = fixedWells.unselectedWells();
+function openWellAssignments({ conditions, fixedContents, filler, seed }) {
+  const openWells = openWellNames(fixedContents);
   const items = itemsToPlace(conditions, filler, openWells.length);
   const shuffledItems = new SeededRandom(seed).shuffled(items);
   return openWells.map((well, index) => [well, shuffledItems[index]]);
@@ -227,25 +263,96 @@ function itemsToPlace(conditions, filler, openWellCount) {
   return items;
 }
 
-// The fixed wells' assignments (section 5, step 4): each gets its override if it has one, and the
-// fixed contents otherwise, e.g. [["A1", { name: "Override 1", type: "override" }], …].
-function fixedWellAssignments({ fixedWells, overrides, fixedContents }) {
-  const overrideNameByWell = new Map(overrides.map(({ well, name }) => [well, name]));
-  return fixedWells.selectedWells().map((well) => {
-    if (overrideNameByWell.has(well)) {
-      return [well, { name: overrideNameByWell.get(well), type: OVERRIDE }];
-    }
-    return [well, { name: fixedContents, type: FIXED_CONTENTS }];
-  });
+// The fixed wells' assignments (section 5, step 4): each gets the name of its entry,
+// e.g. [["A1", { name: "Static", type: "fixed" }], …]. findProblems has already checked that each
+// fixed well is in exactly one entry.
+function fixedWellAssignments(fixedContents) {
+  return fixedContents.flatMap(({ name, wells }) =>
+    wells.selectedWells().map((well) => [well, { name, type: FIXED }]),
+  );
+}
+
+// A copy of the inputs, so later changes to them (e.g. placeName, or renaming an entry) don't change
+// a result: the conditions are new objects, and each entry has a new WellSelection holding the same
+// wells. The filler and seed are copied as they are.
+function copyInputs({ conditions, fixedContents, filler, seed }) {
+  return {
+    conditions: conditions.map(({ name, replicates }) => ({ name, replicates })),
+    fixedContents: fixedContents.map(({ name, wells }) => ({ name, wells: copySelection(wells) })),
+    filler,
+    seed,
+  };
+}
+
+// A new WellSelection on the same grid with the same wells selected.
+function copySelection(selection) {
+  const copy = new WellSelection(selection.grid);
+  for (const well of selection.selectedWells()) {
+    copy.select(well);
+  }
+  return copy;
+}
+
+// --- Matching inputs ---
+
+// True if `inputs` are exactly the inputs the result was made from (section 5): the same conditions
+// (names, replicates and order), the same entries (names, wells and order), filler and seed.
+export function matchesInputs(result, inputs) {
+  const made = result.inputs;
+  return (
+    sameLists(made.conditions, inputs.conditions, sameCondition) &&
+    sameLists(made.fixedContents, inputs.fixedContents, sameEntry) &&
+    made.filler === inputs.filler &&
+    made.seed === inputs.seed
+  );
+}
+
+// True if two lists are the same length and each pair of items, in order, passes `sameItem`,
+// e.g. sameLists([1, 2], [1, 2], (a, b) => a === b) → true.
+function sameLists(first, second, sameItem) {
+  return first.length === second.length && first.every((item, index) => sameItem(item, second[index]));
+}
+
+// True if two conditions have the same name and replicates.
+function sameCondition(first, second) {
+  return first.name === second.name && first.replicates === second.replicates;
+}
+
+// True if two fixed-contents entries have the same name and the same wells.
+function sameEntry(first, second) {
+  return (
+    first.name === second.name &&
+    sameLists(first.wells.selectedWells(), second.wells.selectedWells(), (a, b) => a === b)
+  );
 }
 
 // --- Output lists ---
 
+// Every name in the inputs once, in listing order (section 6): conditions as listed, then the
+// filler, then the fixed-contents entries as listed. Empty names are left out, and a shared name
+// keeps the first role it appears in. Each comes with its role and its position in that role's list,
+// e.g. [{ name: "Condition 1", role: "condition", position: 0 }, { name: "Spare", role: "filler", position: 0 }, …].
+export function listingOrder({ conditions, filler, fixedContents }) {
+  const candidates = [
+    ...conditions.map(({ name }, position) => ({ name, role: "condition", position })),
+    { name: filler, role: "filler", position: 0 },
+    ...fixedContents.map(({ name }, position) => ({ name, role: "fixed", position })),
+  ];
+  const listedNames = new Set();
+  return candidates.filter(({ name }) => {
+    if (isBlank(name) || listedNames.has(name)) {
+      return false;
+    }
+    listedNames.add(name);
+    return true;
+  });
+}
+
 // The contents → wells list: each distinct contents with its wells in standard order,
-// e.g. [{ contents: "Condition 1", wells: ["B4", "D9", "F2", "G7"] }, …]. Listed as section 6 says:
-// conditions as listed, then the filler, then the fixed contents, then the overrides, with each name
-// once. A name that no well holds (e.g. a filler when there are no spare wells) isn't listed.
-export function contentsToWells(inputs, result) {
+// e.g. [{ contents: "Condition 1", wells: ["B4", "D9", "F2", "G7"] }, …], in listing order, taken
+// from the result's copy of the inputs. A name that no well holds (e.g. an entry with no wells) isn't
+// listed.
+export function contentsToWells(result) {
   const wellsByContents = new Map();
   for (const { well, contents } of wellToContents(result)) {
     if (!wellsByContents.has(contents)) {
@@ -253,22 +360,9 @@ export function contentsToWells(inputs, result) {
     }
     wellsByContents.get(contents).push(well);
   }
-  return contentsInListingOrder(inputs)
-    .filter((contents) => wellsByContents.has(contents))
-    .map((contents) => ({ contents, wells: wellsByContents.get(contents) }));
-}
-
-// Every name in the inputs in the order section 6 lists them, each once,
-// e.g. ["Condition 1", "Condition 2", "Spare", "Static", "Override 1"].
-// A Set keeps only the first copy of each name and remembers the order they were added in.
-function contentsInListingOrder({ conditions, filler, fixedContents, overrides }) {
-  const names = [
-    ...conditions.map(({ name }) => name),
-    filler,
-    fixedContents,
-    ...overrides.map(({ name }) => name),
-  ];
-  return [...new Set(names)];
+  return listingOrder(result.inputs)
+    .filter(({ name }) => wellsByContents.has(name))
+    .map(({ name }) => ({ contents: name, wells: wellsByContents.get(name) }));
 }
 
 // The well → contents list: every well in standard order with the name of its contents,
@@ -281,11 +375,8 @@ export function wellToContents(result) {
 
 // The contents → wells list as tab-separated text with no header row, one line per contents, its
 // wells in one cell, e.g. "Condition 1\tB4, D9, F2, G7\nCondition 2\t…".
-export function contentsToWellsText(inputs, result) {
-  const rows = contentsToWells(inputs, result).map(({ contents, wells }) => [
-    contents,
-    wells.join(", "),
-  ]);
+export function contentsToWellsText(result) {
+  const rows = contentsToWells(result).map(({ contents, wells }) => [contents, wells.join(", ")]);
   return toTabSeparatedText(rows);
 }
 
@@ -304,9 +395,28 @@ function toTabSeparatedText(rows) {
 
 // --- Small helpers ---
 
+// For each fixed well, the entries that hold it, in standard well order,
+// e.g. Map { "A1" → [the Static entry], … }. Normally one entry per well; more is a problem.
+function entriesByWell(fixedContents) {
+  const entriesByWellName = new Map();
+  for (const well of GRID_96.wellNames()) {
+    const entries = fixedContents.filter(({ wells }) => wells.isSelected(well));
+    if (entries.length > 0) {
+      entriesByWellName.set(well, entries);
+    }
+  }
+  return entriesByWellName;
+}
+
+// The open wells, those in no entry, in standard order, e.g. ["B2", "B3", …].
+function openWellNames(fixedContents) {
+  const fixedWells = entriesByWell(fixedContents);
+  return GRID_96.wellNames().filter((well) => !fixedWells.has(well));
+}
+
 // True if a name is missing: not text, empty, or only whitespace (as in the layout module, a name
 // needs at least one character that isn't a space). e.g. isBlank("   ") → true.
-// Non-text is treated as missing rather than crashing, as a safety net; the page always passes text.
+// Non-text is treated as missing rather than crashing, as a safety net.
 function isBlank(name) {
   return typeof name !== "string" || name.trim() === "";
 }
