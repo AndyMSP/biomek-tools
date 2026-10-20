@@ -23,7 +23,14 @@ Last updated: 2026-10-19
 - **`randomizer.js`**: the randomizer's logic — checking the inputs, shuffling the replicates and
   filling the open wells, and building the two lists and their copy text. See
   `src/tools/randomizer/randomizer.md`.
-- **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`.
+- **`pasted-table`** (shared module): turns text copied from a spreadsheet into rows of cells. See
+  `src/shared/pasted-table/pasted-table.md`.
+- **The randomizer page**: `randomizer.html`, `randomizer.css` and `randomizer-page.js`, the screen
+  that connects the modules. See `src/tools/randomizer/randomizer-page.md`.
+- **Build step**: `npm run build` makes one self-contained HTML file per tool in `dist/`, which opens
+  in Edge or Chrome with nothing installed. See ADR 0004.
+- **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
+  `npm run serve`.
 
 ## Current goal: the randomizer
 A general version of the Exp37 plate randomizer (`randomizer_V2.xlsx`). The randomizer is a tool made
@@ -101,8 +108,5 @@ overfilling a well or drawing more than it holds.
 - Well capacities come from the labware types.
 
 ## Open decisions
-- **How tools reach the lab**: a single HTML file per tool (needs a build script; works offline) or
-  a hosted site (no build step; needs internet access, and GitHub Pages on a private repository
-  needs a paid plan). Only the end of the process differs; nothing built before then depends on it.
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)
   would need a specification change.
