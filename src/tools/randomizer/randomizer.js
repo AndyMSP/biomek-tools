@@ -52,7 +52,9 @@ function conditionProblems(conditions) {
         `Row ${row}: the condition name has a space at the start or end. Remove it.`,
       );
     }
-    if (!isValidReplicateCount(replicates)) {
+    if (isMissing(replicates)) {
+      problems.push(`Row ${row}: the number of replicates is missing.`);
+    } else if (!isValidReplicateCount(replicates)) {
       problems.push(
         `Row ${row}: replicates must be a whole number of at least 1, ` +
           `but got ${describeValue(replicates)}.`,
@@ -128,8 +130,11 @@ function fillerProblems(filler) {
   return [];
 }
 
-// The problem with the seed, if any: it must be a whole number from 1 to 999,999.
+// The problem with the seed, if any: it must be there, and be a whole number from 1 to 999,999.
 function seedProblems(seed) {
+  if (isMissing(seed)) {
+    return ["The seed is missing."];
+  }
   if (Number.isInteger(seed) && seed >= SMALLEST_SEED && seed <= LARGEST_SEED) {
     return [];
   }
@@ -326,6 +331,33 @@ function sameEntry(first, second) {
   );
 }
 
+// --- Spare wells and random seeds ---
+
+// The number of spare open wells (section 4): the open wells minus the total replicates, or 0 if
+// the replicates don't fit; null while any replicate count isn't valid, because the total isn't
+// known yet. e.g. the main example (60 open wells, 48 replicates) → 12.
+export function spareWellCount({ conditions, fixedContents }) {
+  if (!conditions.every(({ replicates }) => isValidReplicateCount(replicates))) {
+    return null;
+  }
+  const spare = openWellNames(fixedContents).length - totalReplicates(conditions);
+  return Math.max(spare, 0);
+}
+
+// A seed from 1 to 999,999 made from a random number from 0 up to (not including) 1, such as
+// Math.random() gives (section 4), e.g. randomSeed(0) → 1, randomSeed(0.5) → 500000.
+// It's given the random number rather than calling Math.random() itself, so it can be tested.
+export function randomSeed(randomNumber) {
+  if (typeof randomNumber !== "number" || !(randomNumber >= 0 && randomNumber < 1)) {
+    throw new Error(
+      "randomSeed needs a number from 0 up to 1, like Math.random() gives, " +
+        `but got ${describeValue(randomNumber)}.`,
+    );
+  }
+  const seedCount = LARGEST_SEED - SMALLEST_SEED + 1;
+  return Math.floor(randomNumber * seedCount) + SMALLEST_SEED;
+}
+
 // --- Output lists ---
 
 // Every name in the inputs once, in listing order (section 6): conditions as listed, then the
@@ -425,6 +457,12 @@ function isBlank(name) {
 // e.g. hasSpaceAtEnds(" Spare") → true. trim() removes it from both ends, so the text changes.
 function hasSpaceAtEnds(text) {
   return text !== text.trim();
+}
+
+// True if a replicate count or seed is missing (section 7): "", text of only spaces, undefined or
+// null, as when its box is empty. e.g. isMissing("  ") → true, isMissing(0) → false.
+function isMissing(value) {
+  return value === undefined || value === null || (typeof value === "string" && value.trim() === "");
 }
 
 // True if a replicate count is a whole number of at least 1, e.g. 4 → true; 0, 1.5, "four" → false.

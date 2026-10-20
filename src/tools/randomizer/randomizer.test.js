@@ -10,6 +10,8 @@ import {
   randomize,
   matchesInputs,
   listingOrder,
+  spareWellCount,
+  randomSeed,
   contentsToWells,
   wellToContents,
   contentsToWellsText,
@@ -302,6 +304,50 @@ describe("randomizer", () => {
     assert.deepEqual(otherRoles(), before);
   });
 
+  // --- Spare wells and random seeds ---
+
+  test("spareWellCount: 12 for the main example, 0 for the exact fit or too many replicates", () => {
+    assert.equal(spareWellCount(mainExampleInputs(SEED)), 12);
+    assert.equal(spareWellCount(exactFitInputs()), 0);
+    const tooMany = mainExampleInputs(SEED);
+    tooMany.conditions = numberedConditions(16, 4);
+    assert.equal(spareWellCount(tooMany), 0);
+  });
+
+  test("spareWellCount is null while a replicate count isn't valid", () => {
+    for (const replicates of ["four", ""]) {
+      const inputs = mainExampleInputs(SEED);
+      inputs.conditions[2].replicates = replicates;
+      assert.equal(spareWellCount(inputs), null, JSON.stringify(replicates));
+    }
+  });
+
+  test("randomSeed turns 0, 0.5 and nearly 1 into 1, 500000 and 999999", () => {
+    assert.equal(randomSeed(0), 1);
+    assert.equal(randomSeed(0.5), 500000);
+    assert.equal(randomSeed(0.9999999999), 999999);
+  });
+
+  test("randomSeed always gives a seed findProblems accepts", () => {
+    for (let step = 0; step < 1000; step++) {
+      const seed = randomSeed(step / 1000);
+      assert.ok(Number.isInteger(seed) && seed >= 1 && seed <= 999999, String(seed));
+      assert.deepEqual(findProblems(mainExampleInputs(seed)), [], String(seed));
+    }
+  });
+
+  test("randomSeed throws for anything but a number from 0 up to 1", () => {
+    for (const [value, shown] of [
+      [1, "1"],
+      [-0.1, "-0.1"],
+      ["0.5", '"0.5"'],
+    ]) {
+      assert.throws(() => randomSeed(value), {
+        message: `randomSeed needs a number from 0 up to 1, like Math.random() gives, but got ${shown}.`,
+      });
+    }
+  });
+
   // --- Seeds ---
 
   test("different seeds give different plates on the main example", () => {
@@ -352,6 +398,14 @@ describe("randomizer", () => {
     const inputs = mainExampleInputs(SEED);
     inputs.conditions[2].name = "   ";
     assert.deepEqual(findProblems(inputs), ["Row 3: the condition name is empty."]);
+  });
+
+  test("missing replicates are reported as missing, with their row", () => {
+    for (const replicates of ["", "  "]) {
+      const inputs = mainExampleInputs(SEED);
+      inputs.conditions[2].replicates = replicates;
+      assert.deepEqual(findProblems(inputs), ["Row 3: the number of replicates is missing."]);
+    }
   });
 
   test("replicates that aren't a whole number of at least 1 are reported with their row", () => {
@@ -449,6 +503,10 @@ describe("randomizer", () => {
     assert.deepEqual(findProblems(inputs), [
       "The filler has a space at the start or end. Remove it.",
     ]);
+  });
+
+  test("a missing seed is reported as missing", () => {
+    assert.deepEqual(findProblems(mainExampleInputs("")), ["The seed is missing."]);
   });
 
   test("a seed out of range or not a whole number", () => {
