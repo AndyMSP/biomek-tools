@@ -8,6 +8,7 @@ import { WellGrid, GRID_96 } from "../src/shared/well-grid/well-grid.js";
 import { SeededRandom } from "../src/shared/random/random.js";
 import { Layout } from "../src/shared/layout/layout.js";
 import { WellSelection } from "../src/shared/well-selection/well-selection.js";
+import { OperationList } from "../src/shared/operation-list/operation-list.js";
 import {
   findProblems,
   placeName,
@@ -21,7 +22,7 @@ import {
   wellToContentsText,
 } from "../src/tools/randomizer/randomizer.js";
 
-console.log(`WellGrid, GRID_96, SeededRandom, Layout, WellSelection and the randomizer's functions are loaded. Try:
+console.log(`WellGrid, GRID_96, SeededRandom, Layout, WellSelection, OperationList and the randomizer's functions are loaded. Try:
   GRID_96.wellNames()
   GRID_96.wellPosition("D3")
   GRID_96.wellNameAt(4, 3)
@@ -44,6 +45,11 @@ console.log(`WellGrid, GRID_96, SeededRandom, Layout, WellSelection and the rand
   selection.selectedWells()
   selection.unselectedWells().length
   selection.select("I1")
+  const empty = new OperationList()
+  const list = empty.add({ type: "transfer", source: { labware: "Reagents", well: "A1" }, destination: { labware: "Plate 1", well: "D4" }, volume: 50 })
+  list.listOperations()
+  empty.listOperations()
+  list.add({ type: "transfer", source: { labware: "Reagents", well: "A1" }, destination: { labware: "Plate 1", well: "D4" }, volme: 50 })
   const inputs = { conditions: [{ name: "Condition 1", replicates: 4 }], fixedContents: [{ name: "Static", wells: new WellSelection(GRID_96) }], filler: "Spare", seed: 37 }
   placeName(inputs.fixedContents, GRID_96.wellsInBox("A1", "A12"), inputs.fixedContents[0])
   findProblems(inputs)
@@ -67,6 +73,7 @@ session.context.GRID_96 = GRID_96;
 session.context.SeededRandom = SeededRandom;
 session.context.Layout = Layout;
 session.context.WellSelection = WellSelection;
+session.context.OperationList = OperationList;
 session.context.findProblems = findProblems;
 session.context.placeName = placeName;
 session.context.openWells = openWells;
