@@ -5,6 +5,8 @@
 // golden files. The files were generated once from these inputs; there is deliberately no script to
 // regenerate them (see randomizer.md, section 9). Keeping the inputs here, labelled as golden-file
 // data, records exactly how the files were made.
+// The files were made before fixed-contents entries replaced overrides. The inputs below build the
+// same plates with entries; the golden-file tests confirm the plates are unchanged.
 // Specification: src/tools/randomizer/randomizer.md, section 9.
 
 import { GRID_96 } from "../../src/shared/well-grid/well-grid.js";
@@ -15,37 +17,32 @@ import { wellToContents } from "../../src/tools/randomizer/randomizer.js";
 // Inputs are created fresh each time because a WellSelection can be changed.
 export const GOLDEN_FILES = [
   { fileName: "randomizer-main-seed-37.json", makeInputs: () => mainExampleInputs(37) },
-  { fileName: "randomizer-overrides-seed-999000.json", makeInputs: overridesExampleInputs },
+  { fileName: "randomizer-fixed-entries-seed-999000.json", makeInputs: fixedEntriesExampleInputs },
 ];
 
-// The main example (section 9) with the given seed: the outer ring fixed with "Static",
+// The main example (section 9) with the given seed: one entry, "Static", in the outer ring,
 // "Condition 1" … "Condition 12" with 4 replicates each, and filler "Spare" for the 12 spare wells.
 export function mainExampleInputs(seed) {
   const outerRing = GRID_96.wellNames().filter((well) => GRID_96.isEdgeWell(well));
   return {
-    fixedWells: selectionOf(outerRing),
     conditions: numberedConditions(12, 4),
-    fixedContents: "Static",
-    overrides: [],
+    fixedContents: [entry("Static", outerRing)],
     filler: "Spare",
     seed,
   };
 }
 
-// The golden-file setup with overrides on two wells each (section 9), with seed 999,000. It
-// contains all four well types.
-export function overridesExampleInputs() {
+// The golden-file setup with fixed contents on two wells each (section 9), with seed 999,000. It
+// contains all three well types. The "Override" names are kept from before entries replaced
+// overrides, so the file's contents don't change.
+export function fixedEntriesExampleInputs() {
   return {
-    fixedWells: selectionOf(["A1", "A12", "B5", "D6", "E7", "G11", "H1", "H12"]),
     conditions: numberedConditions(10, 7),
-    fixedContents: "Static",
-    overrides: [
-      { well: "A1", name: "Override 1" },
-      { well: "H12", name: "Override 1" },
-      { well: "B5", name: "Override 2" },
-      { well: "G11", name: "Override 2" },
-      { well: "D6", name: "Override 3" },
-      { well: "E7", name: "Override 3" },
+    fixedContents: [
+      entry("Static", ["A12", "H1"]),
+      entry("Override 1", ["A1", "H12"]),
+      entry("Override 2", ["B5", "G11"]),
+      entry("Override 3", ["D6", "E7"]),
     ],
     filler: "Spare",
     seed: 999000,
@@ -62,6 +59,11 @@ export function numberedConditions(count, replicates) {
   return conditions;
 }
 
+// A fixed-contents entry with the given name and wells, e.g. entry("Blank", ["A1", "H12"]).
+export function entry(name, wells) {
+  return { name, wells: selectionOf(wells) };
+}
+
 // A WellSelection on GRID_96 with the given wells selected, e.g. selectionOf(["A1", "H12"]).
 export function selectionOf(wells) {
   const selection = new WellSelection(GRID_96);
@@ -72,7 +74,7 @@ export function selectionOf(wells) {
 }
 
 // A result as golden-file entries: one { well, contents, type } per well, in standard order,
-// e.g. [{ well: "A1", contents: "Static", type: "fixed-contents" }, …].
+// e.g. [{ well: "A1", contents: "Static", type: "fixed" }, …].
 export function goldenEntries(result) {
   return wellToContents(result).map(({ well, contents }) => ({
     well,

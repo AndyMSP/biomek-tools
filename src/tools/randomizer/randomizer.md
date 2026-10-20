@@ -191,13 +191,21 @@ Fixed-contents entries are numbered from 1 in the order listed, as conditions ar
 An empty condition list is not an error, and neither is a fixed-contents entry with no wells, with
 or without a name (see section 4).
 
+Problems are listed in the table's order: the conditions row by row, then the open wells, then the
+fixed-contents entries one by one, then the filler, then the seed. Within a row or an entry, its
+problems follow the table's order. A duplicate fixed-contents name is reported even if the entry has
+no wells; a blank name is reported as empty, never as a duplicate.
+
 **A well in two entries.** `placeName` and `openWells` keep each well in at most one entry, so this
 can only happen if a caller builds the entries some other way. The logic still checks it as a safety
-net, once per well, in standard well order: `A1 is in two fixed contents: "Static" and "Blank".`
+net, once per well, in standard well order, after all the problems above:
+`A1 is in two fixed contents: "Static" and "Blank".` A well in three or more entries gets one message
+naming the first two.
 
 `placeName` and `openWells` throw rather than report: an invalid well name throws the grid's own
 message (e.g. `"I1" is not on this grid. Valid wells are rows A–H, columns 1–12.`), and an `entry`
-that isn't in `fixedContents` throws `The entry to place must be one of the fixed contents.`
+that isn't in `fixedContents` throws `The entry to place must be one of the fixed contents.` If both
+are wrong, the entry's message is thrown.
 
 ## 8. Files and interface
 The randomizer's folder, `src/tools/randomizer/`, holds:

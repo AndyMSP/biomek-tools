@@ -10,7 +10,11 @@ import { Layout } from "../src/shared/layout/layout.js";
 import { WellSelection } from "../src/shared/well-selection/well-selection.js";
 import {
   findProblems,
+  placeName,
+  openWells,
   randomize,
+  matchesInputs,
+  listingOrder,
   contentsToWells,
   wellToContents,
   contentsToWellsText,
@@ -22,6 +26,7 @@ console.log(`WellGrid, GRID_96, SeededRandom, Layout, WellSelection and the rand
   GRID_96.wellPosition("D3")
   GRID_96.wellNameAt(4, 3)
   GRID_96.isEdgeWell("A5")
+  GRID_96.wellsInBox("B2", "C4")
   GRID_96.wellPosition("b2")
   new WellGrid(16, 24)
   const generator = new SeededRandom(37)
@@ -39,14 +44,18 @@ console.log(`WellGrid, GRID_96, SeededRandom, Layout, WellSelection and the rand
   selection.selectedWells()
   selection.unselectedWells().length
   selection.select("I1")
-  const inputs = { fixedWells: new WellSelection(GRID_96), conditions: [{ name: "Condition 1", replicates: 4 }], fixedContents: "", overrides: [], filler: "Spare", seed: 37 }
+  const inputs = { conditions: [{ name: "Condition 1", replicates: 4 }], fixedContents: [{ name: "Static", wells: new WellSelection(GRID_96) }], filler: "Spare", seed: 37 }
+  placeName(inputs.fixedContents, GRID_96.wellsInBox("A1", "A12"), inputs.fixedContents[0])
   findProblems(inputs)
   const result = randomize(inputs)
   result.wellTypes
-  contentsToWells(inputs, result)
+  listingOrder(inputs)
+  contentsToWells(result)
   wellToContents(result)
-  console.log(contentsToWellsText(inputs, result))
+  console.log(contentsToWellsText(result))
   console.log(wellToContentsText(result))
+  openWells(inputs.fixedContents, ["A1"])
+  matchesInputs(result, inputs)
   findProblems({ ...inputs, filler: "", seed: 0 })
 `);
 
@@ -59,7 +68,11 @@ session.context.SeededRandom = SeededRandom;
 session.context.Layout = Layout;
 session.context.WellSelection = WellSelection;
 session.context.findProblems = findProblems;
+session.context.placeName = placeName;
+session.context.openWells = openWells;
 session.context.randomize = randomize;
+session.context.matchesInputs = matchesInputs;
+session.context.listingOrder = listingOrder;
 session.context.contentsToWells = contentsToWells;
 session.context.wellToContents = wellToContents;
 session.context.contentsToWellsText = contentsToWellsText;

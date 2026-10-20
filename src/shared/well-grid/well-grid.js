@@ -96,6 +96,26 @@ export class WellGrid {
     return row === 1 || row === this.rows || column === 1 || column === this.columns;
   }
 
+  // Every well in the rectangle between two opposite corners, both included, in standard order,
+  // e.g. wellsInBox("B2", "C4") → ["B2", "B3", "B4", "C2", "C3", "C4"].
+  // The corners can be either pair of opposite corners, in either order: taking the smaller and
+  // larger row and column of the two means ("C4", "B2") and ("B4", "C2") give the same box.
+  wellsInBox(corner, oppositeCorner) {
+    const first = this.wellPosition(corner);
+    const second = this.wellPosition(oppositeCorner);
+    const wells = [];
+    for (let row = Math.min(first.row, second.row); row <= Math.max(first.row, second.row); row++) {
+      for (
+        let column = Math.min(first.column, second.column);
+        column <= Math.max(first.column, second.column);
+        column++
+      ) {
+        wells.push(formatWellName(row, column));
+      }
+    }
+    return wells;
+  }
+
   // Private methods (# names, like the private fields above): only code inside this class can call them.
 
   // True if a { row, column } position read from a well name lies within this grid.
