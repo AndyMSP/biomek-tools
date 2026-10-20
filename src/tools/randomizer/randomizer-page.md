@@ -131,7 +131,7 @@ Dragging uses pointer events, so it works with a mouse, a pen or a finger.
 **What each well shows.**
 - An open well is white with its well name.
 - A fixed well is filled with its entry's color (section 7), has a dark outline, and shows its
-  code (section 7), e.g. `F1`.
+  label (section 7), e.g. `Static` or `F2`.
 - Above the plate: `N fixed · N open`.
 - Each well's button is labeled for screen readers, e.g. `A1, fixed, Static` or `B2, open`.
 
@@ -148,7 +148,7 @@ needed, so they are shown as a calm, plain-language to-do list headed **Still ne
 `12 open wells are left over. Name a filler for them.`), not as alarming errors. When the list is
 empty, it says `Ready to randomize.`
 
-## 7. Colors and codes
+## 7. Colors and labels
 Each name gets a color from `listingOrder` (`randomizer.md`, section 6): its **role** picks a set of
 colors and its **position** picks the color within that set, wrapping around if there are more
 names than colors. Because positions count within each role, adding a condition doesn't change any
@@ -165,22 +165,32 @@ and in its legend.
 Text is `#1C1C1A` unless marked white. An entry with no name yet is gray (`#D9D7CF`). The colors are
 defined once, in `randomizer.css`, as named CSS variables.
 
-**Codes.** Names don't fit in a 40px well, so each well shows a short **code** instead, also from
-`listingOrder`: a condition shows its row number (`1`, `2`, `3` …), the filler shows `S`, and a
-fixed-contents entry shows `F` and its number (`F1`, `F2` …). Like colors, a fixed name that matches a
-condition takes the condition's code. An entry with no name yet shows `F` and its number. The legend
-pairs each code with its full name, and the hover box shows the full name of any well.
+**Labels.** Each well shows a short **label**, which fits in a 40px well:
+- a name shorter than 7 characters is its own label, e.g. `PBS`, `Static`, `Spare`;
+- a longer name is shown as a **code**, also from `listingOrder`: `C` and the row number for a
+  condition (`C1`, `C2` …), `Spare` for the filler, and `F` and its number for a fixed-contents entry
+  (`F1`, `F2` …). For example, `Drug A 10 µM` in row 1 shows as `C1`, and `Calibrator` as fixed
+  contents 2 shows as `F2`.
+
+Like colors, a name in several roles takes the code of the first (a fixed name that matches a
+condition shows the condition's code). An entry with no name yet shows `F` and its number. The hover
+box shows the full name of any well, and the legend pairs each code with its full name.
 
 ## 8. Showing the results
 After randomizing, the results section below the two columns shows:
 - **The result plate**: a second drawn plate, so the input plate stays as set up. Each well is filled
-  with its contents' color and shows its code (section 7); the hover box (section 5) shows the full
-  name. Randomized wells
-  (replicate and filler) are plain circles, and fixed wells have the same dark outline as on the
-  input plate.
+  with its contents' color and shows its label (section 7); the hover box (section 5) shows the full
+  name. Randomized wells (replicate and filler) are plain circles, and fixed wells have the same dark
+  outline as on the input plate.
 - **A key** for the two well kinds (`Randomized well`, `Fixed well`) and **a legend** listing each
-  contents with its color, its code, its full name and its number of wells, in the order of the
-  contents → wells list. The codes and colors come from the result's own copy of the inputs.
+  contents with its color, its full name and its number of wells, in the order of the contents →
+  wells list. When a contents' label is a code, the code comes before the name (`C1 Drug A 10 µM`);
+  otherwise the name appears once. The labels and colors come from the result's own copy of the
+  inputs.
+- **Legend highlighting.** Pointing at a legend item highlights that contents' wells on the result
+  plate and dims all the others, so its spread across the plate is easy to see. Clicking an item keeps
+  it highlighted after the pointer moves away (useful on a touch screen); clicking it again, or
+  clicking another item, changes or clears it. A new result starts with nothing highlighted.
 - **The seed** used (`result.inputs.seed`).
 - **The two lists** (contents → wells and well → contents), each with its column headings on screen
   and a **Copy** button that copies the list's copy text (`randomizer.md`, section 6). After copying,
@@ -210,7 +220,9 @@ modules, which are. Before each release, check by hand in Edge and Chrome, openi
 - the copied text pastes into Excel as two columns;
 - cells copied from Excel paste into both tables as described in section 4;
 - typing a whole condition list using only Enter;
-- the hover box appears at once on both plates, and never twice.
+- the hover box appears at once on both plates, and never twice;
+- pointing at and clicking legend items highlights the right wells, including a name in two
+  roles.
 
 ## 10. Visual design
 The page should look calm and be easy to scan. These values come from the design mockup; the page's
@@ -247,15 +259,18 @@ to click.
 
 **Plates.** Wells are 40px circles, 4px apart, with row letters and column numbers in small gray
 monospace text. An open well is white with a gray border (`#BDBDB5`) and its name in gray monospace
-(10px). Codes are 12px semibold monospace (11px in fixed wells, inside the outline). Above the input
-plate: its heading on the left and `N fixed · N open` on the right.
+(10px). Labels are 10px monospace (9px in fixed wells, inside the outline). Above the input plate:
+its heading on the left and `N fixed · N open` on the right.
+
+**Highlighting.** The other wells dim to about 20% opacity, and the highlighted wells get a blue ring
+(`#2F5DA8`). The highlighted legend item has a pale blue background (`#EEF3FB`).
 
 **Hover box.** Dark (`#1C1C1A`) with white 13px text and 6px corners, just above the well.
 
 **Results panel.** Its heading on the left and `Seed 48213` on the right. Below, two columns that
 stack in a narrow window:
 - Left: the result plate, then the key, then the legend. Each legend item shows its color, its code
-  in bold monospace, its name on one line, and its number of wells.
+  (if any) in bold monospace, its name on one line, and its number of wells.
 - Right: the two lists, one above the other. Each has its heading with its Copy button at the right
   end of the same line, then the list in a box (border `#E2E0D8`, 6px corners) that scrolls when it is
   taller than 240px, with its column headings staying visible. List text is 13px, and well names are
