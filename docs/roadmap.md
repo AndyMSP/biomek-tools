@@ -45,9 +45,9 @@ Order of work:
 Expected for version 1 (to be confirmed in `randomizer.md`), one 96-well plate:
 - List the conditions and how many replicates each needs. There is no organized plate: samples
   don't start in one, so the replicates are dealt directly into random wells.
-- Choose which wells are fixed and which are open, by clicking wells. The user decides which wells
-  are fixed; contents never do.
-- Name the contents of the fixed wells (no preset), with optional exceptions for individual wells.
+- Choose which wells are fixed by listing fixed contents (no preset) and placing each on wells by
+  clicking or dragging a box; the other wells are open. The user decides which wells are fixed;
+  contents never do.
 - Name a filler for spare open wells; the filler is randomized together with the conditions.
 - Replicates (and filler) are put in a random order and placed into the open wells. The order is
   seeded, so the same inputs and seed always give the same result.
