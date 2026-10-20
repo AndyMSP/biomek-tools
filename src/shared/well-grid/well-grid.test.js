@@ -120,6 +120,42 @@ describe("well-grid", () => {
     assert.equal(edgeWells.length, 36);
   });
 
+  // --- wellsInBox(corner, oppositeCorner) ---
+
+  test("wellsInBox() lists the wells between two corners in standard order", () => {
+    assert.deepEqual(GRID_96.wellsInBox("B2", "C4"), ["B2", "B3", "B4", "C2", "C3", "C4"]);
+  });
+
+  test("wellsInBox() gives the same box from all four directions", () => {
+    const expected = ["B2", "B3", "B4", "C2", "C3", "C4"];
+    assert.deepEqual(GRID_96.wellsInBox("C4", "B2"), expected);
+    assert.deepEqual(GRID_96.wellsInBox("B4", "C2"), expected);
+    assert.deepEqual(GRID_96.wellsInBox("C2", "B4"), expected);
+  });
+
+  test("wellsInBox() with equal corners gives one well, and A1 to H12 gives every well", () => {
+    assert.deepEqual(GRID_96.wellsInBox("D7", "D7"), ["D7"]);
+    assert.deepEqual(GRID_96.wellsInBox("A1", "H12"), GRID_96.wellNames());
+  });
+
+  test("wellsInBox() works for a single row and a single column", () => {
+    assert.deepEqual(GRID_96.wellsInBox("A3", "A5"), ["A3", "A4", "A5"]);
+    assert.deepEqual(GRID_96.wellsInBox("B2", "D2"), ["B2", "C2", "D2"]);
+  });
+
+  test("wellsInBox() works on other grids", () => {
+    const grid = new WellGrid(2, 3);
+    assert.deepEqual(grid.wellsInBox("A1", "B3"), grid.wellNames());
+    assert.equal(grid.wellsInBox("A1", "B3").length, 6);
+  });
+
+  test("wellsInBox() with a bad corner throws the same message as wellPosition()", () => {
+    assert.throws(() => GRID_96.wellsInBox("I1", "A1"), {
+      message: '"I1" is not on this grid. Valid wells are rows A–H, columns 1–12.',
+    });
+    assert.throws(() => GRID_96.wellsInBox("A1", "b2"), { message: /Did you mean "B2"\?/ });
+  });
+
   // --- Error messages ---
 
   test("a lowercase name gets a suggestion", () => {
