@@ -12,15 +12,10 @@ Last updated: 2026-10-20
   a worklist the tool writes, for **one general-purpose method** built once in Biomek Software, whose
   steps take their settings from the worklist's columns. Andy is asking Beckman whether they offer a
   programming interface (API).
-- **Next step:** the specification for the **`operation-list`** shared module: an ordered list of
-  everything the tool decides, held in memory. It is the single source of truth for the Biomek
-  output, volume tracking and the transfer designer, and needs no instrument time.
-  - Each operation is an object whose `type` says what kind it is; each module reads only the types
-    it uses. Version 1 has one type, `transfer` (from labware and well, to labware and well, volume).
-  - **Tip changes will be set by this tool**, as a later operation type, once it is known how the
+- **Next step:** the code and tests for the **`operation-list`** shared module, against its
+  specification (`src/shared/operation-list/operation-list.md`). It needs no instrument time.
+  - **Tip changes will be set by the tools**, as a later operation type, once it is known how the
     Span-8 changes tips (see "Open decisions").
-  - Only things this tool decides become operation types. Concentrations are calculated from the
-    list by volume tracking, never stored in it.
 - **After that, undecided:** volume tracking (towards the transfer designer) or the Biomek file
   writer and the general-purpose method (towards Biomek output, best done with access to the
   instrument).
@@ -50,6 +45,9 @@ Last updated: 2026-10-20
 - **Build step**: `npm run build` makes one self-contained HTML file per tool in `dist/`, which opens
   in Edge or Chrome with nothing installed. See ADR 0004.
 - **Release v0.1.0** of the randomizer, 2026-10-20.
+- **`operation-list.md`**: the specification for the operation list, an ordered, immutable list of
+  operations (version 1: transfers only), the single source of truth for Biomek output, volume
+  tracking and the transfer designer. See `src/shared/operation-list/operation-list.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
   `npm run serve`.
 
@@ -137,8 +135,9 @@ Show what each well will contain after a series of transfers, and warn about pro
 overfilling a well or drawing more than it holds.
 - Proposed design: **replay**. Keep the starting layout and the operation list, and compute the
   current state by applying its transfers in order, rather than keeping an object that changes.
-  This gives undo for free (remove the last transfer), is a pure function and easy to test, and
-  keeps the operation list as the single source of truth — the same list that becomes the Biomek
+  This is a pure function and easy to test, works with undo of any edit (the operation list is
+  immutable, so earlier versions stay as they were), and keeps the operation list as the single
+  source of truth — the same list that becomes the Biomek
   files.
 - Well capacities come from the labware types.
 
@@ -148,6 +147,11 @@ overfilling a well or drawing more than it holds.
   with the real reading. This would check any method, both how much went where and whether it went
   to the right well, without designing a new test each time. It builds on the operation list and
   volume tracking.
+- **Hand-pipetting plans.** The operation list doesn't depend on the Biomek, so it could also
+  describe an experiment done by hand. Volume tracking would show each well's volume and
+  concentrations, and a "pipette this, then this" sheet would be one more output from the same list.
+  Existing plate-map tools let you label wells, but don't calculate their contents from the planned
+  steps.
 
 ## Open decisions
 - **How tip changes are represented** in the operation list: a `tipChange` operation, a property of
@@ -162,6 +166,12 @@ overfilling a well or drawing more than it holds.
   - What a row holds also affects run time. A Transfer From File step can plan how to use the probes
     efficiently across many transfers, while transfers carried out one row at a time may not use
     them as well.
+  - Working rule: each setting is controlled in one place, either the worklist or the
+    general-purpose method, never both, so the tool never shows one plan while the Biomek follows
+    another. To revisit once it's known what a row can vary.
+- **How operations are checked against labware**, such as whether a well exists on the named
+  labware or a volume fits in it. Ideally live, as operations are entered, so a wrong sequence is
+  caught before it's built. Where the check lives is undecided; `operation-list` doesn't do it.
 - **A programming interface from Beckman**: Andy is asking whether one exists. If it does, ADR 0006's
   option 3 would be reconsidered.
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)
