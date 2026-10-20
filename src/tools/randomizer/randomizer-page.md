@@ -130,8 +130,8 @@ defined once, in `randomizer.css`, as named CSS variables.
 ## 8. Showing the results
 After randomizing, the results section below the two columns shows:
 - **The result plate**: a second drawn plate, so the input plate stays as set up. Each well is filled
-  with its contents' color and shows a short label (conditions as `C3` for `Condition 3`, other names
-  cut to about six characters); hovering shows the well and the full name. Randomized wells
+  with its contents' color and shows a short label, the name cut to about six characters, as on the
+  input plate; hovering shows the well and the full name. Randomized wells
   (replicate and filler) are plain circles, and fixed wells have the same dark outline as on the
   input plate.
 - **A key** for the two well kinds (`Randomized well`, `Fixed well`) and **a legend** listing each
