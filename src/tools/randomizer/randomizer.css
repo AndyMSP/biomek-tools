@@ -243,8 +243,6 @@ button.primary:disabled {
 }
 
 .add-button {
-  align-self: flex-start;
-  min-height: 44px;
   border: 1px dashed var(--primary-light-border);
   background: transparent;
   color: var(--primary);
@@ -277,6 +275,16 @@ button:focus-visible,
 input:focus-visible {
   outline: 3px solid var(--primary-light-border);
   outline-offset: 1px;
+}
+
+/* A table's heading line: the heading on the left and its add button at the right, where it stays
+   put as rows are added. */
+.section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
 }
 
 /* --- Input tables (section 4) --- */
@@ -480,8 +488,8 @@ input:focus-visible {
   font: 500 12px/1 var(--mono-font);
 }
 
-/* A well: a circle with a short label. Its colors are set by randomizer-page.js as --well-fill and
-   --well-text. */
+/* A well: a circle with a code (or, if open on the input plate, its well name). Its colors are set
+   by randomizer-page.js as --well-fill and --well-text. */
 .well {
   display: flex;
   align-items: center;
@@ -495,20 +503,42 @@ input:focus-visible {
   border-radius: 50%;
   background: var(--well-fill, var(--panel-background));
   color: var(--well-text, var(--open-well-text));
-  font: 500 10px/1 var(--mono-font);
+  font: 600 12px/1 var(--mono-font);
   white-space: nowrap;
+}
+
+/* An open well on the input plate shows its well name, in smaller, lighter text. */
+.input-plate .well:not(.fixed) {
+  font-size: 10px;
+  font-weight: 500;
 }
 
 .input-plate .well {
   cursor: pointer;
 }
 
-/* The dark outline leaves less room inside, so the label is a size smaller to still fit six
-   characters. */
+/* The dark outline leaves less room inside, so the code is a size smaller. */
 .well.fixed {
   border: 3px solid var(--fixed-outline);
-  font-size: 9px;
-  letter-spacing: -0.2px;
+  font-size: 11px;
+}
+
+/* The one hover box (section 5): just above the well under the pointer. */
+.hover-box {
+  position: fixed;
+  z-index: 10;
+  transform: translate(-50%, -100%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--text-dark);
+  color: var(--text-light);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.hover-box[hidden] {
+  display: none;
 }
 
 .placing-note {
@@ -594,7 +624,7 @@ input:focus-visible {
 
 .legend {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 6px 16px;
   max-width: 540px;
 }
@@ -607,8 +637,17 @@ input:focus-visible {
   min-width: 0;
 }
 
-.legend li > span:nth-child(2) {
-  overflow-wrap: anywhere;
+.legend-code {
+  min-width: 1.6em;
+  font: 600 12px/1 var(--mono-font);
+}
+
+/* A legend name stays on one line, cut with "…" if it is too long; the hover box and lists show it
+   in full. */
+.legend-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .key-well {

@@ -27,7 +27,10 @@
              Randomize. -->
         <div class="panel inputs-panel">
           <section aria-labelledby="randomized-contents-heading">
-            <h2 id="randomized-contents-heading">Randomized contents</h2>
+            <div class="section-heading">
+              <h2 id="randomized-contents-heading">Randomized contents</h2>
+              <button id="add-condition" class="add-button" type="button">+ Add row</button>
+            </div>
             <table class="input-table">
               <thead>
                 <tr>
@@ -50,11 +53,13 @@
               The last row is the filler: it is shuffled in with the replicates and fills every
               spare open well.
             </p>
-            <button id="add-condition" class="add-button" type="button">+ Add row</button>
           </section>
 
           <section aria-labelledby="fixed-contents-heading">
-            <h2 id="fixed-contents-heading">Fixed contents</h2>
+            <div class="section-heading">
+              <h2 id="fixed-contents-heading">Fixed contents</h2>
+              <button id="add-entry" class="add-button" type="button">+ Add fixed contents</button>
+            </div>
             <p class="note">Choose a name, then click wells on the plate, or drag across them, to place it.</p>
             <table class="input-table">
               <thead>
@@ -69,7 +74,6 @@
               </thead>
               <tbody id="fixed-contents-body"></tbody>
             </table>
-            <button id="add-entry" class="add-button" type="button">+ Add fixed contents</button>
           </section>
 
           <section class="seed">

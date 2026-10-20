@@ -1,16 +1,17 @@
 // randomizer-page.js — the randomizer page's behavior: keeps the inputs, updates them as the user
-// types and clicks, shows what is still needed, randomizes, and draws the results.
+// types, pastes and clicks, shows what is still needed, randomizes, and draws the results.
 //
 // The page has no randomizer logic of its own (randomizer-page.md, section 1). It keeps the inputs
 // object from randomizer.md (section 8), changes which wells are fixed only through placeName and
 // openWells, and asks randomizer.js for everything it shows about the inputs and the result.
-// Typing a name, a replicate count, the filler or the seed, and adding or removing a row or entry,
-// change the inputs object directly: randomizer.md defines no functions for these (renaming an entry
+// Typing or pasting a name, a replicate count, the filler or the seed, and adding or removing a row
+// or entry, change the inputs object directly: randomizer.md defines no functions for these (renaming an entry
 // "needs no function", section 4).
 // Specification: randomizer-page.md.
 
 import { GRID_96 } from "../../shared/well-grid/well-grid.js";
 import { WellSelection } from "../../shared/well-selection/well-selection.js";
+import { parsePastedTable, isMultiCell } from "../../shared/pasted-table/pasted-table.js";
 import {
   findProblems,
   placeName,
@@ -25,9 +26,6 @@ import {
   contentsToWellsText,
   wellToContentsText,
 } from "./randomizer.js";
-
-// Plate labels show names cut to this many characters (sections 5 and 8: "about six").
-const SHORT_LABEL_LENGTH = 6;
 
 // The colors of an entry with no name yet (section 7).
 const UNNAMED_COLOR = { fill: "var(--unnamed-fill)", text: "var(--text-dark)" };
@@ -98,6 +96,7 @@ function setUpPage() {
   connectInputs();
   connectInputPlate();
   connectResults();
+  connectHoverBox();
   refresh();
 }
 
@@ -186,10 +185,51 @@ function createConditionRow(condition, index) {
     },
   );
   replicatesBox.inputMode = "numeric";
+  // Enter moves to the next useful box (section 4): name → replicates → the next row's name.
+  onEnter(nameBox, () => replicatesBox.focus());
+  onEnter(replicatesBox, () => goToNextCondition(condition));
+  // Pasting several cells fills the table from this box (section 4).
+  onMultiCellPaste(nameBox, (rows) => pasteConditions(condition, "name", rows));
+  onMultiCellPaste(replicatesBox, (rows) => pasteConditions(condition, "replicates", rows));
   const removeButton = createButton("Remove", `Remove row ${number}`, () =>
     removeCondition(condition),
   );
   return createRow([String(number), nameBox, replicatesBox, removeButton]);
+}
+
+// Puts the cursor in the next row's name box, or adds a row after the last one, unless the last
+// row is still completely empty, so pressing Enter repeatedly can't pile up empty rows (section 4).
+function goToNextCondition(condition) {
+  const index = inputs.conditions.indexOf(condition);
+  const nextRow = elements.conditionsBody.children[index + 1];
+  if (nextRow !== undefined) {
+    nextRow.querySelector("input").focus();
+  } else if (condition.name.trim() !== "" || String(condition.replicates).trim() !== "") {
+    addCondition();
+  }
+}
+
+// Fills the condition rows from `condition` down with pasted rows, overwriting the rows below and
+// adding rows as needed (section 4). Pasted into the name column, each row's cells are the name and
+// then, if there is one, the replicates; into the replicates column, just the replicates.
+function pasteConditions(condition, column, rows) {
+  const start = inputs.conditions.indexOf(condition);
+  rows.forEach((cells, offset) => {
+    if (inputs.conditions[start + offset] === undefined) {
+      inputs.conditions.push(newCondition());
+    }
+    const target = inputs.conditions[start + offset];
+    if (column === "name") {
+      target.name = cells[0];
+      if (cells[1] !== undefined) {
+        target.replicates = typedValue(cells[1]);
+      }
+    } else {
+      target.replicates = typedValue(cells[0]);
+    }
+  });
+  drawConditionRows();
+  inputsChanged();
 }
 
 // Adds an empty condition row and puts the cursor in its name box.
@@ -249,6 +289,8 @@ function createEntryRow(entry, index) {
     entry.name = text;
   });
   nameBox.addEventListener("focus", () => chooseEntryToPlace(entry));
+  onEnter(nameBox, () => goToNextEntry(entry));
+  onMultiCellPaste(nameBox, (rows) => pasteEntries(entry, rows));
   const wellCount = document.createElement("span");
   wellCount.className = "well-count";
   const removeButton = createButton("Remove", `Remove fixed contents ${number}`, () =>
@@ -274,6 +316,32 @@ function refreshEntryRows(colors) {
 function chooseEntryToPlace(entry) {
   entryBeingPlaced = entry;
   refresh();
+}
+
+// Puts the cursor in the next entry's name box (making it the one being placed), or adds an entry
+// after the last one, unless the last entry still has no name (section 4).
+function goToNextEntry(entry) {
+  const index = inputs.fixedContents.indexOf(entry);
+  const nextRow = elements.fixedContentsBody.children[index + 1];
+  if (nextRow !== undefined) {
+    nextRow.querySelector("input[type=text]").focus();
+  } else if (entry.name.trim() !== "") {
+    addEntry();
+  }
+}
+
+// Fills the fixed-contents names from `entry` down with the first cell of each pasted row,
+// overwriting the entries below and adding entries as needed (section 4).
+function pasteEntries(entry, rows) {
+  const start = inputs.fixedContents.indexOf(entry);
+  rows.forEach((cells, offset) => {
+    if (inputs.fixedContents[start + offset] === undefined) {
+      inputs.fixedContents.push(newEntry());
+    }
+    inputs.fixedContents[start + offset].name = cells[0];
+  });
+  drawEntryRows();
+  inputsChanged();
 }
 
 // Adds an empty entry and makes it the one being placed, with the cursor in its name box.
@@ -326,21 +394,21 @@ function drawInputPlateState(colors) {
 }
 
 // Shows one input-plate well: open (white, with its well name) or fixed (its entry's color, a dark
-// outline and a short label), with the full name on hover and a label for screen readers.
+// outline and its code), with its hover-box text and a label for screen readers.
 function showInputWell(wellElement, well, entry, colors) {
   if (entry === null) {
     showWell(wellElement, { label: well, color: null, isFixed: false });
-    wellElement.title = well;
+    wellElement.dataset.hover = `${well}: open`;
     wellElement.setAttribute("aria-label", `${well}, open`);
     return;
   }
   const nameText = entry.name === "" ? "no name yet" : entry.name;
   showWell(wellElement, {
-    label: shortLabel(entry.name),
+    label: entryCode(entry),
     color: colorOf(entry.name, colors),
     isFixed: true,
   });
-  wellElement.title = `${well}: ${nameText}`;
+  wellElement.dataset.hover = `${well}: ${nameText}`;
   wellElement.setAttribute("aria-label", `${well}, fixed, ${nameText}`);
 }
 
@@ -363,6 +431,7 @@ function dragPreview() {
 // Starts a drag when the main button (or a finger or pen) presses a well. Whether releasing will
 // open or place is decided here, by the well where the press started.
 function startDrag(event) {
+  hideHoverBox();
   const well = wellOf(event.target);
   if (well === null || event.button !== 0) {
     return;
@@ -471,22 +540,24 @@ function createResultWell() {
   return document.createElement("div");
 }
 
-// Fills each result-plate well with its contents' color and a short label. Fixed wells get the dark
-// outline; randomized wells (replicate and filler) are plain circles.
+// Fills each result-plate well with its contents' color and code. Fixed wells get the dark outline;
+// randomized wells (replicate and filler) are plain circles.
 function drawResultPlate(colors) {
+  const codes = codesByName(result.inputs);
   for (const { well, contents } of wellToContents(result)) {
     const wellElement = elements.resultPlate.querySelector(`[data-well="${well}"]`);
     const isFixed = result.wellTypes[well] === "fixed";
-    showWell(wellElement, { label: shortLabel(contents), color: colorOf(contents, colors), isFixed });
-    wellElement.title = `${well}: ${contents}`;
+    showWell(wellElement, { label: codes.get(contents), color: colorOf(contents, colors), isFixed });
+    wellElement.dataset.hover = `${well}: ${contents}`;
     wellElement.setAttribute("role", "img");
     wellElement.setAttribute("aria-label", `${well}, ${isFixed ? "fixed" : "randomized"}, ${contents}`);
   }
 }
 
-// Lists each contents with its color, full name and number of wells, in the order of the
-// contents → wells list, e.g. "■ Condition 1  4 wells".
+// Lists each contents with its color, code, full name and number of wells, in the order of the
+// contents → wells list, e.g. "● 1 Condition 1  4 wells".
 function drawLegend(colors) {
+  const codes = codesByName(result.inputs);
   const items = contentsToWells(result).map(({ contents, wells }) => {
     const swatch = document.createElement("span");
     swatch.className = "swatch";
@@ -494,7 +565,11 @@ function drawLegend(colors) {
     const count = createElement("span", countOf(wells.length, "well"));
     count.className = "legend-count";
     const item = document.createElement("li");
-    item.append(swatch, createElement("span", contents), count);
+    const code = createElement("span", codes.get(contents));
+    code.className = "legend-code";
+    const name = createElement("span", contents);
+    name.className = "legend-name";
+    item.append(swatch, code, name, count);
     return item;
   });
   elements.legend.replaceChildren(...items);
@@ -598,14 +673,6 @@ function wellOf(element) {
   return element.closest("[data-well]")?.dataset.well ?? null;
 }
 
-// A name cut to fit in a well, e.g. "Static" → "Static", "Condition 12" → "Condi…".
-function shortLabel(name) {
-  if (name.length <= SHORT_LABEL_LENGTH) {
-    return name;
-  }
-  return `${name.slice(0, SHORT_LABEL_LENGTH - 1)}…`;
-}
-
 // --- Colors (section 7) ---
 
 // Each name's colors for a set of inputs, from listingOrder: the role picks the set and the position
@@ -640,6 +707,74 @@ function colorOf(name, colors) {
   return colors.get(name) ?? UNNAMED_COLOR;
 }
 
+// --- Codes (section 7) ---
+
+// Each name's code for a set of inputs, from listingOrder: a condition's row number ("1", "2" …),
+// the filler "S", and a fixed-contents entry's "F" and number ("F1", "F2" …),
+// e.g. Map { "Condition 1" → "1", "Spare" → "S", "Static" → "F1" }.
+function codesByName(someInputs) {
+  const codes = new Map();
+  for (const { name, role, position } of listingOrder(someInputs)) {
+    codes.set(name, codeFor(role, position));
+  }
+  return codes;
+}
+
+// The code for a role and a position counted from 0, e.g. ("fixed", 0) → "F1".
+function codeFor(role, position) {
+  if (role === "condition") {
+    return String(position + 1);
+  }
+  if (role === "filler") {
+    return "S";
+  }
+  return `F${position + 1}`;
+}
+
+// The code an entry shows on the input plate: its name's code, or, while it has no name yet, "F"
+// and its number, e.g. the second entry with no name → "F2".
+function entryCode(entry) {
+  return codesByName(inputs).get(entry.name) ?? codeFor("fixed", inputs.fixedContents.indexOf(entry));
+}
+
+// --- Hover box (section 5) ---
+
+// Creates the one hover box shared by both plates, and shows it beside a well as soon as the pointer
+// is over it, with the well's hover text, e.g. "E4: Vehicle". It hides when the pointer leaves the
+// well, the page scrolls, or a drag starts. Being one box, moved from well to well, two can never
+// show at once.
+function connectHoverBox() {
+  const hoverBox = document.createElement("div");
+  hoverBox.className = "hover-box";
+  hoverBox.hidden = true;
+  document.body.append(hoverBox);
+  document.addEventListener("pointerover", (event) => {
+    const wellElement = event.target.closest(".plate [data-well]");
+    if (wellElement === null || drag !== null) {
+      return;
+    }
+    const box = wellElement.getBoundingClientRect();
+    hoverBox.textContent = wellElement.dataset.hover ?? "";
+    hoverBox.style.left = `${box.left + box.width / 2}px`;
+    hoverBox.style.top = `${box.top - 6}px`;
+    hoverBox.hidden = false;
+  });
+  document.addEventListener("pointerout", (event) => {
+    if (event.target.closest(".plate [data-well]") !== null) {
+      hideHoverBox();
+    }
+  });
+  document.addEventListener("scroll", hideHoverBox, true);
+}
+
+// Hides the hover box, if it has been created.
+function hideHoverBox() {
+  const hoverBox = document.querySelector(".hover-box");
+  if (hoverBox !== null) {
+    hoverBox.hidden = true;
+  }
+}
+
 // --- Small helpers ---
 
 // What a typed replicate count or seed is passed on as: digits as a number, anything else as the
@@ -651,6 +786,28 @@ function typedValue(text) {
 // A count with its noun, made plural when the count isn't 1, e.g. countOf(1, "well") → "1 well".
 function countOf(count, noun) {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+// Calls `action` when Enter is pressed in a box, instead of anything Enter would otherwise do.
+function onEnter(box, action) {
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      action();
+    }
+  });
+}
+
+// When text with several cells is pasted into a box, calls `action` with its rows (from
+// parsePastedTable) instead of pasting it into the box. A single value pastes normally.
+function onMultiCellPaste(box, action) {
+  box.addEventListener("paste", (event) => {
+    const text = event.clipboardData.getData("text/plain");
+    if (isMultiCell(text)) {
+      event.preventDefault();
+      action(parsePastedTable(text));
+    }
+  });
 }
 
 // A text box holding `value`, labeled for screen readers, that calls onType with the new text after
