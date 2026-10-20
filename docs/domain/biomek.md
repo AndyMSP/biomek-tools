@@ -119,5 +119,7 @@ Questions to answer before relying on the answer:
   only our convention from Exp37?
 - The largest volume, and the number of decimal places, accepted in a volume column.
 - What happens when a worklist row names a file that doesn't exist: an error, or a skipped row?
+- What the Biomek does with a zero-volume row when "Skip zero volume transfers" is off: an error,
+  a skipped row, or a pipetting motion with no liquid.
 - Whether a variable well in a Span-8 Aspirate or Dispense step works as the manual describes, and
   whether the Transfer step accepts one too.
