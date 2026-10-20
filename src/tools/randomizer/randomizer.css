@@ -1,0 +1,746 @@
+/*
+  randomizer.css — the randomizer page's styling, including its colors.
+  Specification: randomizer-page.md (layout in section 3, name colors in section 7, look in
+  section 10).
+*/
+
+/* --- Name colors (section 7) ---
+   Each role has a numbered set of fill colors. randomizer-page.js picks one with the name's role and
+   position from listingOrder, wrapping around after the last, so it reads how many each set has from
+   the --…-color-count variables below. Text on a fill is dark unless a --…-text-N variable says
+   otherwise. */
+:root {
+  --text-dark: #1c1c1a;
+  --text-light: #ffffff;
+
+  --condition-color-count: 16;
+  --condition-fill-1: #4e79a7;
+  --condition-text-1: var(--text-light);
+  --condition-fill-2: #f28e2b;
+  --condition-fill-3: #59a14f;
+  --condition-fill-4: #e15759;
+  --condition-fill-5: #b07aa1;
+  --condition-fill-6: #edc948;
+  --condition-fill-7: #76b7b2;
+  --condition-fill-8: #ff9da7;
+  --condition-fill-9: #9c755f;
+  --condition-text-9: var(--text-light);
+  --condition-fill-10: #a0cbe8;
+  --condition-fill-11: #ffbe7d;
+  --condition-fill-12: #8cd17d;
+  --condition-fill-13: #d37295;
+  --condition-fill-14: #d4a6c8;
+  --condition-fill-15: #499894;
+  --condition-fill-16: #f1ce63;
+
+  --filler-color-count: 1;
+  --filler-fill-1: #f2ede3;
+
+  --fixed-color-count: 6;
+  --fixed-fill-1: #8a99a8;
+  --fixed-fill-2: #b3a78f;
+  --fixed-fill-3: #9c9ac2;
+  --fixed-fill-4: #93ae97;
+  --fixed-fill-5: #be9a9a;
+  --fixed-fill-6: #a9a9a6;
+
+  /* An entry with no name yet. */
+  --unnamed-fill: #d9d7cf;
+}
+
+/* --- The page's own colors, sizes and fonts (section 10) --- */
+:root {
+  --page-background: #f6f5f1;
+  --panel-background: #ffffff;
+  --panel-border: #e2e0d8;
+  --input-border: #cfcdc4;
+  --muted-text: #5e5e58;
+  --note-text: #5e5e58;
+  --open-well-border: #bdbdb5;
+  --open-well-text: #6b6b66;
+  --fixed-outline: #1c1c1a;
+  --placing-highlight: #eef3fb;
+  --filler-row-background: #fbf4ea;
+  --filler-row-line: #ddb58b;
+  --filler-row-text: #7a4e14;
+  --primary: #2f5da8;
+  --primary-light-border: #9db7db;
+  --disabled-background: #d9d7cf;
+  --disabled-text: #6b6b66;
+  --ready-text: #22603a;
+  --to-do-background: #f6f5f1;
+  --banner-background: #fce9e7;
+  --banner-border: #e8a39b;
+  --banner-text: #7a1f15;
+
+  --text-font: "Segoe UI", system-ui, sans-serif;
+  --mono-font: Consolas, "Cascadia Mono", monospace;
+
+  --well-size: 40px;
+  --well-gap: 4px;
+  --panel-padding: 24px;
+  --panel-gap: 24px;
+}
+
+/* --- Page --- */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 32px 16px 48px;
+  background: var(--page-background);
+  color: var(--text-dark);
+  font-family: var(--text-font);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.page-header,
+main {
+  max-width: 1240px;
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: var(--panel-gap);
+}
+
+h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.subtitle,
+.muted {
+  color: var(--muted-text);
+  font-size: 14px;
+}
+
+h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+.note {
+  color: var(--note-text);
+  font-size: 13px;
+}
+
+/* Text for screen readers only: hidden on screen but still read aloud, e.g. column headings for
+   columns of buttons. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- Panels (section 10): white boxes on the off-white page --- */
+.panel {
+  padding: var(--panel-padding);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel-background);
+}
+
+/* A panel's heading line: the heading on the left, a short fact (counts, seed) on the right. */
+.panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* --- Layout (section 3): two columns, results below; stacked in a narrow window --- */
+.columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--panel-gap);
+  align-items: flex-start;
+  margin-bottom: var(--panel-gap);
+}
+
+.inputs-panel {
+  flex: 1 1 380px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.inputs-panel > section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.plate-panel {
+  flex: 1 1 560px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* The plates keep their size and scroll sideways inside their own box in a narrow window. */
+.plate-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* --- Buttons and text boxes --- */
+button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--panel-background);
+  color: var(--text-dark);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+button.primary {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 22px;
+  border: none;
+  background: var(--primary);
+  color: var(--text-light);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+button.primary:disabled {
+  background: var(--disabled-background);
+  color: var(--disabled-text);
+}
+
+.add-button {
+  border: 1px dashed var(--primary-light-border);
+  background: transparent;
+  color: var(--primary);
+}
+
+.copy-button {
+  border-color: var(--primary-light-border);
+  color: var(--primary);
+  font-size: 13px;
+}
+
+.copy-button:disabled {
+  border-color: var(--disabled-background);
+  background: #f1f0ec;
+  color: var(--disabled-text);
+}
+
+input[type="text"] {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--panel-background);
+  font: inherit;
+  font-size: 14px;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--primary-light-border);
+  outline-offset: 1px;
+}
+
+/* A table's heading line: the heading on the left and its add button at the right, where it stays
+   put as rows are added. */
+.section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- Input tables (section 4) --- */
+.input-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.input-table th {
+  padding: 0 8px 6px 0;
+  color: var(--muted-text);
+  font-weight: 500;
+  text-align: left;
+}
+
+.input-table td {
+  padding: 3px 8px 3px 0;
+}
+
+.input-table td:last-child,
+.input-table th:last-child {
+  padding-right: 0;
+}
+
+.input-table .number-column {
+  width: 28px;
+}
+
+.input-table .replicates-column {
+  width: 110px;
+}
+
+.input-table .placing-column {
+  width: 64px;
+}
+
+.input-table .swatch-column {
+  width: 28px;
+}
+
+.input-table .wells-column {
+  width: 72px;
+}
+
+.input-table .remove-column {
+  width: 1px;
+}
+
+/* Row numbers and well counts in gray. */
+.input-table td:first-child,
+.input-table .well-count {
+  color: var(--muted-text);
+}
+
+/* Remove buttons: small and plain, so they don't compete with the inputs. */
+.input-table button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.input-table button:hover {
+  border-color: var(--input-border);
+  color: var(--text-dark);
+}
+
+/* The filler row: a pale warm background with a dashed line above it. */
+.filler-row td {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-top: 1px dashed var(--filler-row-line);
+  background: var(--filler-row-background);
+}
+
+.filler-row td:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.filler-row td:last-child {
+  border-radius: 0 6px 6px 0;
+  padding-right: 8px;
+}
+
+.filler-row input[type="text"] {
+  border-color: var(--filler-row-line);
+}
+
+#filler-fills {
+  color: var(--filler-row-text);
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+/* The fixed-contents entry being placed. */
+.being-placed td {
+  background: var(--placing-highlight);
+}
+
+.being-placed td:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.being-placed td:last-child {
+  border-radius: 0 6px 6px 0;
+}
+
+.input-table input[type="radio"] {
+  width: 18px;
+  height: 18px;
+  margin: 0 0 0 6px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* A small circle of a name's color, in the fixed-contents table and the legend. Fixed contents have
+   the fixed wells' dark outline. */
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--swatch-fill, var(--unnamed-fill));
+  vertical-align: middle;
+}
+
+.input-table .swatch {
+  border: 3px solid var(--fixed-outline);
+}
+
+.inputs-panel > .seed {
+  flex-direction: row;
+  align-items: center;
+}
+
+.seed label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.seed input[type="text"] {
+  width: 160px;
+}
+
+/* --- To-do list and Randomize (section 6): calm guidance in a tinted box --- */
+.inputs-panel > .to-do {
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: var(--to-do-background);
+}
+
+.to-do h2 {
+  font-size: 14px;
+}
+
+.to-do ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #3a3a36;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.to-do ul:empty {
+  display: none;
+}
+
+#ready {
+  color: var(--ready-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* --- Plates (sections 5 and 8) ---
+   A grid with a heading row of column numbers and a heading column of row letters. The number of
+   rows and columns comes from the grid, set by randomizer-page.js as --rows and --columns. */
+.plate {
+  display: grid;
+  grid-template-columns: 24px repeat(var(--columns), var(--well-size));
+  grid-template-rows: 20px repeat(var(--rows), var(--well-size));
+  gap: var(--well-gap);
+  width: max-content;
+  user-select: none;
+}
+
+/* While dragging on the input plate, the browser mustn't scroll or zoom instead. */
+.input-plate {
+  touch-action: none;
+}
+
+.plate-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-text);
+  font: 500 12px/1 var(--mono-font);
+}
+
+/* A well: a circle with a label (or, if open on the input plate, its well name). Its colors are set
+   by randomizer-page.js as --well-fill and --well-text. */
+.well {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--well-size);
+  height: var(--well-size);
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1.5px solid var(--well-fill, var(--open-well-border));
+  border-radius: 50%;
+  background: var(--well-fill, var(--panel-background));
+  color: var(--well-text, var(--open-well-text));
+  font: 500 10px/1 var(--mono-font);
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  transition: opacity 0.12s;
+}
+
+.input-plate .well {
+  cursor: pointer;
+}
+
+/* The dark outline leaves less room inside, so the label is a size smaller. */
+.well.fixed {
+  border: 3px solid var(--fixed-outline);
+  font-size: 9px;
+}
+
+/* Legend highlighting (section 8): the other wells dim, and the highlighted ones get a blue ring. */
+.plate.highlighting .well:not(.highlighted) {
+  opacity: 0.18;
+}
+
+.plate.highlighting .well.highlighted {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
+/* The one hover box (section 5): just above the well under the pointer. */
+.hover-box {
+  position: fixed;
+  z-index: 10;
+  transform: translate(-50%, -100%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--text-dark);
+  color: var(--text-light);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.hover-box[hidden] {
+  display: none;
+}
+
+.placing-note {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #fbf1e4;
+  color: #7a4a12;
+  font-size: 14px;
+}
+
+/* --- Results (section 8) --- */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The seed beside the heading appears only once there is a result. */
+.results:has(#results-content[hidden]) #result-seed-line {
+  display: none;
+}
+
+#results-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#results-content[hidden] {
+  display: none;
+}
+
+.banner {
+  padding: 12px 16px;
+  border: 1px solid var(--banner-border);
+  border-radius: 8px;
+  background: var(--banner-background);
+  color: var(--banner-text);
+  font-size: 14px;
+}
+
+.banner strong {
+  font-weight: 600;
+}
+
+/* An out-of-date result: faded, grayed, and its text can't be selected. */
+.results-body.out-of-date {
+  opacity: 0.3;
+  filter: grayscale(1);
+  user-select: none;
+}
+
+/* The result plate, key and legend on the left; the two lists on the right. */
+.results-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 32px;
+  align-items: flex-start;
+}
+
+.result-plate-side {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.key,
+.legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: #3a3a36;
+  font-size: 13px;
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 6px 16px;
+  max-width: 540px;
+}
+
+.key li,
+.legend li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.legend li {
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.legend li.highlighted {
+  background: var(--placing-highlight);
+}
+
+.legend-code {
+  font: 600 11px/1 var(--mono-font);
+}
+
+/* A legend name stays on one line, cut with "…" if it is too long; the hover box and lists show it
+   in full. */
+.legend-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.key-well {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--open-well-border);
+  border-radius: 50%;
+  background: var(--panel-background);
+}
+
+.key-well.fixed {
+  border: 3px solid var(--fixed-outline);
+}
+
+.legend-count {
+  margin-left: auto;
+  color: var(--muted-text);
+}
+
+.lists {
+  flex: 1 1 360px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.lists section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* A list's heading, with its Copy button at the right end of the same line. */
+.list-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Long lists scroll inside their own box, with their column headings staying visible. */
+.list-scroll {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+}
+
+.list-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.list-table th {
+  position: sticky;
+  top: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--panel-border);
+  background: var(--panel-background);
+  color: var(--muted-text);
+  font-weight: 500;
+  text-align: left;
+}
+
+.list-table td {
+  padding: 6px 10px;
+  vertical-align: top;
+}
+
+/* Contents names stay on one line; well names are monospace. */
+.list-table td:first-child {
+  white-space: nowrap;
+}
+
+.list-table:not(.well-list) td:nth-child(2),
+.list-table.well-list td:first-child {
+  font-family: var(--mono-font);
+  font-size: 12px;
+}

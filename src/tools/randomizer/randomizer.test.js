@@ -10,6 +10,8 @@ import {
   randomize,
   matchesInputs,
   listingOrder,
+  spareWellCount,
+  randomSeed,
   contentsToWells,
   wellToContents,
   contentsToWellsText,
@@ -78,6 +80,32 @@ describe("randomizer", () => {
   }
 
   // --- Setups with their own expectations ---
+
+  test("empty rows: completely empty rows are skipped and the plate is the main example's", () => {
+    const inputs = emptyRowsInputs();
+    assert.deepEqual(findProblems(inputs), []);
+    assert.equal(spareWellCount(inputs), 12);
+    assert.deepEqual(
+      wellToContents(randomize(inputs)),
+      wellToContents(randomize(mainExampleInputs(SEED))),
+    );
+  });
+
+  test("empty rows: a row with only a name or only replicates is checked, not skipped", () => {
+    const inputs = mainExampleInputs(SEED);
+    inputs.conditions.push({ name: "", replicates: 4 }, { name: "Condition 14", replicates: "" });
+    assert.deepEqual(findProblems(inputs), [
+      "Row 13: the condition name is empty.",
+      "Row 14: the number of replicates is missing.",
+    ]);
+  });
+
+  test("empty rows: row numbers in messages still count the empty rows", () => {
+    // Condition 3 is on row 5, below two empty rows.
+    const inputs = emptyRowsInputs();
+    inputs.conditions[4].name = "";
+    assert.deepEqual(findProblems(inputs), ["Row 5: the condition name is empty."]);
+  });
 
   test("the result's inputs hold the seed used", () => {
     assert.equal(randomize(mainExampleInputs(SEED)).inputs.seed, SEED);
@@ -231,6 +259,11 @@ describe("randomizer", () => {
         () => openWells(inputs.fixedContents, ["A12"]),
         () => placeName(inputs.fixedContents, ["A12"], inputs.fixedContents[0]),
       ],
+      [
+        "the conditions by adding a completely empty row",
+        () => inputs.conditions.push({ name: "", replicates: "" }),
+        () => inputs.conditions.pop(),
+      ],
     ];
     for (const [description, change, changeBack] of changes) {
       change();
@@ -302,6 +335,50 @@ describe("randomizer", () => {
     assert.deepEqual(otherRoles(), before);
   });
 
+  // --- Spare wells and random seeds ---
+
+  test("spareWellCount: 12 for the main example, 0 for the exact fit or too many replicates", () => {
+    assert.equal(spareWellCount(mainExampleInputs(SEED)), 12);
+    assert.equal(spareWellCount(exactFitInputs()), 0);
+    const tooMany = mainExampleInputs(SEED);
+    tooMany.conditions = numberedConditions(16, 4);
+    assert.equal(spareWellCount(tooMany), 0);
+  });
+
+  test("spareWellCount is null while a replicate count isn't valid", () => {
+    for (const replicates of ["four", ""]) {
+      const inputs = mainExampleInputs(SEED);
+      inputs.conditions[2].replicates = replicates;
+      assert.equal(spareWellCount(inputs), null, JSON.stringify(replicates));
+    }
+  });
+
+  test("randomSeed turns 0, 0.5 and nearly 1 into 1, 500000 and 999999", () => {
+    assert.equal(randomSeed(0), 1);
+    assert.equal(randomSeed(0.5), 500000);
+    assert.equal(randomSeed(0.9999999999), 999999);
+  });
+
+  test("randomSeed always gives a seed findProblems accepts", () => {
+    for (let step = 0; step < 1000; step++) {
+      const seed = randomSeed(step / 1000);
+      assert.ok(Number.isInteger(seed) && seed >= 1 && seed <= 999999, String(seed));
+      assert.deepEqual(findProblems(mainExampleInputs(seed)), [], String(seed));
+    }
+  });
+
+  test("randomSeed throws for anything but a number from 0 up to 1", () => {
+    for (const [value, shown] of [
+      [1, "1"],
+      [-0.1, "-0.1"],
+      ["0.5", '"0.5"'],
+    ]) {
+      assert.throws(() => randomSeed(value), {
+        message: `randomSeed needs a number from 0 up to 1, like Math.random() gives, but got ${shown}.`,
+      });
+    }
+  });
+
   // --- Seeds ---
 
   test("different seeds give different plates on the main example", () => {
@@ -352,6 +429,14 @@ describe("randomizer", () => {
     const inputs = mainExampleInputs(SEED);
     inputs.conditions[2].name = "   ";
     assert.deepEqual(findProblems(inputs), ["Row 3: the condition name is empty."]);
+  });
+
+  test("missing replicates are reported as missing, with their row", () => {
+    for (const replicates of ["", "  "]) {
+      const inputs = mainExampleInputs(SEED);
+      inputs.conditions[2].replicates = replicates;
+      assert.deepEqual(findProblems(inputs), ["Row 3: the number of replicates is missing."]);
+    }
   });
 
   test("replicates that aren't a whole number of at least 1 are reported with their row", () => {
@@ -451,6 +536,10 @@ describe("randomizer", () => {
     ]);
   });
 
+  test("a missing seed is reported as missing", () => {
+    assert.deepEqual(findProblems(mainExampleInputs("")), ["The seed is missing."]);
+  });
+
   test("a seed out of range or not a whole number", () => {
     for (const [seed, shown] of [
       [0, "0"],
@@ -532,6 +621,21 @@ describe("randomizer", () => {
 });
 
 // --- Setups (section 9) ---
+
+// Empty rows: the main example with completely empty rows before the first condition, between
+// conditions 2 and 3, and after the last (section 9).
+function emptyRowsInputs() {
+  const inputs = mainExampleInputs(SEED);
+  const empty = () => ({ name: "", replicates: "" });
+  inputs.conditions = [
+    empty(),
+    ...inputs.conditions.slice(0, 2),
+    empty(),
+    ...inputs.conditions.slice(2),
+    empty(),
+  ];
+  return inputs;
+}
 
 // Empty list: the main example with no conditions, so every open well gets the filler.
 function emptyListInputs() {

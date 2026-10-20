@@ -43,6 +43,11 @@ Each condition has a name and a number of replicates. The conditions are in the 
 - Two conditions in the list can't have the same name. A condition may share its name with the
   filler or a fixed-contents entry (see Shared names).
 - The list may be empty. Every open well then gets the filler.
+- A **completely empty row**, with no name and missing replicates (section 7), is skipped: it gets no
+  messages, places nothing, and doesn't count toward the replicates or spare wells. It still counts
+  for the row numbers in messages, so they match the table, and `matchesInputs` still compares it
+  exactly, so adding or removing an empty row makes a result out of date. A row with only a name, or
+  only replicates, is not empty and is checked as usual.
 
 ### Fixed contents
 The fixed contents are a list of entries, in the order given. Each entry has a name and a set of wells
@@ -77,8 +82,19 @@ If the open wells outnumber the replicates, a filler must be named (e.g. "PBS") 
 wells. Filler wells are placed randomly, so they can't be given individual contents. If there are no
 spare open wells, no filler is needed.
 
+**Spare wells.** `spareWellCount(inputs)` gives the number of spare open wells: the open wells minus
+the total replicates, or 0 if the replicates don't fit. It is `null` while any replicate count isn't
+valid, because the total isn't known yet. For the main example (section 9) it is 12.
+
 ### Seed
 A whole number from 1 to 999,999.
+
+**A random seed.** `randomSeed(randomNumber)` turns a random number from 0 up to (but not including)
+1, such as `Math.random()` gives, into a seed: `Math.floor(randomNumber × 999,999) + 1`, so every seed
+from 1 to 999,999 is equally likely, e.g. 0 → 1, 0.5 → 500,000 and 0.9999999 → 999,999. It is given
+the random number rather than calling `Math.random()` itself, so it can be tested. Anything other than
+a number from 0 up to 1 throws `randomSeed needs a number from 0 up to 1, like Math.random() gives, but
+got 2.`
 
 ### Shared names
 The same name may appear in several places: "PBS" could be a fixed-contents entry, the filler and a
@@ -178,6 +194,7 @@ Fixed-contents entries are numbered from 1 in the order listed, as conditions ar
 |---|---|
 | Condition name empty | `Row 3: the condition name is empty.` |
 | Condition name with a space at the start or end | `Row 3: the condition name has a space at the start or end. Remove it.` |
+| Replicates missing | `Row 3: the number of replicates is missing.` |
 | Replicates not a whole number of at least 1 | `Row 3: replicates must be a whole number of at least 1, but got "four".` |
 | Duplicate condition name | `Row 5: "Condition 2" is already listed in row 2.` |
 | Too many replicates | `The conditions need 64 wells, but only 60 are open. Remove 4 replicates or open 4 more wells.` |
@@ -186,7 +203,12 @@ Fixed-contents entries are numbered from 1 in the order listed, as conditions ar
 | Fixed-contents name with a space at the start or end | `Fixed contents 2 has a space at the start or end. Remove it.` |
 | Duplicate fixed-contents name | `Fixed contents 3: "Static" is already listed in fixed contents 1.` |
 | Filler with a space at the start or end | `The filler has a space at the start or end. Remove it.` |
+| Seed missing | `The seed is missing.` |
 | Seed not a whole number, or out of range | `The seed must be a whole number from 1 to 999,999, but got 0.` |
+
+A replicate count or seed is **missing** if it is `""`, text of only spaces, `undefined` or `null`, as
+when its box is empty. A missing value gets the "missing" message instead of the "whole number"
+one.
 
 An empty condition list is not an error, and neither is a fixed-contents entry with no wells, with
 or without a name (see section 4).
@@ -242,6 +264,8 @@ The logic takes the inputs as one object:
 | `randomize(inputs)` | The result (section 5). Throws an `Error` whose message is the first problem, if there are any. |
 | `matchesInputs(result, inputs)` | `true` if `inputs` are exactly the result's inputs (section 5). |
 | `listingOrder(inputs)` | Every name once, as `{ name, role, position }`, in listing order (section 6). |
+| `spareWellCount(inputs)` | The number of spare open wells, or `null` while a replicate count isn't valid (section 4). |
+| `randomSeed(randomNumber)` | A seed from 1 to 999,999 made from a random number from 0 up to 1 (section 4). |
 | `contentsToWells(result)` | The contents → wells list as rows `{ contents, wells }`, in the order of section 6. |
 | `wellToContents(result)` | The well → contents list as rows `{ well, contents }`, in standard well order. |
 | `contentsToWellsText(result)` | The contents → wells copy text (section 6). |
@@ -286,6 +310,9 @@ work even when names are shared.
 - **Fixed contents on two wells each**: the golden-file setup with seed 999,000 below.
 - **Unused entries**: the main example plus an entry `Unused` with no wells and an entry named `""`
   with no wells. There are no problems, and neither appears in the outputs.
+- **Empty rows**: the main example with completely empty rows (`{ name: "", replicates: "" }`)
+  before the first condition, between two conditions and after the last. No problems are reported,
+  and the plate is exactly the main example's.
 - **Shared names**: the main example plus a condition `Static` with 4 replicates, and filler `Static`
   (52 replicates, 8 filler wells). The contents → wells list shows `Static` once, with all 48 of its
   wells (36 fixed, 4 replicate, 8 filler).
@@ -304,8 +331,8 @@ work even when names are shared.
 ### Matching inputs
 - `matchesInputs(result, inputs)` is `true` for the inputs the result was made from.
 - It is `false` after changing the seed, the filler, a condition's name or replicates, the order of
-  the conditions, an entry's name, the order of the entries, or which wells an entry holds; and
-  `true` again after changing it back.
+  the conditions, an entry's name, the order of the entries, or which wells an entry holds, or after
+  adding a completely empty row; and `true` again after changing it back.
 - The result's inputs are a copy: calling `placeName` or renaming an entry after `randomize` doesn't
   change `result.inputs`.
 
@@ -315,6 +342,15 @@ work even when names are shared.
 - Positions count within each role and include unused entries: with fixed contents `Unused` (no
   wells) then `Blank`, `Blank` has position 1.
 - Adding a condition doesn't change any filler or fixed-contents position.
+
+### Spare wells and random seeds
+- `spareWellCount` is 12 for the main example, 0 for the exact fit, 0 when the replicates don't fit,
+  and `null` when a replicate count is `"four"` or missing (in a row that isn't completely empty).
+  Completely empty rows don't change it.
+- `randomSeed(0)` is 1, `randomSeed(0.5)` is 500000 and `randomSeed(0.9999999999)` is 999999; for many
+  numbers from 0 up to 1 the seed is always a whole number from 1 to 999,999, and `findProblems` accepts
+  it.
+- `randomSeed(1)`, `randomSeed(-0.1)` and `randomSeed("0.5")` throw its message.
 
 ### Seeds
 - **Different seeds**: two chosen seeds give different plates on the main example. (Different seeds
@@ -350,14 +386,15 @@ the assignment didn't change.
 
 ### Errors
 One test per error in section 7, checking the message:
-- Condition list: an empty name, replicates that aren't a whole number of at least 1 (e.g. `0`,
-  `1.5`, `"four"`), and a duplicate name, each reported with its row.
+- Condition list (a row with only a name or only replicates is checked, not skipped): an empty
+  name, missing replicates (`""`, `"  "`), replicates that aren't a whole
+  number of at least 1 (e.g. `0`, `1.5`, `"four"`), and a duplicate name, each reported with its row.
 - Too many replicates for the open wells.
 - Spare open wells with no filler.
 - Fixed contents: an entry with wells but no name, a name with a space at the start or end
   (`"Static "`), and a duplicate name, each reported with its number.
 - The filler with a space at the start (`" Spare"`).
-- Seed out of range (`0`, `1000000`) or not a whole number (`2.5`).
+- Seed missing (`""`), out of range (`0`, `1000000`) or not a whole number (`2.5`).
 - A condition name with a space at the start (`" Condition 1"`).
 - The safety net: a well in two entries.
 

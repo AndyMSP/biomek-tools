@@ -1,0 +1,168 @@
+<!doctype html>
+<!--
+  randomizer.html — the randomizer page's structure: the boxes, buttons and plate grids.
+  Table rows and plate wells are created by randomizer-page.js, because their number changes;
+  everything with an id here is looked up by that file. Styling is in randomizer.css.
+  Specification: randomizer-page.md (layout in section 3, look in section 10).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plate randomizer</title>
+    <!-- An empty tab icon, so the browser doesn't ask the server for one that doesn't exist. -->
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="randomizer.css" />
+    <script type="module" src="randomizer-page.js"></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Plate randomizer</h1>
+      <span class="subtitle">One 96-well plate</span>
+    </header>
+
+    <main>
+      <div class="columns">
+        <!-- Left column (section 3): one panel with the tables, the seed, the to-do list and
+             Randomize. -->
+        <div class="panel inputs-panel">
+          <section aria-labelledby="randomized-contents-heading">
+            <div class="section-heading">
+              <h2 id="randomized-contents-heading">Randomized contents</h2>
+              <button id="add-condition" class="add-button" type="button">+ Add row</button>
+            </div>
+            <table class="input-table">
+              <thead>
+                <tr>
+                  <th scope="col" class="number-column">#</th>
+                  <th scope="col">Name</th>
+                  <th scope="col" class="replicates-column">Replicates</th>
+                  <th scope="col" class="remove-column"><span class="visually-hidden">Remove</span></th>
+                </tr>
+              </thead>
+              <tbody id="conditions-body"></tbody>
+              <tbody>
+                <tr class="filler-row">
+                  <td></td>
+                  <td><input id="filler-name" type="text" aria-label="Filler name" placeholder="Filler, e.g. Spare" /></td>
+                  <td id="filler-fills" colspan="2"></td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="note">
+              The last row is the filler: it is shuffled in with the replicates and fills every
+              spare open well.
+            </p>
+          </section>
+
+          <section aria-labelledby="fixed-contents-heading">
+            <div class="section-heading">
+              <h2 id="fixed-contents-heading">Fixed contents</h2>
+              <button id="add-entry" class="add-button" type="button">+ Add fixed contents</button>
+            </div>
+            <p class="note">Choose a name, then click wells on the plate, or drag across them, to place it.</p>
+            <table class="input-table">
+              <thead>
+                <tr>
+                  <th scope="col" class="placing-column">Placing</th>
+                  <th scope="col" class="swatch-column"><span class="visually-hidden">Color</span></th>
+                  <th scope="col" class="number-column">#</th>
+                  <th scope="col">Name</th>
+                  <th scope="col" class="wells-column">Wells</th>
+                  <th scope="col" class="remove-column"><span class="visually-hidden">Remove</span></th>
+                </tr>
+              </thead>
+              <tbody id="fixed-contents-body"></tbody>
+            </table>
+          </section>
+
+          <section class="seed">
+            <label for="seed">Seed</label>
+            <input id="seed" type="text" inputmode="numeric" />
+          </section>
+
+          <section class="to-do" aria-labelledby="to-do-heading" aria-live="polite">
+            <h2 id="to-do-heading">Still needed</h2>
+            <ul id="problems"></ul>
+            <p id="ready" hidden>Ready to randomize.</p>
+            <button id="randomize" class="primary" type="button" disabled>Randomize</button>
+          </section>
+        </div>
+
+        <!-- Right column (section 5): one panel with the input plate. -->
+        <section class="panel plate-panel" aria-labelledby="plate-heading">
+          <div class="panel-heading">
+            <h2 id="plate-heading">Plate</h2>
+            <span id="plate-counts" class="muted"></span>
+          </div>
+          <p id="placing-note" class="placing-note" role="status" hidden>
+            Add fixed contents first, then click wells to place it.
+          </p>
+          <div class="plate-scroll">
+            <div id="input-plate" class="plate input-plate"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Below both columns (section 8): one panel with the results. -->
+      <section class="panel results" aria-labelledby="results-heading">
+        <div class="panel-heading">
+          <h2 id="results-heading">Results</h2>
+          <span class="muted" id="result-seed-line">Seed <span id="result-seed"></span></span>
+        </div>
+        <p id="results-placeholder" class="muted">
+          Press Randomize to see the randomized plate and the two lists.
+        </p>
+        <div id="results-content" hidden>
+          <div id="out-of-date-banner" class="banner" role="status" hidden>
+            <strong>Out of date.</strong> The inputs have changed since this result was made, so it
+            no longer matches them. Copying is turned off. Press Randomize to make a new result, or
+            undo the change.
+          </div>
+          <div id="results-body" class="results-body">
+            <div class="result-plate-side">
+              <div class="plate-scroll">
+                <div id="result-plate" class="plate"></div>
+              </div>
+              <ul class="key">
+                <li><span class="key-well"></span> Randomized well</li>
+                <li><span class="key-well fixed"></span> Fixed well</li>
+              </ul>
+              <ul id="legend" class="legend"></ul>
+            </div>
+            <div class="lists">
+              <section aria-labelledby="contents-to-wells-heading">
+                <div class="list-heading">
+                  <h3 id="contents-to-wells-heading">Contents → wells</h3>
+                  <button id="copy-contents-to-wells" class="copy-button" type="button">Copy</button>
+                </div>
+                <div class="list-scroll">
+                  <table class="list-table">
+                    <thead>
+                      <tr><th scope="col">Contents</th><th scope="col">Wells</th></tr>
+                    </thead>
+                    <tbody id="contents-to-wells-body"></tbody>
+                  </table>
+                </div>
+              </section>
+              <section aria-labelledby="well-to-contents-heading">
+                <div class="list-heading">
+                  <h3 id="well-to-contents-heading">Well → contents</h3>
+                  <button id="copy-well-to-contents" class="copy-button" type="button">Copy</button>
+                </div>
+                <div class="list-scroll">
+                  <table class="list-table well-list">
+                    <thead>
+                      <tr><th scope="col">Well</th><th scope="col">Contents</th></tr>
+                    </thead>
+                    <tbody id="well-to-contents-body"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

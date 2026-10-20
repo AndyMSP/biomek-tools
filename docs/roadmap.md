@@ -45,9 +45,9 @@ Order of work:
 Expected for version 1 (to be confirmed in `randomizer.md`), one 96-well plate:
 - List the conditions and how many replicates each needs. There is no organized plate: samples
   don't start in one, so the replicates are dealt directly into random wells.
-- Choose which wells are fixed and which are open, by clicking wells. The user decides which wells
-  are fixed; contents never do.
-- Name the contents of the fixed wells (no preset), with optional exceptions for individual wells.
+- Choose which wells are fixed by listing fixed contents (no preset) and placing each on wells by
+  clicking or dragging a box; the other wells are open. The user decides which wells are fixed;
+  contents never do.
 - Name a filler for spare open wells; the filler is randomized together with the conditions.
 - Replicates (and filler) are put in a random order and placed into the open wells. The order is
   seeded, so the same inputs and seed always give the same result.
@@ -60,8 +60,8 @@ Later, as separate modules:
   - a new shuffle on every plate, each plate holding a complete set;
   - one set of replicates spread across plates, either fully random or blocked by plate (each plate
     gets an equal share of every condition). Blocking needs a rule for uneven splits.
-- More ways to enter inputs: pasting conditions from Excel, a "fix the outer ring" shortcut (built on
-  `isEdgeWell`), and a button for a new random seed.
+- More ways to enter inputs: a "fix the outer ring" shortcut (built on `isEdgeWell`) and a button for
+  a new random seed. (Pasting from Excel is in version 1.)
 - Constrained shuffles, e.g. each condition once per quadrant, or each condition getting a share of
   edge wells (Sophie's question).
 - Saving and reloading inputs: save the full inputs (condition list in order, fixed wells, contents,
