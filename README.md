@@ -2,7 +2,12 @@
 Tools for developing methods on the Biomek i5 with a Span-8 pod.
 
 ## Setup
-Install [Node.js](https://nodejs.org/) (version 20 or later). There are no other dependencies.
+Install [Node.js](https://nodejs.org/) (version 20 or later). Then, in the project folder, run
+```
+npm install
+```
+once. This installs esbuild, which is needed only for building (see below); the tests and the
+development server need nothing else.
 
 ## Running the tests
 ```
@@ -24,8 +29,17 @@ npm run serve
 ```
 This starts a small web server on this computer and prints the randomizer page's address
 (`http://localhost:8000/src/tools/randomizer/randomizer.html`); open it in Edge or Chrome. Browsers
-won't load the page's modules from a file opened directly, so until there is a build step the page
-has to be served this way. Press Ctrl+C to stop the server.
+won't load the page's modules from a file opened directly, so during development the page has to be
+served this way. Press Ctrl+C to stop the server.
+
+## Building the tools
+```
+npm run build
+```
+This makes one self-contained HTML file per tool in `dist/` (e.g. `dist/randomizer.html`), with the
+page's styling and all its code inside. That file is what goes to the lab: it opens in Edge or Chrome
+with a double-click, with nothing installed and no internet needed. `dist/` is not committed. See
+ADR 0004.
 
 ## Where to find things
 - **What each module does**: its specification, `name.md`, sits next to its code

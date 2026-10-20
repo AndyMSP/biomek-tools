@@ -1,4 +1,4 @@
-// serve.js — a small web server for trying the tools' pages in a browser before there is a build step.
+// serve.js — a small web server for trying the tools' pages in a browser during development.
 // Browsers won't load ES modules from a page opened as a file (file://; see ADR 0002), so the
 // project's files are served over http from this computer instead.
 // Run it with: npm run serve   (stop it with Ctrl+C)
