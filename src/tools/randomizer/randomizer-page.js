@@ -18,6 +18,8 @@ import {
   randomize,
   matchesInputs,
   listingOrder,
+  spareWellCount,
+  randomSeed,
   contentsToWells,
   wellToContents,
   contentsToWellsText,
@@ -33,13 +35,12 @@ const UNNAMED_COLOR = { fill: "var(--unnamed-fill)", text: "var(--text-dark)" };
 // --- The page's state ---
 
 // The inputs object (randomizer.md, section 8). When the page opens there is one empty condition
-// row, an empty filler, and one empty entry with no wells (section 4). The seed starts empty: see
-// the note on suggestedSeed below.
+// row, an empty filler, one empty entry with no wells, and a random suggested seed (section 4).
 const inputs = {
   conditions: [newCondition()],
   fixedContents: [newEntry()],
   filler: "",
-  seed: suggestedSeed(),
+  seed: randomSeed(Math.random()),
 };
 
 // The entry that clicks on the input plate place (section 4). It is always one of
@@ -57,6 +58,7 @@ let drag = null;
 const elements = {
   conditionsBody: byId("conditions-body"),
   fillerName: byId("filler-name"),
+  fillerFills: byId("filler-fills"),
   addCondition: byId("add-condition"),
   fixedContentsBody: byId("fixed-contents-body"),
   addEntry: byId("add-entry"),
@@ -144,10 +146,12 @@ function inputsChanged() {
   refresh();
 }
 
-// Updates everything that depends on the inputs and the result: the fixed-contents lines, the input
-// plate, the to-do list and Randomize button, and whether the result is out of date.
+// Updates everything that depends on the inputs and the result: the filler's spare-well count, the
+// fixed-contents lines, the input plate, the to-do list and Randomize button, and whether the result
+// is out of date.
 function refresh() {
   const colors = colorsByName(inputs);
+  refreshFillerFills();
   refreshEntryRows(colors);
   drawInputPlateState(colors);
   refreshProblems();
@@ -201,6 +205,19 @@ function removeCondition(condition) {
   inputs.conditions.splice(inputs.conditions.indexOf(condition), 1);
   drawConditionRows();
   inputsChanged();
+}
+
+// Shows how many wells the filler will fill, e.g. "Fills 12 spare wells", from spareWellCount;
+// empty while a replicate count isn't valid (section 4).
+function refreshFillerFills() {
+  const spare = spareWellCount(inputs);
+  if (spare === null) {
+    elements.fillerFills.textContent = "";
+  } else if (spare === 0) {
+    elements.fillerFills.textContent = "No spare wells";
+  } else {
+    elements.fillerFills.textContent = `Fills ${countOf(spare, "spare well")}`;
+  }
 }
 
 // --- Fixed contents table (section 4) ---
@@ -624,13 +641,6 @@ function colorOf(name, colors) {
 }
 
 // --- Small helpers ---
-
-// The seed box's starting value. randomizer-page.md asks for a random suggestion, but the allowed
-// range (1 to 999,999) belongs to randomizer.js, which doesn't export it; repeating it here would
-// put randomizer logic in the page. Until it's exported, the box starts empty.
-function suggestedSeed() {
-  return "";
-}
 
 // What a typed replicate count or seed is passed on as: digits as a number, anything else as the
 // text typed, so the logic can report it (section 4), e.g. "4" → 4, "four" → "four", "" → "".
