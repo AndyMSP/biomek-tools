@@ -48,7 +48,8 @@ filler).
 - The user can type in any row, add a row with **+ Add row**, and remove a row.
 - The **last row is always the filler**: it has a name box but no replicates box, and in place of a
   replicate count it shows how many wells it will fill, e.g. `Fills 12 spare wells`, `Fills 1 spare
-  well` or `No spare wells`. It looks different from the condition rows (its own background and a
+  well` or `No spare wells`, from `spareWellCount` (`randomizer.md`, section 4); while that is
+  `null` (a replicate count isn't valid yet) the cell is empty. It looks different from the condition rows (its own background and a
   dashed line above it), has no number, and can't be removed. A note under the table says: `The last
   row is the filler: it is shuffled in with the replicates and fills every spare open well.`
 - When the page opens there is one empty condition row and an empty filler.
@@ -66,8 +67,8 @@ holds (e.g. `34 wells`), and **Remove**.
 - When the page opens there is one empty entry, being placed, and no wells are fixed.
 
 ### Seed
-When the page opens, the seed box holds a random suggestion (using `Math.random()`); the user can
-keep it or type another.
+When the page opens, the seed box holds a random suggestion, `randomSeed(Math.random())`
+(`randomizer.md`, section 4); the user can keep it or type another.
 
 ### Passing the inputs on
 Replicates and the seed typed as digits are passed as numbers, and anything else as the text typed,
