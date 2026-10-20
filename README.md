@@ -4,10 +4,11 @@ Tools for developing methods on the Biomek i5 with a Span-8 pod.
 ## Setup
 Install [Node.js](https://nodejs.org/) (version 20 or later). Then, in the project folder, run
 ```
-npm install
+npm ci
 ```
-once. This installs esbuild, which is needed only for building (see below); the tests and the
-development server need nothing else.
+once. This installs esbuild, exactly the version recorded in `package-lock.json`. esbuild is needed
+only for building (see below); the tests and the development server need nothing else. (To add or
+upgrade a dependency, use `npm install <name>` instead; see CLAUDE.md.)
 
 ## Running the tests
 ```
