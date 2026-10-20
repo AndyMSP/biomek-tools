@@ -488,7 +488,7 @@ input:focus-visible {
   font: 500 12px/1 var(--mono-font);
 }
 
-/* A well: a circle with a code (or, if open on the input plate, its well name). Its colors are set
+/* A well: a circle with a label (or, if open on the input plate, its well name). Its colors are set
    by randomizer-page.js as --well-fill and --well-text. */
 .well {
   display: flex;
@@ -503,24 +503,29 @@ input:focus-visible {
   border-radius: 50%;
   background: var(--well-fill, var(--panel-background));
   color: var(--well-text, var(--open-well-text));
-  font: 600 12px/1 var(--mono-font);
+  font: 500 10px/1 var(--mono-font);
+  letter-spacing: -0.2px;
   white-space: nowrap;
-}
-
-/* An open well on the input plate shows its well name, in smaller, lighter text. */
-.input-plate .well:not(.fixed) {
-  font-size: 10px;
-  font-weight: 500;
+  transition: opacity 0.12s;
 }
 
 .input-plate .well {
   cursor: pointer;
 }
 
-/* The dark outline leaves less room inside, so the code is a size smaller. */
+/* The dark outline leaves less room inside, so the label is a size smaller. */
 .well.fixed {
   border: 3px solid var(--fixed-outline);
-  font-size: 11px;
+  font-size: 9px;
+}
+
+/* Legend highlighting (section 8): the other wells dim, and the highlighted ones get a blue ring. */
+.plate.highlighting .well:not(.highlighted) {
+  opacity: 0.18;
+}
+
+.plate.highlighting .well.highlighted {
+  box-shadow: 0 0 0 2px var(--primary);
 }
 
 /* The one hover box (section 5): just above the well under the pointer. */
@@ -637,9 +642,18 @@ input:focus-visible {
   min-width: 0;
 }
 
+.legend li {
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.legend li.highlighted {
+  background: var(--placing-highlight);
+}
+
 .legend-code {
-  min-width: 1.6em;
-  font: 600 12px/1 var(--mono-font);
+  font: 600 11px/1 var(--mono-font);
 }
 
 /* A legend name stays on one line, cut with "…" if it is too long; the hover box and lists show it

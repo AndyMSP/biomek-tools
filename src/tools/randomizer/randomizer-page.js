@@ -394,7 +394,7 @@ function drawInputPlateState(colors) {
 }
 
 // Shows one input-plate well: open (white, with its well name) or fixed (its entry's color, a dark
-// outline and its code), with its hover-box text and a label for screen readers.
+// outline and its label), with its hover-box text and a label for screen readers.
 function showInputWell(wellElement, well, entry, colors) {
   if (entry === null) {
     showWell(wellElement, { label: well, color: null, isFixed: false });
@@ -404,7 +404,7 @@ function showInputWell(wellElement, well, entry, colors) {
   }
   const nameText = entry.name === "" ? "no name yet" : entry.name;
   showWell(wellElement, {
-    label: entryCode(entry),
+    label: entryLabel(entry),
     color: colorOf(entry.name, colors),
     isFixed: true,
   });
@@ -540,24 +540,27 @@ function createResultWell() {
   return document.createElement("div");
 }
 
-// Fills each result-plate well with its contents' color and code. Fixed wells get the dark outline;
+// Fills each result-plate well with its contents' color and label. Fixed wells get the dark outline;
 // randomized wells (replicate and filler) are plain circles.
 function drawResultPlate(colors) {
-  const codes = codesByName(result.inputs);
+  const labels = labelsByName(result.inputs);
   for (const { well, contents } of wellToContents(result)) {
     const wellElement = elements.resultPlate.querySelector(`[data-well="${well}"]`);
     const isFixed = result.wellTypes[well] === "fixed";
-    showWell(wellElement, { label: codes.get(contents), color: colorOf(contents, colors), isFixed });
+    showWell(wellElement, { label: labels.get(contents), color: colorOf(contents, colors), isFixed });
     wellElement.dataset.hover = `${well}: ${contents}`;
+    // Kept on the well so legend highlighting can find all the wells holding a contents.
+    wellElement.dataset.contents = contents;
     wellElement.setAttribute("role", "img");
     wellElement.setAttribute("aria-label", `${well}, ${isFixed ? "fixed" : "randomized"}, ${contents}`);
   }
 }
 
-// Lists each contents with its color, code, full name and number of wells, in the order of the
-// contents → wells list, e.g. "● 1 Condition 1  4 wells".
+// Lists each contents with its color, its code if its label is one, its full name and its number of
+// wells, in the order of the contents → wells list, e.g. "● C1 Drug A 10 µM  4 wells" or
+// "● PBS  10 wells". Pointing at an item highlights its wells; clicking keeps them highlighted.
 function drawLegend(colors) {
-  const codes = codesByName(result.inputs);
+  const labels = labelsByName(result.inputs);
   const items = contentsToWells(result).map(({ contents, wells }) => {
     const swatch = document.createElement("span");
     swatch.className = "swatch";
@@ -565,14 +568,27 @@ function drawLegend(colors) {
     const count = createElement("span", countOf(wells.length, "well"));
     count.className = "legend-count";
     const item = document.createElement("li");
-    const code = createElement("span", codes.get(contents));
-    code.className = "legend-code";
+    item.dataset.contents = contents;
     const name = createElement("span", contents);
     name.className = "legend-name";
-    item.append(swatch, code, name, count);
+    if (labels.get(contents) === contents) {
+      item.append(swatch, name, count);
+    } else {
+      const code = createElement("span", labels.get(contents));
+      code.className = "legend-code";
+      item.append(swatch, code, name, count);
+    }
+    item.addEventListener("pointerenter", () => highlightContents(contents));
+    item.addEventListener("pointerleave", () => highlightContents(pinnedContents));
+    item.addEventListener("click", () => {
+      pinnedContents = pinnedContents === contents ? null : contents;
+      highlightContents(pinnedContents);
+    });
     return item;
   });
+  pinnedContents = null;
   elements.legend.replaceChildren(...items);
+  highlightContents(null);
 }
 
 // Fills the two lists' tables: contents → wells, and well → contents.
@@ -707,34 +723,54 @@ function colorOf(name, colors) {
   return colors.get(name) ?? UNNAMED_COLOR;
 }
 
-// --- Codes (section 7) ---
+// --- Labels (section 7) ---
 
-// Each name's code for a set of inputs, from listingOrder: a condition's row number ("1", "2" …),
-// the filler "S", and a fixed-contents entry's "F" and number ("F1", "F2" …),
-// e.g. Map { "Condition 1" → "1", "Spare" → "S", "Static" → "F1" }.
-function codesByName(someInputs) {
-  const codes = new Map();
+// Names shorter than this show as themselves in a well; longer ones show as a code.
+const LONGEST_NAME_SHOWN = 6;
+
+// Each name's label for a set of inputs, from listingOrder: the name itself if it is short enough,
+// otherwise its code, e.g. Map { "Drug A 10 µM" → "C1", "PBS" → "PBS", "Calibrator" → "F2" }.
+function labelsByName(someInputs) {
+  const labels = new Map();
   for (const { name, role, position } of listingOrder(someInputs)) {
-    codes.set(name, codeFor(role, position));
+    labels.set(name, name.length <= LONGEST_NAME_SHOWN ? name : codeFor(role, position));
   }
-  return codes;
+  return labels;
 }
 
-// The code for a role and a position counted from 0, e.g. ("fixed", 0) → "F1".
+// The code for a role and a position counted from 0: "C" and the row number for a condition,
+// "Spare" for the filler, and "F" and the entry's number for fixed contents, e.g. ("fixed", 1) → "F2".
 function codeFor(role, position) {
   if (role === "condition") {
-    return String(position + 1);
+    return `C${position + 1}`;
   }
   if (role === "filler") {
-    return "S";
+    return "Spare";
   }
   return `F${position + 1}`;
 }
 
-// The code an entry shows on the input plate: its name's code, or, while it has no name yet, "F"
+// The label an entry shows on the input plate: its name's label, or, while it has no name yet, "F"
 // and its number, e.g. the second entry with no name → "F2".
-function entryCode(entry) {
-  return codesByName(inputs).get(entry.name) ?? codeFor("fixed", inputs.fixedContents.indexOf(entry));
+function entryLabel(entry) {
+  return labelsByName(inputs).get(entry.name) ?? codeFor("fixed", inputs.fixedContents.indexOf(entry));
+}
+
+// --- Legend highlighting (section 8) ---
+
+// The contents whose legend item was clicked to keep its wells highlighted, or null.
+let pinnedContents = null;
+
+// Highlights the result-plate wells holding `contents` and its legend item, and dims the other wells;
+// null clears the highlighting, e.g. highlightContents("PBS").
+function highlightContents(contents) {
+  elements.resultPlate.classList.toggle("highlighting", contents !== null);
+  for (const wellElement of elements.resultPlate.querySelectorAll("[data-well]")) {
+    wellElement.classList.toggle("highlighted", contents !== null && wellElement.dataset.contents === contents);
+  }
+  for (const item of elements.legend.children) {
+    item.classList.toggle("highlighted", contents !== null && item.dataset.contents === contents);
+  }
 }
 
 // --- Hover box (section 5) ---
