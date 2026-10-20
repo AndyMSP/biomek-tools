@@ -1,0 +1,153 @@
+<!doctype html>
+<!--
+  randomizer.html — the randomizer page's structure: the boxes, buttons and plate grids.
+  Table rows and plate wells are created by randomizer-page.js, because their number changes;
+  everything with an id here is looked up by that file. Styling is in randomizer.css.
+  Specification: randomizer-page.md.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plate randomizer</title>
+    <link rel="stylesheet" href="randomizer.css" />
+    <script type="module" src="randomizer-page.js"></script>
+  </head>
+  <body>
+    <h1>Plate randomizer</h1>
+
+    <main>
+      <div class="columns">
+        <!-- Left column (section 3): the tables, the seed, the to-do list and Randomize. -->
+        <div class="inputs-column">
+          <section aria-labelledby="randomized-contents-heading">
+            <h2 id="randomized-contents-heading">Randomized contents</h2>
+            <table class="input-table">
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Replicates</th>
+                  <th scope="col"><span class="visually-hidden">Remove</span></th>
+                </tr>
+              </thead>
+              <tbody id="conditions-body"></tbody>
+              <tbody>
+                <tr class="filler-row">
+                  <td></td>
+                  <td><input id="filler-name" type="text" aria-label="Filler name" /></td>
+                  <td id="filler-fills"></td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+            <button id="add-condition" type="button">+ Add row</button>
+            <p class="note">
+              The last row is the filler: it is shuffled in with the replicates and fills every
+              spare open well.
+            </p>
+          </section>
+
+          <section aria-labelledby="fixed-contents-heading">
+            <h2 id="fixed-contents-heading">Fixed contents</h2>
+            <table class="input-table">
+              <thead>
+                <tr>
+                  <th scope="col">Placing</th>
+                  <th scope="col"><span class="visually-hidden">Color</span></th>
+                  <th scope="col">#</th>
+                  <th scope="col">Name</th>
+                  <th scope="col">Wells</th>
+                  <th scope="col"><span class="visually-hidden">Remove</span></th>
+                </tr>
+              </thead>
+              <tbody id="fixed-contents-body"></tbody>
+            </table>
+            <button id="add-entry" type="button">+ Add fixed contents</button>
+          </section>
+
+          <section class="seed">
+            <label for="seed">Seed</label>
+            <input id="seed" type="text" inputmode="numeric" />
+          </section>
+
+          <section class="to-do" aria-labelledby="to-do-heading" aria-live="polite">
+            <h2 id="to-do-heading">Still needed</h2>
+            <ul id="problems"></ul>
+            <p id="ready" hidden>Ready to randomize.</p>
+          </section>
+
+          <button id="randomize" class="primary" type="button" disabled>Randomize</button>
+        </div>
+
+        <!-- Right column (section 5): the input plate. -->
+        <section class="plate-column" aria-labelledby="plate-heading">
+          <h2 id="plate-heading">Plate</h2>
+          <p id="plate-counts"></p>
+          <p id="placing-note" class="note" role="status" hidden>
+            Add fixed contents first, then click wells to place it.
+          </p>
+          <div class="plate-scroll">
+            <div id="input-plate" class="plate input-plate"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Below both columns (section 8): the results. -->
+      <section class="results" aria-labelledby="results-heading">
+        <h2 id="results-heading">Results</h2>
+        <p id="results-placeholder">
+          Press Randomize to see the randomized plate and the two lists.
+        </p>
+        <div id="results-content" hidden>
+          <div id="out-of-date-banner" class="banner" role="status" hidden>
+            <strong>Out of date.</strong> The inputs have changed since this result was made, so it
+            no longer matches them. Copying is turned off. Press Randomize to make a new result, or
+            undo the change.
+          </div>
+          <div id="results-body">
+            <p>Seed: <span id="result-seed"></span></p>
+            <div class="result-plate-and-legend">
+              <div class="plate-scroll">
+                <div id="result-plate" class="plate"></div>
+              </div>
+              <div>
+                <ul class="key">
+                  <li><span class="key-well"></span> Randomized well</li>
+                  <li><span class="key-well fixed"></span> Fixed well</li>
+                </ul>
+                <ul id="legend" class="legend"></ul>
+              </div>
+            </div>
+            <div class="lists">
+              <section aria-labelledby="contents-to-wells-heading">
+                <h3 id="contents-to-wells-heading">Contents → wells</h3>
+                <button id="copy-contents-to-wells" type="button">Copy</button>
+                <div class="list-scroll">
+                  <table class="list-table">
+                    <thead>
+                      <tr><th scope="col">Contents</th><th scope="col">Wells</th></tr>
+                    </thead>
+                    <tbody id="contents-to-wells-body"></tbody>
+                  </table>
+                </div>
+              </section>
+              <section aria-labelledby="well-to-contents-heading">
+                <h3 id="well-to-contents-heading">Well → contents</h3>
+                <button id="copy-well-to-contents" type="button">Copy</button>
+                <div class="list-scroll">
+                  <table class="list-table">
+                    <thead>
+                      <tr><th scope="col">Well</th><th scope="col">Contents</th></tr>
+                    </thead>
+                    <tbody id="well-to-contents-body"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

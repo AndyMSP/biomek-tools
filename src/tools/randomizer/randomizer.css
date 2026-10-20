@@ -1,0 +1,401 @@
+/*
+  randomizer.css — the randomizer page's styling, including its colors.
+  Specification: randomizer-page.md (layout in section 3, colors in section 7).
+*/
+
+/* --- Colors (section 7) ---
+   Each role has a numbered set of fill colors. randomizer-page.js picks one with the name's role and
+   position from listingOrder, wrapping around after the last, so it reads how many each set has from
+   the --…-color-count variables below. Text on a fill is dark unless a --…-text-N variable says
+   otherwise. */
+:root {
+  --text-dark: #1c1c1a;
+  --text-light: #ffffff;
+
+  --condition-color-count: 16;
+  --condition-fill-1: #4e79a7;
+  --condition-text-1: var(--text-light);
+  --condition-fill-2: #f28e2b;
+  --condition-fill-3: #59a14f;
+  --condition-fill-4: #e15759;
+  --condition-fill-5: #b07aa1;
+  --condition-fill-6: #edc948;
+  --condition-fill-7: #76b7b2;
+  --condition-fill-8: #ff9da7;
+  --condition-fill-9: #9c755f;
+  --condition-text-9: var(--text-light);
+  --condition-fill-10: #a0cbe8;
+  --condition-fill-11: #ffbe7d;
+  --condition-fill-12: #8cd17d;
+  --condition-fill-13: #d37295;
+  --condition-fill-14: #d4a6c8;
+  --condition-fill-15: #499894;
+  --condition-fill-16: #f1ce63;
+
+  --filler-color-count: 1;
+  --filler-fill-1: #f2ede3;
+
+  --fixed-color-count: 6;
+  --fixed-fill-1: #8a99a8;
+  --fixed-fill-2: #b3a78f;
+  --fixed-fill-3: #9c9ac2;
+  --fixed-fill-4: #93ae97;
+  --fixed-fill-5: #be9a9a;
+  --fixed-fill-6: #a9a9a6;
+
+  /* An entry with no name yet. */
+  --unnamed-fill: #d9d7cf;
+
+  /* The page's own colors, not tied to any name. */
+  --page-background: #fafaf7;
+  --panel-background: #ffffff;
+  --border: #d4d2ca;
+  --muted-text: #5f5e58;
+  --open-well-fill: #ffffff;
+  --fixed-outline: #1c1c1a;
+  --highlight: #e8eef6;
+  --filler-row-background: #f2ede3;
+  --banner-background: #fff4d6;
+  --banner-border: #e0b84a;
+  --primary: #2f5f8f;
+
+  --well-size: 2.6rem;
+}
+
+/* --- Page --- */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 1rem 1.5rem 3rem;
+  background: var(--page-background);
+  color: var(--text-dark);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+h1 {
+  margin: 0 0 1rem;
+  font-size: 1.5rem;
+}
+
+h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+section {
+  margin-bottom: 1.5rem;
+}
+
+.note {
+  color: var(--muted-text);
+  font-size: 0.85rem;
+}
+
+/* Text for screen readers only: hidden on screen but still read aloud, e.g. column headings for
+   columns of buttons. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+button {
+  font: inherit;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-background);
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+button.primary {
+  padding: 0.5rem 1.4rem;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--text-light);
+  font-weight: 600;
+}
+
+input[type="text"] {
+  font: inherit;
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+/* --- Layout (section 3): two columns, results below; stacked in a narrow window --- */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(20rem, 1fr) auto;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 62rem) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The plates keep their size and scroll sideways inside their own box in a narrow window. */
+.plate-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* --- Input tables (section 4) --- */
+.input-table {
+  width: 100%;
+  margin-bottom: 0.5rem;
+  border-collapse: collapse;
+}
+
+.input-table th {
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.input-table td {
+  padding: 0.25rem 0.4rem;
+}
+
+.filler-row td {
+  border-top: 2px dashed var(--border);
+  background: var(--filler-row-background);
+}
+
+#filler-fills {
+  color: var(--muted-text);
+  font-size: 0.85rem;
+}
+
+/* The fixed-contents entry being placed. */
+.being-placed td {
+  background: var(--highlight);
+}
+
+/* A small square of a name's color, in the fixed-contents table and the legend. */
+.swatch {
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 1px solid var(--fixed-outline);
+  border-radius: 3px;
+  background: var(--swatch-fill, var(--unnamed-fill));
+  vertical-align: middle;
+}
+
+.seed {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.seed input[type="text"] {
+  width: 8rem;
+}
+
+/* --- To-do list (section 6): calm guidance, not alarming errors --- */
+.to-do {
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-background);
+}
+
+.to-do h2 {
+  font-size: 0.95rem;
+}
+
+.to-do ul {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.to-do p {
+  margin: 0;
+}
+
+/* --- Plates (sections 5 and 8) ---
+   A grid with a heading row of column numbers and a heading column of row letters. The number of
+   rows and columns comes from the grid, set by randomizer-page.js as --rows and --columns. */
+.plate {
+  display: grid;
+  grid-template-columns: 1.4rem repeat(var(--columns), var(--well-size));
+  grid-template-rows: 1.4rem repeat(var(--rows), var(--well-size));
+  gap: 0.25rem;
+  width: max-content;
+  padding: 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-background);
+  user-select: none;
+}
+
+/* While dragging on the input plate, the browser mustn't scroll or zoom instead. */
+.input-plate {
+  touch-action: none;
+}
+
+.plate-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-text);
+  font-size: 0.8rem;
+}
+
+/* A well: a circle with a short label. Its colors are set by randomizer-page.js as --well-fill and
+   --well-text. */
+.well {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--well-size);
+  height: var(--well-size);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--well-fill, var(--open-well-fill));
+  color: var(--well-text, var(--muted-text));
+  font-size: 0.65rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.well.fixed {
+  border: 2px solid var(--fixed-outline);
+}
+
+.input-plate .well:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 1px;
+}
+
+/* --- Results (section 8) --- */
+.results {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.banner {
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--banner-border);
+  border-radius: 4px;
+  background: var(--banner-background);
+}
+
+/* An out-of-date result: faded, grayed, and its text can't be selected. */
+#results-body.out-of-date {
+  opacity: 0.45;
+  filter: grayscale(1);
+  user-select: none;
+}
+
+.result-plate-and-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.key,
+.legend {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.key li,
+.legend li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.3rem;
+}
+
+.key-well {
+  display: inline-block;
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--unnamed-fill);
+}
+
+.key-well.fixed {
+  border: 2px solid var(--fixed-outline);
+}
+
+.legend-count {
+  color: var(--muted-text);
+}
+
+.lists {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+}
+
+.lists section {
+  flex: 1 1 20rem;
+}
+
+.lists button {
+  margin-bottom: 0.5rem;
+}
+
+/* Long lists scroll inside their own box. */
+.list-scroll {
+  max-height: 24rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel-background);
+}
+
+.list-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.list-table th {
+  position: sticky;
+  top: 0;
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-background);
+  text-align: left;
+}
+
+.list-table td {
+  padding: 0.2rem 0.6rem;
+  vertical-align: top;
+}
