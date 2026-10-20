@@ -8,8 +8,10 @@ Last updated: 2026-10-20
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
   starting with 0 mean it may still change, for example to work with the next tool.
-- **Next:** Biomek output for the randomizer (below). Before its specification can start, one
-  decision is open: which Biomek method will read the files.
+- **Decided (ADR 0005):** the tool writes only Transfer From File files, matched to a saved
+  **method description**; methods are built in Biomek Software.
+- **Next step:** the specification for the method description (below), starting from Exp37's real
+  method (`docs/domain/exp37.md`).
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
@@ -81,29 +83,22 @@ Why this comes before the transfer designer: most of what it needs, the designer
 For the randomizer this is a new output, with its current lists unchanged, so it would be a MINOR
 release (0.2.0).
 
-**Open decision: which Biomek method reads the files?** A file only works with a method built to
-read it: the same labware names, positions and steps (`docs/domain/biomek.md`). Options:
-- **A. Exp37's method as it is.** Quickest and proven on the instrument, but only helps experiments
-  set up exactly like Exp37.
-- **B. One general method with a standard deck.** Someone builds and tests it once in Biomek
-  Software; the tool already knows its labware and positions, so users type nothing about the
-  method. Experiments must fit the standard deck.
-- **C. A method per experiment.** The user builds each method in Biomek Software as usual and tells
-  the tool its labware names and positions. Most flexible, but more typing, with room for a typo
-  that doesn't match the method.
+**Decided: any method, described to the tool (ADR 0005).** Options considered were Exp37's method
+only (A), one general method with a standard deck (B), and any method described to the tool (C). C
+was chosen, with descriptions saved and loaded, so B stays possible as one shared description.
+Generating the method itself was ruled out: its file format isn't documented and Script steps aren't
+supported for end users.
 
-Recommended so far: **C, with saved method descriptions.** Describing a method once and saving it
-means repeating that kind of experiment needs no typing, which is what B gives; a standard deck, if
-the lab settles on one, is then just one saved description. This also follows CLAUDE.md's
-"no hard-coded configuration". Not decided yet: Andy was unsure about the difference between B and
-C, which needs explaining again.
+**First step: the method description specification.** A first sketch of what it holds:
+- the labware the method uses: each name exactly as in the method, and its wells (so the tool can
+  catch a well that doesn't exist before the Biomek does);
+- which Transfer From File steps read files, and which transfers go in each (by condition, by
+  reagent, or kept in order through a worklist) — the hardest part to describe in general;
+- where the files go on the Biomek PC and how they are named; worklists need full paths.
 
-Not an option: having the tool **write the Biomek method itself**. The method file's format isn't
-documented and Script steps aren't supported for end users (`docs/domain/biomek.md`), so the tool
-writes only the documented Transfer From File files, and methods are built in Biomek Software.
-
-First step once decided: a specification for the method description, starting from a real method
-(Exp37's Transfer From File and Worklist settings).
+It is saved as a file (likely JSON) kept with the Biomek method, and holds nothing about an
+experiment's contents. Deck positions are probably unnecessary, because files can name labware
+instead. The specification decides all of this.
 
 ## Later: transfer designer
 A tool for planning transfers by clicking and dragging from one well to another.
@@ -134,6 +129,5 @@ overfilling a well or drawing more than it holds.
   volume tracking.
 
 ## Open decisions
-- **Which Biomek method reads the files** (see "Next goal" above).
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)
   would need a specification change.
