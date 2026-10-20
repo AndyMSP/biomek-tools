@@ -25,6 +25,11 @@ Andy is learning, so explanations matter as much as the code.
 - If a request is unclear or seems like a bad idea, say so and ask before proceeding.
 - Don't change, rename, or delete anything you weren't asked to touch.
 - After each change, summarize what changed in a few sentences.
+- **Try first, then make it properly.** Changes to how a page looks or behaves are tried first in a
+  preview: a scratch copy outside the repository that Andy can open and use. Only once he likes it
+  does the change go in properly: specification first, then code and tests.
+- **Wrap up.** When Andy says "wrap up", or a piece of work ends, list what was decided or learned
+  and suggest where each item belongs (see "Where knowledge lives"). Save only what Andy approves.
 
 ## Code
 - **Readability first.** Use clear, descriptive names. Prefer simple code to clever code.
@@ -53,11 +58,12 @@ Andy is learning, so explanations matter as much as the code.
 biomek-tools/
 ├── CLAUDE.md
 ├── README.md
-├── CHANGELOG.md           added at the first release
+├── CHANGELOG.md           what changed in each release
 ├── package.json           project metadata and npm scripts (test, build)
 ├── .gitignore
 ├── .gitattributes
 ├── docs/
+│   ├── roadmap.md         where things stand, what's next, open decisions
 │   ├── adr/               architecture decision records, one per decision
 │   └── domain/            domain knowledge: verified facts, one file per subject (e.g. biomek.md)
 ├── src/
@@ -113,3 +119,15 @@ biomek-tools/
 ## Documentation
 - Keep README.md current: what the project is, how to set it up, how to run tests and build.
 - Record each significant decision as an ADR in `docs/adr/`: context, decision, consequences.
+- Keep the roadmap's "Where things stand" current whenever work finishes or a decision is made.
+
+## Where knowledge lives
+Chats are for thinking things through; they are not a record. Anything worth keeping goes into the
+repository, so a new session never needs an old chat:
+- how a module or tool behaves → its specification (`name.md`);
+- why something was decided → an ADR in `docs/adr/`;
+- where things stand, what's next, open decisions and ideas → `docs/roadmap.md`;
+- facts about the instrument, its files and the lab's methods → `docs/domain/`, with sources;
+- what changed in each release → `CHANGELOG.md`.
+
+Start each session by reading this file and the roadmap's "Where things stand".
