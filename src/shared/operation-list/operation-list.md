@@ -47,7 +47,8 @@ Not in version 1 (see `docs/roadmap.md`):
 - The list keeps its own copy of each operation it's given. Changing an object after adding it never
   changes the list, and operations read from the list can't be changed.
 - Every operation is an object with a `type` property naming its kind. Version 1 accepts only
-  `"transfer"`, and rejects any other type.
+  `"transfer"`, and rejects any other type. As with a transfer's properties (below), `type` counts
+  only if the object holds it itself.
 - Code that uses the list reads only the operation types, and the properties, it needs, so new types
   or properties added later don't affect it.
 
@@ -109,15 +110,16 @@ quotes, a list as `a list` and any other object as `an object`.
 | A transfer property is missing | `A transfer needs source, destination and volume, but is missing "volume".` With several, all are listed in that order: `but is missing "source", "volume".` |
 | A transfer has extra properties | `A transfer can only have type, source, destination and volume, but also got "volme".` With several, all are listed in the order they appear. |
 | `source` or `destination` isn't an object (including `null` and lists) | `The source must be an object with a labware and a well, like { labware: "Plate 1", well: "A1" }, but got "A1".` |
-| `labware` or `well` missing | `The source needs a labware and a well, but is missing "well".` |
-| Extra property in `source` or `destination` | `The destination can only have a labware and a well, but also got "wel".` |
+| `labware` or `well` missing | `The source needs a labware and a well, but is missing "well".` With both, both are listed: `but is missing "labware", "well".` |
+| Extra property in `source` or `destination` | `The destination can only have a labware and a well, but also got "wel".` With several, all are listed in the order they appear. |
 | `labware` or `well` not text | `The source labware must be text, but got 5.` |
 | `labware` or `well` blank | `The destination well is blank. Give it at least one character that isn't a space.` |
 | `labware` or `well` has whitespace at the start or end | `The source labware " Plate 1" has spaces at the start or end. Remove them.` |
 | `volume` not a number, or less than 0 | `The volume must be a number of microliters, 0 or more, like 50, but got -5.` |
 
 The checks run in the order of the table, for all of `source`, then all of `destination`, then
-`volume`. The first problem found is reported. Each message names the end being checked (source or
+`volume`. Within `source` and `destination`, every check on `labware` runs before any check on
+`well`. The first problem found is reported. Each message names the end being checked (source or
 destination), so it's clear which half of the transfer to fix.
 
 In JavaScript a list (an array) and `null` both count as objects, so they are named in the object
@@ -153,11 +155,15 @@ Each becomes at least one unit test in `operation-list.test.js`.
 - A transfer missing `volume` gives the missing error; one missing `source` and `volume` names both.
 - A transfer with `volme: 50` alongside its four valid properties gives the extra-property error.
 - `source: "A1"` and `destination: null` give the source and destination object errors.
+- `source: {}` gives the missing error naming both `"labware"` and `"well"`.
 - `destination: { labware: "Plate 1", wel: "D4" }` gives the missing error for `"well"`, because
   missing properties are checked before extra ones.
 - `destination: { labware: "Plate 1", well: "D4", volme: 50 }` gives the extra-property error.
 - `labware` and `well` values `5`, `""`, `"   "`, `" Plate 1"` and `"Plate 1 "` each give their error,
   for both source and destination.
 - Volume `"50"`, `NaN`, `Infinity` and `-5` give the volume error.
-- A property that comes from a class rather than the object itself counts as missing.
+- A property that comes from a class rather than the object itself counts as missing, including
+  `type`.
 - Checks run in order: an operation with a bad source and a bad volume reports the source.
+- Within an end, `labware` is checked fully before `well`: `source: { labware: " Plate 1", well: 5 }`
+  reports the labware's whitespace error.
