@@ -14,7 +14,8 @@ Software and described to the tool.
 The goal has since grown: the tool should define the whole method, including decisions such as when
 tips are changed. That gives better traceability and more customizable tools. Biomek Software is
 used only because it is the only interface, and it lacks the features to set up our experiments
-easily. Being a graphical interface, it also can't be driven by a program.
+easily. It is a graphical interface with no documented way to be driven by a program (pending Beckman's
+answer; see option 3).
 
 ADR 0005's reasons against generating methods still hold: the method file's structure isn't
 documented, and Script steps are "not currently supported for end-user applications" (B56358AF,
