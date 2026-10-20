@@ -8,7 +8,7 @@ Last updated: 2026-10-20
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
   starting with 0 mean it may still change, for example to work with the next tool.
-- **Decided (ADR 0005, amended by ADR 0006):** the tool defines the whole method. Experiments run as
+- **Proposed: ADR 0006** (amending ADR 0005): the tool defines the whole method. Experiments run as
   a worklist the tool writes, for **one general-purpose method** built once in Biomek Software, whose
   steps take their settings from the worklist's columns. Andy is asking Beckman whether they offer a
   programming interface (API).
@@ -101,7 +101,7 @@ was chosen, with descriptions saved and loaded, so B stays possible as one share
 Generating the method itself was ruled out: its file format isn't documented and Script steps aren't
 supported for end users.
 
-**Amended: one general-purpose method, driven by a worklist (ADR 0006).** The tool should define the
+**Proposed: ADR 0006, one general-purpose method, driven by a worklist.** The tool should define the
 whole method, including tip changes. Within the limits above, the plan is one method built once in
 Biomek Software: a Worklist loop whose steps take their settings from the worklist's columns. The
 tool writes the worklist, which becomes the experiment's method. Generating the method's `.json`

@@ -3,7 +3,7 @@
 Date: 2026-10-20
 
 ## Status
-Accepted. Amended by ADR 0006.
+Accepted. ADR 0006 (proposed) would amend it.
 
 ## Context
 The next tool turns a randomized plate into Biomek files. A Transfer From File file works only with a

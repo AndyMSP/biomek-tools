@@ -3,7 +3,9 @@
 Date: 2026-10-20
 
 ## Status
-Accepted. Amends ADR 0005.
+Proposed. The plan depends on what a general-purpose method can vary per worklist row, which is
+still an open decision (see `docs/roadmap.md`); it becomes Accepted once that is checked. Once
+accepted, it amends ADR 0005.
 
 ## Context
 ADR 0005 decided that the tool writes only Transfer From File files, for methods built in Biomek
