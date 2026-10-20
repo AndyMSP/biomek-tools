@@ -164,3 +164,50 @@ modules, which are. Before each release, check by hand in Edge and Chrome, openi
   entry;
 - the out-of-date banner appears after a change and goes away after changing it back;
 - the copied text pastes into Excel as two columns.
+
+## 10. Visual design
+The page should look calm and be easy to scan. These values come from the design mockup; the page's
+own colors and sizes are defined once, in `randomizer.css`, as named CSS variables.
+
+**Panels.** The page background is a soft off-white (`#F6F5F1`). Each area is a white panel with a
+thin border (`#E2E0D8`), rounded corners (10px) and generous padding (24px): one panel for the
+inputs (left column), one for the input plate (right column) and one for the results. Panels are
+24px apart.
+
+**Type.** A font every lab PC already has, so the page works offline: `"Segoe UI", system-ui,
+sans-serif` for text, and `Consolas, "Cascadia Mono", monospace` for well names and plate headings.
+Sizes: the page title 28px bold, panel headings 17px semibold, list headings 15px semibold, body
+text 14–15px, notes and small print 13px. Secondary text is gray (`#5E5E58`).
+
+**Header.** The title `Plate randomizer` with `One 96-well plate` beside it in gray.
+
+**Inputs panel**, top to bottom:
+- Each table's heading, then its column headings in small gray text, then its rows. Text boxes are
+  40px tall with a light border (`#CFCDC4`) and 6px corners.
+- The filler row has a pale warm background (`#FBF4EA`), a dashed line above it (`#DDB58B`), and its
+  `Fills N spare wells` in brown text (`#7A4E14`).
+- The fixed-contents entry being placed has a pale blue background (`#EEF3FB`).
+- `+ Add row` and `+ Add fixed contents` are light buttons with a dashed blue border (`#9DB7DB`) and
+  blue text (`#2F5DA8`). Remove buttons are small and plain, so they don't compete with the inputs.
+- The seed box, about 160px wide.
+- At the bottom, a tinted box (`#F6F5F1`, 8px corners) holding the to-do list and, inside it, the
+  Randomize button. `Ready to randomize.` is green (`#22603A`).
+
+**Buttons.** Randomize is solid blue (`#2F5DA8`) with white bold text; when disabled it is gray
+(`#D9D7CF`) with gray text. Every button is at least 36px tall (44px for Randomize and the add
+buttons) so it is easy to click.
+
+**Plates.** Wells are 40px circles, 4px apart, with row letters and column numbers in small gray
+monospace text. An open well is white with a gray border (`#BDBDB5`) and its name in gray monospace.
+Above the input plate: its heading on the left and `N fixed · N open` on the right.
+
+**Results panel.** Its heading on the left and `Seed 48213` on the right. Below, two columns that
+stack in a narrow window:
+- Left: the result plate, then the key, then the legend.
+- Right: the two lists, one above the other. Each has its heading with its Copy button at the right
+  end of the same line, then the list in a box (border `#E2E0D8`, 6px corners) that scrolls when it is
+  taller than 240px, with its column headings staying visible. List text is 13px, and well names are
+  monospace.
+
+**Out-of-date banner.** A pale red box (`#FCE9E7`, border `#E8A39B`, dark red text `#7A1F15`, 8px
+corners) above the results, with **Out of date.** in bold.
