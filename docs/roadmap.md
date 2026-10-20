@@ -10,8 +10,15 @@ Last updated: 2026-10-20
   starting with 0 mean it may still change, for example to work with the next tool.
 - **Decided (ADR 0005):** the tool writes only Transfer From File files, matched to a saved
   **method description**; methods are built in Biomek Software.
-- **Next step:** the specification for the method description (below), starting from Exp37's real
-  method (`docs/domain/exp37.md`).
+- **Next step:** the specification for the **`transfer-list`** shared module: an ordered list of
+  transfers (from labware and well, to labware and well, volume), held in memory. It is the core of
+  the Biomek output, volume tracking and the transfer designer, and needs no instrument time.
+  - It holds only moves. Tip handling, mixing and techniques are Biomek step settings, and
+    concentrations are calculated from the list by volume tracking, never stored in it.
+  - One list can become several Transfer From File files (the file writer's job).
+- **After that, undecided:** volume tracking (towards the transfer designer) or the Biomek file
+  writer and method description specification (towards Biomek output, best done with access to
+  the instrument).
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
