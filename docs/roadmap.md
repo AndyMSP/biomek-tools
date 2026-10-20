@@ -153,9 +153,15 @@ overfilling a well or drawing more than it holds.
 - **How tip changes are represented** in the operation list: a `tipChange` operation, a property of
   a transfer, or something else. Depends on how the Span-8 changes tips (all eight together or per
   channel) and how the Biomek assigns transfers to channels; not yet in `docs/domain/biomek.md`.
-- **What the general-purpose method can vary per worklist row**, for example whether Biomek Software
-  has conditional steps ("change tips only if this column says yes"). Decides which operation types
-  the tool can offer. To check against the manuals and the instrument.
+- **What the general-purpose method can vary per worklist row.** Decides which operation types the
+  tool can offer, and whether ADR 0006 is accepted. Found so far (`docs/domain/biomek.md`):
+  - Conditional steps exist: an If step can run different steps depending on a column's value, such
+    as "change tips only if this column says yes".
+  - A row can likely set its wells, through Span-8 Aspirate and Dispense steps given a well number
+    from a variable. Not confirmed for the Transfer step; to verify in simulation.
+  - What a row holds also affects run time. A Transfer From File step can plan how to use the probes
+    efficiently across many transfers, while transfers carried out one row at a time may not use
+    them as well.
 - **A programming interface from Beckman**: Andy is asking whether one exists. If it does, ADR 0006's
   option 3 would be reconsidered.
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)
