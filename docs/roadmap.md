@@ -12,11 +12,11 @@ Last updated: 2026-10-20
   a worklist the tool writes, for **one general-purpose method** built once in Biomek Software, whose
   steps take their settings from the worklist's columns. Andy is asking Beckman whether they offer a
   programming interface (API).
-- **Next step:** the code and tests for the **`operation-list`** shared module, against its
-  specification (`src/shared/operation-list/operation-list.md`). It needs no instrument time.
+- **The `operation-list` shared module is built** (code and tests), against its specification
+  (`src/shared/operation-list/operation-list.md`).
   - **Tip changes will be set by the tools**, as a later operation type, once it is known how the
     Span-8 changes tips (see "Open decisions").
-- **After that, undecided:** volume tracking (towards the transfer designer) or the Biomek file
+- **Next, undecided:** volume tracking (towards the transfer designer) or the Biomek file
   writer and the general-purpose method (towards Biomek output, best done with access to the
   instrument).
 
@@ -48,6 +48,7 @@ Last updated: 2026-10-20
 - **`operation-list.md`**: the specification for the operation list, an ordered, immutable list of
   operations (version 1: transfers only), the single source of truth for Biomek output, volume
   tracking and the transfer designer. See `src/shared/operation-list/operation-list.md`.
+- **`operation-list.js`**: the operation list's code and tests.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
   `npm run serve`.
 
