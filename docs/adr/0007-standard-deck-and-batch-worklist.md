@@ -1,0 +1,57 @@
+# 7. A standard deck, a setup worklist, and one Transfer From File batch per worklist row
+
+Date: 2026-10-21
+
+## Status
+Proposed. It builds on ADR 0006, which is also still proposed; both can be accepted together.
+
+## Context
+ADR 0006 plans one general-purpose method, built once in Biomek Software and driven by files the tool
+writes. Whether that could work depended on what a worklist row can control. Tests in simulation on
+2026-10-21 answered most of it (`docs/domain/biomek.md`, "Worklist-driven steps"):
+- a row can set wells, volume, labware, the transfer file, liquid type, technique, probes, tip type,
+  and whether tips are changed;
+- Instrument Setup's well volumes, but not its liquid types, can come from variables, and a one-row
+  "setup worklist" can supply them from a file;
+- validation catches overdraws, tip overfill and unknown technique names, but not a technique
+  unsuited to the tip.
+
+Doing every transfer as its own worklist row would be slow, because Transfer From File plans how to
+use the probes across many transfers and a row-by-row loop can't. Andy wants the tool, not Biomek,
+to decide technique, liquid type, tip type, how many probes to use, and when tips change.
+
+## Decision
+**A standard deck.** The general-purpose method has a fixed set of labware at fixed positions, with
+fixed names. Every well that can hold a starting volume has a variable named after its labware and
+well (e.g. `Src_A1`), set up once in Instrument Setup's Show Well Properties.
+
+**Two files drive each run:**
+1. A **setup worklist**: one row with every well's starting volume. The method's first Worklist
+   step reads it and contains the Instrument Setup step.
+2. A **batch worklist**: one row per **batch** of transfers. Each row names a Transfer From File file
+   and the settings for that batch: liquid type, technique, tip type, the probes to use, the probes
+   to load, and whether tips are changed first.
+
+Inside the batch worklist's loop: an If step (`NewTip=1`) unloads all tips and loads tips on
+`=LoadProbes` of `=TipType`; then one Transfer From File step runs `=TransferFile` with
+`=Probes`, `=LiquidType` and `=Technique`.
+
+**Tips are loaded by looking ahead.** When tips are changed, the tool loads tips on the largest set
+of probes any batch needs until the next change, so no batch ever needs a probe without a tip, and
+tips are never loaded partway. The user chooses how many probes each transfer may use, trading time
+against tips.
+
+**The tool checks what Biomek doesn't,** before writing any file: that each technique suits its tip
+type, volume and liquid type (from a table of the lab's techniques in `config/`), and that each draw
+stays within a safe share of the tip's capacity.
+
+## Consequences
+- Each experiment is a few generated files; the method itself never changes.
+- Labware outside the standard deck needs a new or edited general-purpose method.
+- Liquid types can't be set on wells in Instrument Setup, only per batch in Transfer From File.
+- A batch is the unit for settings: transfers that differ in liquid type, technique, tip type or
+  probes go in different batches. Within a batch, Transfer From File chooses the order.
+- Replacing only some tips (e.g. one contaminated probe) isn't possible; tips are always all
+  unloaded. An `UnloadProbes` column could add this later.
+- How fast this is on the real instrument, and whether a real run matches simulation, are still to
+  be checked.
