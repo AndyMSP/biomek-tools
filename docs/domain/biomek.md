@@ -8,7 +8,7 @@ Manuals cited:
 - **B56358AF**: Biomek i-Series Software Reference Manual.
 - **B54473AD**: Biomek i-Series instructions manual, including the tutorials.
 
-Last checked against the manuals: 2026-10-20.
+Last checked against the manuals: 2026-10-20. Simulation tests: 2026-10-21.
 
 ## Our instrument
 - Biomek i5 with a Span-8 pod and 1 mL syringes. *(Lab setup.)*
@@ -74,11 +74,71 @@ A loop: it runs the steps inside it once per row of a text file, setting variabl
   (right-click the labware) may take a variable or expression. It sets the **first** well: the
   first selected probe uses it, and other probes follow from it by the Spacing setting. Wells are
   given as numbers, counted left to right and then down (A1 = 1, A12 = 12, B1 = 13 on a 96-well
-  plate). *(B56358AF, 22-50 and 22-58; the Serial Dilution step says the same, 22-32.)* The manual
-  doesn't say this for the Transfer step, and it hasn't been tried on the instrument.
+  plate). *(B56358AF, 22-50 and 22-58; the Serial Dilution step says the same, 22-32.)* Verified in
+  simulation, and it works in the Transfer step too (see "Worklist-driven steps", below).
 - The other documented way to choose wells from a file is the **Define Pattern** step, which can
   read a pattern from a comma-delimited file. In a Loop, the pattern can change on each iteration
   as defined by the file. *(B56358AF, 27-14 onward.)*
+
+## Worklist-driven steps
+*(Verified in simulation, 2026-10-21, on our Biomek i5 Span-8, BC230 and BC1070 tips, BCFlat96
+plates named `Source` and `Dest`. Methods `test1`–`test21` and their files are in
+`C:\Users\Beckman Coulter\Desktop\Andy\Tests`. "Worked" means it validated and the simulation did
+what the file said.)*
+
+**What a worklist row can set**
+
+| Setting | Where | How | Result |
+|---|---|---|---|
+| Source and destination well | Span-8 Aspirate and Dispense; Transfer | right-click the plate graphic → Specify Selection as Text → `=SrcWell` | works, with **well numbers** only |
+| Volume | Aspirate, Dispense, Transfer | Volume `=Volume` | works |
+| Labware (plate) | Aspirate, Dispense, Transfer | Position `=SrcPlate`, a labware name | works |
+| Transfer file | Transfer From File | File Name `=TransferFile`, a full path | works; columns must be numbers (below) |
+| Liquid type | Transfer From File, source and destination | `=LiquidType` | works |
+| Technique | Transfer From File, source and destination | `=Technique` | works |
+| Probes | Load Tips; Transfer From File | right-click a probe number → Specify Selection as Text → `=Probes` | works, e.g. `"1,2,3,4"` |
+| Tip type | Load Tips | tip type `=TipType`, e.g. `BC230`, `BC1070` | works, loads from the matching box |
+| Whether to change tips | If step around Unload Tips + Load Tips | condition `NewTip=1` | works |
+| Plate's starting volume | Instrument Setup, labware properties, Known volume | `=StartVolume` | works |
+| Each well's starting volume | Instrument Setup, Show Well Properties, Amount | `=VolA1` | works |
+| Liquid type in Instrument Setup | per well or per plate | `=LiqA1` | **doesn't work**: the field takes the text literally |
+
+**Details**
+- **Wells in Specify Selection as Text are numbers,** counted left to right then down
+  (number = (row − 1) × columns + column; A1 = 1, B1 = 13, C1 = 25, D1 = 37 checked). Well
+  names such as `A1` are rejected, typed or from a variable: *"Bad well expression: =SrcWell"*.
+  Transfer From File files accept names (above, and Exp37).
+- **If conditions** are a script expression with no leading `=`, e.g. `NewTip=1`; `UnloadProbes<>""`
+  tests for an empty value.
+- **A worklist runs once per row,** so a one-row file works as "read these settings from a file". A
+  **setup worklist** holding the Instrument Setup step, placed before the transfers, supplies the
+  starting volumes, and they still apply after its End Worklist. A row of 288 columns was read in
+  full.
+- **Transfer From File with `=TransferFile`:** Biomek can't read the file in advance (*"Cannot
+  display file specified by an expression"*), so the column boxes take **column numbers** (1–5),
+  with "File has a header row" checked. Column names typed there don't stick.
+- **Probe lists contain commas,** so they are quoted in the worklist: `"1,2,3,4"`.
+- **Unload Tips with all eight probes** is fine when some or none of them have tips.
+- **Tips stay on between batches** unless a step unloads them; a later batch can use some of the
+  probes that hold tips (test 17).
+- **Error messages show the field's expression, not its value,** e.g. *"Unable to find technique
+  "=Technique""* for an unknown technique name.
+
+**What validation checks**
+- Validation replays the worklist's rows ("passes") and tracks well volumes from Instrument Setup,
+  including liquid added by earlier rows. Problems are reported only once validation passes the
+  end of the Worklist (e.g. selecting Finish), on the step concerned.
+- **Drawing more than a well holds** is caught: *"Error during pass #4: Cannot pipette 180.000 µL;
+  the well only has 150.000 µL in it."*
+- **Overfilling a tip** is caught: *"Error during pass #1: Too much aspirated into tip(s); max volume
+  is 230 µL and a total of 300 µL has been aspirated."* The 230 µL is the total drawn, air gaps
+  included.
+- **An unknown technique name** is caught: *"Unable to find technique "=Technique"."*
+- **A technique that doesn't suit the tip is not caught.** A technique's compatible tip types only
+  filter which techniques the step's list offers. A technique set to allow only 1070 µL tips ran
+  with BC230 tips, from a variable, with no warning. So the tool must check techniques against tips
+  itself.
+- A BCFlat96 well's maximum volume is 362.76 µL (labware properties).
 
 ## Methods and their files
 - A method can be exported as a `.bmf` file, which carries everything needed to run it, or as a
@@ -121,5 +181,7 @@ Questions to answer before relying on the answer:
 - What happens when a worklist row names a file that doesn't exist: an error, or a skipped row?
 - What the Biomek does with a zero-volume row when "Skip zero volume transfers" is off: an error,
   a skipped row, or a pipetting motion with no liquid.
-- Whether a variable well in a Span-8 Aspirate or Dispense step works as the manual describes, and
-  whether the Transfer step accepts one too.
+- How long row-by-row transfers take compared with Transfer From File on the real instrument
+  (simulation may not run at real speed).
+- Whether a real run behaves like simulation for everything in "Worklist-driven steps", in
+  particular that a technique unsuited to the tip still isn't caught.
