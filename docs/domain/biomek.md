@@ -155,6 +155,24 @@ what the file said.)*
   `SequentialID,Name,Barcode,Well,Volume,Liquid` (one row per well of each labware). This could check
   the tool's contents tracking against Biomek's own.
 
+**Speed** *(test 22, real instrument, air only, 2026-10-22)*
+
+The same 24 transfers of 20 µL, from Source A1–H1 into Dest columns 1–3, keeping the same tips:
+
+| Run | How | Time |
+|---|---|---|
+| A | row-by-row: one worklist row per transfer, Aspirate + Dispense, probe 1 | 2 min 52 s |
+| B | one Transfer From File batch, probe 1 | 2 min 52 s |
+| C | the same batch, all 8 probes | 35 s |
+
+- A worklist row per transfer adds **no measurable time** over Transfer From File with one probe
+  (about 7 s per transfer either way).
+- **Using 8 probes was about 5 times faster.** The speed comes from probes working side by side, not
+  from Transfer From File itself. This layout suited 8 probes perfectly (8 sources in one column into
+  8 destinations in one column); other layouts may gain less.
+- Each run started with a full tip box: a method's Instrument Setup assumes a full box at the start,
+  so used tips must be replaced between real runs.
+
 **"No tip box type specified"** *(2026-10-21 evening; solved 2026-10-22)*
 - After test 23b ran on the real instrument and the software was switched back to simulation, methods
   that had validated earlier (tests 14, 15 and 23) failed with *"Error during pass #1: No tip box type
@@ -218,7 +236,5 @@ what the file said.)*
 Questions to answer before relying on the answer:
 - The largest volume accepted in a volume column, and whether more than 4 decimal places are kept.
 - Where exactly the per-well volume export is in the software.
-- How long row-by-row transfers take compared with Transfer From File on the real instrument
-  (simulation may not run at real speed).
 - Whether a real run behaves like simulation for everything in "Worklist-driven steps", in
   particular that a technique unsuited to the tip still isn't caught.

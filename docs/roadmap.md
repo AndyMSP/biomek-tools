@@ -21,8 +21,9 @@ Last updated: 2026-10-21
 - **In progress: the `contents-tracking` specification** (formerly "volume tracking"). Sections 1–4
   are drafted on the `contents-tracking` branch; errors and test cases are still to write. A preview
   of the transfer designer with contents tracking and a timeline exists (not in the repository).
-- **Still to test on the instrument:** speed of row-by-row versus Transfer From File (a real run with
-  water), and Transfer From File file quirks ("Not yet known" in `biomek.md`).
+- **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
+  (`biomek.md`). With one probe, row-by-row and Transfer From File take the same time; 8 probes were
+  about 5 times faster.
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
