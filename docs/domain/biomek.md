@@ -148,6 +148,10 @@ what the file said.)*
 - **Volumes with up to 4 decimal places are accepted and tracked exactly:** 10.5, 10.25, 10.125 and
   10.0625 µL ended up in their wells as written, and the source well held 200 − 40.9375 =
   159.0625 µL.
+- **Volumes bigger than the tip (test 24, 2026-10-22):** with "Split large volumes" checked in
+  Transfer From File, a 300 µL transfer with BC230 tips validated and ran in 2 trips (the size of
+  each trip wasn't visible). The export showed the source well down from 340 to 40 µL and the
+  destination at 300 µL. Without it, the same transfer fails validation (test 20).
 - **Decimal places (test 23e, 2026-10-22):** volumes with 1 to 25 decimal places were all accepted.
   The export shows each volume to **15 significant digits**: 10.1234567891234 (13 decimals) came out
   exactly, and anything longer was rounded to 10.1234567891235; a source well showed

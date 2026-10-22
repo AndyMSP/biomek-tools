@@ -36,7 +36,8 @@ Inside the batch worklist's loop: an If step (`NewTip=1`) unloads all tips and l
 `=LoadProbes` of `=TipType`; then one Transfer From File step runs `=TransferFile` with
 `=Probes`, `=LiquidType` and `=Technique`. Its tip type, in the box next to Load, is also
 `=TipType`, with Load unchecked: Transfer From File needs it to know which tips are on
-(`biomek.md`).
+(`biomek.md`). **"Split large volumes" is always checked,** so a transfer larger than the tip
+holds is made in as many trips as needed.
 
 **Tips are loaded by looking ahead.** When tips are changed, the tool loads tips on the largest set
 of probes any batch needs until the next change, so no batch ever needs a probe without a tip, and
@@ -48,8 +49,8 @@ digits (`biomek.md`), so this isn't a Biomek limit: it keeps arithmetic leftover
 `10.000000000000002` out of the files, at a precision already far finer than a pipette delivers.
 
 **The tool checks what Biomek doesn't,** before writing any file: that each technique suits its tip
-type, volume and liquid type (from a table of the lab's techniques in `config/`), and that each draw
-stays within a safe share of the tip's capacity.
+type, volume and liquid type (from a table of the lab's techniques in `config/`). Because large
+volumes are split, a transfer's volume isn't limited by the tip's capacity.
 
 ## Consequences
 - Each experiment is a few generated files; the method itself never changes.
