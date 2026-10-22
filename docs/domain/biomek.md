@@ -148,6 +148,9 @@ what the file said.)*
 - **Volumes with up to 4 decimal places are accepted and tracked exactly:** 10.5, 10.25, 10.125 and
   10.0625 µL ended up in their wells as written, and the source well held 200 − 40.9375 =
   159.0625 µL.
+- **A worklist row naming a file that doesn't exist is caught at validation:** *"Error during pass
+  #2: Cannot open file "C:\...\test23d_batch2.csv" : The specified file was not found"*. The row
+  isn't skipped (2026-10-22).
 - Biomek can **export every well's volume** after a run, as a CSV with the columns
   `SequentialID,Name,Barcode,Well,Volume,Liquid` (one row per well of each labware). This could check
   the tool's contents tracking against Biomek's own.
@@ -206,7 +209,6 @@ what the file said.)*
 ## Not yet known
 Questions to answer before relying on the answer:
 - The largest volume accepted in a volume column, and whether more than 4 decimal places are kept.
-- What happens when a worklist row names a file that doesn't exist: an error, or a skipped row?
 - What causes "No tip box type specified" (above), and how to fix it.
 - Where exactly the per-well volume export is in the software.
 - How long row-by-row transfers take compared with Transfer From File on the real instrument
