@@ -162,6 +162,13 @@ what the file said.)*
   one run only; restarting the computer didn't help.
 - **Test 19 still validated.** It loads tips inside the Worklist, with the tip type set explicitly
   (`=TipType`), as ADR 0007 plans.
+- *Checked the next day, 2026-10-22:* the error was still there after an overnight shutdown. In tests
+  14, 15 and 23, with the Transfer From File step fixed to **probe 1 only**, it fails every time, even
+  with the step deleted and re-added, and with an Unload Tips (all eight probes) step added at the
+  start. With **probe 2 only**, or **all eight probes**, the same methods validate and run every
+  time. In a brand-new method, the step's Load box works. Right-clicking Use probes → Use Disposable
+  Tips selects all eight probes, so probe 1 isn't set up as a fixed tip. Cause unknown; to ask
+  Beckman support.
 
 ## Methods and their files
 - A method can be exported as a `.bmf` file, which carries everything needed to run it, or as a
