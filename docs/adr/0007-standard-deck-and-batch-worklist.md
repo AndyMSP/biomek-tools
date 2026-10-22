@@ -34,7 +34,9 @@ well (e.g. `Src_A1`), set up once in Instrument Setup's Show Well Properties.
 
 Inside the batch worklist's loop: an If step (`NewTip=1`) unloads all tips and loads tips on
 `=LoadProbes` of `=TipType`; then one Transfer From File step runs `=TransferFile` with
-`=Probes`, `=LiquidType` and `=Technique`.
+`=Probes`, `=LiquidType` and `=Technique`. Its tip type, in the box next to Load, is also
+`=TipType`, with Load unchecked: Transfer From File needs it to know which tips are on
+(`biomek.md`).
 
 **Tips are loaded by looking ahead.** When tips are changed, the tool loads tips on the largest set
 of probes any batch needs until the next change, so no batch ever needs a probe without a tip, and
