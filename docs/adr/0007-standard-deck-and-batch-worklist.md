@@ -41,6 +41,10 @@ of probes any batch needs until the next change, so no batch ever needs a probe 
 tips are never loaded partway. The user chooses how many probes each transfer may use, trading time
 against tips.
 
+**Volumes in the files are rounded to 3 decimal places** (1 nL). Biomek keeps 15 significant
+digits (`biomek.md`), so this isn't a Biomek limit: it keeps arithmetic leftovers such as
+`10.000000000000002` out of the files, at a precision already far finer than a pipette delivers.
+
 **The tool checks what Biomek doesn't,** before writing any file: that each technique suits its tip
 type, volume and liquid type (from a table of the lab's techniques in `config/`), and that each draw
 stays within a safe share of the tip's capacity.
