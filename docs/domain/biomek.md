@@ -140,6 +140,29 @@ what the file said.)*
   itself.
 - A BCFlat96 well's maximum volume is 362.76 µL (labware properties).
 
+**Transfer From File files** *(test 23, 2026-10-21)*
+- **A line break after the last row is accepted.** Our files still leave it out, as in Exp37, to keep
+  one tested format.
+- **A 0 µL row with "Skip zero volume transfers" off goes through the aspirate and dispense motions
+  but moves no liquid** (checked on the real instrument; the simulation looks as if it aspirates).
+- **Volumes with up to 4 decimal places are accepted and tracked exactly:** 10.5, 10.25, 10.125 and
+  10.0625 µL ended up in their wells as written, and the source well held 200 − 40.9375 =
+  159.0625 µL.
+- Biomek can **export every well's volume** after a run, as a CSV with the columns
+  `SequentialID,Name,Barcode,Well,Volume,Liquid` (one row per well of each labware). This could check
+  the tool's contents tracking against Biomek's own.
+
+**A problem not yet solved** *(2026-10-21, evening)*
+- After test 23b ran on the real instrument and the software was switched back to simulation, methods
+  that had validated earlier (tests 14, 15 and 23) failed with *"Error during pass #1: No tip box type
+  specified"* on their Transfer From File step. In those methods, tips are loaded by a fixed Load
+  BC230 Tips step before the Worklist, and Transfer From File doesn't load tips itself.
+- In the failing methods, Transfer From File's tip-type box was empty and its Load box couldn't be
+  checked, and the Source section showed no plate graphic. Restarting Biomek Software cleared it for
+  one run only; restarting the computer didn't help.
+- **Test 19 still validated.** It loads tips inside the Worklist, with the tip type set explicitly
+  (`=TipType`), as ADR 0007 plans.
+
 ## Methods and their files
 - A method can be exported as a `.bmf` file, which carries everything needed to run it, or as a
   `.json` file, which carries only the steps and their settings; labware and techniques must already
@@ -175,12 +198,10 @@ what the file said.)*
 
 ## Not yet known
 Questions to answer before relying on the answer:
-- Does the software reject a file with a line break after the last row, or is "no final line break"
-  only our convention from Exp37?
-- The largest volume, and the number of decimal places, accepted in a volume column.
+- The largest volume accepted in a volume column, and whether more than 4 decimal places are kept.
 - What happens when a worklist row names a file that doesn't exist: an error, or a skipped row?
-- What the Biomek does with a zero-volume row when "Skip zero volume transfers" is off: an error,
-  a skipped row, or a pipetting motion with no liquid.
+- What causes "No tip box type specified" (above), and how to fix it.
+- Where exactly the per-well volume export is in the software.
 - How long row-by-row transfers take compared with Transfer From File on the real instrument
   (simulation may not run at real speed).
 - Whether a real run behaves like simulation for everything in "Worklist-driven steps", in
