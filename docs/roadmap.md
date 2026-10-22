@@ -164,6 +164,11 @@ overfilling a well or drawing more than it holds.
   steps.
 
 ## Open decisions
+- **Mixing** (to do, 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
+  separate Mix step for the Span-8, so it has to be done another way. Options to look at: a transfer
+  from a well back into the same well (the operation list already allows this), or a technique's
+  mix settings in Transfer From File (Exp37 used "aspirate mix 75 µL × 2"; `exp37.md`). How mixing
+  is represented in the operation list is part of this.
 - **Accept ADR 0006 and ADR 0007?** The simulation tests of 2026-10-21 answered the question
   ADR 0006 was waiting on (what a worklist row can vary). Andy to decide.
 - **How tip changes and batch settings are represented in the operation list.** ADR 0007 makes a
