@@ -155,7 +155,7 @@ what the file said.)*
   `SequentialID,Name,Barcode,Well,Volume,Liquid` (one row per well of each labware). This could check
   the tool's contents tracking against Biomek's own.
 
-**A problem not yet solved** *(2026-10-21, evening)*
+**"No tip box type specified"** *(2026-10-21 evening; solved 2026-10-22)*
 - After test 23b ran on the real instrument and the software was switched back to simulation, methods
   that had validated earlier (tests 14, 15 and 23) failed with *"Error during pass #1: No tip box type
   specified"* on their Transfer From File step. In those methods, tips are loaded by a fixed Load
@@ -170,8 +170,15 @@ what the file said.)*
   with the step deleted and re-added, and with an Unload Tips (all eight probes) step added at the
   start. With **probe 2 only**, or **all eight probes**, the same methods validate and run every
   time. In a brand-new method, the step's Load box works. Right-clicking Use probes → Use Disposable
-  Tips selects all eight probes, so probe 1 isn't set up as a fixed tip. Cause unknown; to ask
-  Beckman support.
+  Tips selects all eight probes, so probe 1 isn't set up as a fixed tip.
+- **Solved, 2026-10-22:** Transfer From File keeps a **tip type in the box next to Load, even with
+  Load unchecked**, and uses it to know which tips are on the probes. When that box is empty, or
+  names tips that aren't on the deck (e.g. after removing a BC1070 box), validation fails with *"No
+  tip box type specified"* or *"You must specify what tips to use"*. **Fix:** check Load (it may only
+  allow this after clicking between steps and toggling settings back and forth), choose the tip type,
+  then uncheck Load; the tip type stays. Fixed tests 14 and 22b. Why probe 2 alone or all eight
+  probes worked without it is not known.
+- Open: with batches of different tip types, whether this box should be `=TipType`.
 
 ## Methods and their files
 - A method can be exported as a `.bmf` file, which carries everything needed to run it, or as a
@@ -209,7 +216,6 @@ what the file said.)*
 ## Not yet known
 Questions to answer before relying on the answer:
 - The largest volume accepted in a volume column, and whether more than 4 decimal places are kept.
-- What causes "No tip box type specified" (above), and how to fix it.
 - Where exactly the per-well volume export is in the software.
 - How long row-by-row transfers take compared with Transfer From File on the real instrument
   (simulation may not run at real speed).
