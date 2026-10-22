@@ -178,7 +178,8 @@ what the file said.)*
   allow this after clicking between steps and toggling settings back and forth), choose the tip type,
   then uncheck Load; the tip type stays. Fixed tests 14 and 22b. Why probe 2 alone or all eight
   probes worked without it is not known.
-- Open: with batches of different tip types, whether this box should be `=TipType`.
+- The box accepts a variable: with `=TipType` there (Load still unchecked), test 22b validated and
+  ran. So with batches of different tip types, the box follows the batch's tip type.
 
 ## Methods and their files
 - A method can be exported as a `.bmf` file, which carries everything needed to run it, or as a
