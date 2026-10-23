@@ -204,7 +204,11 @@ describe("contents-tracking", () => {
     }
     const snapshot = replay(startingContents, makeList(...transfers));
     // 10 µL of Dye reaches A1, and each later transfer carries a tenth on: 10 × 0.1⁸ in A9.
-    assertClose(snapshot.componentsOf("Plate 1", "A9").Dye, 0.0000001);
+    // A9 also keeps the 10 µL it receives from A8, which is nearly all Media: 90 + 9.9999999.
+    assertComponentsClose(snapshot.componentsOf("Plate 1", "A9"), {
+      Dye: 0.0000001,
+      Media: 99.9999999,
+    });
   });
 
   // --- Operation count ---
