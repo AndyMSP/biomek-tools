@@ -1,8 +1,7 @@
 # contents-tracking — specification
 
 > **Draft (2026-10-23).** Written quickly for v0.2.0 (Exp36). Sections 1–5 were agreed in chat.
-> Still to review: section 6 (Test cases), and two points it makes that sections 1–5 didn't state:
-> the source of a transfer is listed in the contents even if it never held anything, and
+> Still to review: section 6 (Test cases), and one point it makes that sections 1–5 didn't state:
 > `new ContentsSnapshot()` throws. Nothing here is implemented yet.
 
 ## 1. Purpose
@@ -64,7 +63,8 @@ A list with one entry per well that holds something at the start:
 **Contents after operations**
 
 The same shape as the starting contents, so it could be used as starting contents:
-- It lists every well that held something at the start or was reached by a transfer.
+- It lists every well that held something at the start, or was the source or destination of a
+  transfer. A source counts even if it never held anything, because a tip still went into it.
 - A well that has been emptied is listed with empty components, `{}`.
 - The order of wells, and of components within a well, isn't specified.
 
