@@ -106,7 +106,8 @@ One entry for each well whose contents differ from the plan because of one or mo
 - Components in a well that isn't empty are kept, however small. For example, a well after nine
   10-fold dilutions still holds 0.0000001 µL of Dye, and that's real.
 - A transfer counts as taking too much only if it requests more than the source holds by more than
-  0.000001 µL.
+  0.000001 µL. A transfer that requests more by less than that isn't a problem, and moves what the
+  source holds, as an overdraw does, so no amount goes below 0.
 - Rounding for display is left to pages.
 
 One picoliter is far smaller than anything a pipette can move, and far larger than rounding
@@ -180,7 +181,8 @@ error. `null` is an error. `replay` doesn't check individual operations, because
 checked each one when it was added.
 
 `replay` checks in the order of the tables: every entry of the starting contents in turn (each
-entry's checks in table order, `labware` before `well`), then the operation list, then the operation
+entry's checks in table order, `labware` before `well`, and its components one at a time, each name
+before its volume), then the operation list, then the operation
 count. The first problem found is reported. `NaN` and `Infinity` count as numbers in JavaScript, so
 the volume and count checks reject them by name.
 

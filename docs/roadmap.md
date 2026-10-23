@@ -22,12 +22,8 @@ Last updated: 2026-10-23
   (`src/shared/input-checks/input-checks.md`). `operation-list` now uses it, so `contents-tracking`
   can share the same checks.
 - **The `contents-tracking` shared module is built** (code and tests), against its specification
-  (`src/shared/contents-tracking/contents-tracking.md`; formerly "volume tracking"). Two points the
-  specification doesn't settle were decided on 2026-10-23 and are noted in the code, but not yet in
-  the specification: a transfer within one picoliter of its source's volume moves what the source
-  holds, and a starting-contents entry's components are checked one at a time, name then volume. A
-  preview of the transfer designer with contents tracking and a timeline exists (not in the
-  repository).
+  (`src/shared/contents-tracking/contents-tracking.md`; formerly "volume tracking"). A preview of the
+  transfer designer with contents tracking and a timeline exists (not in the repository).
 - **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
   (`biomek.md`). With one probe, row-by-row and Transfer From File take the same time; 8 probes were
   about 5 times faster.

@@ -191,9 +191,8 @@ function applyTransfer(wells, problems, transfer, operationIndex) {
   // A transfer from a well to itself changes nothing, so it's skipped; this also avoids tiny
   // arithmetic leftovers from taking liquid out and putting it back.
   if (source !== destination) {
-    // Never more than the source holds. A real overdraw moves what's there (spec section 3), and so
-    // does a transfer within NEGLIGIBLE_MICROLITERS of it. The spec doesn't say what the second
-    // kind moves; Andy chose this on 2026-10-23, so nothing goes below 0.
+    // Never more than the source holds. A real overdraw moves what's there, and so does a transfer
+    // within NEGLIGIBLE_MICROLITERS of it, so nothing goes below 0 (spec section 3, "Tiny amounts").
     moveLiquid(source, destination, Math.min(transfer.volume, available));
   }
 }
@@ -321,8 +320,7 @@ function checkComponents(components, index) {
       `The components in starting contents entry ${index} must be an object of names and volumes, like { Water: 100 }, but got ${describeValue(components)}.`,
     );
   }
-  // One component at a time, its name and then its volume. The spec doesn't say whether all names
-  // come before all volumes; Andy chose this order on 2026-10-23.
+  // One component at a time, its name and then its volume (spec section 5).
   for (const [name, volume] of Object.entries(components)) {
     checkName(name, `component name in starting contents entry ${index}`);
     checkVolume(volume, `volume of ${describeValue(name)} in starting contents entry ${index}`);
