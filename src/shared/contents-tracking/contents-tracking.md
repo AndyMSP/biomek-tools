@@ -1,7 +1,7 @@
 # contents-tracking — specification
 
-> **Work in progress (draft, 2026-10-20).** Sections 1–4 are agreed. Section 5 (Errors) and section 6
-> (Test cases) are still to be written. Nothing here is implemented yet.
+> **Work in progress (draft, 2026-10-23).** Sections 1–5 are agreed. Section 6 (Test cases) is still
+> to be written. Nothing here is implemented yet.
 
 ## 1. Purpose
 `contents-tracking.js` works out what each well contains after a series of operations. It starts
@@ -139,7 +139,66 @@ after.causesOf("Plate 2", "D7");                     // [2, 3]
 ```
 
 ## 5. Errors
-*To be written.*
+`replay` and the `ContentsSnapshot` methods that take a labware and a well check their inputs. When
+something is wrong they throw an `Error` whose message says what's wrong and how to fix it. Values in
+messages are shown with `describeValue` (`error-messages` module), so text appears in quotes, a list
+as `a list` and any other object as `an object`.
+
+**Starting contents**
+
+Entries are numbered by their position in the list, counting from 0, like `operationIndex`.
+
+| Problem | Message |
+|---|---|
+| Starting contents isn't a list | `The starting contents must be a list of wells, like [{ labware: "Plate 1", well: "A1", components: { Water: 100 } }], but got an object.` |
+| An entry isn't an object (including `null` and lists) | `Starting contents entry 2 must be an object with a labware, a well and components, but got "A1".` |
+| An entry is missing properties | `Starting contents entry 2 needs labware, well and components, but is missing "components".` With several, all are listed in that order. |
+| An entry has extra properties | `Starting contents entry 2 can only have labware, well and components, but also got "volume".` With several, all are listed in the order they appear. |
+| `labware` or `well` not text | `The labware in starting contents entry 2 must be text, but got 5.` |
+| `labware` or `well` blank | `The well in starting contents entry 2 is blank. Give it at least one character that isn't a space.` |
+| `labware` or `well` has whitespace at the start or end | `The labware in starting contents entry 2 " Plate 1" has spaces at the start or end. Remove them.` |
+| `components` isn't an object (including `null` and lists) | `The components in starting contents entry 2 must be an object of names and volumes, like { Water: 100 }, but got 100.` |
+| A component name is blank or has whitespace at the start or end | `The component name " Dye" in starting contents entry 2 has spaces at the start or end. Remove them.` |
+| A component volume isn't a number, or is less than 0 | `The volume of "Dye" in starting contents entry 2 must be a number of microliters, 0 or more, like 50, but got -5.` |
+| The same well appears twice | `Plate 1 A1 is in the starting contents twice, in entries 0 and 4. List each well once.` |
+
+As in `operation-list`, only an entry's own properties count; a property that comes from a class
+counts as missing.
+
+**Operation list and operation count**
+
+| Problem | Message |
+|---|---|
+| `operationList` isn't an `OperationList` | `The operation list must be an OperationList, made with new OperationList() and add, but got a list.` |
+| `operationCount` isn't a whole number | `The operation count must be a whole number, like 3, but got 2.5.` |
+| `operationCount` is less than 0 or more than the number of operations | `The operation count must be from 0 to 5, the number of operations in the list, but got 7.` |
+
+Leaving out `operationCount`, or passing `undefined`, means "apply every operation" and isn't an
+error. `null` is an error. `replay` doesn't check individual operations, because `OperationList`
+checked each one when it was added.
+
+`replay` checks in the order of the tables: every entry of the starting contents in turn (each
+entry's checks in table order, `labware` before `well`), then the operation list, then the operation
+count. The first problem found is reported. `NaN` and `Infinity` count as numbers in JavaScript, so
+the volume and count checks reject them by name.
+
+A transfer that asks for more than its source holds is not an error. It is recorded as a problem
+(section 3), and the replay carries on.
+
+**Methods that take a labware and a well**
+
+`componentsOf`, `totalVolumeOf`, `volumeFractionsOf` and `causesOf` check `labware`, then `well`,
+with the same text rules. Each message names the method:
+
+| Problem | Message |
+|---|---|
+| Not text (including left out) | `The well given to componentsOf must be text, but got undefined.` |
+| Blank | `The labware given to causesOf is blank. Give it at least one character that isn't a space.` |
+| Whitespace at the start or end | `The well given to totalVolumeOf " A1" has spaces at the start or end. Remove them.` |
+
+A labware and well the snapshot has no record of counts as an empty well, not an error, because the
+snapshot doesn't know which labware exist. A misspelled name therefore reads as empty. Callers should
+take names from the layout.
 
 ## 6. Test cases
 *To be written.*
