@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-20
+Last updated: 2026-10-22
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -12,13 +12,88 @@ Last updated: 2026-10-20
   a worklist the tool writes, for **one general-purpose method** built once in Biomek Software, whose
   steps take their settings from the worklist's columns. Andy is asking Beckman whether they offer a
   programming interface (API).
+- **Tested in simulation, 2026-10-21:** what a worklist row can control (`docs/domain/biomek.md`,
+  "Worklist-driven steps"). Almost everything the tool needs works. ADR 0006 and the new
+  **ADR 0007** (standard deck, setup worklist, one Transfer From File file per stage,
+  look-ahead tip loading) are ready for Andy to accept.
 - **The `operation-list` shared module is built** (code and tests), against its specification
   (`src/shared/operation-list/operation-list.md`).
-  - **Tip changes will be set by the tools**, as a later operation type, once it is known how the
-    Span-8 changes tips (see "Open decisions").
-- **Next, undecided:** volume tracking (towards the transfer designer) or the Biomek file
-  writer and the general-purpose method (towards Biomek output, best done with access to the
-  instrument).
+- **In progress: the `contents-tracking` specification** (formerly "volume tracking"). Sections 1–4
+  are drafted on the `contents-tracking` branch; errors and test cases are still to write. A preview
+  of the transfer designer with contents tracking and a timeline exists (not in the repository).
+- **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
+  (`biomek.md`). With one probe, row-by-row and Transfer From File take the same time; 8 probes were
+  about 5 times faster.
+- **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
+
+## v0.2.0: the transfer designer, for Exp36
+Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned on 2026-10-22.
+
+**How we work towards it**
+- `main` stays the one source of truth, with one small branch per task, merged quickly.
+- Specifications written for v0.2.0 say **Draft** at the top (CLAUDE.md), and every shortcut goes in
+  "Technical debt", below.
+- Once PR #29 is merged, `main` gets the tag **`pre-v0.2.0`**: a bookmark of the project before the
+  rushed work, not a release.
+- The version the lab runs is released as **v0.2.0** (a tag and a GitHub Release).
+- A new idea goes under "Later" by default, unless it blocks the Exp36 run.
+
+**Needed for v0.2.0**, in order:
+1. **`contents-tracking`**: finish the specification (errors and test cases), then code and tests, so
+   overdraws are caught before files are written.
+2. **Reservoirs in `well-grid`**: numbered positions (`1`, `2` …) as well as letter-number names,
+   as ADR 0001 anticipated, so reservoirs can be drawn and checked. (The operation list and contents
+   tracking already accept any well name.)
+3. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
+   Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
+   3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt"), or that
+   mixes labware types (all sources one labware type, all destinations one labware type: Biomek
+   requires it, B56358AF 22-13).
+4. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
+   troughs), entering starting volumes, building stages, and choosing each stage's settings,
+   including its source and destination labware types.
+5. **A short technique list** in `config/`: the two or three techniques the lab uses.
+6. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
+   deck; the tool's own files run in simulation, then one real run with water. Tests to run first
+   (see "Not yet known" in `biomek.md`): labware types from variables in Transfer From File (if not,
+   one Transfer From File step per combination of labware types, chosen by If steps); per-trough
+   starting volumes from the setup file; and 8 probes drawing from one trough together.
+
+Rough schedule: Friday 1 to 3; Saturday 4 and 5; Sunday 6, at the Biomek. Setting up a volume
+variable for every well of the standard deck is slow clicking work, so leave time for it.
+
+Before 3 and 4: decide where a stage's settings are stored (see "Open decisions").
+
+**Later** (after v0.2.0):
+- Mixing (see "Open decisions").
+- The timeline (see "Contents tracking").
+- Final concentrations.
+- Saving and loading plans.
+- Editing the list: inserting, removing and undo.
+- Labware types with well capacities, to warn about overfilling.
+- Biomek output for the randomizer (the randomizer link).
+- The full technique table, from the Technique Browser.
+- **Smarter staging:** the tool works out which transfers really depend on each other, reorders the
+  independent ones, and forms as few stages as possible, so the user no longer builds stages.
+- **Resuming after an interruption** (power loss or Abort; Biomek can't continue a method from where
+  it stopped). The tool reads Biomek's Span8Transfer log to see which transfers were done, uses
+  contents tracking to work out what every well should hold, and writes a restart: a new setup file
+  with the corrected starting volumes, and the remaining transfers. First, test on the instrument
+  that the log is written as the run goes (see "Not yet known" in `biomek.md`), and how a
+  light-curtain break and an Abort behave.
+
+## Technical debt
+Shortcuts taken knowingly, each with what doing it properly would mean.
+- **Users build stages by hand** (v0.2.0). Properly: smarter staging (see "Later").
+- **The stage rule is simple:** within one stage, no well may be both a source and a destination;
+  the tool refuses a stage that breaks it, with a message saying why. It is stricter than needed (it
+  separates transfers even when their order wouldn't matter), which costs some side-by-side work at
+  each stage boundary. Properly: smarter staging.
+- **The technique list holds only the lab's current techniques.** Properly: the full table.
+- **Dead volume isn't modelled.** A reservoir trough holds liquid a tip can't reach (2 mL in Exp37,
+  `exp37.md`). For v0.2.0, the user enters a reservoir's starting volume minus its dead volume.
+  Properly: dead volume per labware type, in contents tracking (it's under "Not in version 1" in its
+  specification).
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
@@ -75,11 +150,15 @@ Later additions, each as its own change:
   with the same well names (`A1`, not `A01`). If it doesn't, a small option in the randomizer's copy
   text (such as leading zeros) may be enough. Andy to check a real Celigo export.
 
-## Next goal: Biomek output for the randomizer
+## Biomek output for the randomizer
+*Priority changed on 2026-10-22: v0.2.0 builds the transfer designer first, and the
+randomizer link is under "Later". The shared pieces below are the same.*
+
 Turn a randomized plate into the files the Biomek runs, so nobody edits Biomek files by hand. In Exp37
 that file-making was the hardest and most error-prone part (`docs/domain/exp37.md`).
 
-Why this comes before the transfer designer: most of what it needs, the designer needs too.
+Most of what it needs, the designer needs too (table below), so after v0.2.0 it can reuse those
+pieces.
 
 | Piece | Biomek output | Transfer designer |
 |---|---|---|
@@ -88,11 +167,11 @@ Why this comes before the transfer designer: most of what it needs, the designer
 | General-purpose method, built once in Biomek Software, and its description | needed | needed |
 | Randomizer link: one transfer per replicate, from each condition's source | needed | — |
 | Labware types with well volumes | — | needed |
-| Volume tracking | — | needed |
+| Contents tracking | — | needed |
 | Drag-and-drop page | — | needed |
 
 For the randomizer this is a new output, with its current lists unchanged, so it would be a MINOR
-release (0.2.0).
+release (a version after v0.2.0).
 
 **Decided: any method, described to the tool (ADR 0005).** Options considered were Exp37's method
 only (A), one general method with a standard deck (B), and any method described to the tool (C). C
@@ -119,7 +198,7 @@ It is saved as a file (likely JSON) kept with the Biomek method, and holds nothi
 experiment's contents. Deck positions are probably unnecessary, because files can name labware
 instead. The specification decides all of this.
 
-## Later: transfer designer
+## Transfer designer
 A tool for planning transfers by clicking and dragging from one well to another.
 - Each drag becomes a transfer: source labware and well, destination labware and well, volume. This
   matches the Biomek Transfer From File columns, so it shares the Biomek CSV output module with the
@@ -131,15 +210,19 @@ A tool for planning transfers by clicking and dragging from one well to another.
   only. ADR 0001 anticipates a constructor option or subclass.
 - Drag handling lives only in page code; everything it produces is plain data, tested in Node.
 
-## Later: volume tracking
+## Contents tracking
+Called "volume tracking" before 2026-10-20; renamed because it tracks every component in a well, not
+just its volume. Specification in progress (see "Where things stand").
+
 Show what each well will contain after a series of transfers, and warn about problems such as
 overfilling a well or drawing more than it holds.
 - Proposed design: **replay**. Keep the starting layout and the operation list, and compute the
   current state by applying its transfers in order, rather than keeping an object that changes.
   This is a pure function and easy to test, works with undo of any edit (the operation list is
   immutable, so earlier versions stay as they were), and keeps the operation list as the single
-  source of truth — the same list that becomes the Biomek
-  files.
+  source of truth — the same list that becomes the Biomek files.
+- **A timeline** (idea): step through the plan and see every well's contents after any transfer.
+  The draft specification already allows it (contents after any number of operations).
 - Well capacities come from the labware types.
 
 ## Ideas not yet planned
@@ -147,32 +230,45 @@ overfilling a well or drawing more than it holds.
   tool could predict what a plate reader should see when some sources are dyed, and compare that
   with the real reading. This would check any method, both how much went where and whether it went
   to the right well, without designing a new test each time. It builds on the operation list and
-  volume tracking.
+  contents tracking.
 - **Hand-pipetting plans.** The operation list doesn't depend on the Biomek, so it could also
-  describe an experiment done by hand. Volume tracking would show each well's volume and
+  describe an experiment done by hand. Contents tracking would show each well's volume and
   concentrations, and a "pipette this, then this" sheet would be one more output from the same list.
   Existing plate-map tools let you label wells, but don't calculate their contents from the planned
   steps.
 
 ## Open decisions
-- **How tip changes are represented** in the operation list: a `tipChange` operation, a property of
-  a transfer, or something else. Depends on how the Span-8 changes tips (all eight together or per
-  channel) and how the Biomek assigns transfers to channels; not yet in `docs/domain/biomek.md`.
-- **What the general-purpose method can vary per worklist row.** Decides which operation types the
-  tool can offer, and whether ADR 0006 is accepted. Found so far (`docs/domain/biomek.md`):
-  - Conditional steps exist: an If step can run different steps depending on a column's value, such
-    as "change tips only if this column says yes".
-  - A row can likely set its wells, through Span-8 Aspirate and Dispense steps given a well number
-    from a variable. Not confirmed for the Transfer step; to verify in simulation.
-  - What a row holds also affects run time. A Transfer From File step can plan how to use the probes
-    efficiently across many transfers, while transfers carried out one row at a time may not use
-    them as well.
-  - Working rule: each setting is controlled in one place, either the worklist or the
-    general-purpose method, never both, so the tool never shows one plan while the Biomek follows
-    another. To revisit once it's known what a row can vary.
-- **How operations are checked against labware**, such as whether a well exists on the named
-  labware or a volume fits in it. Ideally live, as operations are entered, so a wrong sequence is
-  caught before it's built. Where the check lives is undecided; `operation-list` doesn't do it.
+- **Where a stage's settings are stored** in the operation list (to decide before the file writer
+  and designer specifications). A stage's settings are its liquid type, technique, tip type, probes,
+  source and destination labware types, and whether tips are changed first. Options discussed on 2026-10-22:
+  1. **One set of settings for the whole plan,** chosen on the page. Quickest, but one technique for
+     everything; per-stage settings or mixing later would need a redesign. Doesn't fit user-built
+     stages.
+  2. **Settings stored on each operation** (or each operation naming its stage), with the file
+     writer grouping neighbouring operations with the same settings into stages. A little more work
+     now, and a small change to the `operation-list` specification, but inserting, undo, the timeline
+     and mixing all work naturally.
+  3. **Separate "stage" entries in the list** that apply to the operations after them. Compact, and
+     close to how the user builds stages, but inserting or moving an operation can silently change
+     its settings.
+
+  Recommended: 2. That recommendation was made before stages became user-built, which makes 3 look
+  closer to the page, so it's worth weighing both again when deciding.
+- **Mixing** (Later; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
+  separate Mix step for the Span-8, so it has to be done another way. Options to look at: a transfer
+  from a well back into the same well (the operation list already allows this), or a technique's
+  mix settings in Transfer From File (Exp37 used "aspirate mix 75 µL × 2"; `exp37.md`). How mixing
+  is represented in the operation list is part of this.
+- **Accept ADR 0006 and ADR 0007?** The simulation tests of 2026-10-21 answered the question
+  ADR 0006 was waiting on (what a worklist row can vary). Andy to decide.
+- **Working rule:** each setting is controlled in one place, either the worklist or the
+  general-purpose method, never both, so the tool never shows one plan while the Biomek follows
+  another. ADR 0007 puts liquid type, technique, tip type, probes and tip changes in the worklist.
+- **How operations are checked against labware and techniques**, such as whether a well exists on
+  the named labware, a volume fits in it, a technique suits its tip type (Biomek doesn't check this;
+  see `biomek.md`), or a stage follows the stage rule. Ideally live, as operations are entered, so a
+  wrong sequence is caught before it's built. Where the check lives is undecided; `operation-list`
+  doesn't do it.
 - **A programming interface from Beckman**: Andy is asking whether one exists. If it does, ADR 0006's
   option 3 would be reconsidered.
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)

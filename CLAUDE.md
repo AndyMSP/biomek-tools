@@ -63,7 +63,8 @@ biomek-tools/
 ├── .gitignore
 ├── .gitattributes
 ├── docs/
-│   ├── roadmap.md         where things stand, what's next, open decisions
+│   ├── roadmap.md         where things stand, what's next, open decisions, technical debt
+│   ├── glossary.md        the project's own terms, such as "stage", defined once
 │   ├── adr/               architecture decision records, one per decision
 │   └── domain/            domain knowledge: verified facts, one file per subject (e.g. biomek.md)
 ├── src/
@@ -120,14 +121,26 @@ biomek-tools/
 - Keep README.md current: what the project is, how to set it up, how to run tests and build.
 - Record each significant decision as an ADR in `docs/adr/`: context, decision, consequences.
 - Keep the roadmap's "Where things stand" current whenever work finishes or a decision is made.
+- **Draft or Final.** A specification written in a hurry, to meet a deadline, says **Draft** at the
+  top, with what still needs review. Once it has been reviewed, it says **Final**, or loses the line.
+- **Technical debt.** Every shortcut taken knowingly goes in the roadmap's "Technical debt" section:
+  what was done, why, and what doing it properly would mean.
+- **Only lasting things in ADRs and the glossary.** An ADR records a decision meant to last; its
+  status (Proposed, Accepted, Superseded) shows where it stands, and a later ADR supersedes it if it
+  changes. A temporary choice goes in a Draft specification and in Technical debt instead. The
+  glossary holds definitions, which don't change with the version being built.
+- Use a term from `docs/glossary.md` with that meaning only. Add a new project term there when it's
+  first decided.
 
 ## Where knowledge lives
 Chats are for thinking things through; they are not a record. Anything worth keeping goes into the
 repository, so a new session never needs an old chat:
 - how a module or tool behaves → its specification (`name.md`);
 - why something was decided → an ADR in `docs/adr/`;
-- where things stand, what's next, open decisions and ideas → `docs/roadmap.md`;
+- where things stand, what's next, open decisions, ideas and technical debt → `docs/roadmap.md`;
+- what the project's own terms mean → `docs/glossary.md`;
 - facts about the instrument, its files and the lab's methods → `docs/domain/`, with sources;
 - what changed in each release → `CHANGELOG.md`.
 
-Start each session by reading this file and the roadmap's "Where things stand".
+Start each session by reading this file, the whole roadmap, and the glossary. If the roadmap grows
+too long to read in full, move old history out of it rather than reading less of it.
