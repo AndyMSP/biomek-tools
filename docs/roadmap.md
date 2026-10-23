@@ -24,6 +24,8 @@ Last updated: 2026-10-23
 - **The `contents-tracking` shared module is built** (code and tests), against its specification
   (`src/shared/contents-tracking/contents-tracking.md`; formerly "volume tracking"). A preview of the
   transfer designer with contents tracking and a timeline exists (not in the repository).
+- **`well-grid` now has numbered grids** (code and tests), for reservoirs: the `naming` option and
+  `GRID_1X12_NUMBERED`, the 12-well reservoir's grid (item 2 of v0.2.0, below).
 - **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
   (`biomek.md`). With one probe, row-by-row and Transfer From File take the same time; 8 probes were
   about 5 times faster.
@@ -100,8 +102,9 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
-  well names, converting between names and row/column, edge wells. See
-  `src/shared/well-grid/well-grid.md`.
+  well names, converting between names and row/column, edge wells. Grids name their wells
+  letter-number (`A1`) or, for reservoirs, by number (`1`); `GRID_1X12_NUMBERED` is the 12-well
+  reservoir's grid. See `src/shared/well-grid/well-grid.md`.
 - **`error-messages`** (shared module): helpers for writing error messages (`describeValue`). See
   `src/shared/error-messages/error-messages.md`.
 - **`random`** (shared module): seeded random numbers (mulberry32) and a Fisher–Yates shuffle. See
