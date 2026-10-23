@@ -1,4 +1,4 @@
-# 7. A standard deck, a setup worklist, and one Transfer From File batch per worklist row
+# 7. A standard deck, a setup worklist, and one Transfer From File file per stage
 
 Date: 2026-10-21
 
@@ -28,11 +28,12 @@ well (e.g. `Src_A1`), set up once in Instrument Setup's Show Well Properties.
 **Two files drive each run:**
 1. A **setup worklist**: one row with every well's starting volume. The method's first Worklist
    step reads it and contains the Instrument Setup step.
-2. A **batch worklist**: one row per **batch** of transfers. Each row names a Transfer From File file
-   and the settings for that batch: liquid type, technique, tip type, the probes to use, the probes
-   to load, and whether tips are changed first.
+2. A **stage worklist**: one row per **stage** (`docs/glossary.md`), a group of operations that can
+   run in any order and share one set of settings. Each row names a Transfer From File file and the
+   stage's settings: liquid type, technique, tip type, the probes to use, the probes to load, and
+   whether tips are changed first.
 
-Inside the batch worklist's loop: an If step (`NewTip=1`) unloads all tips and loads tips on
+Inside the stage worklist's loop: an If step (`NewTip=1`) unloads all tips and loads tips on
 `=LoadProbes` of `=TipType`; then one Transfer From File step runs `=TransferFile` with
 `=Probes`, `=LiquidType` and `=Technique`. Its tip type, in the box next to Load, is also
 `=TipType`, with Load unchecked: Transfer From File needs it to know which tips are on
@@ -40,8 +41,8 @@ Inside the batch worklist's loop: an If step (`NewTip=1`) unloads all tips and l
 holds is made in as many trips as needed.
 
 **Tips are loaded by looking ahead.** When tips are changed, the tool loads tips on the largest set
-of probes any batch needs until the next change, so no batch ever needs a probe without a tip, and
-tips are never loaded partway. The user chooses how many probes each transfer may use, trading time
+of probes any stage needs until the next change, so no stage ever needs a probe without a tip, and
+tips are never loaded partway. The probes each stage uses are chosen per stage, trading time
 against tips.
 
 **Volumes in the files are rounded to 3 decimal places** (1 nL). Biomek keeps 15 significant
@@ -55,9 +56,10 @@ volumes are split, a transfer's volume isn't limited by the tip's capacity.
 ## Consequences
 - Each experiment is a few generated files; the method itself never changes.
 - Labware outside the standard deck needs a new or edited general-purpose method.
-- Liquid types can't be set on wells in Instrument Setup, only per batch in Transfer From File.
-- A batch is the unit for settings: transfers that differ in liquid type, technique, tip type or
-  probes go in different batches. Within a batch, Transfer From File chooses the order.
+- Liquid types can't be set on wells in Instrument Setup, only per stage in Transfer From File.
+- A stage is the unit for settings: transfers that differ in liquid type, technique, tip type or
+  probes go in different stages. Within a stage, Transfer From File chooses the order, so a well
+  that is filled and then drawn from must have those transfers in different stages.
 - Replacing only some tips (e.g. one contaminated probe) isn't possible; tips are always all
   unloaded. An `UnloadProbes` column could add this later.
 - How fast this is on the real instrument, and whether a real run matches simulation, are still to

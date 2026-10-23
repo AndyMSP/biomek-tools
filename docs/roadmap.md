@@ -14,7 +14,7 @@ Last updated: 2026-10-21
   programming interface (API).
 - **Tested in simulation, 2026-10-21:** what a worklist row can control (`docs/domain/biomek.md`,
   "Worklist-driven steps"). Almost everything the tool needs works. ADR 0006 and the new
-  **ADR 0007** (standard deck, setup worklist, one Transfer From File batch per worklist row,
+  **ADR 0007** (standard deck, setup worklist, one Transfer From File file per stage,
   look-ahead tip loading) are ready for Andy to accept.
 - **The `operation-list` shared module is built** (code and tests), against its specification
   (`src/shared/operation-list/operation-list.md`).

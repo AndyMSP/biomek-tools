@@ -119,8 +119,8 @@ what the file said.)*
   with "File has a header row" checked. Column names typed there don't stick.
 - **Probe lists contain commas,** so they are quoted in the worklist: `"1,2,3,4"`.
 - **Unload Tips with all eight probes** is fine when some or none of them have tips.
-- **Tips stay on between batches** unless a step unloads them; a later batch can use some of the
-  probes that hold tips (test 17).
+- **Tips stay on between stages** (worklist rows) unless a step unloads them; a later stage can use
+  some of the probes that hold tips (test 17).
 - **Error messages show the field's expression, not its value,** e.g. *"Unable to find technique
   "=Technique""* for an unknown technique name.
 
@@ -172,8 +172,8 @@ The same 24 transfers of 20 µL, from Source A1–H1 into Dest columns 1–3, ke
 | Run | How | Time |
 |---|---|---|
 | A | row-by-row: one worklist row per transfer, Aspirate + Dispense, probe 1 | 2 min 52 s |
-| B | one Transfer From File batch, probe 1 | 2 min 52 s |
-| C | the same batch, all 8 probes | 35 s |
+| B | one Transfer From File file, probe 1 | 2 min 52 s |
+| C | the same file, all 8 probes | 35 s |
 
 - A worklist row per transfer adds **no measurable time** over Transfer From File with one probe
   (about 7 s per transfer either way).
@@ -207,7 +207,7 @@ The same 24 transfers of 20 µL, from Source A1–H1 into Dest columns 1–3, ke
   then uncheck Load; the tip type stays. Fixed tests 14 and 22b. Why probe 2 alone or all eight
   probes worked without it is not known.
 - The box accepts a variable: with `=TipType` there (Load still unchecked), test 22b validated and
-  ran. So with batches of different tip types, the box follows the batch's tip type.
+  ran. So with stages of different tip types, the box follows the stage's tip type.
 
 ## Methods and their files
 - A method can be exported as a `.bmf` file, which carries everything needed to run it, or as a
