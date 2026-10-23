@@ -160,7 +160,7 @@ Entries are numbered by their position in the list, counting from 0, like `opera
 | `labware` or `well` blank | `The well in starting contents entry 2 is blank. Give it at least one character that isn't a space.` |
 | `labware` or `well` has whitespace at the start or end | `The labware in starting contents entry 2 " Plate 1" has spaces at the start or end. Remove them.` |
 | `components` isn't an object (including `null` and lists) | `The components in starting contents entry 2 must be an object of names and volumes, like { Water: 100 }, but got 100.` |
-| A component name is blank or has whitespace at the start or end | `The component name " Dye" in starting contents entry 2 has spaces at the start or end. Remove them.` |
+| A component name is blank or has whitespace at the start or end | `The component name in starting contents entry 2 " Dye" has spaces at the start or end. Remove them.` |
 | A component volume isn't a number, or is less than 0 | `The volume of "Dye" in starting contents entry 2 must be a number of microliters, 0 or more, like 50, but got -5.` |
 | The same well appears twice | `Plate 1 A1 is in the starting contents twice, in entries 0 and 4. List each well once.` |
 
