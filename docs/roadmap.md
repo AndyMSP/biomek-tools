@@ -157,7 +157,8 @@ randomizer link is under "Later". The shared pieces below are the same.*
 Turn a randomized plate into the files the Biomek runs, so nobody edits Biomek files by hand. In Exp37
 that file-making was the hardest and most error-prone part (`docs/domain/exp37.md`).
 
-Why this comes before the transfer designer: most of what it needs, the designer needs too.
+Most of what it needs, the designer needs too (table below), so after v0.2.0 it can reuse those
+pieces.
 
 | Piece | Biomek output | Transfer designer |
 |---|---|---|
@@ -170,7 +171,7 @@ Why this comes before the transfer designer: most of what it needs, the designer
 | Drag-and-drop page | — | needed |
 
 For the randomizer this is a new output, with its current lists unchanged, so it would be a MINOR
-release (0.2.0).
+release (a version after v0.2.0).
 
 **Decided: any method, described to the tool (ADR 0005).** Options considered were Exp37's method
 only (A), one general method with a standard deck (B), and any method described to the tool (C). C
