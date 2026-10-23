@@ -1,9 +1,5 @@
 # contents-tracking — specification
 
-> **Draft (2026-10-23).** Written quickly for v0.2.0 (Exp36). Sections 1–5 were agreed in chat.
-> Still to review: section 6 (Test cases), and one point it makes that sections 1–5 didn't state:
-> `new ContentsSnapshot()` throws. Nothing here is implemented yet.
-
 ## 1. Purpose
 `contents-tracking.js` works out what each well contains after a series of operations. It starts
 from the contents of the wells before the first operation, and replays the transfers of an operation
@@ -59,6 +55,9 @@ A list with one entry per well that holds something at the start:
 - `components` maps each component's name to its volume in µL. A name follows the same text rule; a
   volume is a number, 0 or more. A volume of 0 is accepted and treated as absent.
 - Each well appears at most once. Wells that aren't listed start empty.
+- Labware, well and component names are compared exactly, including capital letters and spaces:
+  `"a1"` and `"A1"` are different wells. This matches `operation-list`, where labware names must
+  match the Biomek method's names exactly.
 
 **Contents after operations**
 
@@ -96,6 +95,7 @@ One entry for each well whose contents differ from the plan because of one or mo
 - A problem affects its source well and its destination well.
 - Any transfer from an affected well passes all of that well's causes to its destination, combined
   with any causes the destination already has.
+- The order of the affected wells isn't specified.
 
 **Tiny amounts**
 - Amounts are calculated with ordinary decimal arithmetic, at full precision. The module gives one
@@ -221,6 +221,8 @@ The examples use these starting contents unless a case says otherwise:
 - A component with volume `0` is left out: `{ Dye: 0, Water: 100 }` gives `{ Water: 100 }`, and an
   entry whose components are all `0` is listed with `{}`.
 - A well that isn't listed gives `{}`, `0`, `{}` and `[]` from the four `...Of` methods.
+- Names are compared exactly: `"a1"` and `"A1"` in the same labware are two different wells, not
+  a duplicate, and `componentsOf("Plate 1", "a1")` doesn't find `"A1"`.
 
 **Applying transfers**
 - 10 µL from Reagents A1 to Plate 1 A1: Plate 1 A1 holds `{ Dye: 10, Media: 90 }`, Reagents A1 holds
