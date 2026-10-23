@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-21
+Last updated: 2026-10-22
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -24,6 +24,57 @@ Last updated: 2026-10-21
 - **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
   (`biomek.md`). With one probe, row-by-row and Transfer From File take the same time; 8 probes were
   about 5 times faster.
+- **Working towards the Monday version** (v0.2.0), the transfer designer's first lab use: see below.
+
+## The Monday version (v0.2.0)
+Goal: the transfer designer in lab use on Monday, 2026-10-26. Planned on 2026-10-22.
+
+**How we work towards it**
+- `main` stays the one source of truth, with one small branch per task, merged quickly.
+- Specifications written for Monday say **Draft** at the top (CLAUDE.md), and every shortcut goes in
+  "Technical debt", below.
+- Once PR #29 is merged, `main` gets the tag **`pre-monday`**: a bookmark of the project before the
+  rushed work, not a release.
+- The version the lab runs is released as **v0.2.0** (a tag and a GitHub Release).
+- A new idea goes under "Later" by default, unless it blocks a Monday lab run.
+
+**Needed for Monday**, in order:
+1. **`contents-tracking`**: finish the specification (errors and test cases), then code and tests, so
+   overdraws are caught before files are written.
+2. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
+   Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
+   3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt").
+3. **The designer page**, built from the preview: entering starting volumes, building stages, and
+   choosing each stage's settings.
+4. **A short technique list** in `config/`: the two or three techniques the lab uses.
+5. **The general-purpose method** built on the Biomek (ADR 0007), the tool's own files run in
+   simulation, then one real run with water.
+
+Rough schedule: Friday 1 and 2; Saturday 3 and 4; Sunday 5, at the Biomek. Setting up a volume
+variable for every well of the standard deck is slow clicking work, so leave time for it.
+
+Before 2 and 3: decide where a stage's settings are stored (see "Open decisions").
+
+**Later** (after Monday):
+- Mixing (see "Open decisions").
+- The timeline (see "Contents tracking").
+- Final concentrations.
+- Saving and loading plans.
+- Editing the list: inserting, removing and undo.
+- Labware types with well capacities, to warn about overfilling.
+- Biomek output for the randomizer (the randomizer link).
+- The full technique table, from the Technique Browser.
+- **Smarter staging:** the tool works out which transfers really depend on each other, reorders the
+  independent ones, and forms as few stages as possible, so the user no longer builds stages.
+
+## Technical debt
+Shortcuts taken knowingly, each with what doing it properly would mean.
+- **Users build stages by hand** (Monday version). Properly: smarter staging (see "Later").
+- **The stage rule is simple:** within one stage, no well may be both a source and a destination;
+  the tool refuses a stage that breaks it, with a message saying why. It is stricter than needed (it
+  separates transfers even when their order wouldn't matter), which costs some side-by-side work at
+  each stage boundary. Properly: smarter staging.
+- **The technique list holds only the lab's current techniques.** Properly: the full table.
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
@@ -80,7 +131,10 @@ Later additions, each as its own change:
   with the same well names (`A1`, not `A01`). If it doesn't, a small option in the randomizer's copy
   text (such as leading zeros) may be enough. Andy to check a real Celigo export.
 
-## Next goal: Biomek output for the randomizer
+## Biomek output for the randomizer
+*Priority changed on 2026-10-22: the Monday version builds the transfer designer first, and the
+randomizer link is under "Later". The shared pieces below are the same.*
+
 Turn a randomized plate into the files the Biomek runs, so nobody edits Biomek files by hand. In Exp37
 that file-making was the hardest and most error-prone part (`docs/domain/exp37.md`).
 
@@ -124,7 +178,7 @@ It is saved as a file (likely JSON) kept with the Biomek method, and holds nothi
 experiment's contents. Deck positions are probably unnecessary, because files can name labware
 instead. The specification decides all of this.
 
-## Later: transfer designer
+## Transfer designer
 A tool for planning transfers by clicking and dragging from one well to another.
 - Each drag becomes a transfer: source labware and well, destination labware and well, volume. This
   matches the Biomek Transfer From File columns, so it shares the Biomek CSV output module with the
@@ -136,7 +190,7 @@ A tool for planning transfers by clicking and dragging from one well to another.
   only. ADR 0001 anticipates a constructor option or subclass.
 - Drag handling lives only in page code; everything it produces is plain data, tested in Node.
 
-## Later: contents tracking
+## Contents tracking
 Called "volume tracking" before 2026-10-20; renamed because it tracks every component in a well, not
 just its volume. Specification in progress (see "Where things stand").
 
@@ -164,24 +218,37 @@ overfilling a well or drawing more than it holds.
   steps.
 
 ## Open decisions
-- **Mixing** (to do, 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
+- **Where a stage's settings are stored** in the operation list (to decide before the file writer
+  and designer specifications). A stage's settings are its liquid type, technique, tip type, probes,
+  and whether tips are changed first. Options discussed on 2026-10-22:
+  1. **One set of settings for the whole plan,** chosen on the page. Quickest, but one technique for
+     everything; per-stage settings or mixing later would need a redesign. Doesn't fit user-built
+     stages.
+  2. **Settings stored on each operation** (or each operation naming its stage), with the file
+     writer grouping neighbouring operations with the same settings into stages. A little more work
+     now, and a small change to the `operation-list` specification, but inserting, undo, the timeline
+     and mixing all work naturally.
+  3. **Separate "stage" entries in the list** that apply to the operations after them. Compact, and
+     close to how the user builds stages, but inserting or moving an operation can silently change
+     its settings.
+
+  Recommended: 2. That recommendation was made before stages became user-built, which makes 3 look
+  closer to the page, so it's worth weighing both again when deciding.
+- **Mixing** (Later; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
   separate Mix step for the Span-8, so it has to be done another way. Options to look at: a transfer
   from a well back into the same well (the operation list already allows this), or a technique's
   mix settings in Transfer From File (Exp37 used "aspirate mix 75 µL × 2"; `exp37.md`). How mixing
   is represented in the operation list is part of this.
 - **Accept ADR 0006 and ADR 0007?** The simulation tests of 2026-10-21 answered the question
   ADR 0006 was waiting on (what a worklist row can vary). Andy to decide.
-- **How tip changes and batch settings are represented in the operation list.** ADR 0007 makes a
-  batch the unit for liquid type, technique, tip type, probes and tip changes. Whether the list
-  records these as settings on each transfer (with the file writer grouping transfers into
-  batches), as operations of their own, or otherwise is undecided.
 - **Working rule:** each setting is controlled in one place, either the worklist or the
   general-purpose method, never both, so the tool never shows one plan while the Biomek follows
   another. ADR 0007 puts liquid type, technique, tip type, probes and tip changes in the worklist.
 - **How operations are checked against labware and techniques**, such as whether a well exists on
-  the named labware, a volume fits in it, a technique suits its tip type, or a draw fits in a tip
-  (Biomek doesn't check the technique; see `biomek.md`). Ideally live, as operations are entered, so a wrong sequence is
-  caught before it's built. Where the check lives is undecided; `operation-list` doesn't do it.
+  the named labware, a volume fits in it, a technique suits its tip type (Biomek doesn't check this;
+  see `biomek.md`), or a stage follows the stage rule. Ideally live, as operations are entered, so a
+  wrong sequence is caught before it's built. Where the check lives is undecided; `operation-list`
+  doesn't do it.
 - **A programming interface from Beckman**: Andy is asking whether one exists. If it does, ADR 0006's
   option 3 would be reconsidered.
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)
