@@ -276,6 +276,9 @@ Questions to answer before relying on the answer:
 - Whether a **reservoir's** per-trough starting volumes can come from variables in Show Well
   Properties, as plate wells can (test 8).
 - Whether **8 probes can draw from one reservoir trough** at the same time in Transfer From File.
+- Whether a technique's **dispense touches the liquid** already in the destination well, for
+  example because of its dispense height. A tip that touches the liquid can carry it to later wells
+  (roadmap idea "Possible contamination").
 - Whether the logs are written line by line as the run goes, so that after an Abort or a power loss
   the Span8Transfer log lists every transfer that was done. To test: abort a run part-way and
   compare the log with what happened. Also try a light-curtain break mid-run, and restarting a

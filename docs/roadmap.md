@@ -21,9 +21,9 @@ Last updated: 2026-10-23
 - **The `input-checks` shared module is built** (code and tests), against its specification
   (`src/shared/input-checks/input-checks.md`). `operation-list` now uses it, so `contents-tracking`
   can share the same checks.
-- **The `contents-tracking` specification is finished** (formerly "volume tracking"), on the
-  `contents-tracking` branch; its code and tests come next, once `input-checks` is merged. A preview
-  of the transfer designer with contents tracking and a timeline exists (not in the repository).
+- **The `contents-tracking` shared module is built** (code and tests), against its specification
+  (`src/shared/contents-tracking/contents-tracking.md`; formerly "volume tracking"). A preview of the
+  transfer designer with contents tracking and a timeline exists (not in the repository).
 - **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
   (`biomek.md`). With one probe, row-by-row and Transfer From File take the same time; 8 probes were
   about 5 times faster.
@@ -131,6 +131,10 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   whether a value is an object with the right properties, and whether a name or volume is valid.
   Moved out of `operation-list` so other modules can use them. See
   `src/shared/input-checks/input-checks.md`.
+- **`contents-tracking`** (shared module): replays an operation list's transfers from the starting
+  contents to work out each well's components in µL, after any number of operations, and reports
+  transfers that take more than their source holds and the wells they affect. See
+  `src/shared/contents-tracking/contents-tracking.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
   `npm run serve`.
 
@@ -243,6 +247,16 @@ overfilling a well or drawing more than it holds.
   concentrations, and a "pipette this, then this" sheet would be one more output from the same list.
   Existing plate-map tools let you label wells, but don't calculate their contents from the planned
   steps.
+- **Possible contamination.** Hover a well to see every well that could have contaminated it.
+  "Could" means any way a well's contents could conceivably reach another: a tip carries whatever it
+  touches to every well it enters afterwards, until it's changed. That includes aspirating from an
+  empty well, and dispensing into a well when the tip touches the liquid. It works both ways: a used
+  tip can contaminate the source it aspirates from. This follows tips, not liquid, so it's a separate
+  module from contents tracking, and it needs stages and their tip-change setting. Within a stage the
+  order isn't fixed and the Biomek chooses which probe does which transfer, so it must assume every
+  well the stage touches could contaminate every other one. Whether a dispense touches the liquid
+  depends on the technique (see "Not yet known" in `docs/domain/biomek.md`). It could spread through
+  the wells the way contents tracking's `causes` do.
 
 ## Open decisions
 - **Where a stage's settings are stored** in the operation list (to decide before the file writer
