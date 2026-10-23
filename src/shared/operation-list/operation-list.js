@@ -7,6 +7,14 @@
 // Specification: operation-list.md.
 
 import { describeValue } from "../error-messages/error-messages.js";
+import {
+  isObject,
+  findMissingProperties,
+  findExtraProperties,
+  listNames,
+  checkName,
+  checkVolume,
+} from "../input-checks/input-checks.js";
 
 export class OperationList {
   // Private field (# name): only code inside this class can read or change it.
@@ -80,7 +88,7 @@ function checkTransfer(transfer) {
   }
   checkEnd(transfer.source, "source");
   checkEnd(transfer.destination, "destination");
-  checkVolume(transfer.volume);
+  checkVolume(transfer.volume, "volume");
 }
 
 // Throws if `end` (a transfer's source or destination) isn't an object with exactly a labware and a
@@ -107,65 +115,6 @@ function checkEnd(end, endName) {
   // Every check on labware runs before any check on well (operation-list.md, section 5).
   checkName(end.labware, `${endName} labware`);
   checkName(end.well, `${endName} well`);
-}
-
-// Throws if `name` isn't text that isn't blank and has no whitespace at the start or end.
-// `subject` says what the name is for the message, e.g. checkName(" Plate 1", "source labware")
-// throws 'The source labware " Plate 1" has spaces at the start or end. Remove them.'
-// The Biomek finds labware only by its exact name, so stray spaces would make the name not match.
-function checkName(name, subject) {
-  if (typeof name !== "string") {
-    throw new Error(`The ${subject} must be text, but got ${describeValue(name)}.`);
-  }
-  // trim() removes whitespace (spaces, tabs, line breaks) from both ends of the text.
-  if (name.trim() === "") {
-    throw new Error(
-      `The ${subject} is blank. Give it at least one character that isn't a space.`,
-    );
-  }
-  if (name !== name.trim()) {
-    throw new Error(
-      `The ${subject} ${describeValue(name)} has spaces at the start or end. Remove them.`,
-    );
-  }
-}
-
-// Throws if `volume` isn't a number of microliters, 0 or more, e.g. 50, 0 or 2.5.
-function checkVolume(volume) {
-  // Number.isFinite is false for anything that isn't a number (such as the text "50"), and also for
-  // NaN and Infinity, which JavaScript counts as numbers.
-  if (!Number.isFinite(volume) || volume < 0) {
-    throw new Error(
-      `The volume must be a number of microliters, 0 or more, like 50, but got ${describeValue(volume)}.`,
-    );
-  }
-}
-
-// True if `value` is an object that isn't null or a list, e.g. { labware: "Plate 1", well: "A1" }.
-// In JavaScript, typeof null and typeof a list are both "object", so they're excluded explicitly.
-function isObject(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-// The names in `required` that `object` doesn't hold itself, in the order of `required`,
-// e.g. findMissingProperties({ well: "A1" }, ["labware", "well"]) → ["labware"].
-// A property the object gets from elsewhere (e.g. a getter on a class) counts as missing, because it
-// wouldn't be copied.
-function findMissingProperties(object, required) {
-  return required.filter((property) => !Object.hasOwn(object, property));
-}
-
-// The object's own property names that aren't in `allowed`, in the order they appear,
-// e.g. findExtraProperties({ labware: "Plate 1", wel: "D4" }, ["labware", "well"]) → ["wel"].
-// Rejecting them catches typos such as `volme` instead of storing them.
-function findExtraProperties(object, allowed) {
-  return Object.keys(object).filter((property) => !allowed.includes(property));
-}
-
-// Property names as a message shows them, in quotes and separated by commas,
-// e.g. ["source", "volume"] → '"source", "volume"'.
-function listNames(names) {
-  return names.map((name) => describeValue(name)).join(", ");
 }
 
 // Returns a frozen copy of a valid transfer, with a frozen copy of its source and destination.
