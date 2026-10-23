@@ -233,6 +233,28 @@ The same 24 transfers of 20 µL, from Source A1–H1 into Dest columns 1–3, ke
 - Lab rule: run every new method, or new set of files, in simulation before a real run.
   *(Lab practice.)*
 
+## Interruptions and logs
+- **Light curtain break:** the instrument stops; pressing OK on the message moves the pods back and
+  the method resumes. An aspirate or dispense that was cut off is not resumed part-way: "The entire
+  pipetting operation must be restarted." *(B56358AF, A-15 and A-16.)* Don't use the light curtain
+  to pause a method; it may affect pipetting. Use Pause. *(B54473AD, Safety Notice.)*
+- **Run-time errors** offer Retry (repeat the interrupted move, then continue), Ignore (skip it and
+  continue; the manual warns this can cause mishandled labware or collisions) or Abort.
+  *(B56358AF, A-13 to A-15.)*
+- **After an Abort** (and so, presumably, a power loss), "the method may not be continued from the
+  point the error occurred." *(B56358AF, A-17.)* The manual describes no restart. Ways to rerun only
+  what's left: disable steps that already ran ("Biomek Software ignores any disabled steps",
+  B56358AF, 12-17), and start a Worklist from a later row with "Loop from line" (27-9). Instrument
+  Setup then has to match what is actually left in the wells.
+- **Logs** are all on by default, in `C:\Users\Public\Public Documents\Biomek5\Logs`, as text files.
+  Every log's header gives the method and its start time, each line starts with a date and time,
+  and the last line gives the time the method ended. *(B56358AF, 16-7 to 16-9.)*
+  - **Span8Transfer** log: one line per transfer, with source and destination position, labware
+    name and well number, probe, amount and technique. *(16-12, 16-13.)*
+  - **Span8Pipetting** log: one line per aspirate and per dispense, with position, labware name, well
+    number, amount and technique. *(16-11, 16-12.)*
+  - **Errors** log: each error or interruption, with its exact message. *(16-10.)*
+
 ## Volumes and tips
 *(Project training log, 2026-10-06, unless noted.)*
 - A 1 mL syringe holds about 1000 µL per draw, including air gaps.
@@ -248,3 +270,7 @@ Questions to answer before relying on the answer:
 - Where exactly the per-well volume export is in the software.
 - Whether a real run behaves like simulation for everything in "Worklist-driven steps", in
   particular that a technique unsuited to the tip still isn't caught.
+- Whether the logs are written line by line as the run goes, so that after an Abort or a power loss
+  the Span8Transfer log lists every transfer that was done. To test: abort a run part-way and
+  compare the log with what happened. Also try a light-curtain break mid-run, and restarting a
+  Worklist from a later row with "Loop from line".
