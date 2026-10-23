@@ -1,8 +1,5 @@
 # input-checks — specification
 
-> **Draft (2026-10-23).** Written for v0.2.0 (Exp36). Still to review: the whole spec. Nothing here is
-> implemented yet.
-
 ## Purpose
 `input-checks.js` holds the checks that more than one module runs on its input: whether a value is an
 object, whether it has the right properties, and whether a name or a volume is valid. Keeping them in
