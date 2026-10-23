@@ -2,7 +2,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { WellGrid, GRID_96 } from "./well-grid.js";
+import { WellGrid, GRID_96, GRID_1X12_NUMBERED } from "./well-grid.js";
 
 describe("well-grid", () => {
   // --- Creating a grid ---
@@ -36,6 +36,67 @@ describe("well-grid", () => {
       grid.rows = 4;
     }, TypeError);
     assert.equal(grid.rows, 8);
+  });
+
+  test("GRID_96 has naming letter-number", () => {
+    assert.equal(GRID_96.naming, "letter-number");
+  });
+
+  test("GRID_1X12_NUMBERED has 1 row, 12 columns and naming number", () => {
+    assert.equal(GRID_1X12_NUMBERED.rows, 1);
+    assert.equal(GRID_1X12_NUMBERED.columns, 12);
+    assert.equal(GRID_1X12_NUMBERED.naming, "number");
+  });
+
+  test('{ naming: "letter-number" } gives the same grid as leaving the option out', () => {
+    const withOption = new WellGrid(8, 12, { naming: "letter-number" });
+    const withoutOption = new WellGrid(8, 12);
+    assert.equal(withOption.rows, withoutOption.rows);
+    assert.equal(withOption.columns, withoutOption.columns);
+    assert.equal(withOption.naming, withoutOption.naming);
+    assert.deepEqual(withOption.wellNames(), withoutOption.wellNames());
+  });
+
+  test("numbered grids have no 26-row limit", () => {
+    const grid = new WellGrid(27, 12, { naming: "number" });
+    assert.equal(grid.rows, 27);
+  });
+
+  test("an invalid numbered grid throws the numbered invalid-grid error", () => {
+    assert.throws(() => new WellGrid(0, 12, { naming: "number" }), {
+      message:
+        "A numbered well grid must have whole-number rows and columns of at least 1, but got rows 0, columns 12.",
+    });
+  });
+
+  test("an object with a wrong or missing naming throws the invalid-naming error", () => {
+    assert.throws(() => new WellGrid(8, 12, { naming: "numbers" }), {
+      message: 'A well grid\'s naming must be "letter-number" or "number", but got "numbers".',
+    });
+    assert.throws(() => new WellGrid(8, 12, { naming: 5 }), {
+      message: /^A well grid's naming must be/,
+    });
+    assert.throws(() => new WellGrid(8, 12, {}), { message: /^A well grid's naming must be/ });
+  });
+
+  test("a third argument that isn't an object throws the invalid-options error", () => {
+    assert.throws(() => new WellGrid(8, 12, "number"), {
+      message: 'A well grid\'s options must be an object like { naming: "number" }, but got "number".',
+    });
+    assert.throws(() => new WellGrid(8, 12, null), {
+      message: /^A well grid's options must be an object/,
+    });
+    assert.throws(() => new WellGrid(8, 12, ["number"]), {
+      message: /^A well grid's options must be an object/,
+    });
+  });
+
+  test("naming cannot be changed after creation", () => {
+    const grid = new WellGrid(1, 12, { naming: "number" });
+    assert.throws(() => {
+      grid.naming = "letter-number";
+    }, TypeError);
+    assert.equal(grid.naming, "number");
   });
 
   // --- wellNames() ---
@@ -154,6 +215,74 @@ describe("well-grid", () => {
       message: '"I1" is not on this grid. Valid wells are rows A–H, columns 1–12.',
     });
     assert.throws(() => GRID_96.wellsInBox("A1", "b2"), { message: /Did you mean "B2"\?/ });
+  });
+
+  // --- Numbered grids (on GRID_1X12_NUMBERED unless stated) ---
+
+  test("numbered: wellNames() returns 1 to 12 in order", () => {
+    assert.deepEqual(GRID_1X12_NUMBERED.wellNames(), [
+      "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12",
+    ]);
+  });
+
+  test("numbered: a 2 × 3 grid counts rows first", () => {
+    const grid = new WellGrid(2, 3, { naming: "number" });
+    assert.deepEqual(grid.wellNames(), ["1", "2", "3", "4", "5", "6"]);
+    assert.deepEqual(grid.wellPosition("4"), { row: 2, column: 1 });
+  });
+
+  test("numbered: isValidWell() is true for wells on the grid", () => {
+    for (const name of ["1", "5", "12"]) {
+      assert.equal(GRID_1X12_NUMBERED.isValidWell(name), true, name);
+    }
+  });
+
+  test("numbered: isValidWell() is false for anything else, and never throws", () => {
+    for (const name of ["0", "13", "05", " 5", "A5", "a5", 5, null]) {
+      assert.equal(GRID_1X12_NUMBERED.isValidWell(name), false, String(name));
+    }
+  });
+
+  test("numbered: wellPosition() and wellNameAt() convert both ways", () => {
+    assert.deepEqual(GRID_1X12_NUMBERED.wellPosition("5"), { row: 1, column: 5 });
+    assert.equal(GRID_1X12_NUMBERED.wellNameAt(1, 5), "5");
+  });
+
+  test("numbered: every well survives a round trip from name to position and back", () => {
+    for (const name of GRID_1X12_NUMBERED.wellNames()) {
+      const { row, column } = GRID_1X12_NUMBERED.wellPosition(name);
+      assert.equal(GRID_1X12_NUMBERED.wellNameAt(row, column), name);
+    }
+  });
+
+  test("numbered: every well is an edge well", () => {
+    for (const name of GRID_1X12_NUMBERED.wellNames()) {
+      assert.equal(GRID_1X12_NUMBERED.isEdgeWell(name), true, name);
+    }
+  });
+
+  test("numbered: wellsInBox() works with corners in either order", () => {
+    assert.deepEqual(GRID_1X12_NUMBERED.wellsInBox("7", "5"), ["5", "6", "7"]);
+  });
+
+  test("numbered: a letter-number name gets the numbered wrong-format message, with no suggestion", () => {
+    assert.throws(() => GRID_1X12_NUMBERED.wellPosition("A5"), {
+      message: '"A5" is not a valid well name. Wells on this grid are numbered, with no leading zeros, like "5".',
+    });
+  });
+
+  test("numbered: a leading zero or a space gets a suggestion", () => {
+    assert.throws(() => GRID_1X12_NUMBERED.wellPosition("05"), { message: /Did you mean "5"\?$/ });
+    assert.throws(() => GRID_1X12_NUMBERED.wellPosition(" 5"), { message: /Did you mean "5"\?$/ });
+  });
+
+  test("numbered: well numbers off the grid get the numbered not-on-this-grid message", () => {
+    assert.throws(() => GRID_1X12_NUMBERED.wellPosition("13"), {
+      message: '"13" is not on this grid. Valid wells are 1–12.',
+    });
+    assert.throws(() => GRID_1X12_NUMBERED.wellPosition("0"), {
+      message: '"0" is not on this grid. Valid wells are 1–12.',
+    });
   });
 
   // --- Error messages ---
