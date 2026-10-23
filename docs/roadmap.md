@@ -236,6 +236,16 @@ overfilling a well or drawing more than it holds.
   concentrations, and a "pipette this, then this" sheet would be one more output from the same list.
   Existing plate-map tools let you label wells, but don't calculate their contents from the planned
   steps.
+- **Possible contamination.** Hover a well to see every well that could have contaminated it.
+  "Could" means any way a well's contents could conceivably reach another: a tip carries whatever it
+  touches to every well it enters afterwards, until it's changed. That includes aspirating from an
+  empty well, and dispensing into a well when the tip touches the liquid. It works both ways: a used
+  tip can contaminate the source it aspirates from. This follows tips, not liquid, so it's a separate
+  module from contents tracking, and it needs stages and their tip-change setting. Within a stage the
+  order isn't fixed and the Biomek chooses which probe does which transfer, so it must assume every
+  well the stage touches could contaminate every other one. Whether a dispense touches the liquid
+  depends on the technique (see "Not yet known" in `docs/domain/biomek.md`). It could spread through
+  the wells the way contents tracking's `causes` do.
 
 ## Open decisions
 - **Where a stage's settings are stored** in the operation list (to decide before the file writer
