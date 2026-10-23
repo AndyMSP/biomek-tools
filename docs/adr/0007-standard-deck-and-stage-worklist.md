@@ -30,8 +30,8 @@ well (e.g. `Src_A1`), set up once in Instrument Setup's Show Well Properties.
    step reads it and contains the Instrument Setup step.
 2. A **stage worklist**: one row per **stage** (`docs/glossary.md`), a group of operations that can
    run in any order and share one set of settings. Each row names a Transfer From File file and the
-   stage's settings: liquid type, technique, tip type, the probes to use, the probes to load, and
-   whether tips are changed first.
+   stage's settings: liquid type, technique, tip type, source and destination labware types, the
+   probes to use, the probes to load, and whether tips are changed first.
 
 Inside the stage worklist's loop: an If step (`NewTip=1`) unloads all tips and loads tips on
 `=LoadProbes` of `=TipType`; then one Transfer From File step runs `=TransferFile` with
@@ -57,9 +57,15 @@ volumes are split, a transfer's volume isn't limited by the tip's capacity.
 - Each experiment is a few generated files; the method itself never changes.
 - Labware outside the standard deck needs a new or edited general-purpose method.
 - Liquid types can't be set on wells in Instrument Setup, only per stage in Transfer From File.
-- A stage is the unit for settings: transfers that differ in liquid type, technique, tip type or
-  probes go in different stages. Within a stage, Transfer From File chooses the order, so a well
-  that is filled and then drawn from must have those transfers in different stages.
+- A stage is the unit for settings: transfers that differ in liquid type, technique, tip type,
+  probes, or source or destination labware type go in different stages. Within a stage, Transfer
+  From File chooses the order, so a well that is filled and then drawn from must have those
+  transfers in different stages.
+- A Transfer From File step has one source labware type and one destination labware type
+  (B56358AF, 22-13, 22-14 and 22-18), so a stage's labware types must reach the step. Either the
+  step takes them from variables, or the method has one Transfer From File step per combination of
+  labware types, chosen by If steps (as Exp37 used separate steps). Which one is still to be
+  tested.
 - Replacing only some tips (e.g. one contaminated probe) isn't possible; tips are always all
   unloaded. An `UnloadProbes` column could add this later.
 - How fast this is on the real instrument, and whether a real run matches simulation, are still to

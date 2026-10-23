@@ -270,6 +270,12 @@ Questions to answer before relying on the answer:
 - Where exactly the per-well volume export is in the software.
 - Whether a real run behaves like simulation for everything in "Worklist-driven steps", in
   particular that a technique unsuited to the tip still isn't caught.
+- Whether Transfer From File's source and destination **labware type** can come from variables
+  (e.g. `=SrcType`). If not, a method needs one Transfer From File step per combination of labware
+  types.
+- Whether a **reservoir's** per-trough starting volumes can come from variables in Show Well
+  Properties, as plate wells can (test 8).
+- Whether **8 probes can draw from one reservoir trough** at the same time in Transfer From File.
 - Whether the logs are written line by line as the run goes, so that after an Abort or a power loss
   the Span8Transfer log lists every transfer that was done. To test: abort a run part-way and
   compare the log with what happened. Also try a light-curtain break mid-run, and restarting a

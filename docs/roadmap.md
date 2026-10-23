@@ -41,19 +41,28 @@ Goal: the transfer designer in lab use on Monday, 2026-10-26. Planned on 2026-10
 **Needed for Monday**, in order:
 1. **`contents-tracking`**: finish the specification (errors and test cases), then code and tests, so
    overdraws are caught before files are written.
-2. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
+2. **Reservoirs in `well-grid`**: numbered positions (`1`, `2` …) as well as letter-number names,
+   as ADR 0001 anticipated, so reservoirs can be drawn and checked. (The operation list and contents
+   tracking already accept any well name.)
+3. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
    Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
-   3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt").
-3. **The designer page**, built from the preview: entering starting volumes, building stages, and
-   choosing each stage's settings.
-4. **A short technique list** in `config/`: the two or three techniques the lab uses.
-5. **The general-purpose method** built on the Biomek (ADR 0007), the tool's own files run in
-   simulation, then one real run with water.
+   3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt"), or that
+   mixes labware types (all sources one labware type, all destinations one labware type: Biomek
+   requires it, B56358AF 22-13).
+4. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
+   troughs), entering starting volumes, building stages, and choosing each stage's settings,
+   including its source and destination labware types.
+5. **A short technique list** in `config/`: the two or three techniques the lab uses.
+6. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
+   deck; the tool's own files run in simulation, then one real run with water. Tests to run first
+   (see "Not yet known" in `biomek.md`): labware types from variables in Transfer From File (if not,
+   one Transfer From File step per combination of labware types, chosen by If steps); per-trough
+   starting volumes from the setup file; and 8 probes drawing from one trough together.
 
-Rough schedule: Friday 1 and 2; Saturday 3 and 4; Sunday 5, at the Biomek. Setting up a volume
+Rough schedule: Friday 1 to 3; Saturday 4 and 5; Sunday 6, at the Biomek. Setting up a volume
 variable for every well of the standard deck is slow clicking work, so leave time for it.
 
-Before 2 and 3: decide where a stage's settings are stored (see "Open decisions").
+Before 3 and 4: decide where a stage's settings are stored (see "Open decisions").
 
 **Later** (after Monday):
 - Mixing (see "Open decisions").
@@ -81,6 +90,10 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   separates transfers even when their order wouldn't matter), which costs some side-by-side work at
   each stage boundary. Properly: smarter staging.
 - **The technique list holds only the lab's current techniques.** Properly: the full table.
+- **Dead volume isn't modelled.** A reservoir trough holds liquid a tip can't reach (2 mL in Exp37,
+  `exp37.md`). For Monday, the user enters a reservoir's starting volume minus its dead volume.
+  Properly: dead volume per labware type, in contents tracking (it's under "Not in version 1" in its
+  specification).
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
@@ -226,7 +239,7 @@ overfilling a well or drawing more than it holds.
 ## Open decisions
 - **Where a stage's settings are stored** in the operation list (to decide before the file writer
   and designer specifications). A stage's settings are its liquid type, technique, tip type, probes,
-  and whether tips are changed first. Options discussed on 2026-10-22:
+  source and destination labware types, and whether tips are changed first. Options discussed on 2026-10-22:
   1. **One set of settings for the whole plan,** chosen on the page. Quickest, but one technique for
      everything; per-stage settings or mixing later would need a redesign. Doesn't fit user-built
      stages.
