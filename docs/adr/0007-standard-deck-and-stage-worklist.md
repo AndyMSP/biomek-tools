@@ -16,8 +16,10 @@ writes. Whether that could work depended on what a worklist row can control. Tes
 - validation catches overdraws, tip overfill and unknown technique names, but not a technique
   unsuited to the tip.
 
-Doing every transfer as its own worklist row would be slow, because Transfer From File plans how to
-use the probes across many transfers and a row-by-row loop can't. Andy wants the tool, not Biomek,
+Speed comes from several probes working side by side, and Transfer From File plans that across
+many transfers. Measured on the real instrument (test 22, `biomek.md`): 24 transfers took 2 min 52 s
+with one probe, whether row by row or in one Transfer From File file, and 35 s with all eight probes
+in one file. Andy wants the tool, not Biomek,
 to decide technique, liquid type, tip type, how many probes to use, and when tips change.
 
 ## Decision
@@ -68,5 +70,5 @@ volumes are split, a transfer's volume isn't limited by the tip's capacity.
   tested.
 - Replacing only some tips (e.g. one contaminated probe) isn't possible; tips are always all
   unloaded. An `UnloadProbes` column could add this later.
-- How fast this is on the real instrument, and whether a real run matches simulation, are still to
-  be checked.
+- Speed was measured on the real instrument (test 22, `biomek.md`). Whether a real run, unlike
+  simulation, catches a technique unsuited to the tip is still to be checked.
