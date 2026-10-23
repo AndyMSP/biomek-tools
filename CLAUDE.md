@@ -142,4 +142,5 @@ repository, so a new session never needs an old chat:
 - facts about the instrument, its files and the lab's methods → `docs/domain/`, with sources;
 - what changed in each release → `CHANGELOG.md`.
 
-Start each session by reading this file, the roadmap's "Where things stand", and the glossary.
+Start each session by reading this file, the whole roadmap, and the glossary. If the roadmap grows
+too long to read in full, move old history out of it rather than reading less of it.
