@@ -24,21 +24,21 @@ Last updated: 2026-10-22
 - **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
   (`biomek.md`). With one probe, row-by-row and Transfer From File take the same time; 8 probes were
   about 5 times faster.
-- **Working towards the Monday version** (v0.2.0), the transfer designer's first lab use: see below.
+- **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
-## The Monday version (v0.2.0)
-Goal: the transfer designer in lab use on Monday, 2026-10-26. Planned on 2026-10-22.
+## v0.2.0: the transfer designer, for Exp36
+Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned on 2026-10-22.
 
 **How we work towards it**
 - `main` stays the one source of truth, with one small branch per task, merged quickly.
-- Specifications written for Monday say **Draft** at the top (CLAUDE.md), and every shortcut goes in
+- Specifications written for v0.2.0 say **Draft** at the top (CLAUDE.md), and every shortcut goes in
   "Technical debt", below.
-- Once PR #29 is merged, `main` gets the tag **`pre-monday`**: a bookmark of the project before the
+- Once PR #29 is merged, `main` gets the tag **`pre-v0.2.0`**: a bookmark of the project before the
   rushed work, not a release.
 - The version the lab runs is released as **v0.2.0** (a tag and a GitHub Release).
-- A new idea goes under "Later" by default, unless it blocks a Monday lab run.
+- A new idea goes under "Later" by default, unless it blocks the Exp36 run.
 
-**Needed for Monday**, in order:
+**Needed for v0.2.0**, in order:
 1. **`contents-tracking`**: finish the specification (errors and test cases), then code and tests, so
    overdraws are caught before files are written.
 2. **Reservoirs in `well-grid`**: numbered positions (`1`, `2` …) as well as letter-number names,
@@ -64,7 +64,7 @@ variable for every well of the standard deck is slow clicking work, so leave tim
 
 Before 3 and 4: decide where a stage's settings are stored (see "Open decisions").
 
-**Later** (after Monday):
+**Later** (after v0.2.0):
 - Mixing (see "Open decisions").
 - The timeline (see "Contents tracking").
 - Final concentrations.
@@ -84,14 +84,14 @@ Before 3 and 4: decide where a stage's settings are stored (see "Open decisions"
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
-- **Users build stages by hand** (Monday version). Properly: smarter staging (see "Later").
+- **Users build stages by hand** (v0.2.0). Properly: smarter staging (see "Later").
 - **The stage rule is simple:** within one stage, no well may be both a source and a destination;
   the tool refuses a stage that breaks it, with a message saying why. It is stricter than needed (it
   separates transfers even when their order wouldn't matter), which costs some side-by-side work at
   each stage boundary. Properly: smarter staging.
 - **The technique list holds only the lab's current techniques.** Properly: the full table.
 - **Dead volume isn't modelled.** A reservoir trough holds liquid a tip can't reach (2 mL in Exp37,
-  `exp37.md`). For Monday, the user enters a reservoir's starting volume minus its dead volume.
+  `exp37.md`). For v0.2.0, the user enters a reservoir's starting volume minus its dead volume.
   Properly: dead volume per labware type, in contents tracking (it's under "Not in version 1" in its
   specification).
 
@@ -151,7 +151,7 @@ Later additions, each as its own change:
   text (such as leading zeros) may be enough. Andy to check a real Celigo export.
 
 ## Biomek output for the randomizer
-*Priority changed on 2026-10-22: the Monday version builds the transfer designer first, and the
+*Priority changed on 2026-10-22: v0.2.0 builds the transfer designer first, and the
 randomizer link is under "Later". The shared pieces below are the same.*
 
 Turn a randomized plate into the files the Biomek runs, so nobody edits Biomek files by hand. In Exp37
