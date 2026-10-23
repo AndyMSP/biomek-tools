@@ -33,13 +33,13 @@ changing existing methods.
 - The constructor validates its inputs, so an invalid `WellGrid` instance cannot exist.
 - `rows`, `columns` and `naming` are readable but never change after creation.
 - The module exports the `WellGrid` class and two predefined instances: `GRID_96`
-  (`new WellGrid(8, 12)`) and `GRID_12_NUMBERED` (`new WellGrid(1, 12, { naming: "number" })`), used
+  (`new WellGrid(8, 12)`) and `GRID_1X12_NUMBERED` (`new WellGrid(1, 12, { naming: "number" })`), used
   by the 12-well reservoir.
 - **Letter-number names:** an uppercase row letter followed by a column number with no leading
   zeros: `A1` to `H12`. Rows are lettered from the top (A), columns numbered from the left (1).
 - **Number names:** the well's place in the standard well order, counting from 1, as text with no
   leading zeros: number = (row − 1) × columns + column, the same numbering the Biomek uses
-  (`docs/domain/biomek.md`). On `GRID_12_NUMBERED`, `"1"` to `"12"`, left to right.
+  (`docs/domain/biomek.md`). On `GRID_1X12_NUMBERED`, `"1"` to `"12"`, left to right.
 - Rows and columns are numbered from 1, matching how they are printed on the plate. Any conversion
   to 0-based array indexes stays inside `well-grid.js`.
 - The standard well order is rows first: `A1, A2 … A12, B1 … H12`. On a numbered grid it is
@@ -48,7 +48,7 @@ changing existing methods.
 ## Methods
 All methods are pure: they don't modify the instance and return the same output for the same input.
 
-| Method | Takes | Returns | Example (on `GRID_96`) | Example (on `GRID_12_NUMBERED`) |
+| Method | Takes | Returns | Example (on `GRID_96`) | Example (on `GRID_1X12_NUMBERED`) |
 |---|---|---|---|---|
 | `wellNames()` | nothing | all well names in standard order | `["A1", "A2", … "H12"]` | `["1", "2", … "12"]` |
 | `isValidWell(name)` | a well name | `true` if the well exists on this grid | `"H12"` → `true`, `"I1"` → `false` | `"5"` → `true`, `"A5"` → `false` |
@@ -103,7 +103,7 @@ Each becomes at least one unit test in `well-grid.test.js`.
 - `new WellGrid(26, 1)` succeeds.
 - `new WellGrid(0, 12)`, `new WellGrid(8, 1.5)`, `new WellGrid("8", 12)` and `new WellGrid(27, 12)`
   throw the invalid-grid error.
-- `GRID_12_NUMBERED` has 1 row, 12 columns and naming `"number"`.
+- `GRID_1X12_NUMBERED` has 1 row, 12 columns and naming `"number"`.
 - `new WellGrid(8, 12, { naming: "letter-number" })` is the same as `new WellGrid(8, 12)`.
 - `new WellGrid(27, 12, { naming: "number" })` succeeds: numbered grids have no 26-row limit.
 - `new WellGrid(0, 12, { naming: "number" })` throws the numbered invalid-grid error.
@@ -139,7 +139,7 @@ Each becomes at least one unit test in `well-grid.test.js`.
 - A bad corner throws the same message as `wellPosition`: `("I1", "A1")` gives the "not on this grid"
   message, and `("A1", "b2")` includes `Did you mean "B2"?`.
 
-**Numbered grids** (on `GRID_12_NUMBERED` unless stated)
+**Numbered grids** (on `GRID_1X12_NUMBERED` unless stated)
 - `wellNames()` returns `"1"` to `"12"` in order.
 - On `new WellGrid(2, 3, { naming: "number" })`, `wellNames()` returns `"1"` to `"6"`, and
   `wellPosition("4")` returns `{ row: 2, column: 1 }`.
