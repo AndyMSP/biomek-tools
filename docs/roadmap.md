@@ -66,6 +66,12 @@ Before 2 and 3: decide where a stage's settings are stored (see "Open decisions"
 - The full technique table, from the Technique Browser.
 - **Smarter staging:** the tool works out which transfers really depend on each other, reorders the
   independent ones, and forms as few stages as possible, so the user no longer builds stages.
+- **Resuming after an interruption** (power loss or Abort; Biomek can't continue a method from where
+  it stopped). The tool reads Biomek's Span8Transfer log to see which transfers were done, uses
+  contents tracking to work out what every well should hold, and writes a restart: a new setup file
+  with the corrected starting volumes, and the remaining transfers. First, test on the instrument
+  that the log is written as the run goes (see "Not yet known" in `biomek.md`), and how a
+  light-curtain break and an Abort behave.
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
