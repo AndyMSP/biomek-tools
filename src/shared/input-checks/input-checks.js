@@ -1,4 +1,4 @@
-// input-checks.js — checks that more than one module runs on its input: whether a value is an
+// input-checks.js — checks that several modules need to run on their input: whether a value is an
 // object, whether it has the right properties, and whether a name or a volume is valid.
 //
 // Keeping them in one place means every module checks the same things in the same way, and words
