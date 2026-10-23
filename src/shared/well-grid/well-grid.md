@@ -66,7 +66,9 @@ neither is a letter-number name such as `"A5"`.
 ## Errors
 - The constructor throws an `Error` if `rows` is not a whole number of at least 1 (and at most 26
   for letter-number names), `columns` is not a whole number of at least 1, or the third argument
-  isn't left out or an object whose `naming` is `"letter-number"` or `"number"`.
+  isn't left out or an object whose `naming` is `"letter-number"` or `"number"`. A third argument
+  that isn't an object at all (text, a number, a list or `null`) gets the invalid-options message;
+  an object whose `naming` is wrong or missing gets the invalid-naming message.
 - `isValidWell` never throws. It returns `false` for anything that isn't a valid well on this grid,
   including non-text input.
 - All other methods throw an `Error` when given invalid input. The message names the bad value,
@@ -75,6 +77,7 @@ neither is a letter-number name such as `"A5"`.
 | Problem | Example message |
 |---|---|
 | Invalid grid | `A well grid must have whole-number rows from 1 to 26 and columns of at least 1, but got rows 0, columns 12.` On a numbered grid: `A numbered well grid must have whole-number rows and columns of at least 1, but got rows 0, columns 12.` |
+| Invalid options | `A well grid's options must be an object like { naming: "number" }, but got "number".` |
 | Invalid naming | `A well grid's naming must be "letter-number" or "number", but got "numbers".` |
 | Well name has the wrong format | `"b2" is not a valid well name. Well names are an uppercase row letter followed by a column number with no leading zeros, like "B2". Did you mean "B2"?` |
 | Well name has the wrong format, numbered grid | `"A5" is not a valid well name. Wells on this grid are numbered, with no leading zeros, like "5".` |
@@ -104,8 +107,9 @@ Each becomes at least one unit test in `well-grid.test.js`.
 - `new WellGrid(8, 12, { naming: "letter-number" })` is the same as `new WellGrid(8, 12)`.
 - `new WellGrid(27, 12, { naming: "number" })` succeeds: numbered grids have no 26-row limit.
 - `new WellGrid(0, 12, { naming: "number" })` throws the numbered invalid-grid error.
-- `{ naming: "numbers" }`, `{ naming: 5 }`, `{}`, `"number"` and `null` as the third argument
-  throw the invalid-naming error.
+- `{ naming: "numbers" }`, `{ naming: 5 }` and `{}` as the third argument throw the invalid-naming
+  error.
+- `"number"`, `null` and `["number"]` as the third argument throw the invalid-options error.
 
 **`wellNames()`**
 - `GRID_96.wellNames()` returns 96 names, starting `A1, A2 … A12, B1` and ending `H12`.
