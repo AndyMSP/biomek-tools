@@ -1,8 +1,5 @@
 # well-grid — specification
 
-> **Draft (2026-10-23).** Numbered grids added for v0.2.0 (Exp36). Still to review: every part that
-> mentions numbered grids or `naming`.
-
 ## Purpose
 `well-grid.js` describes the grid of positions on a piece of labware: its dimensions and how its
 positions are named. It answers questions about positions, such as listing them in order, checking
