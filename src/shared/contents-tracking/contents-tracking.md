@@ -1,7 +1,9 @@
 # contents-tracking — specification
 
-> **Work in progress (draft, 2026-10-23).** Sections 1–5 are agreed. Section 6 (Test cases) is still
-> to be written. Nothing here is implemented yet.
+> **Draft (2026-10-23).** Written quickly for v0.2.0 (Exp36). Sections 1–5 were agreed in chat.
+> Still to review: section 6 (Test cases), and two points it makes that sections 1–5 didn't state:
+> the source of a transfer is listed in the contents even if it never held anything, and
+> `new ContentsSnapshot()` throws. Nothing here is implemented yet.
 
 ## 1. Purpose
 `contents-tracking.js` works out what each well contains after a series of operations. It starts
@@ -201,4 +203,87 @@ snapshot doesn't know which labware exist. A misspelled name therefore reads as 
 take names from the layout.
 
 ## 6. Test cases
-*To be written.*
+Each becomes at least one unit test in `contents-tracking.test.js`. Amounts are compared allowing a
+difference of up to 0.000000001 µL, because decimal arithmetic leaves tiny leftovers (section 3).
+
+The examples use these starting contents unless a case says otherwise:
+```js
+[
+  { labware: "Reagents", well: "A1", components: { Dye: 1000 } },
+  { labware: "Plate 1", well: "A1", components: { Media: 90 } },
+  { labware: "Plate 1", well: "B1", components: { Water: 50 } }
+]
+```
+
+**Starting contents**
+- With no operations, `listContents()` gives the starting contents.
+- An empty starting contents `[]` with no operations gives `[]`.
+- A component with volume `0` is left out: `{ Dye: 0, Water: 100 }` gives `{ Water: 100 }`, and an
+  entry whose components are all `0` is listed with `{}`.
+- A well that isn't listed gives `{}`, `0`, `{}` and `[]` from the four `...Of` methods.
+
+**Applying transfers**
+- 10 µL from Reagents A1 to Plate 1 A1: Plate 1 A1 holds `{ Dye: 10, Media: 90 }`, Reagents A1 holds
+  `{ Dye: 990 }`.
+- Then 50 µL from Plate 1 A1 to Plate 1 A2 (empty): each holds `{ Dye: 5, Media: 45 }`. The mixture
+  leaves in proportion.
+- `totalVolumeOf` for Plate 1 A1 gives `100` after the first transfer, and `volumeFractionsOf` gives
+  `{ Dye: 0.1, Media: 0.9 }`.
+- A transfer of 0 µL changes no amounts.
+- A transfer whose source and destination are the same well leaves it unchanged.
+- Taking a well's whole volume leaves it listed with `{}`.
+- Every well named by an applied transfer, as source or destination, is listed in `listContents()`.
+- Serial dilution: Reagents A1 holds `{ Dye: 100 }`, and Plate 1 A1 to A9 each hold
+  `{ Media: 90 }`. 10 µL goes from Reagents A1 to Plate 1 A1, then from A1 to A2, and so on to A9.
+  Plate 1 A9 holds Dye 0.0000001 µL (10 × 0.1⁸), kept, not removed.
+
+**Operation count**
+- `operationCount` 0 gives the starting contents.
+- With three transfers, `operationCount` 2 gives the contents after the first two.
+- Leaving out `operationCount`, and passing `undefined`, both apply every operation.
+- `operationCount` equal to the number of operations is accepted.
+
+**Problems and affected wells**
+- 60 µL from Plate 1 B1 (holding 50) to Plate 1 B2, as operation 0: `listProblems()` gives
+  `[{ operationIndex: 0, labware: "Plate 1", well: "B1", requested: 60, available: 50 }]`. B1 holds
+  `{}`, B2 holds `{ Water: 50 }`, and both have causes `[0]`.
+- The replay carries on: a later transfer from B2 to B3 gives B3 causes `[0]`.
+- A transfer from a well that has never held anything is a problem with `available: 0`.
+- Causes combine: if B3 then receives a transfer from a second problem, operation 2, its causes are
+  `[0, 2]`, from lowest to highest, each once.
+- A well reached only by transfers with no problem upstream isn't listed in `listAffected()`, and
+  `causesOf` gives `[]`.
+- Problems are listed in the order the operations occur.
+- An overdraw from a well to itself is a problem, the well is affected, and its contents are
+  unchanged.
+
+**Tiny amounts**
+- A well holding `{ Water: 0.30000000000000004 }` (0.1 + 0.2 in JavaScript) gives `{}` after a
+  transfer of 0.3 µL from it, and there is no problem.
+- Requesting 0.0000005 µL more than the source holds isn't a problem; requesting 0.000002 µL more
+  is.
+
+**Immutability and copies**
+- `replay` doesn't change the starting contents or the operation list passed to it.
+- Changing the starting contents after `replay` doesn't change the snapshot.
+- Changing a list or object returned by `listContents()`, `listProblems()`, `listAffected()` or an
+  `...Of` method doesn't change the snapshot.
+- Two `replay` calls with the same inputs give equal results.
+- `ContentsSnapshot` can't be made except by `replay`: calling `new ContentsSnapshot()` throws.
+
+**Errors** (each row of section 5 has at least one test, including:)
+- Starting contents `null`, `{}` and `"A1"` give the list error.
+- Entries `null`, `5` and `[]` give the entry error, naming the entry's position.
+- An entry missing `components`, and one missing `labware` and `well`, give the missing error; an
+  entry with `volume: 50` alongside valid properties gives the extra-property error.
+- `labware` and `well` values `5`, `""`, `"   "`, `" Plate 1"` and `"Plate 1 "` each give their
+  error.
+- `components` values `100`, `null` and `[]` give the components error.
+- Component names `""` and `" Dye"` give their errors.
+- Component volumes `"50"`, `NaN`, `Infinity` and `-5` give the volume error.
+- The same labware and well in entries 0 and 4 gives the duplicate error naming both entries.
+- An operation list given as a plain list of transfers gives the operation-list error.
+- `operationCount` values `2.5`, `"3"`, `null`, `NaN`, `-1` and one more than the number of
+  operations give their errors.
+- Checks run in order: a bad entry 1 and a bad operation count report entry 1.
+- Each `...Of` method rejects a `labware` or `well` of `5`, `""` or `" A1"`, naming the method.
