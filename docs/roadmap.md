@@ -127,8 +127,9 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   operations (version 1: transfers only), the single source of truth for Biomek output, volume
   tracking and the transfer designer. See `src/shared/operation-list/operation-list.md`.
 - **`operation-list.js`**: the operation list's code and tests.
-- **`input-checks`** (shared module): checks more than one module runs on its input — whether a
-  value is an object, its properties, names and volumes — moved out of `operation-list`. See
+- **`input-checks`** (shared module): checks that several modules need to run on their input, such as
+  whether a value is an object with the right properties, and whether a name or volume is valid.
+  Moved out of `operation-list` so other modules can use them. See
   `src/shared/input-checks/input-checks.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
   `npm run serve`.

@@ -1,7 +1,7 @@
 # input-checks — specification
 
 ## Purpose
-`input-checks.js` holds the checks that more than one module runs on its input: whether a value is an
+`input-checks.js` holds checks that several modules need to run on their input: whether a value is an
 object, whether it has the right properties, and whether a name or a volume is valid. Keeping them in
 one place means every module checks the same things in the same way, and words its messages the same
 way. It knows nothing about plates, operations or experiments; each caller says in its own words what
