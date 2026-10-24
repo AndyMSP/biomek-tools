@@ -3,8 +3,8 @@
 > **Draft (2026-10-23).** Stages added for v0.2.0 (ADR 0008). Decided by Andy: every transfer must
 > have a stage (so the existing tests here and in `contents-tracking` add one); `add` places a
 > transfer by its stage; `insertBeforeStage` starts a new stage before another; `remove` is in; the
-> stage rule is checked when a transfer is added. Still to review: the wording here, and that a
-> transfer from a well into itself is exempt from the stage rule.
+> stage rule is checked when a transfer is added; a transfer from a well into itself is exempt from
+> it. Still to review: the wording.
 
 ## 1. Purpose
 `operation-list.js` holds an ordered list of operations: everything the tools decide should happen,
