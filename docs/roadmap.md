@@ -72,7 +72,9 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    Its names and types are stand-ins for now (see "Technical debt").
 6. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
    troughs), from the deck description; entering starting volumes, building stages, and choosing
-   each stage's settings. It comes before the file writer so that
+   each stage's settings. Its undo must clear the redo history whenever a new edit follows an
+   undo, because a stage's ID can come back after undo (`stage-list.md`, "IDs"); the page's
+   specification says so. It comes before the file writer so that
    building stages on the page can shape the file writer's specification.
 7. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
    Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
