@@ -55,22 +55,25 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
 3. **Stages** (ADR 0008): a `stage` property on transfers and an insert method in `operation-list`
    (specification first), and a new `stage-list` module: stages with an ID, a name and settings;
    a check that each stage's transfers are consecutive; and grouping transfers into stages.
-4. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
-   Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
-   3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt"), whose
-   transfers aren't consecutive (ADR 0008), or that mixes labware types (all sources one labware type, all destinations one labware type: Biomek
-   requires it, B56358AF 22-13).
+4. **A short technique list** in `config/`: the two or three techniques the lab uses. The page's
+   settings menus use it.
 5. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
    troughs), entering starting volumes, building stages, and choosing each stage's settings,
-   including its source and destination labware types.
-6. **A short technique list** in `config/`: the two or three techniques the lab uses.
+   including its source and destination labware types. It comes before the file writer so that
+   building stages on the page can shape the file writer's specification.
+6. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
+   Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
+   3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt"), whose
+   transfers aren't consecutive (ADR 0008), or that mixes labware types (all sources one labware
+   type, all destinations one labware type: Biomek requires it, B56358AF 22-13). It adds the page's
+   button for writing the files.
 7. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
    deck; the tool's own files run in simulation, then one real run with water. Tests to run first
    (see "Not yet known" in `biomek.md`): labware types from variables in Transfer From File (if not,
    one Transfer From File step per combination of labware types, chosen by If steps); per-trough
    starting volumes from the setup file; and 8 probes drawing from one trough together.
 
-Rough schedule: Friday 1 to 3; Saturday 4 to 6; Sunday 7, at the Biomek. Setting up a volume
+Rough schedule: Friday 1 to 6 if time allows; Saturday the rest; Sunday 7, at the Biomek. Setting up a volume
 variable for every well of the standard deck is slow clicking work, so leave time for it.
 
 **Later** (after v0.2.0):
