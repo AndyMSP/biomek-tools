@@ -9,6 +9,7 @@ import { SeededRandom } from "../src/shared/random/random.js";
 import { Layout } from "../src/shared/layout/layout.js";
 import { WellSelection } from "../src/shared/well-selection/well-selection.js";
 import { OperationList } from "../src/shared/operation-list/operation-list.js";
+import { StageList } from "../src/shared/stage-list/stage-list.js";
 import {
   findProblems,
   placeName,
@@ -78,6 +79,20 @@ const TOPICS = {
       "list.listOperations()",
       "empty.listOperations()",
       'list.add({ type: "transfer", source: { labware: "Reagents", well: "A1" }, destination: { labware: "Plate 1", well: "D4" }, volme: 50, stage: "1" })',
+    ],
+  },
+  "stage-list": {
+    loaded: { StageList },
+    examples: [
+      "const noStages = new StageList()",
+      'const settings = { technique: "Span8 Water 230 Default", liquidType: "Water", tipType: "BC230", probes: [3, 1, 2], changeTipsFirst: true }',
+      'const added = noStages.add("Seeding", settings)',
+      "added.id",
+      "const stages = added.stageList",
+      'stages.get("1")',
+      'stages.rename("1", "Seeding, part 1").listStages()',
+      "noStages.listStages()",
+      'stages.add("Treatment", { ...settings, tiptype: "BC50" })',
     ],
   },
   randomizer: {
