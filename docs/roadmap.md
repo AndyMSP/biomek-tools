@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-23
+Last updated: 2026-10-24
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -32,8 +32,8 @@ Last updated: 2026-10-23
   and `groupByStage()`.
 - **The `stage-list` shared module is built** (code and tests), against its Draft specification
   (`src/shared/stage-list/stage-list.md`): each stage's ID, name and settings, and the IDs
-  transfers use. *Changed 2026-10-23 (Andy):* its specification now gives sources and destinations
-  each their own technique and liquid type (ADR 0007, amended), so the code needs updating to match.
+  transfers use. Sources and destinations each have their own technique and liquid type
+  (ADR 0007, amended).
 - **Decided: configuration files are JavaScript modules holding data only** (ADR 0009,
   2026-10-23), with sources in comments, checked by the tests of the module that uses them.
 - **Decided: labware types aren't stage settings** (Andy, 2026-10-23; ADR 0007 amended). Each
@@ -66,8 +66,7 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    tracking already accept any well name.) *Done 2026-10-23.*
 3. **Stages** (ADR 0008): in `operation-list` (specification first), a `stage` property on
    transfers, `add` placing each transfer by its stage, `insertBeforeStage`, `remove`, the stage
-   rule checked as transfers are added, and grouping transfers by stage; and a new `stage-list` module holding each stage's ID, name and settings. *Done 2026-10-23,* apart from updating
-   `stage-list`'s code for separate source and destination techniques and liquid types.
+   rule checked as transfers are added, and grouping transfers by stage; and a new `stage-list` module holding each stage's ID, name and settings. *Done 2026-10-23.*
 4. **A short technique list** in `config/`: the two or three techniques the lab uses. The page's
    settings menus use it. *Decided 2026-10-23:* just a list of names in `config/techniques.js`
    (ADR 0009), with no module of its own; the designer's logic module checks the names in its
@@ -182,8 +181,8 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   transfers that take more than their source holds and the wells they affect. See
   `src/shared/contents-tracking/contents-tracking.md`.
 - **`stage-list`** (shared module): the stages of a plan, each with its ID, name and settings
-  (technique, liquid type, tip type, probes, whether to change tips first); it makes the IDs that
-  transfers name their stage by (ADR 0008). See `src/shared/stage-list/stage-list.md`.
+  (technique and liquid type at the sources and at the destinations, tip type, probes, whether to
+  change tips first); it makes the IDs that transfers name their stage by (ADR 0008). See `src/shared/stage-list/stage-list.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
   `npm run serve`.
 

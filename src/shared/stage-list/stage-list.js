@@ -16,13 +16,22 @@ import {
   checkName,
 } from "../input-checks/input-checks.js";
 
-// The five settings every stage has, in the order of the settings table (stage-list.md, section 3),
+// The seven settings every stage has, in the order of the settings table (stage-list.md, section 3),
 // which is also the order they're checked in.
-const SETTING_NAMES = ["technique", "liquidType", "tipType", "probes", "changeTipsFirst"];
+const SETTING_NAMES = [
+  "sourceTechnique",
+  "sourceLiquidType",
+  "destinationTechnique",
+  "destinationLiquidType",
+  "tipType",
+  "probes",
+  "changeTipsFirst",
+];
 
 // The settings as the error messages list them. Kept in one place so the three messages that use it
 // can't drift apart.
-const SETTING_NAMES_TEXT = "technique, liquidType, tipType, probes and changeTipsFirst";
+const SETTING_NAMES_TEXT =
+  "sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType, tipType, probes and changeTipsFirst";
 
 // The Span-8 has probes 1 to 8, numbered as in Biomek Software. It's a fact about the instrument,
 // not a setting that might change, so it lives here rather than in config/.
@@ -130,8 +139,9 @@ export class StageList {
 
 // --- Helpers used only inside this module ---
 
-// Throws if `settings` isn't an object with exactly the five settings, each in the right form, e.g.
-// { technique: "Span8 Water 230 Default", liquidType: "Water", tipType: "BC230",
+// Throws if `settings` isn't an object with exactly the seven settings, each in the right form, e.g.
+// { sourceTechnique: "Aspirate_Slow", sourceLiquidType: "Cells",
+//   destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells", tipType: "BC230",
 //   probes: [1, 2, 3, 4, 5, 6, 7, 8], changeTipsFirst: true }.
 // The checks run in the order of the spec's error table, and the first problem found is reported.
 function checkSettings(settings) {
@@ -152,8 +162,10 @@ function checkSettings(settings) {
       `A stage's settings can only have ${SETTING_NAMES_TEXT}, but also got ${listNames(extras)}.`,
     );
   }
-  checkName(settings.technique, "technique");
-  checkName(settings.liquidType, "liquid type");
+  checkName(settings.sourceTechnique, "source technique");
+  checkName(settings.sourceLiquidType, "source liquid type");
+  checkName(settings.destinationTechnique, "destination technique");
+  checkName(settings.destinationLiquidType, "destination liquid type");
   checkName(settings.tipType, "tip type");
   checkProbes(settings.probes);
   checkChangeTipsFirst(settings.changeTipsFirst);
@@ -201,11 +213,13 @@ function checkChangeTipsFirst(changeTipsFirst) {
 // Returns a frozen copy of valid `settings`, with a frozen copy of its probes, sorted from smallest
 // to largest, e.g. probes [3, 1] → [1, 3]. Copying means changing the object given to add() later
 // doesn't change the list; freezing (Object.freeze) means changing what get() returns throws a
-// TypeError. Only the five settings are copied, by name.
+// TypeError. Only the seven settings are copied, by name.
 function copySettings(settings) {
   return Object.freeze({
-    technique: settings.technique,
-    liquidType: settings.liquidType,
+    sourceTechnique: settings.sourceTechnique,
+    sourceLiquidType: settings.sourceLiquidType,
+    destinationTechnique: settings.destinationTechnique,
+    destinationLiquidType: settings.destinationLiquidType,
     tipType: settings.tipType,
     // sort() changes the list it's called on, so it sorts a copy. Without (a, b) => a - b it would
     // sort numbers as text, putting 10 before 2.
