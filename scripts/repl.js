@@ -74,10 +74,10 @@ const TOPICS = {
     loaded: { OperationList },
     examples: [
       "const empty = new OperationList()",
-      'const list = empty.add({ type: "transfer", source: { labware: "Reagents", well: "A1" }, destination: { labware: "Plate 1", well: "D4" }, volume: 50 })',
+      'const list = empty.add({ type: "transfer", source: { labware: "Reagents", well: "A1" }, destination: { labware: "Plate 1", well: "D4" }, volume: 50, stage: "1" })',
       "list.listOperations()",
       "empty.listOperations()",
-      'list.add({ type: "transfer", source: { labware: "Reagents", well: "A1" }, destination: { labware: "Plate 1", well: "D4" }, volme: 50 })',
+      'list.add({ type: "transfer", source: { labware: "Reagents", well: "A1" }, destination: { labware: "Plate 1", well: "D4" }, volme: 50, stage: "1" })',
     ],
   },
   randomizer: {

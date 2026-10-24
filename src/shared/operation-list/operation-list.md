@@ -1,5 +1,11 @@
 # operation-list — specification
 
+> **Draft (2026-10-23).** Stages added for v0.2.0 (ADR 0008). Decided by Andy: every transfer must
+> have a stage (so the existing tests here and in `contents-tracking` add one); `add` places a
+> transfer by its stage; `insertBeforeStage` starts a new stage before another; `remove` is in; the
+> stage rule is checked when a transfer is added, with no exemption for a transfer from a well into
+> itself. Still to review: the wording.
+
 ## 1. Purpose
 `operation-list.js` holds an ordered list of operations: everything the tools decide should happen,
 in the order it was planned, kept in memory. Each operation is an object whose `type` says what kind
@@ -13,19 +19,27 @@ it uses:
 - **Volume tracking**: replays the transfers in order to work out what each well holds.
 - **The transfer designer**: each drag on the page adds a transfer.
 
+Each transfer belongs to a **stage** (`docs/glossary.md`), named by the stage's ID. The list keeps
+each stage's transfers together, so the order of the stages is simply the order of their transfers,
+and the list stays the one source of truth for order (ADR 0008). A stage's name and settings are
+kept elsewhere, in the stage list.
+
 It doesn't know how the operations were chosen (by the randomizer, by hand, or another way). Tip
 changes are planned as a later type (see section 2).
 
 ## 2. Scope
-Version 1 holds operations of one type, `transfer`, and lets code add transfers and read the list
-back in order.
+Version 1 holds operations of one type, `transfer`, each in a stage. It lets code add a transfer to
+its stage, start a new stage before another, remove a transfer, read the list back in order, and
+read it grouped by stage. A stage can never be split, and it refuses a transfer that breaks the
+stage rule.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Tip changes.** Planned as a second operation type. How they are represented depends on how the
   Span-8 changes tips, which isn't known yet.
 - **Other per-operation instructions**, such as mixing.
-- **Editing the list:** removing operations (for undo) and inserting them. Planned for the transfer
-  designer.
+- **Moving a stage** that already has transfers, or moving a transfer within its stage.
+- **Stage names and settings**, such as technique or tip type. They belong to the stage list
+  (ADR 0008).
 - **Checking against labware**, such as whether a well exists on the named labware or a volume fits
   in it. This module doesn't do it.
 - **Concentrations.** Volume tracking calculates them from the list; they are never stored in it.
@@ -36,11 +50,13 @@ Not in version 1 (see `docs/roadmap.md`):
 **The list**
 - An operation list is an instance of the `OperationList` class, created with `new OperationList()`.
   A new list is empty.
-- Operations are kept in the order they were added. This is the planned order, not necessarily the
-  order the Biomek pipettes: a Transfer From File step decides its own order (B56358AF, 22-25).
-- A list is **immutable**: it never changes after it's created. Adding an operation returns a new
-  list with the operation at the end, and leaves the original unchanged, so code must keep the
-  result: `list = list.add(transfer)`. This differs from `Layout` and `WellSelection`, which are
+- Operations are kept in run order, which `add` and `insertBeforeStage` work out from each
+  transfer's stage (below). This is the planned order. Stages
+  run in this order; within a stage, the Biomek may not follow it, because a Transfer From File
+  step decides its own order (B56358AF, 22-25).
+- A list is **immutable**: it never changes after it's created. Adding, inserting or removing an
+  operation returns a new list, and leaves the original unchanged, so code must keep the result:
+  `list = list.add(transfer)`. This differs from `Layout` and `WellSelection`, which are
   mutable. The operation list is immutable because undo, of any kind of edit, needs earlier versions
   to stay as they were, and because several modules (volume tracking, the file writer, pages) share
   the same list; none of them can change it under the others.
@@ -58,11 +74,12 @@ Not in version 1 (see `docs/roadmap.md`):
   type: "transfer",
   source: { labware: "Reagents", well: "A1" },
   destination: { labware: "Plate 1", well: "D4" },
-  volume: 50
+  volume: 50,
+  stage: "3"
 }
 ```
-- A transfer is an object with exactly four properties: `type`, `source`, `destination` and
-  `volume`. `type` is always `"transfer"`.
+- A transfer is an object with exactly five properties: `type`, `source`, `destination`, `volume`
+  and `stage`. `type` is always `"transfer"`.
 - `source` and `destination` are each an object with exactly two properties, `labware` and `well`.
 - Any missing or extra property is rejected, at either level, so a typo such as `volme` or `wel` is
   caught rather than stored.
@@ -74,6 +91,34 @@ Not in version 1 (see `docs/roadmap.md`):
 - `well` is text that isn't blank and has no whitespace at the start or end.
 - `volume` is a number of microliters (B56358AF, 22-12), 0 or more. Text (such as `"50"`), `NaN`,
   `Infinity` and negative numbers are rejected. There is no maximum and no limit on decimal places.
+- `stage` is the ID of the transfer's stage: text that isn't blank and has no whitespace at the start
+  or end. The stage list makes IDs; this module only compares them, exactly. An ID carries no
+  meaning: it isn't the stage's name or position.
+
+**Stages are consecutive**
+- A stage's transfers are always next to each other in the list, with no other stage's transfers
+  between them: one block per stage. For example, stages `"1", "1", "2", "2", "3"` are possible;
+  `"1", "2", "1"` is not.
+- The list keeps this true by choosing where each transfer goes, so code never gives a position
+  when adding:
+  - `add` puts a transfer right after the last transfer of its stage. If its stage has no
+    transfers yet, the transfer goes at the end of the list, starting a new stage that runs last.
+  - `insertBeforeStage` starts a new stage just before an existing one, so it runs earlier.
+  - `remove` takes out one transfer; the rest stay in order, so no stage can be split.
+- The order of the blocks is the order the stages run.
+
+**The stage rule**
+- Within one stage, no well may be both a source and a destination. Within a stage the Biomek
+  chooses its own order, so a well used both ways could be read before or after it is filled
+  (roadmap, "Technical debt": this simple rule is a known shortcut).
+- `add` and `insertBeforeStage` refuse a transfer whose source is a destination of another transfer
+  in the same stage, or whose destination is a source of one.
+- A transfer from a well into the same well (for example, to mix) gets no exemption. It doesn't
+  change what the well holds, but whether its draw is possible depends on whether it runs before or
+  after the stage's other transfers into or out of that well, and the Biomek chooses that order. A
+  transfer is checked only against the other transfers in its stage, so a self-transfer on its own
+  is accepted.
+- A well is the same if both its labware and its well match exactly.
 
 ## 4. Interface
 The module exports one class, `OperationList`.
@@ -81,8 +126,11 @@ The module exports one class, `OperationList`.
 | Member | Visibility | Description |
 |---|---|---|
 | `constructor()` | public | Creates an empty list. Takes no arguments. |
-| `add(operation)` | public | Checks `operation` (see section 3) and returns a **new** list with a copy of it at the end. The original list is unchanged. Throws if the operation isn't valid. |
+| `add(operation)` | public | Checks `operation` (see section 3) and returns a **new** list with a copy of it right after the last transfer of its stage, or at the end if its stage is new. The original list is unchanged. Throws if the operation isn't valid or breaks the stage rule. |
+| `insertBeforeStage(operation, stage)` | public | Like `add`, but for a transfer whose stage is new: puts the copy just before the first transfer of `stage`, so the new stage runs right before that one. Throws if the operation isn't valid, `stage` isn't in the list, the operation's stage already has transfers (use `add`), or it breaks the stage rule. |
+| `remove(position)` | public | Returns a **new** list without the operation at `position` (counting from 0, as in `listOperations()`). The original list is unchanged. Throws if `position` isn't a whole number from 0 to one less than the number of operations. |
 | `listOperations()` | public | Returns the operations in order, as a new list each time. The operations in it can't be changed. |
+| `groupByStage()` | public | Returns the stages in run order, each with its operations in order, e.g. `[{ stage: "1", operations: [ … ] }, { stage: "2", operations: [ … ] }]`, as a new list each time. An empty list gives `[]`. |
 | `#operations` | private | The stored operations, in order. |
 
 Example:
@@ -93,12 +141,18 @@ list = list.add({
   source: { labware: "Reagents", well: "A1" },
   destination: { labware: "Plate 1", well: "D4" },
   volume: 50,
+  stage: "1",
 });
-list.listOperations();   // [{ type: "transfer", source: …, destination: …, volume: 50 }]
+list.listOperations();   // [{ type: "transfer", source: …, destination: …, volume: 50, stage: "1" }]
+
+list = list.insertBeforeStage(washTransfer, "1");   // washTransfer's new stage runs before stage "1"
+list = list.remove(0);                               // takes out the first transfer
+list.groupByStage();     // [{ stage: "1", operations: [ … ] }, …]
 ```
 
 ## 5. Errors
-`add` checks the operation and throws an `Error` whose message says what is wrong and how to fix it.
+`add`, `insertBeforeStage` and `remove` check their inputs and throw an `Error` whose message says what is wrong and how
+to fix it.
 Values in messages are shown with `describeValue` (`error-messages` module), so text appears in
 quotes, a list as `a list` and any other object as `an object`.
 
@@ -107,8 +161,8 @@ quotes, a list as `a list` and any other object as `an object`.
 | Operation isn't an object (including `null` and lists) | `An operation must be an object with a type, like { type: "transfer", … }, but got null.` |
 | `type` missing or not text | `An operation needs a type, like "transfer", but got undefined.` |
 | `type` isn't a known type | `"tranfer" isn't an operation type. The only type is "transfer".` |
-| A transfer property is missing | `A transfer needs source, destination and volume, but is missing "volume".` With several, all are listed in that order: `but is missing "source", "volume".` |
-| A transfer has extra properties | `A transfer can only have type, source, destination and volume, but also got "volme".` With several, all are listed in the order they appear. |
+| A transfer property is missing | `A transfer needs source, destination, volume and stage, but is missing "volume".` With several, all are listed in that order: `but is missing "source", "volume".` |
+| A transfer has extra properties | `A transfer can only have type, source, destination, volume and stage, but also got "volme".` With several, all are listed in the order they appear. |
 | `source` or `destination` isn't an object (including `null` and lists) | `The source must be an object with a labware and a well, like { labware: "Plate 1", well: "A1" }, but got "A1".` |
 | `labware` or `well` missing | `The source needs a labware and a well, but is missing "well".` With both, both are listed: `but is missing "labware", "well".` |
 | Extra property in `source` or `destination` | `The destination can only have a labware and a well, but also got "wel".` With several, all are listed in the order they appear. |
@@ -116,9 +170,18 @@ quotes, a list as `a list` and any other object as `an object`.
 | `labware` or `well` blank | `The destination well is blank. Give it at least one character that isn't a space.` |
 | `labware` or `well` has whitespace at the start or end | `The source labware " Plate 1" has spaces at the start or end. Remove them.` |
 | `volume` not a number, or less than 0 | `The volume must be a number of microliters, 0 or more, like 50, but got -5.` |
+| `stage` not text, blank, or with whitespace at the start or end | The same three messages as `labware`, naming `stage`: `The stage must be text, but got 3.` |
+| `insertBeforeStage`: `stage` not text, blank, or with whitespace at the start or end | The same three messages, naming `stage to insert before`: `The stage to insert before must be text, but got 2.` |
+| `insertBeforeStage`: `stage` isn't in the list | `There's no stage "9" in the list to insert before.` |
+| `insertBeforeStage`: the operation's stage already has transfers | `Stage "1" already has transfers, so a transfer in it can't start a new stage. Use add to add it to stage "1".` |
+| The source is a destination in the same stage | `This transfer's source, Plate 1 A1, is a destination in stage "1" (operation 3). Within a stage, no well can be both a source and a destination. Put this transfer in another stage.` |
+| The destination is a source in the same stage | `This transfer's destination, Plate 1 A1, is a source in stage "1" (operation 3). Within a stage, no well can be both a source and a destination. Put this transfer in another stage.` |
+| `remove`: position isn't a whole number from 0 to one less than the number of operations | `The position to remove must be a whole number from 0 to 4, but got 7.` With an empty list: `There are no operations to remove.` |
 
 The checks run in the order of the table, for all of `source`, then all of `destination`, then
-`volume`. Within `source` and `destination`, every check on `labware` runs before any check on
+`volume`, then `stage`; then, for `insertBeforeStage`, its `stage` argument; then the stage rule
+(source before destination). Operation numbers in messages are positions in `listOperations()`,
+counting from 0; when several transfers conflict, the first one is named. Within `source` and `destination`, every check on `labware` runs before any check on
 `well`. The first problem found is reported. Each message names the end being checked (source or
 destination), so it's clear which half of the transfer to fix.
 
@@ -126,7 +189,7 @@ In JavaScript a list (an array) and `null` both count as objects, so they are na
 rows to make sure those checks reject them explicitly. `NaN` and `Infinity` count as numbers, so the
 volume check rejects them explicitly.
 
-A failed `add` changes nothing: the original list is never touched.
+A failed `add`, `insertBeforeStage` or `remove` changes nothing: the original list is never touched.
 
 ## 6. Test cases
 Each becomes at least one unit test in `operation-list.test.js`.
@@ -136,7 +199,45 @@ Each becomes at least one unit test in `operation-list.test.js`.
 - `add` returns a new list containing the transfer, and the original list is still empty.
 - Adding three transfers keeps them in the order they were added.
 - A transfer with the same source and destination is accepted.
+- `add` places a transfer by its stage (see "Placing by stage").
 - A volume of `0` is accepted, and so is a decimal such as `2.5`.
+
+**Placing by stage**
+- Adding transfers in stages `"1", "2", "1"` gives the order `"1", "1", "2"`: the second stage `"1"`
+  transfer goes right after the first, before stage `"2"`.
+- Within a stage, transfers keep the order they were added.
+- A transfer in a new stage goes at the end.
+- `insertBeforeStage(t, "2")` with `t` in new stage `"3"`, on a list `"1", "2"`, gives `"1", "3", "2"`;
+  inserting before the first stage puts it first.
+- After that, `add` with stage `"3"` puts the transfer after stage `"3"`'s transfer, before stage
+  `"2"`.
+- `insertBeforeStage` returns a new list; the original is unchanged.
+
+**Removing**
+- `remove(1)` on a list of three takes out the middle transfer; the others keep their order.
+- Removing a stage's only transfer removes that stage from `groupByStage()`.
+- `remove` returns a new list; the original is unchanged.
+
+**Grouping**
+- Stages `"1", "1", "2", "2", "3"` give three groups from `groupByStage()`, in that order, each with
+  its operations in order.
+- An empty list gives `[]`.
+- Changing what `groupByStage()` returns doesn't change the list.
+- Stage IDs are compared exactly: `"1"` and `"01"` are different stages.
+
+**The stage rule**
+- In stage `"1"`, a transfer into Plate 1 A1, then one out of Plate 1 A1, is refused with the
+  "source is a destination" message; the other way round gives the "destination is a source" message.
+- The same two transfers in different stages are accepted.
+- A transfer from Plate 1 A1 into Plate 1 A1 is accepted on its own in a stage.
+- In one stage, a transfer into Plate 1 A1 and then one from Plate 1 A1 into Plate 1 A1 is refused
+  with the "source is a destination" message; a transfer from Plate 1 A1 into Plate 1 A1 and then one
+  into Plate 1 A1 is refused with the "destination is a source" message.
+- Two transfers from Plate 1 A1 into Plate 1 A1 in one stage are refused.
+- Wells with the same well name on different labware don't conflict: into Plate 1 A1 and out of
+  Plate 2 A1 in one stage is accepted.
+- `insertBeforeStage` starts a new stage with one transfer, which has nothing to conflict with, so
+  the rule never refuses it there, including a transfer from a well into itself.
 
 **Immutability and copies**
 - Changing the object passed to `add` afterwards, including its `source`, doesn't change the list.
@@ -162,6 +263,13 @@ Each becomes at least one unit test in `operation-list.test.js`.
 - `labware` and `well` values `5`, `""`, `"   "`, `" Plate 1"` and `"Plate 1 "` each give their error,
   for both source and destination.
 - Volume `"50"`, `NaN`, `Infinity` and `-5` give the volume error.
+- A transfer without `stage` gives the missing error; `stage` values `3`, `""` and `" 1"` give their
+  errors.
+- `insertBeforeStage` with stage `5`, `""` or `" 1"` gives the text errors; with stage `"9"` (not in
+  the list) the not-in-list error; with a transfer whose stage already has transfers, the "use add"
+  error.
+- `remove` with `-1`, `2.5`, `"0"` and the number of operations gives the position error; `remove(0)`
+  on an empty list gives "There are no operations to remove."
 - A property that comes from a class rather than the object itself counts as missing, including
   `type`.
 - Checks run in order: an operation with a bad source and a bad volume reports the source.

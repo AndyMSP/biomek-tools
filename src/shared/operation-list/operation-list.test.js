@@ -13,7 +13,44 @@ function makeTransfer() {
     source: { labware: "Reagents", well: "A1" },
     destination: { labware: "Plate 1", well: "D4" },
     volume: 50,
+    stage: "1",
   };
+}
+
+// Returns a valid transfer in `stage`, with `volume` so tests can tell transfers apart,
+// e.g. makeTransferInStage("2", 20) → { …, volume: 20, stage: "2" }.
+function makeTransferInStage(stage, volume = 50) {
+  return { ...makeTransfer(), volume, stage };
+}
+
+// Returns a transfer in `stage` between two wells, each given as "Labware/Well",
+// e.g. makeTransferBetween("Reagents/A1", "Plate 1/A1", "1").
+function makeTransferBetween(from, to, stage) {
+  const [sourceLabware, sourceWell] = from.split("/");
+  const [destinationLabware, destinationWell] = to.split("/");
+  return {
+    type: "transfer",
+    source: { labware: sourceLabware, well: sourceWell },
+    destination: { labware: destinationLabware, well: destinationWell },
+    volume: 10,
+    stage,
+  };
+}
+
+// Returns an OperationList made by adding `transfers` in order, e.g. makeList(first, second).
+function makeList(...transfers) {
+  return transfers.reduce((list, transfer) => list.add(transfer), new OperationList());
+}
+
+// The stage of each operation in `list`, in order, e.g. ["1", "1", "2"].
+function stagesOf(list) {
+  return list.listOperations().map((operation) => operation.stage);
+}
+
+// The volume of each operation in `list`, in order, so a test can tell which transfer went where,
+// e.g. [10, 30, 20].
+function volumesOf(list) {
+  return list.listOperations().map((operation) => operation.volume);
 }
 
 describe("operation-list", () => {
@@ -53,6 +90,203 @@ describe("operation-list", () => {
       const transfer = { ...makeTransfer(), volume };
       assert.deepEqual(new OperationList().add(transfer).listOperations(), [transfer], String(volume));
     }
+  });
+
+  // --- Placing by stage ---
+
+  test('adding stages "1", "2", "1" gives "1", "1", "2": the second stage "1" transfer goes before stage "2"', () => {
+    const list = makeList(
+      makeTransferInStage("1", 10),
+      makeTransferInStage("2", 20),
+      makeTransferInStage("1", 30),
+    );
+    assert.deepEqual(stagesOf(list), ["1", "1", "2"]);
+    assert.deepEqual(volumesOf(list), [10, 30, 20]);
+  });
+
+  test("within a stage, transfers keep the order they were added", () => {
+    const list = makeList(
+      makeTransferInStage("1", 10),
+      makeTransferInStage("2", 20),
+      makeTransferInStage("1", 30),
+      makeTransferInStage("1", 40),
+    );
+    assert.deepEqual(volumesOf(list), [10, 30, 40, 20]);
+  });
+
+  test("a transfer in a new stage goes at the end", () => {
+    const list = makeList(makeTransferInStage("1"), makeTransferInStage("2"), makeTransferInStage("3"));
+    assert.deepEqual(stagesOf(list), ["1", "2", "3"]);
+  });
+
+  test('insertBeforeStage(t, "2") with t in new stage "3" gives "1", "3", "2"; before the first stage puts it first', () => {
+    const list = makeList(makeTransferInStage("1"), makeTransferInStage("2"));
+    assert.deepEqual(stagesOf(list.insertBeforeStage(makeTransferInStage("3"), "2")), ["1", "3", "2"]);
+    assert.deepEqual(stagesOf(list.insertBeforeStage(makeTransferInStage("3"), "1")), ["3", "1", "2"]);
+  });
+
+  test('after insertBeforeStage, add with stage "3" puts the transfer after stage "3", before stage "2"', () => {
+    const list = makeList(makeTransferInStage("1", 10), makeTransferInStage("2", 20))
+      .insertBeforeStage(makeTransferInStage("3", 30), "2")
+      .add(makeTransferInStage("3", 40));
+    assert.deepEqual(stagesOf(list), ["1", "3", "3", "2"]);
+    assert.deepEqual(volumesOf(list), [10, 30, 40, 20]);
+  });
+
+  test("insertBeforeStage returns a new list, and the original is unchanged", () => {
+    const original = makeList(makeTransferInStage("1"), makeTransferInStage("2"));
+    const inserted = original.insertBeforeStage(makeTransferInStage("3"), "2");
+    assert.notEqual(inserted, original);
+    assert.deepEqual(stagesOf(original), ["1", "2"]);
+  });
+
+  // --- Removing ---
+
+  test("remove(1) on a list of three takes out the middle transfer; the others keep their order", () => {
+    const list = makeList(
+      makeTransferInStage("1", 10),
+      makeTransferInStage("1", 20),
+      makeTransferInStage("1", 30),
+    );
+    assert.deepEqual(volumesOf(list.remove(1)), [10, 30]);
+  });
+
+  test("removing a stage's only transfer removes that stage from groupByStage()", () => {
+    const list = makeList(makeTransferInStage("1"), makeTransferInStage("2"), makeTransferInStage("3"));
+    const stages = list.remove(1).groupByStage().map((group) => group.stage);
+    assert.deepEqual(stages, ["1", "3"]);
+  });
+
+  test("remove returns a new list, and the original is unchanged", () => {
+    const original = makeList(makeTransferInStage("1", 10), makeTransferInStage("1", 20));
+    const removed = original.remove(0);
+    assert.notEqual(removed, original);
+    assert.deepEqual(volumesOf(original), [10, 20]);
+    assert.deepEqual(volumesOf(removed), [20]);
+  });
+
+  // --- Grouping ---
+
+  test('stages "1", "1", "2", "2", "3" give three groups, in order, each with its operations in order', () => {
+    const transfers = [
+      makeTransferInStage("1", 10),
+      makeTransferInStage("1", 20),
+      makeTransferInStage("2", 30),
+      makeTransferInStage("2", 40),
+      makeTransferInStage("3", 50),
+    ];
+    assert.deepEqual(makeList(...transfers).groupByStage(), [
+      { stage: "1", operations: [transfers[0], transfers[1]] },
+      { stage: "2", operations: [transfers[2], transfers[3]] },
+      { stage: "3", operations: [transfers[4]] },
+    ]);
+  });
+
+  test("groupByStage() on an empty list gives []", () => {
+    assert.deepEqual(new OperationList().groupByStage(), []);
+  });
+
+  test("changing what groupByStage() returns doesn't change the list", () => {
+    const list = makeList(makeTransferInStage("1", 10), makeTransferInStage("2", 20));
+    const groups = list.groupByStage();
+    groups[0].stage = "9";
+    groups[0].operations.pop();
+    groups.pop();
+    assert.deepEqual(list.groupByStage(), [
+      { stage: "1", operations: [makeTransferInStage("1", 10)] },
+      { stage: "2", operations: [makeTransferInStage("2", 20)] },
+    ]);
+    assert.deepEqual(volumesOf(list), [10, 20]);
+  });
+
+  test('stage IDs are compared exactly: "1" and "01" are different stages', () => {
+    const list = makeList(
+      makeTransferInStage("1", 10),
+      makeTransferInStage("01", 20),
+      makeTransferInStage("1", 30),
+    );
+    assert.deepEqual(stagesOf(list), ["1", "1", "01"]);
+    assert.equal(list.groupByStage().length, 2);
+  });
+
+  // --- The stage rule ---
+
+  test('in stage "1", into Plate 1 A1 then out of it is refused, and so is the other way round', () => {
+    const into = makeTransferBetween("Reagents/A1", "Plate 1/A1", "1");
+    const outOf = makeTransferBetween("Plate 1/A1", "Plate 1/B1", "1");
+    const rest =
+      "Within a stage, no well can be both a source and a destination. Put this transfer in another stage.";
+    assert.throws(() => makeList(into).add(outOf), {
+      message: `This transfer's source, Plate 1 A1, is a destination in stage "1" (operation 0). ${rest}`,
+    });
+    assert.throws(() => makeList(outOf).add(into), {
+      message: `This transfer's destination, Plate 1 A1, is a source in stage "1" (operation 0). ${rest}`,
+    });
+  });
+
+  test("the same two transfers in different stages are accepted", () => {
+    const list = makeList(
+      makeTransferBetween("Reagents/A1", "Plate 1/A1", "1"),
+      makeTransferBetween("Plate 1/A1", "Plate 1/B1", "2"),
+    );
+    assert.equal(list.listOperations().length, 2);
+  });
+
+  test("a transfer from Plate 1 A1 into Plate 1 A1 is accepted on its own in a stage", () => {
+    const self = makeTransferBetween("Plate 1/A1", "Plate 1/A1", "1");
+    assert.deepEqual(makeList(self).listOperations(), [self]);
+  });
+
+  test("into Plate 1 A1 then from A1 into A1 is refused, and so is from A1 into A1 then into A1", () => {
+    const into = makeTransferBetween("Reagents/A1", "Plate 1/A1", "1");
+    const self = makeTransferBetween("Plate 1/A1", "Plate 1/A1", "1");
+    const rest =
+      "Within a stage, no well can be both a source and a destination. Put this transfer in another stage.";
+    assert.throws(() => makeList(into).add(self), {
+      message: `This transfer's source, Plate 1 A1, is a destination in stage "1" (operation 0). ${rest}`,
+    });
+    assert.throws(() => makeList(self).add(into), {
+      message: `This transfer's destination, Plate 1 A1, is a source in stage "1" (operation 0). ${rest}`,
+    });
+  });
+
+  test("two transfers from Plate 1 A1 into Plate 1 A1 in one stage are refused", () => {
+    const self = makeTransferBetween("Plate 1/A1", "Plate 1/A1", "1");
+    assert.throws(() => makeList(self).add(self), {
+      message: /^This transfer's source, Plate 1 A1, is a destination in stage "1" \(operation 0\)\./,
+    });
+  });
+
+  test("the same well name on different labware doesn't conflict", () => {
+    const list = makeList(
+      makeTransferBetween("Reagents/A1", "Plate 1/A1", "1"),
+      makeTransferBetween("Plate 2/A1", "Plate 2/B1", "1"),
+    );
+    assert.equal(list.listOperations().length, 2);
+  });
+
+  test("when several transfers conflict, the source is checked first and the first conflict is named", () => {
+    const list = makeList(
+      makeTransferBetween("Reagents/A9", "Plate 9/A9", "0"),
+      makeTransferBetween("Reagents/A1", "Plate 1/B1", "1"),
+      makeTransferBetween("Reagents/A2", "Plate 1/A1", "1"),
+      makeTransferBetween("Reagents/A3", "Plate 1/A1", "1"),
+    );
+    // Its source is a destination of operations 2 and 3; its destination is a source of operation 1.
+    assert.throws(() => list.add(makeTransferBetween("Plate 1/A1", "Reagents/A1", "1")), {
+      message: /^This transfer's source, Plate 1 A1, is a destination in stage "1" \(operation 2\)\./,
+    });
+  });
+
+  test("insertBeforeStage's new stage has nothing to conflict with, so the rule never refuses it, including a self-transfer", () => {
+    const list = makeList(makeTransferBetween("Reagents/A1", "Plate 1/A1", "1"));
+    const self = makeTransferBetween("Plate 1/A1", "Plate 1/A1", "2");
+    const outOfA1 = makeTransferBetween("Plate 1/A1", "Plate 1/B1", "2");
+    assert.deepEqual(list.insertBeforeStage(self, "1").listOperations(), [
+      self,
+      ...list.listOperations(),
+    ]);
+    assert.deepEqual(stagesOf(list.insertBeforeStage(outOfA1, "1")), ["2", "1"]);
   });
 
   // --- Immutability and copies ---
@@ -150,13 +384,22 @@ describe("operation-list", () => {
     const noVolume = makeTransfer();
     delete noVolume.volume;
     assert.throws(() => list.add(noVolume), {
-      message: 'A transfer needs source, destination and volume, but is missing "volume".',
+      message: 'A transfer needs source, destination, volume and stage, but is missing "volume".',
     });
     const noSourceOrVolume = makeTransfer();
     delete noSourceOrVolume.volume;
     delete noSourceOrVolume.source;
     assert.throws(() => list.add(noSourceOrVolume), {
-      message: 'A transfer needs source, destination and volume, but is missing "source", "volume".',
+      message:
+        'A transfer needs source, destination, volume and stage, but is missing "source", "volume".',
+    });
+  });
+
+  test("a transfer without a stage gives the missing error", () => {
+    const noStage = makeTransfer();
+    delete noStage.stage;
+    assert.throws(() => new OperationList().add(noStage), {
+      message: 'A transfer needs source, destination, volume and stage, but is missing "stage".',
     });
   });
 
@@ -164,11 +407,11 @@ describe("operation-list", () => {
     const list = new OperationList();
     assert.throws(() => list.add({ ...makeTransfer(), volme: 50 }), {
       message:
-        'A transfer can only have type, source, destination and volume, but also got "volme".',
+        'A transfer can only have type, source, destination, volume and stage, but also got "volme".',
     });
     assert.throws(() => list.add({ ...makeTransfer(), volme: 50, mix: true }), {
       message:
-        'A transfer can only have type, source, destination and volume, but also got "volme", "mix".',
+        'A transfer can only have type, source, destination, volume and stage, but also got "volme", "mix".',
     });
   });
 
@@ -267,10 +510,11 @@ describe("operation-list", () => {
     class TransferWithClassVolume {
       // Sets every transfer property except volume on the object itself.
       constructor() {
-        const { type, source, destination } = makeTransfer();
+        const { type, source, destination, stage } = makeTransfer();
         this.type = type;
         this.source = source;
         this.destination = destination;
+        this.stage = stage;
       }
 
       // Returns the volume from the class, not from the object.
@@ -281,10 +525,11 @@ describe("operation-list", () => {
     class TransferWithClassType {
       // Sets every transfer property except type on the object itself.
       constructor() {
-        const { source, destination, volume } = makeTransfer();
+        const { source, destination, volume, stage } = makeTransfer();
         this.source = source;
         this.destination = destination;
         this.volume = volume;
+        this.stage = stage;
       }
 
       // Returns the type from the class, not from the object.
@@ -305,7 +550,7 @@ describe("operation-list", () => {
     }
     const list = new OperationList();
     assert.throws(() => list.add(new TransferWithClassVolume()), {
-      message: 'A transfer needs source, destination and volume, but is missing "volume".',
+      message: 'A transfer needs source, destination, volume and stage, but is missing "volume".',
     });
     assert.throws(() => list.add(new TransferWithClassType()), {
       message: 'An operation needs a type, like "transfer", but got undefined.',
@@ -336,5 +581,81 @@ describe("operation-list", () => {
     const list = new OperationList().add(makeTransfer());
     assert.throws(() => list.add({ ...makeTransfer(), volume: -5 }));
     assert.deepEqual(list.listOperations(), [makeTransfer()]);
+  });
+
+  test("stage values 3, \"\" and \" 1\" give their errors", () => {
+    const list = new OperationList();
+    assert.throws(() => list.add(makeTransferInStage(3)), {
+      message: "The stage must be text, but got 3.",
+    });
+    assert.throws(() => list.add(makeTransferInStage("")), {
+      message: "The stage is blank. Give it at least one character that isn't a space.",
+    });
+    assert.throws(() => list.add(makeTransferInStage(" 1")), {
+      message: 'The stage " 1" has spaces at the start or end. Remove them.',
+    });
+  });
+
+  test("checks run in order: a bad volume is reported before a bad stage", () => {
+    const transfer = { ...makeTransferInStage(3), volume: -5 };
+    assert.throws(() => new OperationList().add(transfer), { message: /^The volume must be/ });
+  });
+
+  test("insertBeforeStage with stage 5, \"\" or \" 1\" gives the text errors", () => {
+    const list = makeList(makeTransferInStage("1"));
+    const transfer = makeTransferInStage("2");
+    assert.throws(() => list.insertBeforeStage(transfer, 5), {
+      message: "The stage to insert before must be text, but got 5.",
+    });
+    assert.throws(() => list.insertBeforeStage(transfer, ""), {
+      message: "The stage to insert before is blank. Give it at least one character that isn't a space.",
+    });
+    assert.throws(() => list.insertBeforeStage(transfer, " 1"), {
+      message: 'The stage to insert before " 1" has spaces at the start or end. Remove them.',
+    });
+  });
+
+  test("insertBeforeStage with a stage that isn't in the list gives the not-in-list error", () => {
+    const list = makeList(makeTransferInStage("1"));
+    assert.throws(() => list.insertBeforeStage(makeTransferInStage("2"), "9"), {
+      message: 'There\'s no stage "9" in the list to insert before.',
+    });
+  });
+
+  test("insertBeforeStage with a transfer whose stage already has transfers gives the \"use add\" error", () => {
+    const list = makeList(makeTransferInStage("1"), makeTransferInStage("2"));
+    assert.throws(() => list.insertBeforeStage(makeTransferInStage("1"), "2"), {
+      message:
+        'Stage "1" already has transfers, so a transfer in it can\'t start a new stage. Use add to add it to stage "1".',
+    });
+  });
+
+  test("insertBeforeStage checks the operation before its stage argument", () => {
+    const list = makeList(makeTransferInStage("1"));
+    assert.throws(() => list.insertBeforeStage(null, 5), {
+      message: /^An operation must be an object/,
+    });
+  });
+
+  test("remove with -1, 2.5, \"0\" or the number of operations gives the position error", () => {
+    const list = makeList(makeTransfer(), makeTransfer(), makeTransfer());
+    for (const [position, shown] of [[-1, "-1"], [2.5, "2.5"], ["0", '"0"'], [3, "3"]]) {
+      assert.throws(() => list.remove(position), {
+        message: `The position to remove must be a whole number from 0 to 2, but got ${shown}.`,
+      });
+    }
+  });
+
+  test("remove(0) on an empty list says there are no operations to remove", () => {
+    assert.throws(() => new OperationList().remove(0), {
+      message: "There are no operations to remove.",
+    });
+  });
+
+  test("a failed insertBeforeStage() or remove() leaves the list unchanged", () => {
+    const list = makeList(makeTransferInStage("1", 10), makeTransferInStage("2", 20));
+    assert.throws(() => list.insertBeforeStage(makeTransferInStage("3"), "9"));
+    assert.throws(() => list.remove(5));
+    assert.deepEqual(volumesOf(list), [10, 20]);
   });
 });
