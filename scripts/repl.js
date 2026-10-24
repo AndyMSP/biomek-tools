@@ -85,7 +85,7 @@ const TOPICS = {
     loaded: { StageList },
     examples: [
       "const noStages = new StageList()",
-      'const settings = { technique: "Span8 Water 230 Default", liquidType: "Water", tipType: "BC230", probes: [3, 1, 2], changeTipsFirst: true }',
+      'const settings = { sourceTechnique: "Aspirate_Slow", sourceLiquidType: "Cells", destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells", tipType: "BC230", probes: [3, 1, 2], changeTipsFirst: true }',
       'const added = noStages.add("Seeding", settings)',
       "added.id",
       "const stages = added.stageList",
