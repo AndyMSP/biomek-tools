@@ -33,6 +33,8 @@ Last updated: 2026-10-23
 - **The `stage-list` shared module is built** (code and tests), against its Draft specification
   (`src/shared/stage-list/stage-list.md`): each stage's ID, name and settings, and the IDs
   transfers use. With it, item 3 of v0.2.0 is done.
+- **Decided: configuration files are JavaScript modules holding data only** (ADR 0009,
+  2026-10-23), with sources in comments, checked by the tests of the module that uses them.
 - **Decided: labware types aren't stage settings** (Andy, 2026-10-23; ADR 0007 amended). Each
   labware's type is stated once, in a deck description in `config/` (item 5 of v0.2.0), so a stage
   can't disagree with the labware its transfers use.
