@@ -1,11 +1,5 @@
 # operation-list — specification
 
-> **Draft (2026-10-23).** Stages added for v0.2.0 (ADR 0008). Decided by Andy: every transfer must
-> have a stage (so the existing tests here and in `contents-tracking` add one); `add` places a
-> transfer by its stage; `insertBeforeStage` starts a new stage before another; `remove` is in; the
-> stage rule is checked when a transfer is added, with no exemption for a transfer from a well into
-> itself. Still to review: the wording.
-
 ## 1. Purpose
 `operation-list.js` holds an ordered list of operations: everything the tools decide should happen,
 in the order it was planned, kept in memory. Each operation is an object whose `type` says what kind

@@ -27,7 +27,7 @@ Last updated: 2026-10-23
 - **Decided: how stages are stored** (ADR 0008, 2026-10-23). Each transfer names its stage by a
   hidden ID; a stage list holds each stage's ID, name (names may repeat) and settings; the operation
   list keeps each stage's transfers consecutive and stays the one source of truth for order.
-- **`operation-list` now has stages** (code and tests), against its Draft specification: every
+- **`operation-list` now has stages** (code and tests), against its specification: every
   transfer names its stage, `add` places it by stage, `insertBeforeStage`, `remove`, the stage rule
   and `groupByStage()`. The `stage-list` module, the rest of item 3 of v0.2.0, isn't started.
 - **`well-grid` now has numbered grids** (code and tests), for reservoirs: the `naming` option and
