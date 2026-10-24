@@ -24,6 +24,9 @@ Last updated: 2026-10-23
 - **The `contents-tracking` shared module is built** (code and tests), against its specification
   (`src/shared/contents-tracking/contents-tracking.md`; formerly "volume tracking"). A preview of the
   transfer designer with contents tracking and a timeline exists (not in the repository).
+- **Decided: how stages are stored** (ADR 0008, 2026-10-23). Each transfer names its stage by a
+  hidden ID; a stage list holds each stage's ID, name (names may repeat) and settings; the operation
+  list keeps each stage's transfers consecutive and stays the one source of truth for order.
 - **`well-grid` now has numbered grids** (code and tests), for reservoirs: the `naming` option and
   `GRID_1X12_NUMBERED`, the 12-well reservoir's grid (item 2 of v0.2.0, below).
 - **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
@@ -45,29 +48,33 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
 
 **Needed for v0.2.0**, in order:
 1. **`contents-tracking`**: finish the specification (errors and test cases), then code and tests, so
-   overdraws are caught before files are written.
+   overdraws are caught before files are written. *Done 2026-10-23.*
 2. **Reservoirs in `well-grid`**: numbered positions (`1`, `2` …) as well as letter-number names,
    as ADR 0001 anticipated, so reservoirs can be drawn and checked. (The operation list and contents
-   tracking already accept any well name.)
-3. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
+   tracking already accept any well name.) *Done 2026-10-23.*
+3. **Stages** (ADR 0008): in `operation-list` (specification first), a `stage` property on
+   transfers, an insert method, refusing a transfer that would split a stage, and grouping transfers
+   by stage; and a new `stage-list` module holding each stage's ID, name and settings.
+4. **A short technique list** in `config/`: the two or three techniques the lab uses. The page's
+   settings menus use it.
+5. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
+   troughs), entering starting volumes, building stages, and choosing each stage's settings,
+   including its source and destination labware types. It comes before the file writer so that
+   building stages on the page can shape the file writer's specification.
+6. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
    Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
    3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt"), or that
-   mixes labware types (all sources one labware type, all destinations one labware type: Biomek
-   requires it, B56358AF 22-13).
-4. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
-   troughs), entering starting volumes, building stages, and choosing each stage's settings,
-   including its source and destination labware types.
-5. **A short technique list** in `config/`: the two or three techniques the lab uses.
-6. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
+   mixes labware types (all sources one labware
+   type, all destinations one labware type: Biomek requires it, B56358AF 22-13). It adds the page's
+   button for writing the files.
+7. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
    deck; the tool's own files run in simulation, then one real run with water. Tests to run first
    (see "Not yet known" in `biomek.md`): labware types from variables in Transfer From File (if not,
    one Transfer From File step per combination of labware types, chosen by If steps); per-trough
    starting volumes from the setup file; and 8 probes drawing from one trough together.
 
-Rough schedule: Friday 1 to 3; Saturday 4 and 5; Sunday 6, at the Biomek. Setting up a volume
+Rough schedule: Friday 1 to 6 if time allows; Saturday the rest; Sunday 7, at the Biomek. Setting up a volume
 variable for every well of the standard deck is slow clicking work, so leave time for it.
-
-Before 3 and 4: decide where a stage's settings are stored (see "Open decisions").
 
 **Later** (after v0.2.0):
 - Mixing (see "Open decisions").
@@ -262,22 +269,6 @@ overfilling a well or drawing more than it holds.
   the wells the way contents tracking's `causes` do.
 
 ## Open decisions
-- **Where a stage's settings are stored** in the operation list (to decide before the file writer
-  and designer specifications). A stage's settings are its liquid type, technique, tip type, probes,
-  source and destination labware types, and whether tips are changed first. Options discussed on 2026-10-22:
-  1. **One set of settings for the whole plan,** chosen on the page. Quickest, but one technique for
-     everything; per-stage settings or mixing later would need a redesign. Doesn't fit user-built
-     stages.
-  2. **Settings stored on each operation** (or each operation naming its stage), with the file
-     writer grouping neighbouring operations with the same settings into stages. A little more work
-     now, and a small change to the `operation-list` specification, but inserting, undo, the timeline
-     and mixing all work naturally.
-  3. **Separate "stage" entries in the list** that apply to the operations after them. Compact, and
-     close to how the user builds stages, but inserting or moving an operation can silently change
-     its settings.
-
-  Recommended: 2. That recommendation was made before stages became user-built, which makes 3 look
-  closer to the page, so it's worth weighing both again when deciding.
 - **Mixing** (Later; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
   separate Mix step for the Span-8, so it has to be done another way. Options to look at: a transfer
   from a well back into the same well (the operation list already allows this), or a technique's
