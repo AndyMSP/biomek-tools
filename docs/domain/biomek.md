@@ -273,6 +273,9 @@ Questions to answer before relying on the answer:
 - Whether Transfer From File's source and destination **labware type** can come from variables
   (e.g. `=SrcType`). If not, a method needs one Transfer From File step per combination of labware
   types.
+- Whether a labware's **type in Instrument Setup** can come from a variable. If not, putting a
+  different plate type in a deck position means changing the general-purpose method, whatever the
+  tool stores.
 - Whether a **reservoir's** per-trough starting volumes can come from variables in Show Well
   Properties, as plate wells can (test 8).
 - Whether **8 probes can draw from one reservoir trough** at the same time in Transfer From File.
