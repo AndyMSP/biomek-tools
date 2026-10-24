@@ -232,15 +232,29 @@ describe("operation-list", () => {
     assert.equal(list.listOperations().length, 2);
   });
 
-  test("a transfer from Plate 1 A1 into Plate 1 A1 is accepted, with other transfers into or out of A1 in its stage", () => {
+  test("a transfer from Plate 1 A1 into Plate 1 A1 is accepted on its own in a stage", () => {
     const self = makeTransferBetween("Plate 1/A1", "Plate 1/A1", "1");
+    assert.deepEqual(makeList(self).listOperations(), [self]);
+  });
+
+  test("into Plate 1 A1 then from A1 into A1 is refused, and so is from A1 into A1 then into A1", () => {
     const into = makeTransferBetween("Reagents/A1", "Plate 1/A1", "1");
-    const outOf = makeTransferBetween("Plate 1/A1", "Plate 1/B1", "1");
-    // The self-transfer added after the other one, and before it: exempt either way.
-    assert.equal(makeList(into, self).listOperations().length, 2);
-    assert.equal(makeList(outOf, self).listOperations().length, 2);
-    assert.equal(makeList(self, into).listOperations().length, 2);
-    assert.equal(makeList(self, outOf).listOperations().length, 2);
+    const self = makeTransferBetween("Plate 1/A1", "Plate 1/A1", "1");
+    const rest =
+      "Within a stage, no well can be both a source and a destination. Put this transfer in another stage.";
+    assert.throws(() => makeList(into).add(self), {
+      message: `This transfer's source, Plate 1 A1, is a destination in stage "1" (operation 0). ${rest}`,
+    });
+    assert.throws(() => makeList(self).add(into), {
+      message: `This transfer's destination, Plate 1 A1, is a source in stage "1" (operation 0). ${rest}`,
+    });
+  });
+
+  test("two transfers from Plate 1 A1 into Plate 1 A1 in one stage are refused", () => {
+    const self = makeTransferBetween("Plate 1/A1", "Plate 1/A1", "1");
+    assert.throws(() => makeList(self).add(self), {
+      message: /^This transfer's source, Plate 1 A1, is a destination in stage "1" \(operation 0\)\./,
+    });
   });
 
   test("the same well name on different labware doesn't conflict", () => {
@@ -264,7 +278,7 @@ describe("operation-list", () => {
     });
   });
 
-  test("insertBeforeStage checks the stage rule too: a self-transfer, or wells used in other stages, are accepted", () => {
+  test("insertBeforeStage's new stage has nothing to conflict with, so the rule never refuses it, including a self-transfer", () => {
     const list = makeList(makeTransferBetween("Reagents/A1", "Plate 1/A1", "1"));
     const self = makeTransferBetween("Plate 1/A1", "Plate 1/A1", "2");
     const outOfA1 = makeTransferBetween("Plate 1/A1", "Plate 1/B1", "2");

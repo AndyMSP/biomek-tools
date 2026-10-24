@@ -203,16 +203,14 @@ function checkEnd(end, endName) {
 // within one stage, no well may be both a source and a destination, because the Biomek chooses the
 // order within a stage. The source is checked first, then the destination; the first conflicting
 // operation is named.
-// A transfer from a well into the same well is exempt, both as the new transfer and as one already
-// in the stage: it doesn't change what the well holds, so the order doesn't matter.
+// A transfer from a well into the same well (e.g. to mix) gets no exemption: whether its draw is
+// possible depends on whether it runs before or after the stage's other transfers into or out of
+// that well. It's checked only against the others, never itself, so on its own it's accepted.
 function checkStageRule(transfer, operations) {
-  if (isSelfTransfer(transfer)) {
-    return;
-  }
   // Positions in `operations` of the other transfers this one is checked against.
   const sameStage = [];
   operations.forEach((other, position) => {
-    if (other.stage === transfer.stage && !isSelfTransfer(other)) {
+    if (other.stage === transfer.stage) {
       sameStage.push(position);
     }
   });
@@ -244,11 +242,6 @@ function stageRuleError(endName, end, otherEndName, stage, position) {
   return new Error(
     `This transfer's ${endName}, ${end.labware} ${end.well}, is a ${otherEndName} in stage ${describeValue(stage)} (operation ${position}). Within a stage, no well can be both a source and a destination. Put this transfer in another stage.`,
   );
-}
-
-// True if a transfer goes from a well into the same well, e.g. Plate 1 A1 → Plate 1 A1.
-function isSelfTransfer(transfer) {
-  return isSameWell(transfer.source, transfer.destination);
 }
 
 // True if two transfer ends name the same well: both labware and well match exactly,
