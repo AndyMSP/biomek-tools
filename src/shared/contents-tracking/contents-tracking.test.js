@@ -21,7 +21,7 @@ function makeStartingContents() {
 }
 
 // Returns a transfer of `volume` µL between two wells, each given as "Labware/Well",
-// e.g. makeTransfer("Reagents/A1", "Plate 1/A1", 10).
+// e.g. makeTransfer("Reagents/A1", "Plate 1/A1", 10). It has no stage yet: makeList gives it one.
 function makeTransfer(from, to, volume) {
   const [sourceLabware, sourceWell] = from.split("/");
   const [destinationLabware, destinationWell] = to.split("/");
@@ -34,8 +34,14 @@ function makeTransfer(from, to, volume) {
 }
 
 // Returns an OperationList holding `transfers`, in order, e.g. makeList(makeTransfer(…), …).
+// Each transfer gets its own stage, numbered in order ("1", "2" …). A transfer in a new stage goes
+// at the end of the list, so the list keeps the order given, and the stage rule (within a stage, no
+// well is both a source and a destination) never refuses one: these tests are about contents.
 function makeList(...transfers) {
-  return transfers.reduce((list, transfer) => list.add(transfer), new OperationList());
+  return transfers.reduce(
+    (list, transfer, index) => list.add({ ...transfer, stage: String(index + 1) }),
+    new OperationList(),
+  );
 }
 
 // Asserts that two numbers differ by no more than TOLERANCE_MICROLITERS.
