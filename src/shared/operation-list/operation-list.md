@@ -232,7 +232,7 @@ Each becomes at least one unit test in `operation-list.test.js`.
 - A transfer from Plate 1 A1 into Plate 1 A1 is accepted on its own in a stage.
 - In one stage, a transfer into Plate 1 A1 and then one from Plate 1 A1 into Plate 1 A1 is refused
   with the "source is a destination" message; a transfer from Plate 1 A1 into Plate 1 A1 and then one
-  out of Plate 1 A1 is refused with the "destination is a source" message.
+  into Plate 1 A1 is refused with the "destination is a source" message.
 - Two transfers from Plate 1 A1 into Plate 1 A1 in one stage are refused.
 - Wells with the same well name on different labware don't conflict: into Plate 1 A1 and out of
   Plate 2 A1 in one stage is accepted.
