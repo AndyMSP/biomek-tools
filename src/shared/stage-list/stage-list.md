@@ -1,14 +1,15 @@
 # stage-list — specification
 
-> **Draft (2026-10-23).** Written for v0.2.0 (ADR 0008). Decided by Andy: a stage gets all seven
-> settings when it is added; settings are checked for form only (the technique check lives with the
+> **Draft (2026-10-23).** Written for v0.2.0 (ADR 0008). Decided by Andy: a stage gets all five
+> settings when it is added; labware types aren't stage settings (each labware's type is in the deck
+> description in `config/`); settings are checked for form only (the technique check lives with the
 > technique list); `remove` doesn't know about transfers, and the transfer designer's logic module
 > decides when a stage may be removed; an ID can come back after undo. Still to review: the wording.
 
 ## 1. Purpose
-`stage-list.js` holds the stages of a **plan** (`docs/glossary.md`): each stage's ID, name and settings. A **stage**
-(`docs/glossary.md`) is a group of operations that run in any order and share one set of settings.
-On the Biomek, each stage becomes one row of the stage worklist (ADR 0007).
+`stage-list.js` holds the stages of a **plan** (`docs/glossary.md`): each stage's ID, name and
+settings. A **stage** (`docs/glossary.md`) is a group of operations that run in any order and share
+one set of settings. On the Biomek, each stage becomes one row of the stage worklist (ADR 0007).
 
 It also makes stage IDs. Each transfer in the operation list names its stage by one of these IDs, and
 this list is where the file writer and the page look up that stage's name and settings (ADR 0008).
@@ -23,7 +24,7 @@ look stages up.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Checking settings against the configuration**, such as whether a technique is in the technique
-  list, suits the tip type, or a labware type exists. This module checks only that each setting has
+  list or suits the tip type. This module checks only that each setting has
   the right form (section 3). Where those checks live is an open decision (roadmap, "Open
   decisions").
 - **Knowing about transfers.** Removing a stage that still has transfers isn't refused here; the page
@@ -54,18 +55,16 @@ Not in version 1 (see `docs/roadmap.md`):
     liquidType: "Water",
     tipType: "BC230",
     probes: [1, 2, 3, 4, 5, 6, 7, 8],
-    sourceLabwareType: "BCDeep96Round",
-    destinationLabwareType: "Greiner655087",
     changeTipsFirst: true
   }
 }
 ```
-(The technique and labware type names above are examples only, not the lab's.)
+(The technique name above is an example only, not the lab's.)
 
 - `id` is made by the list; code never chooses one (below).
 - `name` is chosen by the user: text that isn't blank and has no whitespace at the start or end.
   Two stages may have the same name (for example two "Seeding" stages).
-- `settings` is an object with exactly seven properties. Any missing or extra property is rejected,
+- `settings` is an object with exactly five properties. Any missing or extra property is rejected,
   so a typo such as `tiptype` is caught rather than stored. As in the operation list, only properties
   the object holds itself count.
 
@@ -77,8 +76,6 @@ Not in version 1 (see `docs/roadmap.md`):
 | `liquidType` | the Biomek liquid type, by name | a name |
 | `tipType` | the tip type, by name, e.g. `BC230` | a name |
 | `probes` | which probes the stage's Transfer From File step uses | a list of probe numbers (below) |
-| `sourceLabwareType` | the labware type of every source in the stage | a name |
-| `destinationLabwareType` | the labware type of every destination in the stage | a name |
 | `changeTipsFirst` | whether all tips are unloaded and new ones loaded before the stage | `true` or `false` |
 
 - A **name** is text that isn't blank and has no whitespace at the start or end (`checkName`,
@@ -88,6 +85,11 @@ Not in version 1 (see `docs/roadmap.md`):
   (the Span-8's probes, numbered as in Biomek Software). No number may appear twice. The list stores
   the numbers sorted from smallest to largest, whatever order they were given in, so `[3, 1]` is
   stored as `[1, 3]`. The file writer turns it into Biomek's text form, `"1,3"`.
+- **Labware types aren't settings.** A labware's type is a fact about the labware, not the stage,
+  so it is stated once, in the deck description in `config/`, and looked up from there. That way a
+  stage can't disagree with the labware its transfers use. Transfer From File needs all of a step's
+  sources to be one labware type, and all its destinations one labware type (B56358AF, 22-13), so
+  the file writer refuses a stage that mixes them, using the labware its transfers name.
 - The first stage to run must load tips, so its `changeTipsFirst` must be `true`. That depends on the
   run order, which this list doesn't know, so the file writer checks it, not this module.
 
@@ -159,10 +161,10 @@ message says what is wrong and how to fix it. Values are shown with `describeVal
 |---|---|
 | `id` isn't in the list (any type of value) | `There's no stage "9" in the stage list.` |
 | `name` not text, blank, or with whitespace at the start or end | `checkName`'s three messages, naming `stage name`: `The stage name must be text, but got 5.` |
-| `settings` isn't an object (including `null` and lists) | `A stage's settings must be an object with technique, liquidType, tipType, probes, sourceLabwareType, destinationLabwareType and changeTipsFirst, but got null.` |
-| A setting is missing | `A stage's settings need technique, liquidType, tipType, probes, sourceLabwareType, destinationLabwareType and changeTipsFirst, but are missing "tipType".` With several, all are listed in that order. |
-| Extra settings | `A stage's settings can only have technique, liquidType, tipType, probes, sourceLabwareType, destinationLabwareType and changeTipsFirst, but also got "tiptype".` With several, all are listed in the order they appear. |
-| A name setting not text, blank, or with whitespace at the start or end | `checkName`'s three messages, naming the setting in words: `technique`, `liquid type`, `tip type`, `source labware type`, `destination labware type`. E.g. `The tip type " BC230" has spaces at the start or end. Remove them.` |
+| `settings` isn't an object (including `null` and lists) | `A stage's settings must be an object with technique, liquidType, tipType, probes and changeTipsFirst, but got null.` |
+| A setting is missing | `A stage's settings need technique, liquidType, tipType, probes and changeTipsFirst, but are missing "tipType".` With several, all are listed in that order. |
+| Extra settings | `A stage's settings can only have technique, liquidType, tipType, probes and changeTipsFirst, but also got "tiptype".` With several, all are listed in the order they appear. |
+| A name setting not text, blank, or with whitespace at the start or end | `checkName`'s three messages, naming the setting in words: `technique`, `liquid type`, `tip type`. E.g. `The tip type " BC230" has spaces at the start or end. Remove them.` |
 | `probes` isn't a list, or is empty | `The probes must be a list of probe numbers from 1 to 8, like [1, 2, 3, 4], but got "1,2".` |
 | A probe isn't a whole number from 1 to 8 | `Probe numbers must be whole numbers from 1 to 8, but got 9.` The first such value is named. |
 | A probe appears twice | `Probe 3 is listed more than once. List each probe once.` |
@@ -218,7 +220,8 @@ Each becomes at least one unit test in `stage-list.test.js`, inside `describe("s
 - Settings `null`, `"x"` and `[]` give the object error; `[]` ends `but got a list.`
 - Settings missing `tipType` give the missing error; missing `technique` and `probes` name both, in
   that order.
-- Settings with an extra `tiptype` give the extra-setting error.
+- Settings with an extra `tiptype` give the extra-setting error, and so do settings with a
+  `sourceLabwareType`.
 - Each name setting given `5`, `""` and `" BC230"` gives its error, naming the setting in words.
 - `probes` `"1,2"`, `[]` and `null` give the probes-list error.
 - `probes` `[0]`, `[9]`, `[2.5]` and `["1"]` give the probe-number error; `[1, 9, 10]` names `9`.
