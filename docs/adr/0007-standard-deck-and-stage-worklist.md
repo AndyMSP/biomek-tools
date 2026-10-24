@@ -32,14 +32,16 @@ well (e.g. `Src_A1`), set up once in Instrument Setup's Show Well Properties.
    step reads it and contains the Instrument Setup step.
 2. A **stage worklist**: one row per **stage** (`docs/glossary.md`), a group of operations that can
    run in any order and share one set of settings. Each row names a Transfer From File file and the
-   stage's settings: liquid type, technique, tip type, the probes to use, the probes to load, and
-   whether tips are changed first. If the method takes the source and destination labware types
+   stage's settings: the technique and liquid type at the sources and at the destinations
+   (amended 2026-10-23, below), tip type, the probes to use, the probes to load, and whether tips
+   are changed first. If the method takes the source and destination labware types
    from variables (below), the row also gives them; the tool looks them up from the deck
    description, not from the stage (amended 2026-10-23, below).
 
 Inside the stage worklist's loop: an If step (`NewTip=1`) unloads all tips and loads tips on
 `=LoadProbes` of `=TipType`; then one Transfer From File step runs `=TransferFile` with
-`=Probes`, `=LiquidType` and `=Technique`. Its tip type, in the box next to Load, is also
+`=Probes`, `=LiquidType` and `=Technique` (amended 2026-10-23: one technique and one liquid type
+for each end, below). Its tip type, in the box next to Load, is also
 `=TipType`, with Load unchecked: Transfer From File needs it to know which tips are on
 (`biomek.md`). **"Split large volumes" is always checked,** so a transfer larger than the tip
 holds is made in as many trips as needed.
@@ -57,6 +59,17 @@ digits (`biomek.md`), so this isn't a Biomek limit: it keeps arithmetic leftover
 type, volume and liquid type (from a table of the lab's techniques in `config/`). Because large
 volumes are split, a transfer's volume isn't limited by the tip's capacity.
 
+**Amended 2026-10-23 (Andy): separate techniques and liquid types for sources and destinations.**
+As first written, a stage had one technique and one liquid type, used at both ends: the Transfer
+From File step took `=Technique` and `=LiquidType` in both its source and its destination
+configuration. But Transfer From File sets them separately at each end (B56358AF, 22-13 and 22-14),
+and the lab needs that: for example, aspirating slowly, then dispensing above the liquid so the tip
+stays clean, or into it to avoid bubbles or to mix. So a stage has a source technique, a source
+liquid type, a destination technique and a destination liquid type, and the stage worklist has a
+column for each; the source configuration takes the source ones and the destination configuration
+the destination ones. The columns' names are set in the file writer's specification. Separate
+variables at the two ends weren't tested in simulation (`biomek.md`, "Not yet known").
+
 **Amended 2026-10-23 (Andy): labware types come from a deck description, not from stages.** As
 first written, this ADR listed the source and destination labware types among a stage's settings.
 A labware's type is a fact about the labware, not the stage, so it is stated once, in a **deck
@@ -71,8 +84,8 @@ transfers name.
 - Each experiment is a few generated files; the method itself never changes.
 - Labware outside the standard deck needs a new or edited general-purpose method.
 - Liquid types can't be set on wells in Instrument Setup, only per stage in Transfer From File.
-- A stage is the unit for settings: transfers that differ in liquid type, technique, tip type or
-  probes go in different stages, and so do transfers whose source or destination labware types
+- A stage is the unit for settings: transfers that differ in liquid type or technique, at either
+  end, or in tip type or probes go in different stages, and so do transfers whose source or destination labware types
   differ (taken from the deck description; amended 2026-10-23). Within a stage, Transfer
   From File chooses the order, so a well that is filled and then drawn from must have those
   transfers in different stages.
