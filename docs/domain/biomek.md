@@ -280,6 +280,10 @@ Questions to answer before relying on the answer:
 - Whether Transfer From File's source and destination **labware type** can come from variables
   (e.g. `=SrcType`). If not, a method needs one Transfer From File step per combination of labware
   types.
+- Whether Transfer From File takes **different variables at its two ends**, e.g. `=SrcTechnique`
+  in the source configuration and `=DestTechnique` in the destination configuration, and the same
+  for liquid type. Only one variable used at both ends (`=Technique`, `=LiquidType`) was tested
+  (2026-10-21).
 - What happens with an **unknown liquid type name** from a variable (`=LiquidType`): whether
   validation catches it, as it does an unknown technique, or Biomek uses the default liquid type
   (B56358AF, 9-1) without a warning.
