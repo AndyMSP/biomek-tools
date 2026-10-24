@@ -255,6 +255,13 @@ The same 24 transfers of 20 µL, from Source A1–H1 into Dest columns 1–3, ke
     number, amount and technique. *(16-11, 16-12.)*
   - **Errors** log: each error or interruption, with its exact message. *(16-10.)*
 
+## Liquid types
+- **Liquid type names** may contain only letters, digits and underscores, and must start with a
+  letter. *(B56358AF, 9-4.)*
+- A liquid type sets how liquid is drawn and pushed: aspirate and dispense speeds (µL/s), delays,
+  trailing air gap and blowout volumes, and prewet overage. A technique sets heights and
+  movements, and can override the liquid type's values. *(B56358AF, 7-8 to 7-12 and 9-3.)*
+
 ## Volumes and tips
 *(Project training log, 2026-10-06, unless noted.)*
 - A 1 mL syringe holds about 1000 µL per draw, including air gaps.
@@ -273,6 +280,9 @@ Questions to answer before relying on the answer:
 - Whether Transfer From File's source and destination **labware type** can come from variables
   (e.g. `=SrcType`). If not, a method needs one Transfer From File step per combination of labware
   types.
+- What happens with an **unknown liquid type name** from a variable (`=LiquidType`): whether
+  validation catches it, as it does an unknown technique, or Biomek uses the default liquid type
+  (B56358AF, 9-1) without a warning.
 - Whether a labware's **type in Instrument Setup** can come from a variable. If not, putting a
   different plate type in a deck position means changing the general-purpose method, whatever the
   tool stores.
