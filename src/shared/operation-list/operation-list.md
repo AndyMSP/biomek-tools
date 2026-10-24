@@ -3,8 +3,8 @@
 > **Draft (2026-10-23).** Stages added for v0.2.0 (ADR 0008). Decided by Andy: every transfer must
 > have a stage (so the existing tests here and in `contents-tracking` add one); `add` places a
 > transfer by its stage; `insertBeforeStage` starts a new stage before another; `remove` is in; the
-> stage rule is checked when a transfer is added; a transfer from a well into itself is exempt from
-> it. Still to review: the wording.
+> stage rule is checked when a transfer is added, with no exemption for a transfer from a well into
+> itself. Still to review: the wording.
 
 ## 1. Purpose
 `operation-list.js` holds an ordered list of operations: everything the tools decide should happen,
@@ -113,8 +113,11 @@ Not in version 1 (see `docs/roadmap.md`):
   (roadmap, "Technical debt": this simple rule is a known shortcut).
 - `add` and `insertBeforeStage` refuse a transfer whose source is a destination of another transfer
   in the same stage, or whose destination is a source of one.
-- A transfer from a well into the same well is exempt: it doesn't change what the well holds
-  (`contents-tracking`), so the order doesn't matter.
+- A transfer from a well into the same well (for example, to mix) gets no exemption. It doesn't
+  change what the well holds, but whether its draw is possible depends on whether it runs before or
+  after the stage's other transfers into or out of that well, and the Biomek chooses that order. A
+  transfer is checked only against the other transfers in its stage, so a self-transfer on its own
+  is accepted.
 - A well is the same if both its labware and its well match exactly.
 
 ## 4. Interface
@@ -226,12 +229,15 @@ Each becomes at least one unit test in `operation-list.test.js`.
 - In stage `"1"`, a transfer into Plate 1 A1, then one out of Plate 1 A1, is refused with the
   "source is a destination" message; the other way round gives the "destination is a source" message.
 - The same two transfers in different stages are accepted.
-- A transfer from Plate 1 A1 into Plate 1 A1 is accepted, even with other transfers into or out of
-  Plate 1 A1 in its stage.
+- A transfer from Plate 1 A1 into Plate 1 A1 is accepted on its own in a stage.
+- In one stage, a transfer into Plate 1 A1 and then one from Plate 1 A1 into Plate 1 A1 is refused
+  with the "source is a destination" message; a transfer from Plate 1 A1 into Plate 1 A1 and then one
+  out of Plate 1 A1 is refused with the "destination is a source" message.
+- Two transfers from Plate 1 A1 into Plate 1 A1 in one stage are refused.
 - Wells with the same well name on different labware don't conflict: into Plate 1 A1 and out of
   Plate 2 A1 in one stage is accepted.
-- `insertBeforeStage` checks the rule too (a single transfer can break it only with itself, which is
-  exempt, so this is accepted).
+- `insertBeforeStage` starts a new stage with one transfer, which has nothing to conflict with, so
+  the rule never refuses it there, including a transfer from a well into itself.
 
 **Immutability and copies**
 - Changing the object passed to `add` afterwards, including its `source`, doesn't change the list.
