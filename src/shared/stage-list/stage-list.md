@@ -1,9 +1,9 @@
 # stage-list — specification
 
-> **Draft (2026-10-23).** Written for v0.2.0 (ADR 0008). Still to review: whether a stage must have
-> all its settings when it is added; that settings are checked for form only, not against the
-> technique list; that `remove` doesn't know about transfers; that IDs can come back after undo;
-> and the wording.
+> **Draft (2026-10-23).** Written for v0.2.0 (ADR 0008). Decided by Andy: a stage gets all seven
+> settings when it is added; settings are checked for form only (the technique check lives with the
+> technique list); `remove` doesn't know about transfers, and the transfer designer's logic module
+> decides when a stage may be removed; an ID can come back after undo. Still to review: the wording.
 
 ## 1. Purpose
 `stage-list.js` holds the stages of a **plan** (`docs/glossary.md`): each stage's ID, name and settings. A **stage**
@@ -102,12 +102,18 @@ Not in version 1 (see `docs/roadmap.md`):
   back to its counter, so after an undo the next stage added can get an ID used in the undone
   version. That's safe, because the operation list kept with that earlier version doesn't name that
   ID either.
+- This relies on the page clearing its redo history whenever a new edit follows an undo, as editors
+  usually do; otherwise a redo could bring back a second stage with the same ID. The transfer
+  designer's page specification says so.
 
 **Removing**
 - `remove` takes a stage out. It doesn't check whether transfers still name it, because this module
   doesn't see the operation list. A transfer naming a stage that isn't in the stage list would leave
   the file writer with no settings for it, so the page removes a stage only after removing or moving
-  its transfers. (The file writer refuses a transfer whose stage isn't in the stage list.)
+  its transfers. Whether a stage may be removed is a rule, so it lives in the transfer designer's
+  logic module (`transfer-designer.js`, tested in Node), not in the page script: the page offers to
+  remove a stage only when it has no transfers. (The file writer also refuses a transfer whose stage
+  isn't in the stage list.)
 - A stage with no transfers can stay in the list. It has no place in the run order and isn't run
   (ADR 0008).
 
