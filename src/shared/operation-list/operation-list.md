@@ -1,8 +1,8 @@
 # operation-list — specification
 
-> **Draft (2026-10-23).** Stages added for v0.2.0 (ADR 0008). Still to review: everything about
-> stages and `insert`, and in particular the choice that **every transfer must have a stage**, which
-> means the existing tests here and in `contents-tracking` add one to the transfers they build.
+> **Draft (2026-10-23).** Stages added for v0.2.0 (ADR 0008). Decided by Andy: every transfer must
+> have a stage, so the existing tests here and in `contents-tracking` add one to the transfers they
+> build. Still to review: everything else about stages and `insert`.
 
 ## 1. Purpose
 `operation-list.js` holds an ordered list of operations: everything the tools decide should happen,
