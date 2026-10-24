@@ -53,8 +53,8 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    as ADR 0001 anticipated, so reservoirs can be drawn and checked. (The operation list and contents
    tracking already accept any well name.) *Done 2026-10-23.*
 3. **Stages** (ADR 0008): in `operation-list` (specification first), a `stage` property on
-   transfers, an insert method, refusing a transfer that would split a stage, and grouping transfers
-   by stage; and a new `stage-list` module holding each stage's ID, name and settings.
+   transfers, `add` placing each transfer by its stage, `insertBeforeStage`, `remove`, the stage
+   rule checked as transfers are added, and grouping transfers by stage; and a new `stage-list` module holding each stage's ID, name and settings.
 4. **A short technique list** in `config/`: the two or three techniques the lab uses. The page's
    settings menus use it.
 5. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
@@ -63,8 +63,7 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    building stages on the page can shape the file writer's specification.
 6. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
    Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
-   3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt"), or that
-   mixes labware types (all sources one labware
+   3 decimal places. It refuses a stage that mixes labware types (all sources one labware
    type, all destinations one labware type: Biomek requires it, B56358AF 22-13). It adds the page's
    button for writing the files.
 7. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
@@ -81,7 +80,7 @@ variable for every well of the standard deck is slow clicking work, so leave tim
 - The timeline (see "Contents tracking").
 - Final concentrations.
 - Saving and loading plans.
-- Editing the list: inserting, removing and undo.
+- Editing the list further: moving a stage, or a transfer within its stage.
 - Labware types with well capacities, to warn about overfilling.
 - Biomek output for the randomizer (the randomizer link).
 - The full technique table, from the Technique Browser.
@@ -98,7 +97,7 @@ variable for every well of the standard deck is slow clicking work, so leave tim
 Shortcuts taken knowingly, each with what doing it properly would mean.
 - **Users build stages by hand** (v0.2.0). Properly: smarter staging (see "Later").
 - **The stage rule is simple:** within one stage, no well may be both a source and a destination;
-  the tool refuses a stage that breaks it, with a message saying why. It is stricter than needed (it
+  the operation list refuses a transfer that breaks it, with a message saying why. It is stricter than needed (it
   separates transfers even when their order wouldn't matter), which costs some side-by-side work at
   each stage boundary. Properly: smarter staging.
 - **The technique list holds only the lab's current techniques.** Properly: the full table.
@@ -281,9 +280,9 @@ overfilling a well or drawing more than it holds.
   another. ADR 0007 puts liquid type, technique, tip type, probes and tip changes in the worklist.
 - **How operations are checked against labware and techniques**, such as whether a well exists on
   the named labware, a volume fits in it, a technique suits its tip type (Biomek doesn't check this;
-  see `biomek.md`), or a stage follows the stage rule. Ideally live, as operations are entered, so a
-  wrong sequence is caught before it's built. Where the check lives is undecided; `operation-list`
-  doesn't do it.
+  see `biomek.md`). Ideally live, as operations are entered, so a wrong sequence is caught before
+  it's built. Where these checks live is undecided. (The stage rule is decided: `operation-list`
+  checks it in `add`.)
 - **A programming interface from Beckman**: Andy is asking whether one exists. If it does, ADR 0006's
   option 3 would be reconsidered.
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)

@@ -38,9 +38,12 @@ looked up by ID.
 stage's transfers in between. The order of the blocks is the order the stages run, so the operation
 list stays the one source of truth for order. Nothing else stores the run order.
 
-**The operation list keeps blocks together.** It gains an "insert at a position" method, and both
-`add` and `insert` refuse a transfer that would split a stage, so a split stage can't exist, even
-when the list is built in code. The page inserts each new transfer after its stage's last transfer.
+**The operation list keeps blocks together** by choosing where each transfer goes, so a split stage
+can't exist, even when the list is built in code. `add` puts a transfer right after the last
+transfer of its stage, or at the end if its stage is new; `insertBeforeStage` starts a new stage just
+before an existing one; `remove` takes one transfer out. Code never gives a position when adding.
+(Amended 2026-10-23, before any code: an earlier draft had an "insert at a position" method that
+refused positions which would split a stage. Placing by stage needs no such checks.)
 The operation list also groups its transfers by stage, for the file writer. Both the rule and the
 grouping read only the operation list (the order and each transfer's stage ID), which is why they
 live there rather than in the stage list.
@@ -50,8 +53,9 @@ describe how the Biomek does it, need their own checks (for example against the 
 are of no interest to `contents-tracking`.
 
 ## Consequences
-- `operation-list` changes: transfers gain a `stage` property; the list gains an insert method,
-  refuses a transfer that would split a stage, and groups transfers by stage. Its specification is
+- `operation-list` changes: transfers gain a `stage` property; `add` places transfers by stage; the
+  list gains `insertBeforeStage` and `remove`, checks the stage rule as transfers are added, and
+  groups transfers by stage. Its specification is
   updated first.
 - A new `stage-list` module holds stages (ID, name, settings) and makes IDs.
 - The file writer needn't check for split stages, because the operation list can't hold one.
