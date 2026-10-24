@@ -67,7 +67,9 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    transfers, `add` placing each transfer by its stage, `insertBeforeStage`, `remove`, the stage
    rule checked as transfers are added, and grouping transfers by stage; and a new `stage-list` module holding each stage's ID, name and settings. *Done 2026-10-23.*
 4. **A short technique list** in `config/`: the two or three techniques the lab uses. The page's
-   settings menus use it.
+   settings menus use it. *Decided 2026-10-23:* just a list of names in `config/techniques.js`
+   (ADR 0009), with no module of its own; the designer's logic module checks the names in its
+   tests. Stand-ins for now (see "Technical debt").
 5. **A deck description** in `config/`: each labware on the standard deck, with its name (exactly
    as in the general-purpose method), its grid (`GRID_96` or `GRID_1X12_NUMBERED`) and its labware
    type. The page draws the labware from it, and the file writer looks up labware types in it.
@@ -119,6 +121,12 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   separates transfers even when their order wouldn't matter), which costs some side-by-side work at
   each stage boundary. Properly: smarter staging.
 - **The technique list holds only the lab's current techniques.** Properly: the full table.
+- **The technique list's names are stand-ins** (v0.2.0, 2026-10-23). Before the first run, replace
+  them with the real names from Biomek Software's Technique Browser.
+- **Techniques aren't checked against tip types** (v0.2.0, 2026-10-23). The tool treats every
+  technique as usable with every tip type. Biomek doesn't check this either (`biomek.md`), so until
+  it's built, the user chooses a technique that suits each stage's tips. Properly: the technique
+  list records each technique's tip types, and the page and the file writer check them (ADR 0007).
 - **The deck description's labware names and types are stand-ins** (v0.2.0, written 2026-10-23
   before checking Biomek Software). Before the first run, replace them with the real names from the
   general-purpose method and the real labware types from Biomek Software.
