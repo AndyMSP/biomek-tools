@@ -29,8 +29,10 @@ Last updated: 2026-10-23
   list keeps each stage's transfers consecutive and stays the one source of truth for order.
 - **`operation-list` now has stages** (code and tests), against its specification: every
   transfer names its stage, `add` places it by stage, `insertBeforeStage`, `remove`, the stage rule
-  and `groupByStage()`. The `stage-list` module, the rest of item 3 of v0.2.0, has a Draft
-  specification in review (PR #36).
+  and `groupByStage()`.
+- **The `stage-list` shared module is built** (code and tests), against its Draft specification
+  (`src/shared/stage-list/stage-list.md`): each stage's ID, name and settings, and the IDs
+  transfers use. With it, item 3 of v0.2.0 is done.
 - **Decided: labware types aren't stage settings** (Andy, 2026-10-23; ADR 0007 amended). Each
   labware's type is stated once, in a deck description in `config/` (item 5 of v0.2.0), so a stage
   can't disagree with the labware its transfers use.
@@ -61,7 +63,7 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    tracking already accept any well name.) *Done 2026-10-23.*
 3. **Stages** (ADR 0008): in `operation-list` (specification first), a `stage` property on
    transfers, `add` placing each transfer by its stage, `insertBeforeStage`, `remove`, the stage
-   rule checked as transfers are added, and grouping transfers by stage; and a new `stage-list` module holding each stage's ID, name and settings.
+   rule checked as transfers are added, and grouping transfers by stage; and a new `stage-list` module holding each stage's ID, name and settings. *Done 2026-10-23.*
 4. **A short technique list** in `config/`: the two or three techniques the lab uses. The page's
    settings menus use it.
 5. **A deck description** in `config/`: each labware on the standard deck, with its name (exactly
@@ -159,6 +161,9 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   contents to work out each well's components in µL, after any number of operations, and reports
   transfers that take more than their source holds and the wells they affect. See
   `src/shared/contents-tracking/contents-tracking.md`.
+- **`stage-list`** (shared module): the stages of a plan, each with its ID, name and settings
+  (technique, liquid type, tip type, probes, whether to change tips first); it makes the IDs that
+  transfers name their stage by (ADR 0008). See `src/shared/stage-list/stage-list.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
   `npm run serve`.
 
