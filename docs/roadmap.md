@@ -32,7 +32,8 @@ Last updated: 2026-10-23
   and `groupByStage()`.
 - **The `stage-list` shared module is built** (code and tests), against its Draft specification
   (`src/shared/stage-list/stage-list.md`): each stage's ID, name and settings, and the IDs
-  transfers use. With it, item 3 of v0.2.0 is done.
+  transfers use. *Changed 2026-10-23 (Andy):* its specification now gives sources and destinations
+  each their own technique and liquid type (ADR 0007, amended), so the code needs updating to match.
 - **Decided: configuration files are JavaScript modules holding data only** (ADR 0009,
   2026-10-23), with sources in comments, checked by the tests of the module that uses them.
 - **Decided: labware types aren't stage settings** (Andy, 2026-10-23; ADR 0007 amended). Each
@@ -65,7 +66,8 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    tracking already accept any well name.) *Done 2026-10-23.*
 3. **Stages** (ADR 0008): in `operation-list` (specification first), a `stage` property on
    transfers, `add` placing each transfer by its stage, `insertBeforeStage`, `remove`, the stage
-   rule checked as transfers are added, and grouping transfers by stage; and a new `stage-list` module holding each stage's ID, name and settings. *Done 2026-10-23.*
+   rule checked as transfers are added, and grouping transfers by stage; and a new `stage-list` module holding each stage's ID, name and settings. *Done 2026-10-23,* apart from updating
+   `stage-list`'s code for separate source and destination techniques and liquid types.
 4. **A short technique list** in `config/`: the two or three techniques the lab uses. The page's
    settings menus use it. *Decided 2026-10-23:* just a list of names in `config/techniques.js`
    (ADR 0009), with no module of its own; the designer's logic module checks the names in its
@@ -94,7 +96,8 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    (see "Not yet known" in `biomek.md`): labware types from variables in Transfer From File (if not,
    one Transfer From File step per combination of labware types, chosen by If steps); per-trough
    starting volumes from the setup file; 8 probes drawing from one trough together; and what
-   Biomek does with an unknown liquid type name from `=LiquidType`.
+   Biomek does with an unknown liquid type name from `=LiquidType`; and separate technique and
+   liquid type variables in Transfer From File's source and destination configurations.
 
 Rough schedule: Friday 1 to 7 if time allows; Saturday the rest; Sunday 8, at the Biomek. Setting up a volume
 variable for every well of the standard deck is slow clicking work, so leave time for it.
