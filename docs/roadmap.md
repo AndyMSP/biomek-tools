@@ -181,8 +181,8 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   transfers that take more than their source holds and the wells they affect. See
   `src/shared/contents-tracking/contents-tracking.md`.
 - **`stage-list`** (shared module): the stages of a plan, each with its ID, name and settings
-  (technique, liquid type, tip type, probes, whether to change tips first); it makes the IDs that
-  transfers name their stage by (ADR 0008). See `src/shared/stage-list/stage-list.md`.
+  (technique and liquid type at the sources and at the destinations, tip type, probes, whether to
+  change tips first); it makes the IDs that transfers name their stage by (ADR 0008). See `src/shared/stage-list/stage-list.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
   `npm run serve`.
 
