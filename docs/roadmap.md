@@ -29,7 +29,11 @@ Last updated: 2026-10-23
   list keeps each stage's transfers consecutive and stays the one source of truth for order.
 - **`operation-list` now has stages** (code and tests), against its specification: every
   transfer names its stage, `add` places it by stage, `insertBeforeStage`, `remove`, the stage rule
-  and `groupByStage()`. The `stage-list` module, the rest of item 3 of v0.2.0, isn't started.
+  and `groupByStage()`. The `stage-list` module, the rest of item 3 of v0.2.0, has a Draft
+  specification in review (PR #36).
+- **Decided: labware types aren't stage settings** (Andy, 2026-10-23; ADR 0007 amended). Each
+  labware's type is stated once, in a deck description in `config/` (item 5 of v0.2.0), so a stage
+  can't disagree with the labware its transfers use.
 - **`well-grid` now has numbered grids** (code and tests), for reservoirs: the `naming` option and
   `GRID_1X12_NUMBERED`, the 12-well reservoir's grid (item 2 of v0.2.0, below).
 - **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
@@ -60,22 +64,27 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    rule checked as transfers are added, and grouping transfers by stage; and a new `stage-list` module holding each stage's ID, name and settings.
 4. **A short technique list** in `config/`: the two or three techniques the lab uses. The page's
    settings menus use it.
-5. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
-   troughs), entering starting volumes, building stages, and choosing each stage's settings,
-   including its source and destination labware types. It comes before the file writer so that
+5. **A deck description** in `config/`: each labware on the standard deck, with its name (exactly
+   as in the general-purpose method), its grid (`GRID_96` or `GRID_1X12_NUMBERED`) and its labware
+   type. The page draws the labware from it, and the file writer looks up labware types in it.
+   Its names and types are stand-ins for now (see "Technical debt").
+6. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
+   troughs), from the deck description; entering starting volumes, building stages, and choosing
+   each stage's settings. It comes before the file writer so that
    building stages on the page can shape the file writer's specification.
-6. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
+7. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
    Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
    3 decimal places. It refuses a stage that mixes labware types (all sources one labware
-   type, all destinations one labware type: Biomek requires it, B56358AF 22-13). It adds the page's
+   type, all destinations one labware type: Biomek requires it, B56358AF 22-13), looking up each
+   labware's type in the deck description. It adds the page's
    button for writing the files.
-7. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
+8. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
    deck; the tool's own files run in simulation, then one real run with water. Tests to run first
    (see "Not yet known" in `biomek.md`): labware types from variables in Transfer From File (if not,
    one Transfer From File step per combination of labware types, chosen by If steps); per-trough
    starting volumes from the setup file; and 8 probes drawing from one trough together.
 
-Rough schedule: Friday 1 to 6 if time allows; Saturday the rest; Sunday 7, at the Biomek. Setting up a volume
+Rough schedule: Friday 1 to 7 if time allows; Saturday the rest; Sunday 8, at the Biomek. Setting up a volume
 variable for every well of the standard deck is slow clicking work, so leave time for it.
 
 **Later** (after v0.2.0):
@@ -104,6 +113,9 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   separates transfers even when their order wouldn't matter), which costs some side-by-side work at
   each stage boundary. Properly: smarter staging.
 - **The technique list holds only the lab's current techniques.** Properly: the full table.
+- **The deck description's labware names and types are stand-ins** (v0.2.0, written 2026-10-23
+  before checking Biomek Software). Before the first run, replace them with the real names from the
+  general-purpose method and the real labware types from Biomek Software.
 - **Dead volume isn't modelled.** A reservoir trough holds liquid a tip can't reach (2 mL in Exp37,
   `exp37.md`). For v0.2.0, the user enters a reservoir's starting volume minus its dead volume.
   Properly: dead volume per labware type, in contents tracking (it's under "Not in version 1" in its
