@@ -6,7 +6,7 @@
 > and the wording.
 
 ## 1. Purpose
-`stage-list.js` holds the stages of a plan: each stage's ID, name and settings. A **stage**
+`stage-list.js` holds the stages of a **plan** (`docs/glossary.md`): each stage's ID, name and settings. A **stage**
 (`docs/glossary.md`) is a group of operations that run in any order and share one set of settings.
 On the Biomek, each stage becomes one row of the stage worklist (ADR 0007).
 
