@@ -4,11 +4,11 @@
 // letters, digits and underscores, and must start with a letter (B56358AF, 9-4). Data only
 // (ADR 0009). The designer's logic module checks this list in its tests.
 //
-// STAND-IN: every name below is made up. Replace them with the real names from Biomek Software's
-// Liquid Type Editor before the first run (roadmap, "Technical debt"). What Biomek does with an
-// unknown liquid type name isn't known yet (docs/domain/biomek.md, "Not yet known").
+// STAND-IN: the names below haven't been checked against Biomek Software. Replace them with the real
+// names from its Liquid Type Editor before the first run (roadmap, "Technical debt"). What Biomek
+// does with an unknown liquid type name isn't known yet (docs/domain/biomek.md, "Not yet known").
 
 export const LIQUID_TYPES = [
-  "StandIn_Liquid_1",
-  "StandIn_Liquid_2",
+  "Water",
+  "Cells",
 ];
