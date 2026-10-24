@@ -65,7 +65,8 @@ Not in version 1 (see `docs/roadmap.md`):
   }
 }
 ```
-(The technique and liquid type names above are the stand-ins in `config/`, not the lab's.)
+(The names above are only examples. This module checks a name's form, not whether it's in
+`config/`.)
 
 - `id` is made by the list; code never chooses one (below).
 - `name` is chosen by the user: text that isn't blank and has no whitespace at the start or end.

@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { StageList } from "./stage-list.js";
 
 // Returns valid settings, a new object each time, so a test can change it freely. They are the
-// example in stage-list.md, section 3, which uses the stand-in names in config/.
+// example in stage-list.md, section 3. The names are only examples: stage-list checks a name's form,
+// not whether it's in config/, so these tests don't change when config/ does.
 // e.g. makeSettings() → { sourceTechnique: "Aspirate_Slow", sourceLiquidType: "Cells", … }
 function makeSettings() {
   return {
