@@ -25,8 +25,8 @@ Last updated: 2026-10-23
   (`src/shared/contents-tracking/contents-tracking.md`; formerly "volume tracking"). A preview of the
   transfer designer with contents tracking and a timeline exists (not in the repository).
 - **Decided: how stages are stored** (ADR 0008, 2026-10-23). Each transfer names its stage by a
-  hidden ID; a stage list holds each stage's ID, name (names may repeat) and settings; a stage's
-  transfers are consecutive in the operation list, which stays the one source of truth for order.
+  hidden ID; a stage list holds each stage's ID, name (names may repeat) and settings; the operation
+  list keeps each stage's transfers consecutive and stays the one source of truth for order.
 - **`well-grid` now has numbered grids** (code and tests), for reservoirs: the `naming` option and
   `GRID_1X12_NUMBERED`, the 12-well reservoir's grid (item 2 of v0.2.0, below).
 - **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
@@ -52,9 +52,9 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
 2. **Reservoirs in `well-grid`**: numbered positions (`1`, `2` …) as well as letter-number names,
    as ADR 0001 anticipated, so reservoirs can be drawn and checked. (The operation list and contents
    tracking already accept any well name.) *Done 2026-10-23.*
-3. **Stages** (ADR 0008): a `stage` property on transfers and an insert method in `operation-list`
-   (specification first), and a new `stage-list` module: stages with an ID, a name and settings;
-   a check that each stage's transfers are consecutive; and grouping transfers into stages.
+3. **Stages** (ADR 0008): in `operation-list` (specification first), a `stage` property on
+   transfers, an insert method, refusing a transfer that would split a stage, and grouping transfers
+   by stage; and a new `stage-list` module holding each stage's ID, name and settings.
 4. **A short technique list** in `config/`: the two or three techniques the lab uses. The page's
    settings menus use it.
 5. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
@@ -63,8 +63,8 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    building stages on the page can shape the file writer's specification.
 6. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
    Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
-   3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt"), whose
-   transfers aren't consecutive (ADR 0008), or that mixes labware types (all sources one labware
+   3 decimal places. It refuses a stage that breaks the stage rule (see "Technical debt"), or that
+   mixes labware types (all sources one labware
    type, all destinations one labware type: Biomek requires it, B56358AF 22-13). It adds the page's
    button for writing the files.
 7. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
