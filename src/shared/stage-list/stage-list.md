@@ -4,7 +4,9 @@
 > settings when it is added; labware types aren't stage settings (each labware's type is in the deck
 > description in `config/`); settings are checked for form only (the technique check lives with the
 > technique list); `remove` doesn't know about transfers, and the transfer designer's logic module
-> decides when a stage may be removed; an ID can come back after undo. Still to review: the wording.
+> decides when a stage may be removed; an ID can come back after undo. Still to review: the wording,
+> including a clearer message for an empty probes list (PR #37), e.g. `The probes list is empty. List
+> at least one probe, like [1, 2, 3, 4].`, which would be a new row in the Errors table.
 
 ## 1. Purpose
 `stage-list.js` holds the stages of a **plan** (`docs/glossary.md`): each stage's ID, name and
