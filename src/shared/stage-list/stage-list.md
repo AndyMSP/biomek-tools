@@ -2,12 +2,13 @@
 
 > **Draft (2026-10-23).** Written for v0.2.0 (ADR 0008). Decided by Andy: a stage gets all seven
 > settings when it is added; its sources and its destinations each have their own technique and
-> liquid type; labware types aren't stage settings (each labware's type is in the deck
-> description in `config/`); settings are checked for form only (the technique check lives with the
-> technique list); `remove` doesn't know about transfers, and the transfer designer's logic module
-> decides when a stage may be removed; an ID can come back after undo. Still to review: the wording,
-> including a clearer message for an empty probes list (PR #37), e.g. `The probes list is empty. List
-> at least one probe, like [1, 2, 3, 4].`, which would be a new row in the Errors table.
+> liquid type; labware types aren't stage settings (each labware's type is in the deck description
+> in `config/`); settings are checked for form only (the page offers only the names in `config/`;
+> techniques aren't checked against tip types yet); `remove` doesn't know about transfers, and the
+> transfer designer's logic module decides when a stage may be removed; an ID can come back after
+> undo. Still to review: the wording, including a clearer message for an empty probes list (PR
+> #37), e.g. `The probes list is empty. List at least one probe, like [1, 2, 3, 4].`, which would
+> be a new row in the Errors table.
 
 ## 1. Purpose
 `stage-list.js` holds the stages of a **plan** (`docs/glossary.md`): each stage's ID, name and
@@ -26,10 +27,10 @@ Version 1 lets code add a stage (which makes its ID), rename it, change its sett
 look stages up.
 
 Not in version 1 (see `docs/roadmap.md`):
-- **Checking settings against the configuration**, such as whether a technique is in the technique
-  list or suits the tip type. This module checks only that each setting has
-  the right form (section 3). Where those checks live is an open decision (roadmap, "Open
-  decisions").
+- **Checking settings against the configuration**, such as whether a technique is in
+  `config/techniques.js` or suits the tip type. This module checks only that each setting has the
+  right form (section 3). For v0.2.0 the page offers only the names in `config/`, and techniques
+  aren't checked against tip types (roadmap, "Technical debt").
 - **Knowing about transfers.** Removing a stage that still has transfers isn't refused here; the page
   removes or moves its transfers first (section 3).
 - **Which probes get tips** (`LoadProbes` in ADR 0007). The file writer works that out by looking
