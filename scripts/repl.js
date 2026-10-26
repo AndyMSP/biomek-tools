@@ -11,6 +11,14 @@ import { WellSelection } from "../src/shared/well-selection/well-selection.js";
 import { OperationList } from "../src/shared/operation-list/operation-list.js";
 import { StageList } from "../src/shared/stage-list/stage-list.js";
 import {
+  labwareNames,
+  hasLabware,
+  gridOf,
+  labwareTypeOf,
+  checkWell,
+  wellsInBox,
+} from "../src/shared/deck/deck.js";
+import {
   findProblems,
   placeName,
   openWells,
@@ -93,6 +101,18 @@ const TOPICS = {
       'stages.rename("1", "Seeding, part 1").listStages()',
       "noStages.listStages()",
       'stages.add("Treatment", { ...settings, tiptype: "BC50" })',
+    ],
+  },
+  deck: {
+    loaded: { labwareNames, hasLabware, gridOf, labwareTypeOf, checkWell, wellsInBox },
+    examples: [
+      "labwareNames()",
+      'hasLabware("Res")',
+      'hasLabware("Bench")',
+      'gridOf("Res").wellNames()',
+      'labwareTypeOf("Plate")',
+      'wellsInBox({ labware: "Plate", well: "C3" }, { labware: "Plate", well: "B2" })',
+      'checkWell({ labware: "Res", well: "13" })',
     ],
   },
   randomizer: {
