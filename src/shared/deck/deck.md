@@ -77,7 +77,7 @@ Each message says what's wrong and how to fix it. Values are shown with `describ
 
 | Problem | Message |
 |---|---|
-| The labware isn't on the deck (`gridOf`, `labwareTypeOf`, `checkWell`, `wellsInBox`) | `There's no labware "Bench" on the deck. The deck has Plate, Deep and Res.` |
+| The labware isn't on the deck (`gridOf`, `labwareTypeOf`, `checkWell`, `wellsInBox`) | `There's no labware "Bench" on the deck. The deck has "Plate", "Deep", "Res".` |
 | `end` isn't an object with `labware` and `well` | `A well on the deck must be an object like { labware: "Plate", well: "A1" }, but got "A1".` |
 | The well isn't on that labware's grid | `"Z99" isn't a well on Plate. Its wells are A1 to H12.` (On a numbered grid: `"13" isn't a well on Res. Its wells are 1 to 12.`) The first and last wells come from the grid's `wellNames()`. |
 | A box's corners are on different labware (`wellsInBox`) | `A box of wells must be on one labware, but one corner is on Plate and the other on Deep.` |

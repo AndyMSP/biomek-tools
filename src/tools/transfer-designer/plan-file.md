@@ -134,7 +134,7 @@ Every message from `planFromText` starts `This file can't be opened: `, then say
 where for anything in a list. Places in lists count from 1, as people count (`transfer 3` is the
 third). Messages from other modules (`transfer-designer`, `operation-list`, `stage-list`, `deck`,
 `contents-tracking`, `input-checks`) follow the place, unchanged: `This file can't be opened: transfer
-3: There's no labware "Bench" on the deck. The deck has Plate, Deep and Res.`
+3: There's no labware "Bench" on the deck. The deck has "Plate", "Deep", "Res".`
 
 | Problem | Message (after `This file can't be opened: `) |
 |---|---|
