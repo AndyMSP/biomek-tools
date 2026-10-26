@@ -48,14 +48,20 @@ Not in version 1 (see `docs/roadmap.md`):
   transfer's stage (below). This is the planned order. Stages
   run in this order; within a stage, the Biomek may not follow it, because a Transfer From File
   step decides its own order (B56358AF, 22-25).
-- A list is **immutable**: it never changes after it's created. Adding, inserting or removing an
-  operation returns a new list, and leaves the original unchanged, so code must keep the result:
+- A list is **immutable**: it never changes after it's created. Adding, inserting, removing or
+  replacing an operation returns a new list, and leaves the original unchanged, so code must keep the result:
   `list = list.add(transfer)`. This differs from `Layout` and `WellSelection`, which are
   mutable. The operation list is immutable because undo, of any kind of edit, needs earlier versions
   to stay as they were, and because several modules (volume tracking, the file writer, pages) share
   the same list; none of them can change it under the others.
 - The list keeps its own copy of each operation it's given. Changing an object after adding it never
   changes the list, and operations read from the list can't be changed.
+- **Unchanged operations are shared** (structural sharing, Andy, 2026-10-26). A new list stores a
+  copy only of the operation that was added or replaced; for every other operation it keeps the very
+  same stored operation as the list it came from, not a copy. That's safe because stored operations
+  can't be changed, and it keeps each version small: an editor that keeps many versions for undo
+  (`plan-history.md` in the transfer designer) stores only what each edit changed, plus a list of
+  references, about 8 bytes per operation.
 - Every operation is an object with a `type` property naming its kind. Version 1 accepts only
   `"transfer"`, and rejects any other type. As with a transfer's properties (below), `type` counts
   only if the object holds it itself.
@@ -123,6 +129,7 @@ The module exports one class, `OperationList`.
 | `add(operation)` | public | Checks `operation` (see section 3) and returns a **new** list with a copy of it right after the last transfer of its stage, or at the end if its stage is new. The original list is unchanged. Throws if the operation isn't valid or breaks the stage rule. |
 | `insertBeforeStage(operation, stage)` | public | Like `add`, but for a transfer whose stage is new: puts the copy just before the first transfer of `stage`, so the new stage runs right before that one. Throws if the operation isn't valid, `stage` isn't in the list, the operation's stage already has transfers (use `add`), or it breaks the stage rule. |
 | `remove(position)` | public | Returns a **new** list without the operation at `position` (counting from 0, as in `listOperations()`). The original list is unchanged. Throws if `position` isn't a whole number from 0 to one less than the number of operations. |
+| `replace(position, operation)` | public | Checks `operation` (see section 3) and returns a **new** list with a copy of it at `position`, in place of the operation there; every other operation keeps its place (and is shared, above). `operation` must be in the same stage as the operation it replaces, so the order of the stages can't change; to move a transfer to another stage, remove it and add it again. The stage rule is checked against the stage's other transfers, not the one being replaced. The original list is unchanged. Throws if `position` isn't valid, the operation isn't valid, its stage differs, or it breaks the stage rule. |
 | `listOperations()` | public | Returns the operations in order, as a new list each time. The operations in it can't be changed. |
 | `groupByStage()` | public | Returns the stages in run order, each with its operations in order, e.g. `[{ stage: "1", operations: [ … ] }, { stage: "2", operations: [ … ] }]`, as a new list each time. An empty list gives `[]`. |
 | `#operations` | private | The stored operations, in order. |
@@ -140,6 +147,7 @@ list = list.add({
 list.listOperations();   // [{ type: "transfer", source: …, destination: …, volume: 50, stage: "1" }]
 
 list = list.insertBeforeStage(washTransfer, "1");   // washTransfer's new stage runs before stage "1"
+list = list.replace(0, { ...firstTransfer, volume: 75 });   // same transfer, new volume
 list = list.remove(0);                               // takes out the first transfer
 list.groupByStage();     // [{ stage: "1", operations: [ … ] }, …]
 ```
@@ -171,10 +179,13 @@ quotes, a list as `a list` and any other object as `an object`.
 | The source is a destination in the same stage | `This transfer's source, Plate 1 A1, is a destination in stage "1" (operation 3). Within a stage, no well can be both a source and a destination. Put this transfer in another stage.` |
 | The destination is a source in the same stage | `This transfer's destination, Plate 1 A1, is a source in stage "1" (operation 3). Within a stage, no well can be both a source and a destination. Put this transfer in another stage.` |
 | `remove`: position isn't a whole number from 0 to one less than the number of operations | `The position to remove must be a whole number from 0 to 4, but got 7.` With an empty list: `There are no operations to remove.` |
+| `replace`: position isn't a whole number from 0 to one less than the number of operations | `The position to replace must be a whole number from 0 to 4, but got 7.` With an empty list: `There are no operations to replace.` |
+| `replace`: the operation's stage isn't the stage of the operation it replaces | `A replacement must stay in stage "1", the stage of operation 2, but is in stage "2". To move a transfer to another stage, remove it and add it again.` |
 
 The checks run in the order of the table, for all of `source`, then all of `destination`, then
 `volume`, then `stage`; then, for `insertBeforeStage`, its `stage` argument; then the stage rule
-(source before destination). Operation numbers in messages are positions in `listOperations()`,
+(source before destination). `replace` checks `position` first, then the operation as above, then
+that its stage is the same, then the stage rule. Operation numbers in messages are positions in `listOperations()`,
 counting from 0; when several transfers conflict, the first one is named. Within `source` and `destination`, every check on `labware` runs before any check on
 `well`. The first problem found is reported. Each message names the end being checked (source or
 destination), so it's clear which half of the transfer to fix.
@@ -183,7 +194,8 @@ In JavaScript a list (an array) and `null` both count as objects, so they are na
 rows to make sure those checks reject them explicitly. `NaN` and `Infinity` count as numbers, so the
 volume check rejects them explicitly.
 
-A failed `add`, `insertBeforeStage` or `remove` changes nothing: the original list is never touched.
+A failed `add`, `insertBeforeStage`, `remove` or `replace` changes nothing: the original list is never
+touched.
 
 ## 6. Test cases
 Each becomes at least one unit test in `operation-list.test.js`.
@@ -211,6 +223,25 @@ Each becomes at least one unit test in `operation-list.test.js`.
 - `remove(1)` on a list of three takes out the middle transfer; the others keep their order.
 - Removing a stage's only transfer removes that stage from `groupByStage()`.
 - `remove` returns a new list; the original is unchanged.
+
+**Replacing**
+- `replace(1, …)` on a list of three, with the middle transfer's volume changed, gives a list whose
+  middle transfer has the new volume; the others keep their order and values.
+- `replace` returns a new list; the original is unchanged, including the replaced operation's volume.
+- In stage `"1"`, with a transfer into Plate 1 A1 and another from Plate 1 B1, replacing the second
+  with one from Plate 1 A1 is refused with the "source is a destination" message.
+- Replacing a transfer with a changed copy of itself is accepted: it's checked against the stage's
+  other transfers, not against the one it replaces.
+- Replacing a transfer with one in another stage gives the different-stage message, even if that
+  stage is in the list.
+
+**Sharing**
+- After `add`, every operation that was in the original list is the very same object (`===`) in the
+  new list's `listOperations()`.
+- After `remove`, every remaining operation is the very same object as in the original list.
+- After `replace(position, …)`, every operation except the one at `position` is the very same object
+  as in the original list; the one at `position` is a new object.
+- After `insertBeforeStage`, every operation that was in the original list is the very same object.
 
 **Grouping**
 - Stages `"1", "1", "2", "2", "3"` give three groups from `groupByStage()`, in that order, each with
@@ -243,6 +274,8 @@ Each becomes at least one unit test in `operation-list.test.js`.
 - The list's stored operations can't be reached or replaced from outside.
 
 **Errors** (each row of section 5 has at least one test, including:)
+- `replace` with position `7` on a list of five, `-1`, `1.5` and `"1"`, and any position on an empty
+  list, give their messages.
 - Operation `null`, `"transfer"`, `5` and `[]` give the object error; `[]` gives a message ending
   `but got a list.`
 - An operation with no `type`, and one with `type: 5`, give the type error.
