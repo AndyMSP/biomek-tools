@@ -24,9 +24,9 @@ changes aren't operations: they come between stages, and the transfer designer's
 
 ## 2. Scope
 Version 1 holds operations of one type, `transfer`, each in a stage. It lets code add a transfer to
-its stage, start a new stage before another, remove a transfer, read the list back in order, and
-read it grouped by stage. A stage can never be split, and it refuses a transfer that breaks the
-stage rule.
+its stage, start a new stage before another, remove a transfer, replace a transfer with another in
+the same stage, read the list back in order, and read it grouped by stage. A stage can never be
+split, and it refuses a transfer that breaks the stage rule.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Other per-operation instructions**, such as mixing.
@@ -152,7 +152,7 @@ list.groupByStage();     // [{ stage: "1", operations: [ … ] }, …]
 ```
 
 ## 5. Errors
-`add`, `insertBeforeStage` and `remove` check their inputs and throw an `Error` whose message says what is wrong and how
+`add`, `insertBeforeStage`, `remove` and `replace` check their inputs and throw an `Error` whose message says what is wrong and how
 to fix it.
 Values in messages are shown with `describeValue` (`error-messages` module), so text appears in
 quotes, a list as `a list` and any other object as `an object`.

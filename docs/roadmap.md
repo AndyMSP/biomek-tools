@@ -67,7 +67,8 @@ Last updated: 2026-10-26
 - **`operation-list` specification gains `replace`** (2026-10-26): one operation swapped for
   another in the same stage, sharing every other stored operation, so changing a volume doesn't copy
   the whole list into each undo state (`plan-history.md`: about 13 MB at its limit with sharing, 156
-  MB without, for a 1,000-transfer plan). The code doesn't have it yet.
+  MB without, for a 1,000-transfer plan). The code and tests now match: `replace`, and every edit
+  shares the unchanged stored operations.
 - **`transfer-designer` specification written** (Draft, 2026-10-26;
   `src/tools/transfer-designer/transfer-designer.md`): the plan and every edit to it, from the
   preview. Tip changes are entries in the plan, not operations. The "stage order" includes stages

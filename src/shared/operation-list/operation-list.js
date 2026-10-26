@@ -6,6 +6,8 @@
 // Each transfer names its stage by ID. The list keeps each stage's transfers next to each other, so
 // the order of the stages is the order of their transfers, and refuses a transfer that breaks the
 // stage rule (ADR 0008).
+// Every edit returns a new list that shares the unchanged operations with the old one, so keeping
+// many versions for undo stays small.
 // Specification: operation-list.md.
 
 import { describeValue } from "../error-messages/error-messages.js";
@@ -22,6 +24,8 @@ export class OperationList {
   // Private field (# name): only code inside this class can read or change it.
   // The stored operations, in run order. Each one is a frozen copy (see copyTransfer), and the list
   // itself is never changed after the OperationList is created.
+  // A new list made by an edit holds the very same stored operations as this one, except the one
+  // added or replaced (structural sharing). That's safe because stored operations are frozen.
   #operations = [];
 
   // Creates an empty list, e.g. new OperationList(). Takes no arguments.
@@ -65,16 +69,7 @@ export class OperationList {
   // listOperations()), and leaves this list unchanged, e.g. list = list.remove(0).
   // The rest keep their order, so no stage can be split.
   remove(position) {
-    const count = this.#operations.length;
-    if (count === 0) {
-      throw new Error("There are no operations to remove.");
-    }
-    // Number.isInteger is false for text such as "0", for decimals such as 2.5, and for NaN.
-    if (!Number.isInteger(position) || position < 0 || position >= count) {
-      throw new Error(
-        `The position to remove must be a whole number from 0 to ${count - 1}, but got ${describeValue(position)}.`,
-      );
-    }
+    checkPosition(position, this.#operations.length, "remove");
     const shorterList = new OperationList();
     // Everything before `position`, then everything after it.
     shorterList.#operations = [
@@ -82,6 +77,33 @@ export class OperationList {
       ...this.#operations.slice(position + 1),
     ];
     return shorterList;
+  }
+
+  // Returns a new list with a copy of `operation` in place of the operation at `position` (counting
+  // from 0, as in listOperations()), and leaves this list unchanged,
+  // e.g. list = list.replace(0, { ...firstTransfer, volume: 75 }).
+  // `operation` must be in the same stage as the one it replaces, so the order of the stages can't
+  // change; every other operation keeps its place.
+  replace(position, operation) {
+    checkPosition(position, this.#operations.length, "replace");
+    checkOperation(operation);
+    const replacedStage = this.#operations[position].stage;
+    if (operation.stage !== replacedStage) {
+      throw new Error(
+        `A replacement must stay in stage ${describeValue(replacedStage)}, the stage of operation ${position}, but is in stage ${describeValue(operation.stage)}. To move a transfer to another stage, remove it and add it again.`,
+      );
+    }
+    // The operation being replaced is skipped: a changed copy of a transfer, such as one from a
+    // well into itself, mustn't conflict with the transfer it replaces.
+    checkStageRule(operation, this.#operations, position);
+    const replacedList = new OperationList();
+    // Everything before `position`, the new copy, then everything after it.
+    replacedList.#operations = [
+      ...this.#operations.slice(0, position),
+      copyTransfer(operation),
+      ...this.#operations.slice(position + 1),
+    ];
+    return replacedList;
   }
 
   // The operations in run order, e.g. [{ type: "transfer", source: …, … }].
@@ -114,7 +136,7 @@ export class OperationList {
   #withInserted(position, operation) {
     const longerList = new OperationList();
     // Code inside the class can set the private field of another OperationList, too. Only this
-    // method and remove() do, and only on the new list, before anyone else can see it.
+    // method, remove() and replace() do, and only on the new list, before anyone else can see it.
     longerList.#operations = [
       ...this.#operations.slice(0, position),
       copyTransfer(operation),
@@ -125,6 +147,22 @@ export class OperationList {
 }
 
 // --- Helpers used only inside this module ---
+
+// Throws if `position` isn't a whole number from 0 to `count` - 1, the positions of a list of
+// `count` operations. `action` ("remove" or "replace") names what the position is for,
+// e.g. checkPosition(7, 5, "remove") → "The position to remove must be a whole number from 0 to 4,
+// but got 7."
+function checkPosition(position, count, action) {
+  if (count === 0) {
+    throw new Error(`There are no operations to ${action}.`);
+  }
+  // Number.isInteger is false for text such as "0", for decimals such as 2.5, and for NaN.
+  if (!Number.isInteger(position) || position < 0 || position >= count) {
+    throw new Error(
+      `The position to ${action} must be a whole number from 0 to ${count - 1}, but got ${describeValue(position)}.`,
+    );
+  }
+}
 
 // Throws if `operation` isn't a valid operation. Version 1 has only one type, so a valid operation
 // is a valid transfer. The checks run in the order of the spec's error table, and the first problem
@@ -206,11 +244,14 @@ function checkEnd(end, endName) {
 // A transfer from a well into the same well (e.g. to mix) gets no exemption: whether its draw is
 // possible depends on whether it runs before or after the stage's other transfers into or out of
 // that well. It's checked only against the others, never itself, so on its own it's accepted.
-function checkStageRule(transfer, operations) {
+// `skippedPosition` is the position of an operation to leave out, the one replace() is replacing;
+// add and insertBeforeStage leave it out (-1), so every operation is checked. Conflicts are named
+// by their position in `operations`.
+function checkStageRule(transfer, operations, skippedPosition = -1) {
   // Positions in `operations` of the other transfers this one is checked against.
   const sameStage = [];
   operations.forEach((other, position) => {
-    if (other.stage === transfer.stage) {
+    if (other.stage === transfer.stage && position !== skippedPosition) {
       sameStage.push(position);
     }
   });
