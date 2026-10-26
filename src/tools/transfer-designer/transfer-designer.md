@@ -298,7 +298,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setLabels`: a label is blank | `The label for Plate is blank. A labware without a label is left out of the labels.` |
 | `setLabels`: a label has spaces at its ends | `The label for Plate, " Assay plate", has spaces at the start or end. Remove them.` |
 | `setLabels`: a label is its own labware's name | `The label for Plate is its own name. A labware without a label is left out of the labels.` |
-| `setLabels`: two labware would show one label | `Deep and Plate would both show as "Drug plate". Give each labware a different label.` |
+| `setLabels`: two labware would show one label | `Plate and Deep would both show as "Drug plate". Give each labware a different label.` (the pair in the deck's order) |
 
 **Order of checks.** The first problem found is reported:
 - `addTransfer`: the operation list's checks of the transfer (its form, then the stage rule), then
