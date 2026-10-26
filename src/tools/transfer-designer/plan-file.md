@@ -15,6 +15,11 @@ Opening a file checks everything in it, using the transfer designer's own rules
 (`transfer-designer.md`), so a plan made from a file is as valid as one made by editing. A file that
 fails any check isn't opened in part.
 
+**Opening is strict** (Andy, 2026-10-26): anything the tool would never write, such as an extra
+property or a stage's transfers split apart, is refused with a message saying what and where,
+never quietly tidied. The tool always writes valid files, so such a file was damaged or edited by
+hand, and that's better reported than changed.
+
 ## 2. Scope
 Version 1 writes and reads format version 1 (below).
 
