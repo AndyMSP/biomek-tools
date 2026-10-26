@@ -155,6 +155,13 @@ variable for every well of the standard deck is slow clicking work, so leave tim
   with the corrected starting volumes, and the remaining transfers. First, test on the instrument
   that the log is written as the run goes (see "Not yet known" in `biomek.md`), and how a
   light-curtain break and an Abort behave.
+- **A guided start** for an empty plan (Andy considered it, 2026-10-26, and chose not now): a
+  checklist that ticks itself (bring out labware, fill wells at Start, add transfers), shown while
+  the plan is empty. Perhaps once others in the lab use the tool.
+- **Constituents of a component** (Andy, 2026-10-25): a component made of several things, such as a
+  medium with a drug in it. Not designed yet.
+- **Collapsing tip groups** in the Stages column, for plans with many stages (considered
+  2026-10-25, when the column was made to scroll on its own).
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
@@ -181,8 +188,15 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   planned order. When a stage draws from an overdrawn well more than once, which of its transfers
   runs short is one possible outcome, not certain; the stage with the overdraw is certain. Properly:
   report an overdraw by stage and well, not by transfer (`transfer-designer.md`, "Not in version 1").
+- **Some messages use internal terms** (v0.2.0, 2026-10-25). The transfer designer page names
+  stages by place and name, and labware by label, but some messages from the shared modules' checks
+  still use internal terms, such as "starting contents entry 3", and contents cards number transfers
+  (`#5`) by their place in the operation list, which the page doesn't show. Properly: collect every
+  message a user can meet and reword those into the page's terms.
 - **Dead volume isn't modelled.** A reservoir trough holds liquid a tip can't reach (2 mL in Exp37,
   `exp37.md`). For v0.2.0, the user enters a reservoir's starting volume minus its dead volume.
+  The transfer designer page doesn't remind the user of this (Andy dropped the reminder,
+  2026-10-25), so the lab needs to know it another way.
   Properly: dead volume per labware type, in contents tracking (it's under "Not in version 1" in its
   specification).
 
