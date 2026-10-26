@@ -73,7 +73,8 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
 - **`plannedBefore`**: where each stage **without transfers** is planned to go, which the operation
   list can't say, since its order comes from transfers (ADR 0008): the ID of the stage it goes just
   before, or `null` to go last. No entry also means last. A stage's entry is removed when it gets
-  its first transfer, and set again if it loses its last one (section 3, "Transfers").
+  its first transfer (and the other stages without transfers are re-pointed, so nothing moves), and
+  set again if it loses its last one (section 3, "Transfers").
 - **`tipChanges`**: the plan's tip changes (`docs/glossary.md`, "Tip change"), each `{ tipType }`,
   by where they happen: **`START`** (the text `"start"`), before the first stage, always there; or a
   stage's ID, just before that stage. (Stage IDs are numbers written as text, so none is
@@ -135,6 +136,14 @@ aren't one of the modes (for example, after the modes in `config/` change).
   operation list's `add`). If it's the stage's first, it goes just before the next stage in the
   stage order that has transfers (`insertBeforeStage`), or last if none does, so the stage keeps its
   place.
+- **Giving a stage its first transfer never changes the stage order.** Its `plannedBefore` entry is
+  removed, and **every stage without transfers** gets the entry "just before the stage that came
+  right after it", as the stage order was before the edit, or `null` if it was last. Each one then
+  points at its own neighbour, so every stage keeps its place, however many stages without transfers
+  there are, and in whatever order they were added. (Found by Claude Code, 2026-10-26: without this,
+  a stage without transfers above the one that got its first transfer could move below it, e.g. a
+  new plan's stage 1 below stage 2 once stage 2 got a transfer.) Since the first stage stays first,
+  no tip change is ever keyed by it this way.
 - Several transfers can be added as **one edit** (for example, one source into each of many
   wells): all are added, or, if any can't be, none.
 - A transfer's volume can be changed in place, keeping its position and stage (`replace`).
@@ -231,7 +240,7 @@ given; "returns the plan with …" means a new plan.
 **Transfers**
 | Function | Returns |
 |---|---|
-| `addTransfer(plan, transfer)` | the plan with `transfer` added to its stage (section 3, "Transfers"). Throws if the operation list refuses it (its message), a well isn't on the deck, or the stage isn't in the plan. |
+| `addTransfer(plan, transfer)` | the plan with `transfer` added to its stage (section 3, "Transfers"); the stage order is unchanged. Throws if the operation list refuses it (its message), a well isn't on the deck, or the stage isn't in the plan. |
 | `addTransfers(plan, transfers)` | the plan with each of `transfers` added in turn, as one edit. Throws, adding none, if any can't be added. |
 | `changeVolume(plan, position, volume)` | the plan with the transfer at `position` given `volume` (the operation list checks both). |
 | `removeTransfer(plan, position)` | the plan without the transfer at `position` (the operation list checks it). If that was its stage's last transfer, the stage keeps its place (section 3, "Transfers"). |
@@ -364,6 +373,16 @@ order of checks.
 - `removeTransfer` removes only that transfer.
 - With stages 1, 2 and 3, each with one transfer, removing stage 2's transfer leaves the stage order
   1, 2, 3; removing stage 3's leaves 1, 2, 3 too.
+- Giving a stage its first transfer leaves the stage order as it was:
+  - an empty plan's stage 1, then stage 2 added last; stage 2's first transfer leaves 1, 2 (not
+    2, 1);
+  - stages 1 and 2 with transfers, then stage 3 and stage 4 each added before stage 2 (1, 3, 4, 2);
+    stage 4's first transfer leaves 1, 3, 4, 2 (not 1, 4, 3, 2);
+  - stage 1 with transfers, stage 2 added last, stage 3 added before stage 2, stage 4 added last
+    (1, 3, 2, 4); stage 4's first transfer leaves 1, 3, 2, 4 (two stages without transfers above it,
+    in the opposite order to how they were added).
+- In the first of those, with a tip change before stage 2, stage 1 is still first after stage 2's
+  first transfer, with the `START` tips, and the tip change is still keyed by stage 2.
 - `transfersIn` gives each transfer's position, and `[]` for a stage without transfers and for an ID
   that isn't a stage.
 
