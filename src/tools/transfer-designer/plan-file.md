@@ -1,7 +1,8 @@
 # plan-file — specification
 
 > **Draft (2026-10-26).** Written for v0.2.0, from ADR 0010 and the transfer designer preview, where
-> saving and opening plans were tried (2026-10-25). Still to review: the wording of the messages.
+> saving and opening plans were tried (2026-10-25). It becomes Final once its code is built and Andy
+> has tested the page.
 
 ## 1. Purpose
 `plan-file.js` turns a **plan** (`docs/glossary.md`) into the text of a **plan file**, and a plan
