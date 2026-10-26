@@ -69,6 +69,7 @@ import {
   labwareUsed,
   labelOf,
   setLabel,
+  setLabels,
 } from "../src/tools/transfer-designer/transfer-designer.js";
 import {
   PLAN_FILE_FORMAT,
@@ -243,6 +244,7 @@ const TOPICS = {
       labwareUsed,
       labelOf,
       setLabel,
+      setLabels,
     },
     examples: [
       "let plan = emptyPlan().plan",
@@ -255,7 +257,11 @@ const TOPICS = {
       "tipGroups(plan)",
       'transfersIn(plan, "1")',
       'modeOf("destination", defaultSettings())',
+      'plan = setLabels(plan, { Plate: "Cells", Deep: "Drugs" })',
+      'plan = setLabels(plan, { Plate: "Drugs", Deep: "Cells" })',
+      'labelOf(plan, "Plate")',
       'addToWells(plan, [{ labware: "Plate", well: "Z99" }], "Media", 50)',
+      'setLabels(plan, { Plate: " Cells" })',
     ],
   },
   "plan-file": {
