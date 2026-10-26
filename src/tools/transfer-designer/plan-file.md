@@ -103,12 +103,17 @@ Opening a file checks, in this order:
    whose transfers are in stages `"1", "2", "1"` is refused rather than reordered. **The stages'
    transfers come in the order of `stages`**, as the transfer designer always keeps them (ADR 0011):
    with stages `"1"`, `"2"` in that order, transfers in stage `"2"` then stage `"1"` are refused.
-8. **Starting contents**: each well on the deck, and each component it names in `components`; the
-   rest (each well at most once, volumes 0 or more) as `contents-tracking` checks them.
+8. **Starting contents**, first as a whole, as `contents-tracking` checks them (their form, each
+   well at most once, volumes 0 or more), so a well listed twice is refused before anything is
+   built; then each entry in turn: its well on the deck, each component it names in `components`, no
+   volume of 0, and at least one component. The tool never writes a 0 or a well holding nothing
+   (`addToWells` adds only volumes above 0, and an emptied well is left out), so opening refuses
+   both. The plan's starting contents are then the file's, in its order.
 9. **Tip changes**: there's one at `"start"`; every other key is one of the file's stages, but not
    the first in `stages`; each is an object with exactly `tipType`, one of `TIP_TYPES`.
-10. **Labels**: each as `setLabel` would set it: labware on the deck, the label text, and no two
-    labware with one label.
+10. **Labels**: all at once, as `setLabels` checks and sets them (`transfer-designer.md`): judged
+    as a whole table, so any labels the tool wrote open, and strictly, so a label with spaces at
+    its ends, a blank one, or one equal to its labware's name is refused rather than tidied.
 
 The first problem found is reported (section 5).
 
@@ -145,7 +150,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | An extra property | `it has "notes", which a plan file doesn't have.` With several, all are listed, in the order they appear. |
 | A property of the wrong kind | `"stages" must be a list.` / `"tipChanges" must be an object.` |
 | A component, stage or tip change isn't an object with exactly its properties | `component 2 must be an object with exactly "name" and "color".` (And `stage 1 … "id", "name" and "settings"`, `the tip change at "start" … "tipType"`.) |
-| A component, stage, transfer, starting-contents entry or label is refused by its module | `component 2: …`, `stage 1: …`, `transfer 3: …`, `starting contents, entry 4: …`, `the label for "Plate": …`, then that module's message. |
+| A component, stage, transfer or starting-contents entry is refused by its module | `component 2: …`, `stage 1: …`, `transfer 3: …`, `starting contents, entry 4: …`, then that module's message. |
 | No stages | `it has no stages; a plan always has at least one.` |
 | Two stages with one ID | `stages 1 and 3 both have the ID "2".` |
 | A stage's ID is `"start"` | `stage 2 has the ID "start", which is kept for the tips at the start of the run.` |
@@ -153,6 +158,10 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | A stage's transfers aren't together | `stage "1"'s transfers aren't together: transfer 3 is in stage "2", between transfers of stage "1".` |
 | Stages' transfers out of the order of `stages` | `transfer 3 is in stage "1", which comes before stage "2" in the stages, but after transfers of stage "2".` |
 | A component in the starting contents isn't in `components` | `starting contents, entry 4, holds "Dye", which isn't one of the file's components.` |
+| A starting-contents volume is 0 | `starting contents, entry 4, has 0 µL of "Media"; a well lists only what it holds.` |
+| A starting-contents entry holds nothing | `starting contents, entry 4, holds nothing; a well that holds nothing is left out.` |
+| The starting contents are refused as a whole (`contents-tracking`) | `starting contents: ` and its message, e.g. for a well listed twice. |
+| The labels are refused (`setLabels`) | `labels: ` and its message. |
 | No tip change at `"start"` | `it has no tips at the start of the run.` |
 | A tip change at a stage that isn't in the file, or at the first stage | `a tip change is before stage "9", which isn't one of the file's stages.` / `a tip change is before stage "1", the first stage, which always starts with the tips at "start".` |
 | A tip type isn't in `TIP_TYPES` | `the tip change at "2" loads "BC50", which isn't one of "BC230", "BC1070".` |
@@ -189,6 +198,11 @@ row of section 5 has at least one test.
 - A file whose transfers come in stage `"2"` then stage `"1"`, with the stages listed `"1"`, `"2"`,
   is refused; so is a file with a tip change keyed by the first stage.
 - Two labware with one label are refused.
+- Labels the tool can write open: `{ "Plate": "Deep", "Deep": "D1" }`, and two labels swapped.
+- A label with spaces at its ends, a blank label, and a label equal to its labware's name are
+  refused, not tidied.
+- Starting contents with a volume of 0, an entry holding nothing, and a well listed twice are
+  refused; the well listed twice is refused by the whole check, before any entry's own checks.
 - A component named `" Media"` is refused (`checkName`), not trimmed.
 - A stage with the ID `"start"` is refused.
 - Checks run in order: a file with a bad version and a missing property reports the version.

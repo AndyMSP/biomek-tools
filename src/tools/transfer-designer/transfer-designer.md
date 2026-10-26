@@ -169,6 +169,12 @@ overdraw** if any of its transfers is one (but see "Not in version 1").
 - **No two labware have the same label** (Andy, 2026-10-26), so the page never shows two labware by
   one name. A labware without a label counts as labelled by its name, so a plate can't be
   labelled "Deep" while another labware called Deep has no label.
+- **Setting all the labels at once** (`setLabels`) replaces the whole table, and checks it as a
+  whole: whether two labware share a label is judged on the new table, not one label at a time. So
+  swapping two labels, or labelling Deep "D1" and Plate "Deep", works in one step. It's **strict**:
+  it refuses what `setLabel` would tidy (spaces at the ends, a blank label, a label equal to its own
+  labware's name), because it's for a table already in the plan's own form, such as one read from a
+  plan file (`plan-file.md`), not for what someone types.
 
 ### Configuration
 Two files in `config/` (ADR 0009), which this module's tests check:
@@ -258,6 +264,7 @@ with that name.
 | `labwareUsed(plan)` | the names of the labware the plan uses, in the deck's order. |
 | `labelOf(plan, name)` | the labware's label, or its name if it has none. |
 | `setLabel(plan, name, label)` | the plan with the labware labelled `label` (section 3). Throws if the labware isn't on the deck, the label isn't text, or another labware has that label. |
+| `setLabels(plan, labels)` | the plan with its labels replaced by `labels`, an object of labware names and labels, e.g. `{ Plate: "Assay plate", Deep: "Drug plate" }` (section 3). Throws if `labels` isn't an object, a labware isn't on the deck, a label isn't text, is blank, has spaces at its ends or is its own labware's name, or two labware would show one label. |
 
 ## 5. Errors
 Each message says what's wrong and how to fix it, in the plan's own terms. A failed edit changes
@@ -286,6 +293,12 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `addToWells`: volume not a number above 0 | `The volume to add must be a number of microliters above 0, like 100, but got 0.` |
 | `setLabel`: label isn't text | `A label must be text, like "Assay plate", but got 5.` |
 | `setLabel`: another labware has that label | `Deep already has the label "Drug plate". Choose a different one.` |
+| `setLabels`: `labels` isn't an object (including `null` and lists) | `The labels must be an object of labware names and labels, like { Plate: "Assay plate" }, but got a list.` |
+| `setLabels`: a label isn't text | `The label for Plate must be text, like "Assay plate", but got 5.` |
+| `setLabels`: a label is blank | `The label for Plate is blank. A labware without a label is left out of the labels.` |
+| `setLabels`: a label has spaces at its ends | `The label for Plate, " Assay plate", has spaces at the start or end. Remove them.` |
+| `setLabels`: a label is its own labware's name | `The label for Plate is its own name. A labware without a label is left out of the labels.` |
+| `setLabels`: two labware would show one label | `Deep and Plate would both show as "Drug plate". Give each labware a different label.` |
 
 **Order of checks.** The first problem found is reported:
 - `addTransfer`: the operation list's checks of the transfer (its form, then the stage rule), then
@@ -299,6 +312,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 - `setComponentColor`: the component exists, then the color.
 - `addToWells`: the component exists, then the volume, then each well in turn.
 - `setLabel`: the labware, then the label is text, then (after trimming) no other labware has it.
+- `setLabels`: that `labels` is an object; then each entry in turn, in the order it holds them: its
+  labware on the deck (`deck`'s message), then its label: text, not blank, no spaces at its ends,
+  not its own labware's name; then, on the new table as a whole, that no two labware show one label
+  (counting a labware without a label by its name), naming the first such pair in the deck's order.
 
 ## 6. Test cases
 Each becomes at least one unit test in `transfer-designer.test.js`, inside
@@ -390,6 +407,11 @@ order of checks.
   or labware not on the deck, throws; `labelOf` falls back to the name.
 - `setLabel` refuses a label another labware has (also with spaces at the ends), and the name of
   another labware without a label; giving a labware the label it already has changes nothing.
+- `setLabels` sets the whole table: `{ Plate: "Deep", Deep: "D1" }` is accepted (in that order too),
+  and so is swapping two labware's labels; `{}` removes every label.
+- `setLabels` refuses `null` and a list, labware not on the deck, a label of `5`, `""`, `"  "`,
+  `" Assay plate"` and `"Plate"` for Plate, and `{ Plate: "Deep" }` while Deep has no label in the
+  new table, each with its message; a refused table leaves the plan unchanged.
 
 **Immutability and sharing**
 - Every edit leaves the plan it was given unchanged.
