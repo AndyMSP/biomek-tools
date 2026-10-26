@@ -2,9 +2,7 @@
 
 > **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview, where these rules
 > were tried with Andy (2026-10-24 to 2026-10-26). Still to review: the wording of the messages, and
-> whether any rule here belongs in a shared module instead. Still to decide: which pipetting mode a
-> new plan starts with (the preview used Medium; this draft says the first in `config/`); whether
-> "stage order" and "set of tips" go in the glossary; and whether two labware may share a label.
+> whether any rule here belongs in a shared module instead. Still to decide: whether "stage order" and "set of tips" go in the glossary; and whether two labware may share a label.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -101,8 +99,10 @@ one source of truth for the run order.
   stopped matching the stage's place once one was inserted). Stage names needn't be unique
   (`stage-list.md`).
 - A new stage's settings are copied from the stage just before it in the stage order, or, with none
-  before it, from the first stage. The stage of a new plan has the **default settings**: the first
-  pipetting mode for each end (below), and all eight probes.
+  before it, from the first stage. The stage of a new plan has the **default settings**: the default
+  pipetting mode, `DEFAULT_PIPETTING_MODE` in `config/` (below), at both ends, and all eight probes
+  (Andy, 2026-10-26: named in `config/`, so the menus keep their order and the default can change
+  without changing code).
 - A stage is added **before** a given stage (or last). With **take tips**, a tip change keyed by that
   stage moves onto the new stage, so the new stage is the first to use those tips; without it, the
   new stage uses the tips before that tip change (Andy, 2026-10-25: so a stage can be added at the
@@ -181,6 +181,8 @@ Two files in `config/` (ADR 0009), which this module's tests check:
   would be ambiguous); and each end has at least one mode. It replaces `config/techniques.js` and
   `config/liquid-types.js`, which are removed (Andy, 2026-10-26: each name is then written once).
   The names are stand-ins until checked in Biomek Software (roadmap, "Technical debt").
+  It also exports `DEFAULT_PIPETTING_MODE`, the name of the mode a new plan's stage uses at both
+  ends, e.g. `"Medium"`; it must be a mode usable at both ends.
 - **`config/tip-types.js`** exports `TIP_TYPES`: a non-empty list of tip type names, e.g.
   `["BC230", "BC1070"]`, each a name, none repeated.
 
@@ -304,10 +306,13 @@ order of checks.
 **Configuration**
 - `config/pipetting-modes.js`: each mode's properties are exactly `name`, `technique`,
   `liquidType`, `ends`; names valid and unique; liquid types follow Biomek's rule; `ends` valid;
-  no two modes for one end share both technique and liquid type; each end has at least one mode.
+  no two modes for one end share both technique and liquid type; each end has at least one mode;
+  `DEFAULT_PIPETTING_MODE` names a mode usable at both ends.
 - `config/tip-types.js`: a non-empty list of valid names, none repeated.
 
 **Plans and modes**
+- `defaultSettings()` gives `DEFAULT_PIPETTING_MODE`'s technique and liquid type at both ends,
+  and probes 1 to 8.
 - `emptyPlan()` gives one stage named `NEW_STAGE_NAME` with default settings, `START` tips of the
   first tip type, and nothing else; its `stageId` is that stage.
 - `probesFor` gives `[1]` for 1 and all eight for 8; 0, 9, 2.5 and `"4"` throw.
