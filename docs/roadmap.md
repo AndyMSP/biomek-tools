@@ -61,7 +61,8 @@ Last updated: 2026-10-26
 - **The transfer designer's logic is split into four modules** (Andy, 2026-10-26), one topic each:
   `deck` (shared: the deck description), and, in the tool, `plan-history` (undo and redo),
   `plan-file` (saving and opening) and `transfer-designer` (the plan and its rules). Their
-  specifications come one at a time, starting with `deck` (`src/shared/deck/deck.md`).
+  specifications come one at a time: `deck` (`src/shared/deck/deck.md`), then `plan-history`
+  (`src/tools/transfer-designer/plan-history.md`).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
