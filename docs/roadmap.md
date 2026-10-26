@@ -78,7 +78,8 @@ Last updated: 2026-10-26
   replacing `plannedBefore`, whose notes for stages without transfers needed a new rule each time a
   bug was found (three on 2026-10-26). The operation list's blocks follow the list. Specifications
   changed: `transfer-designer.md` and `plan-file.md` (a file holds its stages in stage order). The
-  `transfer-designer` code is changed to match next.
+  `transfer-designer` code and tests now match: `stageOrder` replaces `plannedBefore`, and the
+  tests check after every kind of edit that the operation list's blocks follow it.
 - **`plan-file` specification written** (Draft, 2026-10-26;
   `src/tools/transfer-designer/plan-file.md`): what a plan file holds (format version 1), and the
   checks on opening one, in order. Stage IDs are renumbered on opening. Not built yet.
