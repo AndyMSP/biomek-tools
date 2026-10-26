@@ -21,7 +21,7 @@ export const PIPETTING_MODES = [
   { name: "Fast", technique: "StandIn_Fast", liquidType: "Water", ends: ["source", "destination"] },
   { name: "Medium", technique: "StandIn_Medium", liquidType: "Water", ends: ["source", "destination"] },
   { name: "Slow", technique: "StandIn_Slow", liquidType: "Cells", ends: ["source", "destination"] },
-  // The tip stays above the liquid, so it's for dispensing only.
+  // For dispensing only (docs/glossary.md, "Pipetting mode").
   { name: "Non-Contact", technique: "StandIn_NonContact", liquidType: "Water", ends: ["destination"] },
 ];
 
