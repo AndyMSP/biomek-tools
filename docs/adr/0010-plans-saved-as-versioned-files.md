@@ -22,7 +22,8 @@ Three places to keep a saved plan were considered:
 - **Both**: files for keeping and sharing, plus an automatic browser copy against reloads.
 
 ## Decision
-**A plan is saved as a file** (Andy, 2026-10-25), a **plan file** (`docs/glossary.md`).
+**A plan is saved as a file** (Andy, 2026-10-25), a **plan file** (`docs/glossary.md`), **and the
+page also keeps a browser copy** as a safety net (Andy, 2026-10-26): the third option.
 
 - **Plain data in JSON**, a standard text format for data, so the file is readable, and needs
   nothing installed to write or read (the tools must run in Edge or Chrome with nothing installed).
@@ -46,6 +47,12 @@ Three places to keep a saved plan were considered:
   `stage-list.md`), so opening a file adds its stages afresh and renumbers them, in the file's
   order; the transfers, tip changes and planned places in the file follow them.
 - **Opening a plan replaces the one shown, as one undoable edit.**
+- **A browser copy** (Andy, 2026-10-26). After every change, the page copies the plan into the
+  browser's local storage (storage each web page gets in the browser, kept between visits), in the
+  same form as a plan file. When the page opens, it quietly brings that copy back, through the same
+  checks as opening a file; a copy that can't be read is left out, with a note. Saving a file
+  doesn't touch the copy. The plan file stays the record: the copy only guards against reloading or
+  closing the page by mistake.
 
 The file's exact contents are set in the transfer designer's logic specification
 (`transfer-designer.md`), which reads and writes them.
@@ -56,8 +63,9 @@ The file's exact contents are set in the transfer designer's logic specification
   raise the version, and either keep reading the older version or say it can't be opened.
 - Only the plan is saved, not how the page was being viewed (which stage is open, which labware
   is brought out).
-- Nothing is saved automatically: reloading or closing the page still loses changes made since the
-  last save. An automatic browser copy (the third option) can be added later if that becomes a
-  problem (roadmap, "Later").
+- Reloading or closing the page by mistake loses nothing: the browser copy brings the plan back.
+- The browser copy has limits, so it doesn't replace saving files: it lives in one browser on one
+  computer; it's lost if browsing data is cleared, and isn't kept in a private window; and it holds
+  one plan per browser, so two people using the tool in the same browser share it.
 - In the preview, opening and saving were tried in an exported copy of the page, opened from
   Andy's computer (2026-10-25): the artifact viewer the preview is published in can't save files.
