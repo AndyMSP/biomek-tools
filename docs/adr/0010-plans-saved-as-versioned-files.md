@@ -45,7 +45,8 @@ page also keeps a browser copy** as a safety net (Andy, 2026-10-26): the third o
   input"). A file that fails isn't opened in part.
 - **Stage IDs aren't kept.** The stage list makes its own IDs and can't be given one (ADR 0008,
   `stage-list.md`), so opening a file adds its stages afresh and renumbers them, in the file's
-  order; the transfers, tip changes and planned places in the file follow them.
+  order; the transfers, tip changes and planned places in the file follow them. (Since ADR 0011, the
+  file holds its stages in stage order and has no planned places.)
 - **Opening a plan replaces the one shown, as one undoable edit.**
 - **A browser copy** (Andy, 2026-10-26). After every change, the page copies the plan into the
   browser's local storage (storage each web page gets in the browser, kept between visits), in the

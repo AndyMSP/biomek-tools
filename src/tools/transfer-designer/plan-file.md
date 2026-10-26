@@ -55,7 +55,6 @@ A plan file is written as one JSON object with these properties, in this order:
   "stages": [{ "id": "1", "name": "Seeding", "settings": { "sourceTechnique": "…", "…": "…" } }],
   "operations": [{ "type": "transfer", "source": { "labware": "Res", "well": "1" },
                    "destination": { "labware": "Plate", "well": "A1" }, "volume": 50, "stage": "1" }],
-  "plannedBefore": {},
   "tipChanges": { "start": { "tipType": "BC1070" } },
   "labwareLabels": { "Plate": "Assay plate" }
 }
@@ -66,10 +65,10 @@ A plan file is written as one JSON object with these properties, in this order:
   `"transfer designer v0.2.0"`. It's for information only, such as finding where a troublesome file
   came from, and never decides whether a file opens (ADR 0010), so opening a file doesn't check it:
   it may even be missing.
-- `components`, `startingContents`, `plannedBefore`, `tipChanges`, `labwareLabels`: the plan's
-  parts of the same names, as `transfer-designer.md` describes them.
-- `stages`: every stage in the stage list, in the order they were added, each `{ id, name,
-  settings }`.
+- `components`, `startingContents`, `tipChanges`, `labwareLabels`: the plan's parts of the same
+  names, as `transfer-designer.md` describes them.
+- `stages`: every stage, **in stage order** (the plan's `stageOrder`), each `{ id, name,
+  settings }`. So the file needs no separate list of the order (ADR 0011).
 - `operations`: every operation, in the operation list's order (`listOperations()`).
 
 The text is written with an indent of 2 spaces, so it's easy to read. Volumes are written at full
@@ -77,10 +76,11 @@ precision; JSON keeps numbers exactly, so a plan reads back with the same volume
 
 ### Stage IDs are renumbered on opening
 The stage list makes its own IDs and can't be given one (`stage-list.md`, "IDs"). So opening a file
-adds its stages afresh, in the file's order, and they get new IDs, `"1"`, `"2"`, `"3"` … The file's
-IDs are used only to match its transfers, planned places and tip changes to its stages, and are then
-replaced by the new ones. (For example, a file whose stages are `"2"`, `"5"` and `"7"` opens with
-stages `"1"`, `"2"` and `"3"`.)
+adds its stages afresh, in the file's order, which is the stage order, and they get new IDs, `"1"`,
+`"2"`, `"3"` … The file's IDs are used only to match its transfers and tip changes to its stages,
+and are then replaced by the new ones. The plan's `stageOrder` is the stages in the file's order.
+(For example, a file whose stages are `"2"`, `"5"` and `"7"` opens with stages `"1"`, `"2"` and
+`"3"`.)
 
 ### Checks on opening
 Opening a file checks, in this order:
@@ -88,8 +88,8 @@ Opening a file checks, in this order:
 2. **The format**: `format` is `PLAN_FILE_FORMAT`.
 3. **The version**: `version` is `PLAN_FILE_VERSION`.
 4. **The properties**: exactly those listed above, none missing (except `savedBy`) and none extra.
-   `components`, `startingContents`, `stages` and `operations` are lists; `plannedBefore`,
-   `tipChanges` and `labwareLabels` are objects.
+   `components`, `startingContents`, `stages` and `operations` are lists; `tipChanges` and
+   `labwareLabels` are objects.
 5. **Components**, each an object with exactly `name` and `color`, then added as `addComponent`
    would add it: a name and a color, each unique. The name must already be a name (`checkName`): it
    isn't trimmed, so it always matches the names in the starting contents.
@@ -99,16 +99,15 @@ Opening a file checks, in this order:
    stage list.
 7. **Operations**, each in turn: checked by the operation list (its form and the stage rule), then
    its source and destination on the deck (`deck.checkWell`), then its `stage` one of the file's
-   stages. **Each stage's
-   transfers are together**, as the operation list always keeps them: a file whose transfers are in
-   stages `"1", "2", "1"` is refused rather than reordered.
+   stages. **Each stage's transfers are together**, as the operation list always keeps them: a file
+   whose transfers are in stages `"1", "2", "1"` is refused rather than reordered. **The stages'
+   transfers come in the order of `stages`**, as the transfer designer always keeps them (ADR 0011):
+   with stages `"1"`, `"2"` in that order, transfers in stage `"2"` then stage `"1"` are refused.
 8. **Starting contents**: each well on the deck, and each component it names in `components`; the
    rest (each well at most once, volumes 0 or more) as `contents-tracking` checks them.
-9. **Planned places**: each key in `plannedBefore` is a stage without transfers, and each value is
-   another of the file's stages or `null`.
-10. **Tip changes** (the stage order is known by now, from steps 7 and 9): there's one at `"start"`; every other key is one of the file's stages, but not
-    the first in the stage order; each is an object with exactly `tipType`, one of `TIP_TYPES`.
-11. **Labels**: each as `setLabel` would set it: labware on the deck, the label text, and no two
+9. **Tip changes**: there's one at `"start"`; every other key is one of the file's stages, but not
+   the first in `stages`; each is an object with exactly `tipType`, one of `TIP_TYPES`.
+10. **Labels**: each as `setLabel` would set it: labware on the deck, the label text, and no two
     labware with one label.
 
 The first problem found is reported (section 5).
@@ -152,9 +151,8 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | A stage's ID is `"start"` | `stage 2 has the ID "start", which is kept for the tips at the start of the run.` |
 | A transfer's stage isn't in the file | `transfer 3 is in stage "9", which isn't one of the file's stages.` |
 | A stage's transfers aren't together | `stage "1"'s transfers aren't together: transfer 3 is in stage "2", between transfers of stage "1".` |
+| Stages' transfers out of the order of `stages` | `transfer 3 is in stage "1", which comes before stage "2" in the stages, but after transfers of stage "2".` |
 | A component in the starting contents isn't in `components` | `starting contents, entry 4, holds "Dye", which isn't one of the file's components.` |
-| A planned place names a stage that isn't in the file | `a planned place names stage "9", which isn't one of the file's stages.` |
-| A planned place is for a stage with transfers | `stage "2" has transfers, so it can't also have a planned place.` |
 | No tip change at `"start"` | `it has no tips at the start of the run.` |
 | A tip change at a stage that isn't in the file, or at the first stage | `a tip change is before stage "9", which isn't one of the file's stages.` / `a tip change is before stage "1", the first stage, which always starts with the tips at "start".` |
 | A tip type isn't in `TIP_TYPES` | `the tip change at "2" loads "BC50", which isn't one of "BC230", "BC1070".` |
@@ -171,12 +169,14 @@ row of section 5 has at least one test.
 - `savedBy` of `5`, `""` and `" v0.2.0"` throws.
 
 **Round trip**
-- A plan with components, starting contents, three stages (one without transfers, planned before
-  another), transfers, a tip change and a label, saved and opened, gives the same stage order, stage
-  names and settings, transfers (volumes included, e.g. `2.5` and `0.1`), planned places, tip changes,
+- A plan with components, starting contents, three stages (one without transfers, between the
+  other two), transfers, a tip change and a label, saved and opened, gives the same stage order,
+  stage names and settings, transfers (volumes included, e.g. `2.5` and `0.1`), tip changes,
   components and labels.
+- `planToText` writes the stages in stage order, not the order they were added: a stage added
+  before the first is written first.
 - A plan whose stages have IDs `"2"`, `"5"` and `"7"` opens with IDs `"1"`, `"2"` and `"3"`, its
-  transfers, planned places and tip changes following them.
+  transfers and tip changes following them.
 - An `emptyPlan()`, saved and opened, gives a plan with the same contents.
 
 **Refusing**
@@ -186,8 +186,8 @@ row of section 5 has at least one test.
 - A file without `savedBy`, and one whose `savedBy` is `5`, open: it isn't checked.
 - A file with transfers in stages `"1", "2", "1"` is refused.
 - A file whose third transfer names labware not on the deck names `transfer 3`.
-- A file with a planned place for a stage with transfers, and with a tip change keyed by the first
-  stage, are refused.
+- A file whose transfers come in stage `"2"` then stage `"1"`, with the stages listed `"1"`, `"2"`,
+  is refused; so is a file with a tip change keyed by the first stage.
 - Two labware with one label are refused.
 - A component named `" Media"` is refused (`checkName`), not trimmed.
 - A stage with the ID `"start"` is refused.

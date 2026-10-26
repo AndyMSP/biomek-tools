@@ -43,8 +43,9 @@ stages, and a later version may form them automatically.
 
 **Stage order**
 The order of all a plan's stages: the order the page shows them in and the order they will run in.
-It includes stages without transfers yet, which keep their place until they get transfers. The run
-order (ADR 0008) is only the stages with transfers, in the operation list's order.
+It includes stages without transfers yet. The plan keeps it as its own list, which changes only when
+a stage is added or removed (ADR 0011). The run order (ADR 0008) is only the stages with transfers,
+in the operation list's order, which always follows the stage order.
 
 **Substage**
 The part of a stage that one Transfer From File file can hold: the stage's transfers whose sources
