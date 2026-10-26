@@ -113,6 +113,9 @@ biomek-tools/
   needed.
 - Push the branch after every commit, since work happens on more than one computer.
 - When the task is done, open a pull request. Only Andy merges into `main`.
+- A pull request's description summarizes what changed and lists any choices made where a
+  specification left room, so whoever reviews it can read them there. A review starts from the
+  description, then checks the changes against it and against the specifications.
 - Start the next task's branch only after the previous one is merged, unless Andy says otherwise.
 - Never commit secrets (passwords, keys) or personal data.
 
