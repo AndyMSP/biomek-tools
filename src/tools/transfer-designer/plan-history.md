@@ -15,17 +15,12 @@ another tool could keep other states. A state is kept as it is given, so it must
 afterwards: the plan's parts are immutable (the operation list and stage list are; ADR 0008), and
 the tool replaces a state rather than changing it.
 
-## 2. Scope
-Version 1 records a new state, replaces the current state, undoes and redoes, and says whether undo or
-redo is possible.
+The history lasts only while the tool is open: a plan file holds only the plan (ADR 0010), so
+saving, opening or reloading never keeps or brings back undo and redo.
 
-Not in version 1:
-- **A limit** on how many states are kept. A plan is small, and a session's edits number in the
-  hundreds at most.
-- **Grouping** several states into one. A tool that wants several changes undone together
-  makes them as one state (the transfer designer does, e.g. adding many transfers at once).
-- **Keeping the history** when a plan is saved or the page is reloaded. A plan file holds only the
-  plan (ADR 0010).
+## 2. Scope
+Version 1 records a new state, replaces the current state, undoes and redoes, says whether undo or
+redo is possible, and keeps at most a set number of earlier states.
 
 ## 3. Data model
 - A history is an instance of the `PlanHistory` class, created with `new PlanHistory(state)`, where
@@ -40,6 +35,19 @@ do. This matters here: after an undo, the stage list can give a new stage an ID 
 undone state also used (`stage-list.md`, "IDs"), so a redo could otherwise bring back a second stage
 with the same ID.
 
+**Several changes, one state.** Each recorded state is one undo. A tool that wants several changes
+undone together makes them in one state and records that (the transfer designer does, e.g. adding
+many transfers at once).
+
+**At most `UNDO_STATES_KEPT` earlier states are kept** (Andy, 2026-10-26), a number in
+`config/undo.js`: 1,000 for now. Recording one more drops the oldest, so undo can't go back further
+than that. Each state keeps its own list of the plan's transfers (the transfers themselves are
+shared), so memory grows with both the plan and the number of states: measured with the preview's
+code (2026-10-26), about 7 to 13 kB per state for a plan of about 1,000 transfers, so about 10 MB at
+the limit, while 10,000 states took over 100 MB, enough to slow an older lab PC. Later states (for
+redo) are never more than the earlier ones were, so they need no limit of their own. The tests check
+`config/undo.js` (ADR 0009): `UNDO_STATES_KEPT` is a whole number of at least 1.
+
 **Replacing isn't an edit.** `replacePresent` swaps the current state without adding a state to undo back to, and
 without touching redo. The transfer designer uses it for changes that aren't edits of the plan, such
 as which stage is open: undo then skips straight to the plan's last edit.
@@ -51,7 +59,7 @@ The module exports one class, `PlanHistory`.
 |---|---|---|
 | `constructor(state)` | public | Creates a history whose current state is `state`, with nothing to undo or redo. `state` may be any value. |
 | `present` | public (getter) | The current state. |
-| `record(state)` | public | Returns a **new** history in which `state` is current, the old current state can be undone back to, and there is nothing to redo. |
+| `record(state)` | public | Returns a **new** history in which `state` is current, the old current state can be undone back to, and there is nothing to redo. If that makes more than `UNDO_STATES_KEPT` earlier states, the oldest is dropped. |
 | `replacePresent(state)` | public | Returns a **new** history in which `state` is current, with the same states to undo and redo. |
 | `canUndo()` | public | `true` if there's an earlier state to go back to. |
 | `canRedo()` | public | `true` if there's a later state to go forward to. |
@@ -95,4 +103,9 @@ Each becomes at least one unit test in `plan-history.test.js`, inside `describe(
   is unchanged, and don't throw.
 - Immutability: after `record`, `replacePresent`, `undo` and `redo`, the original history's `present`,
   `canUndo()` and `canRedo()` are unchanged.
+- With `UNDO_STATES_KEPT` + 1 records after the first state, `UNDO_STATES_KEPT` undos are possible
+  and the next isn't; the state undo stops at is the second state, so the first was dropped. (The
+  test reads the number from `config/undo.js`.)
+- Redo still works after the limit has dropped old states.
+- `config/undo.js`: `UNDO_STATES_KEPT` is a whole number of at least 1.
 - States are kept as given: an object passed to `record` is the same object `present` returns later.
