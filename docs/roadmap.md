@@ -63,6 +63,10 @@ Last updated: 2026-10-26
   `plan-file` (saving and opening) and `transfer-designer` (the plan and its rules). Their
   specifications come one at a time: `deck` (`src/shared/deck/deck.md`), then `plan-history`
   (`src/tools/transfer-designer/plan-history.md`).
+- **`operation-list` specification gains `replace`** (2026-10-26): one operation swapped for
+  another in the same stage, sharing every other stored operation, so changing a volume doesn't copy
+  the whole list into each undo state (`plan-history.md`: about 13 MB at its limit with sharing, 156
+  MB without, for a 1,000-transfer plan). The code doesn't have it yet.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
