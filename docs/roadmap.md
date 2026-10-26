@@ -54,6 +54,10 @@ Last updated: 2026-10-26
 - **`stage-list` specification revised (2026-10-26):** a stage has five settings; `tipType` and
   `changeTipsFirst` are gone, since tips are the plan's tip changes. The code and tests still have
   seven settings until they're changed to match.
+- **Decided: plans are saved as files** (ADR 0010): JSON with a format name and version number,
+  checked through the same rules as edits when opened; stages are renumbered on opening. The page
+  also keeps a browser copy, brought back when it opens. Saving and opening plans is part of the
+  designer page (item 6), no longer "Later".
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -116,7 +120,6 @@ variable for every well of the standard deck is slow clicking work, so leave tim
 - Mixing (see "Open decisions").
 - The timeline (see "Contents tracking").
 - Final concentrations.
-- Saving and loading plans.
 - Editing the list further: moving a stage, or a transfer within its stage.
 - Labware types with well capacities, to warn about overfilling.
 - Biomek output for the randomizer (the randomizer link).
