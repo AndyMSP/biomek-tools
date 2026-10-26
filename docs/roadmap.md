@@ -81,6 +81,9 @@ Last updated: 2026-10-26
   `src/tools/transfer-designer/transfer-designer-page.md`), from the preview: the whole screen, its
   messages, and two new config files (`component-colors.js`, `default-volumes.js`). Display rules
   stay in the page and are checked by hand, as for the randomizer. Not built yet.
+- **The `deck` shared module is built** (code and tests), against its Draft specification
+  (`src/shared/deck/deck.md`): labware names, grids and labware types from `config/deck.js`,
+  checking wells and listing the wells in a box. Its tests also check `config/deck.js` (ADR 0009).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
