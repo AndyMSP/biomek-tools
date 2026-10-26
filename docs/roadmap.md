@@ -52,8 +52,9 @@ Last updated: 2026-10-26
   into substages, one stage-worklist row each; tip changes are stage-worklist rows of their own,
   chosen by one If step (Then: change tips; Else: Transfer From File).
 - **`stage-list` specification revised (2026-10-26):** a stage has five settings; `tipType` and
-  `changeTipsFirst` are gone, since tips are the plan's tip changes. The code and tests still have
-  seven settings until they're changed to match.
+  `changeTipsFirst` are gone, since tips are the plan's tip changes. The code and tests now match:
+  five settings, and settings still giving `tipType` or `changeTipsFirst` are refused as extra
+  settings.
 - **Decided: plans are saved as files** (ADR 0010): JSON with a format name and version number,
   checked through the same rules as edits when opened; stages are renumbered on opening. The page
   also keeps a browser copy, brought back when it opens. Saving and opening plans is part of the

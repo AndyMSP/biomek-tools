@@ -14,9 +14,7 @@ function makeSettings() {
     sourceLiquidType: "Cells",
     destinationTechnique: "Dispense_Clean",
     destinationLiquidType: "Cells",
-    tipType: "BC230",
     probes: [1, 2, 3, 4, 5, 6, 7, 8],
-    changeTipsFirst: true,
   };
 }
 
@@ -31,9 +29,9 @@ function idsOf(list) {
   return list.listStages().map((stage) => stage.id);
 }
 
-// The seven settings as the object, missing and extra settings errors list them.
+// The five settings as the object, missing and extra settings errors list them.
 const SETTING_NAMES_TEXT =
-  "sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType, tipType, probes and changeTipsFirst";
+  "sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType and probes";
 
 describe("stage-list", () => {
   // --- Adding and IDs ---
@@ -108,12 +106,6 @@ describe("stage-list", () => {
     }
   });
 
-  test("changeTipsFirst false is accepted", () => {
-    const settings = { ...makeSettings(), changeTipsFirst: false };
-    const { stageList, id } = new StageList().add("Seeding", settings);
-    assert.equal(stageList.get(id).settings.changeTipsFirst, false);
-  });
-
   // --- Renaming, changing, removing, looking up ---
 
   test("rename changes only the name; ID and settings are unchanged; the original list is unchanged", () => {
@@ -130,9 +122,7 @@ describe("stage-list", () => {
       sourceLiquidType: "Water",
       destinationTechnique: "Dispense_Dirty",
       destinationLiquidType: "Water",
-      tipType: "BC50",
       probes: [2, 4],
-      changeTipsFirst: false,
     };
     const changed = original.changeSettings("1", newSettings);
     assert.deepEqual(changed.get("1"), { id: "1", name: "Seeding", settings: newSettings });
@@ -162,7 +152,7 @@ describe("stage-list", () => {
   test("listStages() gives stages in the order they were added, including after a rename or a change of settings", () => {
     const list = makeList("Seeding", "Treatment", "Staining")
       .rename("1", "Seeding, part 1")
-      .changeSettings("2", { ...makeSettings(), changeTipsFirst: false });
+      .changeSettings("2", { ...makeSettings(), probes: [1] });
     assert.deepEqual(idsOf(list), ["1", "2", "3"]);
   });
 
@@ -171,7 +161,7 @@ describe("stage-list", () => {
   test("changing the settings passed to add() afterwards, including its probes, doesn't change the list", () => {
     const settings = makeSettings();
     const { stageList, id } = new StageList().add("Seeding", settings);
-    settings.tipType = "BC50";
+    settings.sourceTechnique = "Aspirate_Fast";
     settings.probes.pop();
     settings.probes[0] = 9;
     assert.deepEqual(stageList.get(id).settings, makeSettings());
@@ -203,7 +193,7 @@ describe("stage-list", () => {
         stage.id = "9";
       }, TypeError);
       assert.throws(() => {
-        stage.settings.tipType = "BC50";
+        stage.settings.sourceTechnique = "Aspirate_Fast";
       }, TypeError);
       assert.throws(() => {
         stage.settings.probes.push(9);
@@ -273,12 +263,12 @@ describe("stage-list", () => {
     }
   });
 
-  test("settings missing tipType give the missing error; missing sourceTechnique and probes name both, in that order", () => {
+  test("settings missing probes give the missing error; missing sourceTechnique and probes name both, in that order", () => {
     const list = new StageList();
-    const noTipType = makeSettings();
-    delete noTipType.tipType;
-    assert.throws(() => list.add("Seeding", noTipType), {
-      message: `A stage's settings need ${SETTING_NAMES_TEXT}, but are missing "tipType".`,
+    const noProbes = makeSettings();
+    delete noProbes.probes;
+    assert.throws(() => list.add("Seeding", noProbes), {
+      message: `A stage's settings need ${SETTING_NAMES_TEXT}, but are missing "probes".`,
     });
     const noSourceTechniqueOrProbes = makeSettings();
     delete noSourceTechniqueOrProbes.probes;
@@ -289,8 +279,7 @@ describe("stage-list", () => {
   });
 
   test("settings in the earlier form, with technique and liquidType, give the missing error, naming all four", () => {
-    const { tipType, probes, changeTipsFirst } = makeSettings();
-    const earlierForm = { technique: "Aspirate_Slow", liquidType: "Cells", tipType, probes, changeTipsFirst };
+    const earlierForm = { technique: "Aspirate_Slow", liquidType: "Cells", probes: makeSettings().probes };
     const missing = '"sourceTechnique", "sourceLiquidType", "destinationTechnique", "destinationLiquidType"';
     assert.throws(() => new StageList().add("Seeding", earlierForm), {
       message: `A stage's settings need ${SETTING_NAMES_TEXT}, but are missing ${missing}.`,
@@ -298,27 +287,25 @@ describe("stage-list", () => {
   });
 
   test("a setting that comes from a class, not the object itself, counts as missing", () => {
-    // A test-only class whose tipType comes from a getter on the class, so the object itself
-    // doesn't hold it.
-    class SettingsWithClassTipType {
-      // Sets every setting except tipType on the object itself.
+    // A test-only class whose probes come from a getter on the class, so the object itself
+    // doesn't hold them.
+    class SettingsWithClassProbes {
+      // Sets every setting except probes on the object itself.
       constructor() {
         const settings = makeSettings();
         this.sourceTechnique = settings.sourceTechnique;
         this.sourceLiquidType = settings.sourceLiquidType;
         this.destinationTechnique = settings.destinationTechnique;
         this.destinationLiquidType = settings.destinationLiquidType;
-        this.probes = settings.probes;
-        this.changeTipsFirst = settings.changeTipsFirst;
       }
 
-      // Returns the tip type from the class, not from the object.
-      get tipType() {
-        return "BC230";
+      // Returns the probes from the class, not from the object.
+      get probes() {
+        return [1, 2, 3, 4, 5, 6, 7, 8];
       }
     }
-    assert.throws(() => new StageList().add("Seeding", new SettingsWithClassTipType()), {
-      message: `A stage's settings need ${SETTING_NAMES_TEXT}, but are missing "tipType".`,
+    assert.throws(() => new StageList().add("Seeding", new SettingsWithClassProbes()), {
+      message: `A stage's settings need ${SETTING_NAMES_TEXT}, but are missing "probes".`,
     });
   });
 
@@ -335,28 +322,34 @@ describe("stage-list", () => {
     assert.throws(() => list.add("Seeding", twoExtras), { message: `${start} "tiptype", "mix".` });
   });
 
-  test("missing settings are checked before extra ones", () => {
-    const settings = { ...makeSettings(), tiptype: "BC230" };
-    delete settings.tipType;
-    assert.throws(() => new StageList().add("Seeding", settings), {
-      message: `A stage's settings need ${SETTING_NAMES_TEXT}, but are missing "tipType".`,
+  test("settings in the earlier form, with tipType and changeTipsFirst, give the extra-setting error, naming both, in the order they appear", () => {
+    const earlierForm = { ...makeSettings(), tipType: "BC230", changeTipsFirst: true };
+    assert.throws(() => new StageList().add("Seeding", earlierForm), {
+      message: `A stage's settings can only have ${SETTING_NAMES_TEXT}, but also got "tipType", "changeTipsFirst".`,
     });
   });
 
-  test('each name setting given 5, "" and " BC230" gives its error, naming the setting in words', () => {
+  test("missing settings are checked before extra ones", () => {
+    const settings = { ...makeSettings(), tiptype: "BC230" };
+    delete settings.probes;
+    assert.throws(() => new StageList().add("Seeding", settings), {
+      message: `A stage's settings need ${SETTING_NAMES_TEXT}, but are missing "probes".`,
+    });
+  });
+
+  test('each name setting given 5, "" and " Aspirate_Slow" gives its error, naming the setting in words', () => {
     const list = new StageList();
     const settingsInWords = [
       ["sourceTechnique", "source technique"],
       ["sourceLiquidType", "source liquid type"],
       ["destinationTechnique", "destination technique"],
       ["destinationLiquidType", "destination liquid type"],
-      ["tipType", "tip type"],
     ];
     for (const [setting, words] of settingsInWords) {
       const cases = [
         [5, `The ${words} must be text, but got 5.`],
         ["", `The ${words} is blank. Give it at least one character that isn't a space.`],
-        [" BC230", `The ${words} " BC230" has spaces at the start or end. Remove them.`],
+        [" Aspirate_Slow", `The ${words} " Aspirate_Slow" has spaces at the start or end. Remove them.`],
       ];
       for (const [value, message] of cases) {
         assert.throws(() => list.add("Seeding", { ...makeSettings(), [setting]: value }), { message });
@@ -396,23 +389,14 @@ describe("stage-list", () => {
     });
   });
 
-  test('changeTipsFirst "yes" and 1 give its error', () => {
-    const list = new StageList();
-    for (const [changeTipsFirst, shown] of [["yes", '"yes"'], [1, "1"]]) {
-      assert.throws(() => list.add("Seeding", { ...makeSettings(), changeTipsFirst }), {
-        message: `Whether to change tips first must be true or false, but got ${shown}.`,
-      });
-    }
-  });
-
   test('checks run in order: rename("9", "") reports the missing stage', () => {
     assert.throws(() => makeList("Seeding").rename("9", ""), {
       message: 'There\'s no stage "9" in the stage list.',
     });
   });
 
-  test("checks run in order: settings with a bad source technique and a bad tip type report the source technique", () => {
-    const settings = { ...makeSettings(), sourceTechnique: "", tipType: 5 };
+  test("checks run in order: settings with a bad source technique and a bad destination liquid type report the source technique", () => {
+    const settings = { ...makeSettings(), sourceTechnique: "", destinationLiquidType: 5 };
     assert.throws(() => new StageList().add("Seeding", settings), {
       message: "The source technique is blank. Give it at least one character that isn't a space.",
     });
