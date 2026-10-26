@@ -15,6 +15,9 @@ stages into substages; ADR 0007, amended 2026-10-26).
 
 It's also the module that uses `config/deck.js`, so its tests check that file (ADR 0009).
 
+It knows only the deck description's names. The labels a user gives labware
+(`docs/glossary.md`, "Labware label") are part of a plan, held by the transfer designer's logic.
+
 ## 2. Scope
 Version 1 reads the one deck description in `config/deck.js`.
 
@@ -22,8 +25,6 @@ Not in version 1:
 - **More than one deck**, or a deck chosen by the user. There is one standard deck (ADR 0007).
 - **Physical properties** of labware, such as well volume or dead volume (roadmap, "Technical
   debt").
-- **Labels** the user gives labware (`docs/glossary.md`, "Labware label"). They're part of a plan;
-  this module only knows the deck description's names.
 
 ## 3. Data model
 **The deck description** (`config/deck.js`) exports `DECK`, a list with one entry per labware:
