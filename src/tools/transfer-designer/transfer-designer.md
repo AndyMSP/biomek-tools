@@ -2,7 +2,8 @@
 
 > **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview, where these rules
 > were tried with Andy (2026-10-24 to 2026-10-26). Still to review: the wording of the messages, and
-> whether any rule here belongs in a shared module instead. Still to decide: whether "stage order" and "set of tips" go in the glossary; and whether two labware may share a label.
+> whether any rule here belongs in a shared module instead. Still to decide: whether two labware may
+> share a label.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -22,7 +23,7 @@ Beside it in this tool are two other logic modules, `plan-history` (undo and red
 ## 2. Scope
 Version 1 creates an empty plan; adds, removes and changes stages, transfers, tip changes,
 components, starting contents and labware labels; and answers questions about a plan: its stage
-order, the stages sharing each set of tips, the stages with an overdraw, where each stage ends, and
+order, its tip groups, the stages with an overdraw, where each stage ends, and
 the labware it uses.
 
 Not in version 1 (see `docs/roadmap.md`):
@@ -106,7 +107,7 @@ one source of truth for the run order.
 - A stage is added **before** a given stage (or last). With **take tips**, a tip change keyed by that
   stage moves onto the new stage, so the new stage is the first to use those tips; without it, the
   new stage uses the tips before that tip change (Andy, 2026-10-25: so a stage can be added at the
-  top of a set of tips, or at the end of the set before).
+  top of a tip group, or at the end of the group before).
 - **Any stage can be removed unless it's the only one**, and its transfers go with it (Andy,
   2026-10-26). A tip change keyed by it goes too; stages planned to go before it now go before the
   stage that followed it.
@@ -136,12 +137,13 @@ aren't one of the modes (for example, after the modes in `config/` change).
   stage left without transfers would move to the end.)
 - Positions are positions in the operation list, counting from 0, as in `listOperations()`.
 
-### Tip changes and sets of tips
+### Tip changes and tip groups
 - The run starts with the `START` tip change, which can't be removed. Another can be added just
   before any stage except the first in the stage order, at most one per place. It loads the tip type
   already in use there, until changed. Removing one leaves the stages after it on the tips before it.
-- A **set of tips** is a tip change and the stages that use its tips, in stage order: from it to the
-  next tip change. Tips go on every probe that any of those stages uses (ADR 0007, "Tips are loaded
+- A **tip group** (`docs/glossary.md`) is a group of stages that run on the same tips: the stages
+  after one tip change, up to the next, in stage order. Tips go on every probe that any of those
+  stages uses (ADR 0007, "Tips are loaded
   by looking ahead"), e.g. stages using `[1, 2]` and `[1, 2, 3, 4]` → `[1, 2, 3, 4]`, and stages
   using `[1]` and `[3, 5]` → `[1, 3, 5]`.
 - After stages are added or removed, a tip change keyed by the stage that's now first in the stage
@@ -235,7 +237,7 @@ given; "returns the plan with …" means a new plan.
 | `addTipChange(plan, beforeId)` | the plan with a tip change before stage `beforeId`, loading the tip type in use there. Throws if `canAddTipChange` is `false`. |
 | `setTipType(plan, key, tipType)` | the plan with the tip change at `key` loading `tipType`. Throws if there's none at `key`, or `tipType` isn't in `TIP_TYPES`. |
 | `removeTipChange(plan, key)` | the plan without the tip change at `key`. Throws for `START`, or if there's none at `key`. |
-| `tipGroups(plan)` | the sets of tips, in stage order: `{ key, tipType, stages, probes }` each, `stages` being stage IDs in stage order and `probes` the probes that get tips, smallest first. |
+| `tipGroups(plan)` | the tip groups, in stage order, each with the tip change that starts it: `{ key, tipType, stages, probes }` each, `stages` being stage IDs in stage order and `probes` the probes that get tips, smallest first. |
 
 **Components and starting contents**
 | Function | Returns |
@@ -326,7 +328,7 @@ order of checks.
   `NEW_STAGE_NAME` and copies the settings of the stage before it; added before the first stage, it
   copies the first stage's.
 - `addStage` with `takeTips` before a stage with a tip change moves the tip change to the new stage;
-  without it, the new stage joins the set of tips before.
+  without it, the new stage joins the tip group before.
 - `addStage` before the first stage keeps the `START` tips first.
 - `addStage` before a stage that isn't in the plan throws.
 - `removeStage` removes a stage with transfers, and its transfers; stages planned before it now go
@@ -354,13 +356,13 @@ order of checks.
   that isn't a stage.
 
 **Tip changes**
-- `tipGroups` of a plan with `START` and a tip change before its third stage gives two sets; each
-  set's `probes` are every probe its stages use: `[1, 2]` and `[1, 2, 3, 4]` give `[1, 2, 3, 4]`;
+- `tipGroups` of a plan with `START` and a tip change before its third stage gives two tip groups;
+  each group's `probes` are every probe its stages use: `[1, 2]` and `[1, 2, 3, 4]` give `[1, 2, 3, 4]`;
   `[1]` and `[3, 5]` give `[1, 3, 5]`.
 - `addTipChange` takes the tip type in use; adding before the first stage, twice in one place, or
   before a stage that isn't in the plan throws; `canAddTipChange` is `false` for each.
 - `setTipType` with a known type works; an unknown one throws.
-- `removeTipChange` merges the two sets; for `START` it throws.
+- `removeTipChange` merges the two tip groups; for `START` it throws.
 
 **Components and starting contents**
 - `addComponent` refuses a used name or color, and a blank name; it trims the name.

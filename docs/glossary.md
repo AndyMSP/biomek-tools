@@ -41,6 +41,11 @@ stage: tip changes come between stages. A stage may use several labware types; t
 splits it into substages. The term says what a stage *is*, not who makes it: for now the user builds
 stages, and a later version may form them automatically.
 
+**Stage order**
+The order of all a plan's stages: the order the page shows them in and the order they will run in.
+It includes stages without transfers yet, which keep their place until they get transfers. The run
+order (ADR 0008) is only the stages with transfers, in the operation list's order.
+
 **Substage**
 The part of a stage that one Transfer From File file can hold: the stage's transfers whose sources
 are all one labware type and whose destinations are all one labware type, because Transfer From File
@@ -53,3 +58,8 @@ Unloading all tips and loading new ones, all of one tip type, between two stages
 its own entry in a plan, not a stage setting, and the stages after it use its tips until the next
 tip change. The run always starts with one, before the first stage. Tips go on as many probes as
 the stages using them need.
+
+**Tip group**
+A group of stages that run on the same tips: the stages after one tip change, up to the next. For
+example, with tip changes at the start and before stage 4, stages 1 to 3 are one tip group and
+stages 4 and 5 another. Tips go on every probe any stage in the group uses.

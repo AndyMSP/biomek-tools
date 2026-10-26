@@ -70,7 +70,8 @@ Last updated: 2026-10-26
 - **`transfer-designer` specification written** (Draft, 2026-10-26;
   `src/tools/transfer-designer/transfer-designer.md`): the plan and every edit to it, from the
   preview. Tip changes are entries in the plan, not operations. The "stage order" includes stages
-  without transfers; ADR 0008's run order is still only the stages with transfers. Not built yet.
+  without transfers; ADR 0008's run order is still only the stages with transfers. New glossary terms: stage order,
+  tip group. Not built yet.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
