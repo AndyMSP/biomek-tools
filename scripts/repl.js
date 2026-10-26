@@ -70,6 +70,12 @@ import {
   labelOf,
   setLabel,
 } from "../src/tools/transfer-designer/transfer-designer.js";
+import {
+  PLAN_FILE_FORMAT,
+  PLAN_FILE_VERSION,
+  planToText,
+  planFromText,
+} from "../src/tools/transfer-designer/plan-file.js";
 
 // What the REPL loads, grouped by topic: one topic per module, named like its folder. Each topic
 // holds the names it loads into the session and examples to try with them. The startup message, the
@@ -250,6 +256,19 @@ const TOPICS = {
       'transfersIn(plan, "1")',
       'modeOf("destination", defaultSettings())',
       'addToWells(plan, [{ labware: "Plate", well: "Z99" }], "Media", 50)',
+    ],
+  },
+  "plan-file": {
+    loaded: { PLAN_FILE_FORMAT, PLAN_FILE_VERSION, planToText, planFromText },
+    examples: [
+      "let saved = emptyPlan().plan",
+      'saved = addStage(addStage(saved, null).plan, "1").plan',
+      "stageOrder(saved)",
+      'const text = planToText(saved, "transfer designer v0.2.0")',
+      "console.log(text)",
+      "stageOrder(planFromText(text))",
+      `planFromText(text.replace('"version": 1', '"version": 2'))`,
+      'planFromText("not a plan")',
     ],
   },
 };
