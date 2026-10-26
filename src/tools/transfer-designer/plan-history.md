@@ -41,11 +41,20 @@ many transfers at once).
 
 **At most `UNDO_STATES_KEPT` earlier states are kept** (Andy, 2026-10-26), a number in
 `config/undo.js`: 1,000 for now. Recording one more drops the oldest, so undo can't go back further
-than that. Each state keeps its own list of the plan's transfers (the transfers themselves are
-shared), so memory grows with both the plan and the number of states: measured with the preview's
-code (2026-10-26), about 7 to 13 kB per state for a plan of about 1,000 transfers, so about 10 MB at
-the limit, while 10,000 states took over 100 MB, enough to slow an older lab PC. Later states (for
-redo) are never more than the earlier ones were, so they need no limit of their own. The tests check
+than that. Later states (for redo) are never more than the earlier ones were, so they need no limit
+of their own.
+
+What the limit costs depends on states **sharing** what they have in common (structural sharing):
+the plan's parts are immutable, so a new state can point to the same transfers as the state before
+it, and stores only what changed plus its own list of references, about 8 bytes per transfer. The
+operation list shares this way when transfers are added, inserted, removed or replaced
+(`operation-list.md`). Measured with the preview's code (2026-10-26), for a plan of about 1,000
+transfers:
+- with sharing: about 13 kB per state, so about 13 MB at the limit;
+- without it (the preview rebuilt the whole list to change one volume): about 156 kB per state, so
+  about 156 MB at the limit, enough to slow an older lab PC.
+
+So every edit the tool makes must share unchanged transfers rather than rebuild the list. The tests check
 `config/undo.js` (ADR 0009): `UNDO_STATES_KEPT` is a whole number of at least 1.
 
 **Replacing isn't an edit.** `replacePresent` swaps the current state without adding a state to undo back to, and
