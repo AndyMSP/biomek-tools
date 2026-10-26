@@ -19,7 +19,8 @@ and the list stays the one source of truth for order (ADR 0008). A stage's name 
 kept elsewhere, in the stage list.
 
 It doesn't know how the operations were chosen (by the randomizer, by hand, or another way). Tip
-changes are planned as a later type (see section 2).
+changes aren't operations: they come between stages, and the transfer designer's plan holds them
+(`transfer-designer.md`; ADR 0007, amended 2026-10-26).
 
 ## 2. Scope
 Version 1 holds operations of one type, `transfer`, each in a stage. It lets code add a transfer to
@@ -28,8 +29,6 @@ read it grouped by stage. A stage can never be split, and it refuses a transfer 
 stage rule.
 
 Not in version 1 (see `docs/roadmap.md`):
-- **Tip changes.** Planned as a second operation type. How they are represented depends on how the
-  Span-8 changes tips, which isn't known yet.
 - **Other per-operation instructions**, such as mixing.
 - **Moving a stage** that already has transfers, or moving a transfer within its stage.
 - **Stage names and settings**, such as technique or tip type. They belong to the stage list

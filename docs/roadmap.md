@@ -67,6 +67,11 @@ Last updated: 2026-10-26
   another in the same stage, sharing every other stored operation, so changing a volume doesn't copy
   the whole list into each undo state (`plan-history.md`: about 13 MB at its limit with sharing, 156
   MB without, for a 1,000-transfer plan). The code doesn't have it yet.
+- **`transfer-designer` specification written** (Draft, 2026-10-26;
+  `src/tools/transfer-designer/transfer-designer.md`): the plan and every edit to it, from the
+  preview. Tip changes are entries in the plan, not operations. The "stage order" includes stages
+  without transfers; ADR 0008's run order is still only the stages with transfers. New glossary terms: stage order,
+  tip group. Not built yet.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -96,7 +101,9 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    tests. Stand-ins for now (see "Technical debt"). *Also decided 2026-10-23:* a list of liquid
    type names in `config/liquid-types.js`, the same way, so liquid types are chosen from a menu
    too; its test also checks Biomek's naming rule (letters, digits and underscores, starting with
-   a letter; B56358AF 9-4).
+   a letter; B56358AF 9-4). *Changed 2026-10-26:* both lists are replaced by
+   `config/pipetting-modes.js`, which names each pipetting mode with its technique and liquid type,
+   and `config/tip-types.js` lists the tip types (`transfer-designer.md`, "Configuration").
 5. **A deck description** in `config/`: each labware on the standard deck, with its name (exactly
    as in the general-purpose method), its grid (`GRID_96` or `GRID_1X12_NUMBERED`) and its labware
    type. The page draws the labware from it, and the file writer looks up labware types in it.
@@ -149,17 +156,24 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   the operation list refuses a transfer that breaks it, with a message saying why. It is stricter than needed (it
   separates transfers even when their order wouldn't matter), which costs some side-by-side work at
   each stage boundary. Properly: smarter staging.
-- **The technique list holds only the lab's current techniques.** Properly: the full table.
-- **The technique and liquid-type lists' names are stand-ins** (v0.2.0, 2026-10-23). Before the
-  first run, replace them with the real names from Biomek Software's Technique Browser and Liquid
-  Type Editor.
+- **The pipetting modes cover only the lab's current techniques** (`config/pipetting-modes.js`,
+  which replaced the technique and liquid-type lists on 2026-10-26). Properly: the full table.
+- **The pipetting modes' technique and liquid-type names are stand-ins** (v0.2.0, 2026-10-23).
+  Before the first run, replace them with the real names from Biomek Software's Technique Browser
+  and Liquid Type Editor.
 - **Techniques aren't checked against tip types** (v0.2.0, 2026-10-23). The tool treats every
   technique as usable with every tip type. Biomek doesn't check this either (`biomek.md`), so until
-  it's built, the user chooses a technique that suits each stage's tips. Properly: the technique
-  list records each technique's tip types, and the page and the file writer check them (ADR 0007).
+  it's built, the user chooses a technique that suits each stage's tips. Properly: each pipetting
+  mode records the tip types its technique suits, and the page and the file writer check them
+  (ADR 0007).
 - **The deck description's labware names and types are stand-ins** (v0.2.0, written 2026-10-23
   before checking Biomek Software). Before the first run, replace them with the real names from the
   general-purpose method and the real labware types from Biomek Software.
+- **Overdraws within a stage are found in the planned order** (v0.2.0, 2026-10-26). Within a
+  stage the Biomek chooses its own order (B56358AF, 22-25), but contents tracking replays the
+  planned order. When a stage draws from an overdrawn well more than once, which of its transfers
+  runs short is one possible outcome, not certain; the stage with the overdraw is certain. Properly:
+  report an overdraw by stage and well, not by transfer (`transfer-designer.md`, "Not in version 1").
 - **Dead volume isn't modelled.** A reservoir trough holds liquid a tip can't reach (2 mL in Exp37,
   `exp37.md`). For v0.2.0, the user enters a reservoir's starting volume minus its dead volume.
   Properly: dead volume per labware type, in contents tracking (it's under "Not in version 1" in its
