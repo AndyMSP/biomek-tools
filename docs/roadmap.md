@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-24
+Last updated: 2026-10-26
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -44,6 +44,10 @@ Last updated: 2026-10-24
 - **Tested on the instrument, 2026-10-22:** Transfer From File file quirks and speed
   (`biomek.md`). With one probe, row-by-row and Transfer From File take the same time; 8 probes were
   about 5 times faster.
+- **The transfer designer preview has been shaped with Andy** (2026-10-24 to 2026-10-26; not in the
+  repository). Its decisions are being written into the repository one pull request at a time,
+  starting with the glossary: new terms component, labware label, pipetting mode, plan file,
+  substage and tip change; plan and stage revised (tips are no longer part of a stage).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
