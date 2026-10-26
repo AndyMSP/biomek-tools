@@ -1,7 +1,8 @@
 # transfer-designer page — specification
 
 > **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview (v126), which Andy
-> shaped and used from 2026-10-24 to 2026-10-26. Still to review: the wording of the messages.
+> shaped and used from 2026-10-24 to 2026-10-26. It becomes Final once the page is built and Andy has
+> tested it.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
