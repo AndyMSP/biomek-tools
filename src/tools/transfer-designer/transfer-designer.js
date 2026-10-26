@@ -504,6 +504,30 @@ export function setLabel(plan, name, label) {
   return withParts(plan, { labwareLabels });
 }
 
+// Returns the plan with its labels replaced by `labels`, an object of labware names and labels,
+// e.g. setLabels(plan, { Plate: "Assay plate", Deep: "Drug plate" }); {} removes every label.
+// The table is judged as a whole, so swapping two labels works in one step. It's strict, for a table
+// already in the plan's own form (such as one read from a plan file): it refuses what setLabel would
+// tidy. Throws, in this order, if `labels` isn't an object; then for each entry in turn, if its
+// labware isn't on the deck or its label is wrong (checkLabelAsStored); then if two labware would
+// show one label.
+export function setLabels(plan, labels) {
+  if (!isObject(labels)) {
+    throw new Error(
+      `The labels must be an object of labware names and labels, like { Plate: "Assay plate" }, ` +
+        `but got ${describeValue(labels)}.`,
+    );
+  }
+  for (const [name, label] of Object.entries(labels)) {
+    // gridOf throws the deck's own message for a labware that isn't on the deck.
+    gridOf(name);
+    checkLabelAsStored(name, label);
+  }
+  checkNoSharedLabel(labels);
+  // A copy, so freezing the plan doesn't freeze the caller's object.
+  return withParts(plan, { labwareLabels: { ...labels } });
+}
+
 // --- Helpers used only inside this module ---
 
 // The positions in the operation list of stage `id`'s transfers, in order, e.g. [3, 4, 5].
@@ -595,6 +619,50 @@ function checkComponentColor(plan, color, ownName) {
   );
   if (other !== undefined) {
     throw new Error(`${other.name} already has that color. Choose a different one.`);
+  }
+}
+
+// Throws if `label`, the label for the labware called `name`, isn't as a plan stores it: text, not
+// blank, without spaces at its ends, and not the labware's own name (a labware without a label is
+// left out of the labels), e.g. checkLabelAsStored("Plate", "Plate") throws.
+function checkLabelAsStored(name, label) {
+  if (typeof label !== "string") {
+    throw new Error(
+      `The label for ${name} must be text, like "Assay plate", but got ${describeValue(label)}.`,
+    );
+  }
+  if (label.trim() === "") {
+    throw new Error(
+      `The label for ${name} is blank. A labware without a label is left out of the labels.`,
+    );
+  }
+  if (label !== label.trim()) {
+    throw new Error(
+      `The label for ${name}, ${describeValue(label)}, has spaces at the start or end. Remove them.`,
+    );
+  }
+  if (label === name) {
+    throw new Error(
+      `The label for ${name} is its own name. A labware without a label is left out of the labels.`,
+    );
+  }
+}
+
+// Throws if, with `labels` as the plan's labels, two labware would show one label, counting a
+// labware without a label as shown by its name. Names the first such pair in the deck's order,
+// e.g. { Plate: "Deep" } throws 'Plate and Deep would both show as "Deep". …'.
+function checkNoSharedLabel(labels) {
+  // For each label shown so far, the labware showing it.
+  const shownBy = new Map();
+  for (const name of labwareNames()) {
+    const shown = Object.hasOwn(labels, name) ? labels[name] : name;
+    if (shownBy.has(shown)) {
+      throw new Error(
+        `${shownBy.get(shown)} and ${name} would both show as ${describeValue(shown)}. ` +
+          "Give each labware a different label.",
+      );
+    }
+    shownBy.set(shown, name);
   }
 }
 
