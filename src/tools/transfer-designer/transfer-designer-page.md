@@ -1,9 +1,7 @@
 # transfer-designer page — specification
 
 > **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview (v126), which Andy
-> shaped and used from 2026-10-24 to 2026-10-26. Still to review: the wording of the messages, and
-> what the page opens with when there's no browser copy (section 4: an empty plan; the preview opened
-> an example plan).
+> shaped and used from 2026-10-24 to 2026-10-26. Still to review: the wording of the messages.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -68,7 +66,9 @@ tall as its contents.
   of its own (`replacePresent`).
 
 **When the page opens**, it brings back the browser copy (section 5) and opens the last stage in the
-stage order. With no copy, or one that can't be read, it starts with `emptyPlan()`, with Start open.
+stage order. With no copy, or one that can't be read, it starts with `emptyPlan()`, with Start open and no
+labware out (Andy, 2026-10-26: an empty plan, not the preview's example plan, which would be made-up
+data everyone has to clear first).
 
 **The page's own state**, which isn't part of the plan, undo, or the files:
 - which labware is **out** (in the editor) and which is put away (section 6);
