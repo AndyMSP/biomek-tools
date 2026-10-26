@@ -290,6 +290,11 @@ Questions to answer before relying on the answer:
 - Whether a labware's **type in Instrument Setup** can come from a variable. If not, putting a
   different plate type in a deck position means changing the general-purpose method, whatever the
   tool stores.
+- Whether a worklist row may leave **columns empty that a skipped step uses**: on a tip-change row
+  (ADR 0007, amended 2026-10-26) the If step runs Unload Tips and Load Tips, and the Else step,
+  Transfer From File, is skipped; its columns (file name, technique, liquid type) are empty on that
+  row. To test: a stage worklist with such a row, run through validation and simulation. If
+  Biomek objects, those rows need harmless placeholder values.
 - Whether a **reservoir's** per-trough starting volumes can come from variables in Show Well
   Properties, as plate wells can (test 8).
 - Whether **8 probes can draw from one reservoir trough** at the same time in Transfer From File.
