@@ -30,6 +30,14 @@ Three places to keep a saved plan were considered:
   version number, starting at 1. A later version of the tools that changes the file's contents
   raises the version and can still recognize older files; a file with a version the tools don't
   know is refused with a message saying why, e.g. that a newer version of the tool saved it.
+- **The format version isn't the tools' version** (Andy, 2026-10-26). The tools' version (v0.2.0,
+  v0.3.0 …) changes with every release, whatever changed; the format version changes only when
+  what a plan file holds changes. Kept apart, "can this file be opened?" is just "is its format
+  version one the tools know?", with no table of which tool versions wrote which format. (This is
+  usual practice, often called a format or schema version.)
+- **The file also records which tool and version saved it** (e.g. "transfer designer v0.2.0"),
+  for information only, such as finding where a troublesome file came from. It never decides
+  whether a file opens.
 - **Opening a file checks everything in it** through the same rules as the user's own edits
   (component names and colors, stage settings, transfers, wells on the deck, starting contents,
   tip types, labels), and says what's wrong and where if anything is (CLAUDE.md, "Validate
