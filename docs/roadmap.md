@@ -73,9 +73,12 @@ Last updated: 2026-10-26
   `src/tools/transfer-designer/transfer-designer.md`): the plan and every edit to it, from the
   preview. Tip changes are entries in the plan, not operations. The "stage order" includes stages
   without transfers; ADR 0008's run order is still only the stages with transfers. New glossary terms: stage order,
-  tip group. Not built yet. *Fixed 2026-10-26* (found by Claude Code before building): giving a
-  stage its first transfer re-points every stage without transfers at its neighbour, so the stage
-  order never changes.
+  tip group.
+- **Decided: the plan keeps its stage order in a list** (ADR 0011, 2026-10-26), `stageOrder`,
+  replacing `plannedBefore`, whose notes for stages without transfers needed a new rule each time a
+  bug was found (three on 2026-10-26). The operation list's blocks follow the list. Specifications
+  changed: `transfer-designer.md` and `plan-file.md` (a file holds its stages in stage order). The
+  `transfer-designer` code is changed to match next.
 - **`plan-file` specification written** (Draft, 2026-10-26;
   `src/tools/transfer-designer/plan-file.md`): what a plan file holds (format version 1), and the
   checks on opening one, in order. Stage IDs are renumbered on opening. Not built yet.

@@ -3,7 +3,9 @@
 Date: 2026-10-23
 
 ## Status
-Accepted (Andy, 2026-10-23).
+Accepted (Andy, 2026-10-23). Amended by ADR 0011 (2026-10-26): the plan also keeps the order of
+its stages in a list, which the operation list's blocks follow, so stages without transfers have a
+place too.
 
 ## Context
 A stage is a group of operations that share one set of settings and run as one Transfer From File
