@@ -63,7 +63,7 @@ const PLAN_PARTS = [
   "startingContents",
   "operationList",
   "stageList",
-  "plannedBefore",
+  "stageOrder",
   "tipChanges",
   "labwareLabels",
 ];
@@ -221,8 +221,14 @@ describe("transfer-designer", () => {
     assert.deepEqual(plan.components, []);
     assert.deepEqual(plan.startingContents, []);
     assert.deepEqual(plan.operationList.listOperations(), []);
-    assert.deepEqual(plan.plannedBefore, {});
+    assert.deepEqual(plan.stageOrder, [stageId]);
     assert.deepEqual(plan.labwareLabels, {});
+  });
+
+  test("stageOrder(plan) gives the plan's stageOrder", () => {
+    const plan = addStage(planWithStages(2), "2").plan;
+    assert.equal(stageOrder(plan), plan.stageOrder);
+    assert.deepEqual(stageOrder(plan), ["1", "3", "2"]);
   });
 
   test("probesFor gives [1] for 1 and all eight for 8", () => {
@@ -284,61 +290,12 @@ describe("transfer-designer", () => {
 
   // --- Stages and stage order ---
 
-  test("stages with transfers are in operation-list order", () => {
-    // Stage 2 is added before stage 1, so the run order differs from the order they were added.
+  test("a stage added before the first, given its first transfer, runs first (2, 1)", () => {
     let plan = withTransfersIn(planWithStages(1), ["1"]);
     plan = addStage(plan, "1").plan;
     plan = addTransfer(plan, transferTo("2", "B1"));
     assert.deepEqual(stagesOfTransfers(plan), ["2", "1"]);
     assert.deepEqual(stageOrder(plan), ["2", "1"]);
-  });
-
-  test("a stage without transfers is just before its planned stage, or last for null, no entry, or a stage that's gone", () => {
-    const plan = withTransfersIn(planWithStages(6), ["1", "2"]);
-    assert.deepEqual(
-      stageOrder({ ...plan, plannedBefore: { 3: "2", 4: null, 6: "99" } }),
-      // Stage 5 has no entry: last, like 4 (null) and 6 (a stage that's gone), in the order added.
-      ["1", "3", "2", "4", "5", "6"],
-    );
-  });
-
-  test("a stage planned before a stage without transfers goes just before that one", () => {
-    const plan = withTransfersIn(planWithStages(4), ["1", "2"]);
-    assert.deepEqual(stageOrder({ ...plan, plannedBefore: { 3: "2", 4: "3" } }), [
-      "1",
-      "4",
-      "3",
-      "2",
-    ]);
-  });
-
-  test("stages planned before each other in a circle go at the very end, in the order added", () => {
-    const plan = withTransfersIn(planWithStages(5), ["1"]);
-    assert.deepEqual(stageOrder({ ...plan, plannedBefore: { 2: "3", 3: "2", 4: null, 5: "1" } }), [
-      "5",
-      "1",
-      "4",
-      "2",
-      "3",
-    ]);
-  });
-
-  test("two stages planned before the same stage: the one added later is closer to it (1, 3, 5, 2)", () => {
-    let plan = withTransfersIn(planWithStages(2), ["1", "2"]);
-    plan = addStage(plan, "2").plan; // stage 3
-    plan = removeStage(addStage(plan, null).plan, "4");
-    plan = addStage(plan, "2").plan; // stage 5
-    assert.deepEqual(stageOrder(plan), ["1", "3", "5", "2"]);
-  });
-
-  test("two stages planned last: the one added later is last (1, 2, 3, 5)", () => {
-    const plan = removeStage(withTransfersIn(planWithStages(5), ["1", "2"]), "4");
-    assert.deepEqual(stageOrder({ ...plan, plannedBefore: { 3: null, 5: null } }), [
-      "1",
-      "2",
-      "3",
-      "5",
-    ]);
   });
 
   test("addStage before a stage puts it there; with null, last; it's called NEW_STAGE_NAME", () => {
@@ -408,14 +365,13 @@ describe("transfer-designer", () => {
     });
   });
 
-  test("removeStage removes a stage and its transfers; stages planned before it go before the stage after it; its tip change goes", () => {
+  test("removeStage removes a stage and its transfers, takes it out of the stage order leaving the others in their order, and its tip change goes", () => {
     let plan = withTransfersIn(planWithStages(3), ["1", "2", "3"]);
     plan = addTipChange(plan, "2");
     const { plan: withFour, id: four } = addStage(plan, "2");
     const removed = removeStage(withFour, "2");
     assert.equal(removed.stageList.has("2"), false);
     assert.deepEqual(stagesOfTransfers(removed), ["1", "3"]);
-    assert.deepEqual(removed.plannedBefore, { [four]: "3" });
     assert.deepEqual(stageOrder(removed), ["1", four, "3"]);
     assert.equal(tipChangeAt(removed, "2"), null);
   });
@@ -486,12 +442,18 @@ describe("transfer-designer", () => {
 
   // --- Transfers ---
 
-  test("a stage's first transfer goes before the next stage with transfers; later ones after its others; its plannedBefore entry goes", () => {
+  test("a stage's first transfer goes before the next stage with transfers, or last; later ones after its others", () => {
     let plan = withTransfersIn(planWithStages(2), ["1", "2"]);
     const { plan: withThree, id } = addStage(plan, "2");
     plan = addTransfer(withThree, transferTo(id, "B1"));
     assert.deepEqual(stagesOfTransfers(plan), ["1", id, "2"]);
-    assert.equal(Object.hasOwn(plan.plannedBefore, id), false);
+    const { plan: withFour, id: last } = addStage(plan, null);
+    assert.deepEqual(stagesOfTransfers(addTransfer(withFour, transferTo(last, "B3"))), [
+      "1",
+      id,
+      "2",
+      last,
+    ]);
     plan = addTransfer(plan, transferTo(id, "B2"));
     assert.deepEqual(stagesOfTransfers(plan), ["1", id, id, "2"]);
   });
@@ -957,17 +919,17 @@ describe("transfer-designer", () => {
 
   // Each edit, made on a plan with something in every part, and the parts it may change.
   const EDITS = [
-    ["addStage", (plan) => addStage(plan, "2").plan, ["stageList", "plannedBefore"]],
+    ["addStage", (plan) => addStage(plan, "2").plan, ["stageList", "stageOrder"]],
     ["renameStage", (plan) => renameStage(plan, "1", "Seeding"), ["stageList"]],
     [
       "changeStageSettings",
       (plan) => changeStageSettings(plan, "1", { ...defaultSettings(), probes: [1] }),
       ["stageList"],
     ],
-    ["removeStage", (plan) => removeStage(plan, "3"), ["operationList", "stageList", "plannedBefore", "tipChanges"]],
+    ["removeStage", (plan) => removeStage(plan, "3"), ["operationList", "stageList", "stageOrder", "tipChanges"]],
     ["addTransfer", (plan) => addTransfer(plan, transferTo("1", "C1")), ["operationList"]],
     ["changeVolume", (plan) => changeVolume(plan, 0, 25), ["operationList"]],
-    ["removeTransfer", (plan) => removeTransfer(plan, 0), ["operationList", "plannedBefore"]],
+    ["removeTransfer", (plan) => removeTransfer(plan, 0), ["operationList"]],
     ["addTipChange", (plan) => addTipChange(plan, "3"), ["tipChanges"]],
     ["setTipType", (plan) => setTipType(plan, "2", TIP_TYPES.at(-1)), ["tipChanges"]],
     ["removeTipChange", (plan) => removeTipChange(plan, "2"), ["tipChanges"]],
@@ -1007,6 +969,39 @@ describe("transfer-designer", () => {
       for (const part of PLAN_PARTS.filter((candidate) => !changedParts.includes(candidate))) {
         assert.equal(edited[part], plan[part], `${name}: ${part}`);
       }
+    }
+  });
+
+  // More edits that move stages or blocks, beyond EDITS: each made on fullPlan(), in which stage 1
+  // has one transfer, stage 2 has one, and stage 3 has none.
+  const ORDER_EDITS = [
+    ["addStage, last", (plan) => addStage(plan, null).plan],
+    ["addStage before the first, taking tips", (plan) => addStage(plan, "1", { takeTips: true }).plan],
+    ["addTransfer, a stage's first", (plan) => addTransfer(plan, transferTo("3", "C2"))],
+    [
+      "addTransfer, the first of a stage added in the middle",
+      (plan) => {
+        const { plan: added, id } = addStage(plan, "2");
+        return addTransfer(added, transferTo(id, "C3"));
+      },
+    ],
+    ["addTransfers", (plan) => addTransfers(plan, [transferTo("3", "C4"), transferTo("1", "C5")])],
+    ["removeStage, with transfers", (plan) => removeStage(plan, "2")],
+  ];
+
+  test("after every kind of edit, the stage order holds every stage once, and the operation list's blocks follow it", () => {
+    for (const [name, edit] of [...EDITS, ...ORDER_EDITS]) {
+      const edited = edit(fullPlan());
+      const order = stageOrder(edited);
+      const stages = edited.stageList.listStages().map((stage) => stage.id);
+      assert.deepEqual([...order].sort(), [...stages].sort(), `${name}: every stage`);
+      assert.equal(new Set(order).size, order.length, `${name}: each once`);
+      const blocks = edited.operationList.groupByStage().map((group) => group.stage);
+      assert.deepEqual(
+        blocks,
+        order.filter((id) => blocks.includes(id)),
+        `${name}: blocks in stage order`,
+      );
     }
   });
 

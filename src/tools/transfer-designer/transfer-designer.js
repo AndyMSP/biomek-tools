@@ -1,8 +1,8 @@
 // transfer-designer.js — the transfer designer's rules: what a plan is, and every edit that can be
 // made to one, each checked so that a plan is always valid.
 //
-// A plan holds the components, the starting contents, the operation list, the stage list, where
-// each stage without transfers is planned to go, the tip changes and the labware labels. It is never
+// A plan holds the components, the starting contents, the operation list, the stage list, the
+// stage order (a list of stage IDs; ADR 0011), the tip changes and the labware labels. It is never
 // changed after it's made: every edit returns a new plan that shares every part the edit didn't
 // change, so the plan history can keep many plans cheaply. The page shows a plan and passes on what
 // the user does; every rule about what that means lives here, so it can be tested in Node.
@@ -43,7 +43,7 @@ export function emptyPlan() {
     startingContents: [],
     operationList: new OperationList(),
     stageList,
-    plannedBefore: {},
+    stageOrder: [id],
     tipChanges: { [START]: { tipType: TIP_TYPES[0] } },
     labwareLabels: {},
   });
@@ -111,45 +111,11 @@ export function modeOf(end, settings) {
 
 // --- Stages ---
 
-// The stage IDs in stage order (docs/glossary.md, "Stage order"), e.g. ["1", "3", "5", "2"].
-// The stages with transfers come in the operation list's order. Each stage without transfers goes
-// just before the stage its plannedBefore entry names, or last for null, no entry, or a stage
-// that's gone. Several planned before the same stage (or last) go in the order they were added, so
-// the one added later is closer to it. Stages that can't be placed this way (planned before each
-// other in a circle) go at the very end, in the order they were added.
+// The stage IDs in stage order (docs/glossary.md, "Stage order"), with or without transfers,
+// e.g. ["1", "3", "5", "2"]. The plan keeps them as its own list, the one source of truth for the
+// order of stages (ADR 0011), so this just returns it.
 export function stageOrder(plan) {
-  const addedOrder = plan.stageList.listStages().map((stage) => stage.id);
-  const runOrder = plan.operationList.groupByStage().map((group) => group.stage);
-  const withTransfers = new Set(runOrder);
-
-  // For each place (a stage ID, or null for last), the stages without transfers planned just
-  // before it, in the order they were added.
-  const plannedAt = new Map();
-  for (const id of addedOrder) {
-    if (!withTransfers.has(id)) {
-      const place = plannedPlace(plan, id);
-      plannedAt.set(place, [...(plannedAt.get(place) ?? []), id]);
-    }
-  }
-
-  const order = [];
-  // Puts the stages planned before `place` into `order`, each preceded by those planned before it.
-  // It never loops forever: a stage reached from a stage with transfers (or from "last") can't be
-  // part of a circle, because each stage is planned before only one place.
-  function placeStagesBefore(place) {
-    for (const id of plannedAt.get(place) ?? []) {
-      placeStagesBefore(id);
-      order.push(id);
-    }
-  }
-  for (const id of runOrder) {
-    placeStagesBefore(id);
-    order.push(id);
-  }
-  placeStagesBefore(null);
-
-  const placed = new Set(order);
-  return [...order, ...addedOrder.filter((id) => !placed.has(id))];
+  return plan.stageOrder;
 }
 
 // Returns { plan, id }: the plan with a new stage, called NEW_STAGE_NAME, just before stage
@@ -162,7 +128,7 @@ export function addStage(plan, beforeId, { takeTips = false } = {}) {
   if (beforeId !== null && !plan.stageList.has(beforeId)) {
     throw new Error(`There's no stage ${describeValue(beforeId)} to add a stage before.`);
   }
-  const order = stageOrder(plan);
+  const order = plan.stageOrder;
   const newPlace = beforeId === null ? order.length : order.indexOf(beforeId);
   // order[-1] is undefined, so a stage added before the first copies the first stage.
   const copiedFrom = order[newPlace - 1] ?? order[0];
@@ -175,7 +141,7 @@ export function addStage(plan, beforeId, { takeTips = false } = {}) {
   }
   const added = withParts(plan, {
     stageList,
-    plannedBefore: withKey(plan.plannedBefore, id, beforeId),
+    stageOrder: [...order.slice(0, newPlace), id, ...order.slice(newPlace)],
     tipChanges,
   });
   return { plan: withStartTipsFirst(added), id };
@@ -196,8 +162,8 @@ export function canRemoveStage(plan, id) {
   return plan.stageList.has(id) && plan.stageList.listStages().length > 1;
 }
 
-// Returns the plan without stage `id`, its transfers, or a tip change before it. Stages planned to go
-// before it now go before the stage that followed it. Throws if canRemoveStage is false.
+// Returns the plan without stage `id`, its transfers, or a tip change before it. It's taken out of
+// the stage order, which keeps the other stages in their order. Throws if canRemoveStage is false.
 export function removeStage(plan, id) {
   if (!plan.stageList.has(id)) {
     // get() throws the stage list's own message for a stage that isn't there.
@@ -206,8 +172,6 @@ export function removeStage(plan, id) {
   if (!canRemoveStage(plan, id)) {
     throw new Error("A plan needs at least one stage, so its only stage can't be removed.");
   }
-  const follower = stageAfter(stageOrder(plan), id);
-
   // Removing from the last transfer back keeps the positions of the ones still to remove.
   let operationList = plan.operationList;
   const positions = positionsInStage(plan, id);
@@ -215,15 +179,10 @@ export function removeStage(plan, id) {
     operationList = operationList.remove(position);
   }
 
-  const plannedBefore = Object.fromEntries(
-    Object.entries(plan.plannedBefore)
-      .filter(([stage]) => stage !== id)
-      .map(([stage, place]) => [stage, place === id ? follower : place]),
-  );
   const removed = withParts(plan, {
     operationList,
     stageList: plan.stageList.remove(id),
-    plannedBefore,
+    stageOrder: plan.stageOrder.filter((stage) => stage !== id),
     tipChanges: withoutKey(plan.tipChanges, id),
   });
   return withStartTipsFirst(removed);
@@ -290,17 +249,9 @@ export function changeVolume(plan, position, volume) {
 }
 
 // Returns the plan without the transfer at `position` (counting from 0). The operation list checks
-// the position. If it was its stage's last transfer, the stage is planned before the stage that
-// followed it, so it keeps its place.
+// the position. The stage order doesn't change, even if it was its stage's last transfer.
 export function removeTransfer(plan, position) {
-  const operationList = plan.operationList.remove(position);
-  const stage = plan.operationList.listOperations()[position].stage;
-  const removed = withParts(plan, { operationList });
-  if (positionsInStage(removed, stage).length > 0) {
-    return removed;
-  }
-  const follower = stageAfter(stageOrder(plan), stage);
-  return withParts(removed, { plannedBefore: withKey(plan.plannedBefore, stage, follower) });
+  return withParts(plan, { operationList: plan.operationList.remove(position) });
 }
 
 // Stage `id`'s transfers, in order, each with its position in the operation list added,
@@ -555,22 +506,6 @@ export function setLabel(plan, name, label) {
 
 // --- Helpers used only inside this module ---
 
-// Where stage `id` is planned to go: the stage its plannedBefore entry names, or null (last) for
-// null, no entry, or a stage that's no longer in the plan.
-function plannedPlace(plan, id) {
-  if (!Object.hasOwn(plan.plannedBefore, id)) {
-    return null;
-  }
-  const place = plan.plannedBefore[id];
-  return plan.stageList.has(place) ? place : null;
-}
-
-// The stage just after `id` in `order` (a stage order), or null if it's last,
-// e.g. stageAfter(["1", "3", "2"], "3") → "2".
-function stageAfter(order, id) {
-  return order[order.indexOf(id) + 1] ?? null;
-}
-
 // The positions in the operation list of stage `id`'s transfers, in order, e.g. [3, 4, 5].
 function positionsInStage(plan, id) {
   const positions = [];
@@ -582,27 +517,20 @@ function positionsInStage(plan, id) {
   return positions;
 }
 
-// Returns the plan with `transfer`, the first in its stage (already checked), placed so the stage
-// order doesn't change: just before the next stage in the stage order that has transfers, or last.
-// Every stage without transfers is then planned just before the stage that came right after it in
-// the stage order, so none can move (transfer-designer.md, section 3, "Transfers").
+// Returns the plan with `transfer`, the first in its stage (already checked), placed just before the
+// next stage in the stage order that has transfers, or last, so the operation list's blocks stay in
+// the stage order (transfer-designer.md, section 3, "Transfers").
 function withFirstTransfer(plan, transfer) {
-  const order = stageOrder(plan);
-  const runOrder = new Set(plan.operationList.groupByStage().map((group) => group.stage));
+  const order = plan.stageOrder;
+  const withTransfers = new Set(plan.operationList.groupByStage().map((group) => group.stage));
   const nextWithTransfers = order
     .slice(order.indexOf(transfer.stage) + 1)
-    .find((id) => runOrder.has(id));
+    .find((id) => withTransfers.has(id));
   const operationList =
     nextWithTransfers === undefined
       ? plan.operationList.add(transfer)
       : plan.operationList.insertBeforeStage(transfer, nextWithTransfers);
-
-  const plannedBefore = Object.fromEntries(
-    order
-      .filter((id) => id !== transfer.stage && !runOrder.has(id))
-      .map((id) => [id, stageAfter(order, id)]),
-  );
-  return withParts(plan, { operationList, plannedBefore });
+  return withParts(plan, { operationList });
 }
 
 // Returns the plan with a tip change before the first stage in the stage order, if there is one,
