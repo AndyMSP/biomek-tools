@@ -102,6 +102,10 @@ Last updated: 2026-10-26
   order, tip groups and overdraws. Its configuration is built too: `config/pipetting-modes.js` (four
   stand-in modes; default Medium) and `config/tip-types.js` (BC230, BC1070), which its tests check
   (ADR 0009). `config/techniques.js` and `config/liquid-types.js` are removed.
+- **The `plan-file` module is built** (code and tests), against its Draft specification
+  (`src/tools/transfer-designer/plan-file.md`): `planToText` and `planFromText`, with every check
+  on opening in the specification's order. It builds the opened plan through the transfer
+  designer's own edits, so a file is checked by the same rules as editing.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
