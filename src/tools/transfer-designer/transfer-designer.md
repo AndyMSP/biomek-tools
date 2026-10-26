@@ -2,8 +2,7 @@
 
 > **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview, where these rules
 > were tried with Andy (2026-10-24 to 2026-10-26). Still to review: the wording of the messages, and
-> whether any rule here belongs in a shared module instead. Still to decide: whether two labware may
-> share a label.
+> whether any rule here belongs in a shared module instead.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -82,6 +81,7 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   are the `START` ones.
 - **`labwareLabels`**: the label the user gave each labware (`docs/glossary.md`, "Labware label"),
   by the labware's name in the deck description. A labware without one is labelled by that name.
+  No two labware have the same label.
 
 ### Stage order
 The **stage order** is the order of all the plan's stages: the order a tool shows them in, and the
@@ -170,6 +170,9 @@ overdraw** if any of its transfers is one (but see "Not in version 1").
   order.
 - A labware's label is text; spaces at the ends are removed, and a blank label, or one equal to the
   labware's name, goes back to the name.
+- **No two labware have the same label** (Andy, 2026-10-26), so the page never shows two labware by
+  one name. A labware without a label counts as labelled by its name, so a plate can't be
+  labelled "Deep" while another labware called Deep has no label.
 
 ### Configuration
 Two files in `config/` (ADR 0009), which this module's tests check:
@@ -258,7 +261,7 @@ with that name.
 |---|---|
 | `labwareUsed(plan)` | the names of the labware the plan uses, in the deck's order. |
 | `labelOf(plan, name)` | the labware's label, or its name if it has none. |
-| `setLabel(plan, name, label)` | the plan with the labware labelled `label` (section 3). Throws if the labware isn't on the deck, or the label isn't text. |
+| `setLabel(plan, name, label)` | the plan with the labware labelled `label` (section 3). Throws if the labware isn't on the deck, the label isn't text, or another labware has that label. |
 
 ## 5. Errors
 Each message says what's wrong and how to fix it, in the plan's own terms. A failed edit changes
@@ -286,6 +289,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | A color is used by another component | `Drug_A already has that color. Choose a different one.` |
 | `addToWells`: volume not a number above 0 | `The volume to add must be a number of microliters above 0, like 100, but got 0.` |
 | `setLabel`: label isn't text | `A label must be text, like "Assay plate", but got 5.` |
+| `setLabel`: another labware has that label | `Deep already has the label "Drug plate". Choose a different one.` |
 
 **Order of checks.** The first problem found is reported:
 - `addTransfer`: the operation list's checks of the transfer (its form, then the stage rule), then
@@ -298,7 +302,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 - `renameComponent`: the component exists, then the new name.
 - `setComponentColor`: the component exists, then the color.
 - `addToWells`: the component exists, then the volume, then each well in turn.
-- `setLabel`: the labware, then the label.
+- `setLabel`: the labware, then the label is text, then (after trimming) no other labware has it.
 
 ## 6. Test cases
 Each becomes at least one unit test in `transfer-designer.test.js`, inside
@@ -377,6 +381,8 @@ order of checks.
 - `labwareUsed` lists starting contents' and transfers' labware in deck order.
 - `setLabel` trims; a blank label, or the labware's own name, removes it; a label that isn't text,
   or labware not on the deck, throws; `labelOf` falls back to the name.
+- `setLabel` refuses a label another labware has (also with spaces at the ends), and the name of
+  another labware without a label; giving a labware the label it already has changes nothing.
 
 **Immutability and sharing**
 - Every edit leaves the plan it was given unchanged.
