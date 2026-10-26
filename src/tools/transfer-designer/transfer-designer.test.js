@@ -49,6 +49,7 @@ import {
   labwareUsed,
   labelOf,
   setLabel,
+  setLabels,
 } from "./transfer-designer.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
@@ -915,6 +916,91 @@ describe("transfer-designer", () => {
     assert.equal(setLabel(unlabelled, PLATE, ""), unlabelled);
   });
 
+  test("setLabels sets the whole table, judged as a whole", () => {
+    const plan = planWithStages(1);
+    // PLATE shows OTHER_PLATE's name, which is free because OTHER_PLATE has its own label; given in
+    // that order, one label at a time would refuse it.
+    const labels = { [PLATE]: OTHER_PLATE, [OTHER_PLATE]: "D1" };
+    const labelled = setLabels(plan, labels);
+    assert.deepEqual(labelled.labwareLabels, labels);
+    assert.equal(labelOf(labelled, PLATE), OTHER_PLATE);
+    assert.deepEqual(setLabels(labelled, {}).labwareLabels, {});
+  });
+
+  test("setLabels swaps two labware's labels in one step", () => {
+    const plan = setLabels(planWithStages(1), { [PLATE]: "Cells", [OTHER_PLATE]: "Drugs" });
+    const swapped = setLabels(plan, { [PLATE]: "Drugs", [OTHER_PLATE]: "Cells" });
+    assert.deepEqual(swapped.labwareLabels, { [PLATE]: "Drugs", [OTHER_PLATE]: "Cells" });
+  });
+
+  test("setLabels refuses labels that aren't an object", () => {
+    const plan = planWithStages(1);
+    for (const [labels, got] of [[null, "null"], [[], "a list"], ["Plate", '"Plate"']]) {
+      assert.throws(() => setLabels(plan, labels), {
+        message: `The labels must be an object of labware names and labels, like { Plate: "Assay plate" }, but got ${got}.`,
+      });
+    }
+  });
+
+  test("setLabels refuses labware not on the deck", () => {
+    assert.throws(() => setLabels(planWithStages(1), { Bench: "Spare" }), {
+      message: new RegExp(`^There's no labware "Bench" on the deck\\.`),
+    });
+  });
+
+  test("setLabels refuses a label it would otherwise have to tidy, each with its message", () => {
+    const plan = planWithStages(1);
+    const cases = [
+      [5, `The label for ${PLATE} must be text, like "Assay plate", but got 5.`],
+      ["", `The label for ${PLATE} is blank. A labware without a label is left out of the labels.`],
+      ["  ", `The label for ${PLATE} is blank. A labware without a label is left out of the labels.`],
+      [
+        " Assay plate",
+        `The label for ${PLATE}, " Assay plate", has spaces at the start or end. Remove them.`,
+      ],
+      [PLATE, `The label for ${PLATE} is its own name. A labware without a label is left out of the labels.`],
+    ];
+    for (const [label, message] of cases) {
+      assert.throws(() => setLabels(plan, { [PLATE]: label }), { message });
+    }
+  });
+
+  test("setLabels refuses two labware that would show one label, naming the pair in deck order", () => {
+    const plan = planWithStages(1);
+    // OTHER_PLATE has no label in the new table, so it shows its own name.
+    assert.throws(() => setLabels(plan, { [PLATE]: OTHER_PLATE }), {
+      message: `${PLATE} and ${OTHER_PLATE} would both show as "${OTHER_PLATE}". Give each labware a different label.`,
+    });
+    assert.throws(() => setLabels(plan, { [OTHER_PLATE]: "Drug plate", [PLATE]: "Drug plate" }), {
+      message: `${PLATE} and ${OTHER_PLATE} would both show as "Drug plate". Give each labware a different label.`,
+    });
+  });
+
+  test("setLabels checks in order: the object, then each entry's labware then label, then the table", () => {
+    const plan = planWithStages(1);
+    // The first entry's label is wrong and the second's labware isn't on the deck: the first entry
+    // is reported.
+    assert.throws(() => setLabels(plan, { [PLATE]: 5, Bench: "Spare" }), {
+      message: new RegExp(`^The label for ${PLATE} must be text`),
+    });
+    // The labware is checked before its label.
+    assert.throws(() => setLabels(plan, { Bench: 5 }), {
+      message: new RegExp(`^There's no labware "Bench" on the deck\\.`),
+    });
+    // A shared label is reported only once every entry passes: here the second entry's label is
+    // wrong, though the first already shares a label.
+    assert.throws(() => setLabels(plan, { [PLATE]: OTHER_PLATE, [RESERVOIR]: "" }), {
+      message: new RegExp(`^The label for ${RESERVOIR} is blank\\.`),
+    });
+  });
+
+  test("a refused label table leaves the plan unchanged", () => {
+    const plan = setLabels(planWithStages(1), { [PLATE]: "Assay plate" });
+    const before = snapshot(plan);
+    assert.throws(() => setLabels(plan, { [PLATE]: OTHER_PLATE }));
+    assert.equal(snapshot(plan), before);
+  });
+
   // --- Immutability and sharing ---
 
   // Each edit, made on a plan with something in every part, and the parts it may change.
@@ -940,6 +1026,7 @@ describe("transfer-designer", () => {
     ["addToWells", (plan) => addToWells(plan, [trough("5")], "Media", 10), ["startingContents"]],
     ["emptyWells", (plan) => emptyWells(plan, [trough("2")]), ["startingContents"]],
     ["setLabel", (plan) => setLabel(plan, PLATE, "Cells"), ["labwareLabels"]],
+    ["setLabels", (plan) => setLabels(plan, { [PLATE]: "Cells" }), ["labwareLabels"]],
   ];
 
   // A plan with something in every part: components and starting contents, stages 1 and 2 with

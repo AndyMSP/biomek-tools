@@ -85,7 +85,7 @@ Last updated: 2026-10-26
   checks on opening one, in order. Stage IDs are renumbered on opening. Not built yet. *Tightened
   2026-10-26* (found by Claude Code before building): starting contents with a 0 volume or a well
   holding nothing are refused, and labels are checked as a whole table with the transfer designer's
-  new `setLabels`, so a file with swapped labels opens.
+  new `setLabels`, so a file with swapped labels opens. *`setLabels` is built* (code and tests).
 - **Transfer designer page specification written** (Draft, 2026-10-26;
   `src/tools/transfer-designer/transfer-designer-page.md`), from the preview: the whole screen, its
   messages, and two new config files (`component-colors.js`, `default-volumes.js`). Display rules
