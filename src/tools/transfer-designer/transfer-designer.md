@@ -1,8 +1,8 @@
 # transfer-designer — specification
 
 > **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview, where these rules
-> were tried with Andy (2026-10-24 to 2026-10-26). Still to review: the wording of the messages, and
-> whether any rule here belongs in a shared module instead.
+> were tried with Andy (2026-10-24 to 2026-10-26). Still to review: whether any rule here belongs in
+> a shared module instead. It becomes Final once its code is built and Andy has tested the page.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
