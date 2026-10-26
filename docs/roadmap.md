@@ -51,6 +51,9 @@ Last updated: 2026-10-26
 - **ADR 0007 amended (2026-10-26):** a stage may mix labware types, and the file writer splits it
   into substages, one stage-worklist row each; tip changes are stage-worklist rows of their own,
   chosen by one If step (Then: change tips; Else: Transfer From File).
+- **`stage-list` specification revised (2026-10-26):** a stage has five settings; `tipType` and
+  `changeTipsFirst` are gone, since tips are the plan's tip changes. The code and tests still have
+  seven settings until they're changed to match.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
