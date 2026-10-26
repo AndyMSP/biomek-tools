@@ -52,8 +52,9 @@ Last updated: 2026-10-26
   into substages, one stage-worklist row each; tip changes are stage-worklist rows of their own,
   chosen by one If step (Then: change tips; Else: Transfer From File).
 - **`stage-list` specification revised (2026-10-26):** a stage has five settings; `tipType` and
-  `changeTipsFirst` are gone, since tips are the plan's tip changes. The code and tests still have
-  seven settings until they're changed to match.
+  `changeTipsFirst` are gone, since tips are the plan's tip changes. The code and tests now match:
+  five settings, and settings still giving `tipType` or `changeTipsFirst` are refused as extra
+  settings.
 - **Decided: plans are saved as files** (ADR 0010): JSON with a format name and version number,
   checked through the same rules as edits when opened; stages are renumbered on opening. The page
   also keeps a browser copy, brought back when it opens. Saving and opening plans is part of the
@@ -239,8 +240,7 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   transfers that take more than their source holds and the wells they affect. See
   `src/shared/contents-tracking/contents-tracking.md`.
 - **`stage-list`** (shared module): the stages of a plan, each with its ID, name and settings
-  (technique and liquid type at the sources and at the destinations, tip type, probes, whether to
-  change tips first); it makes the IDs that transfers name their stage by (ADR 0008). See `src/shared/stage-list/stage-list.md`.
+  (technique and liquid type at the sources and at the destinations, and probes); it makes the IDs that transfers name their stage by (ADR 0008). See `src/shared/stage-list/stage-list.md`.
 - **Project setup**: ES modules, `npm test` (Node's built-in test runner), `npm run repl`,
   `npm run serve`.
 

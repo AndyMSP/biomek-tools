@@ -4,7 +4,8 @@
 // file writer and the page look up a stage's name and settings (ADR 0008). It holds no transfers
 // and knows nothing about the run order: that is the order of the stages' transfers in the
 // operation list, and nowhere else. This list's own order means nothing; stages are looked up by ID.
-// Settings are checked for form only, not against the technique list.
+// Settings are checked for form only, not against config/. Tips aren't stage settings: tip changes
+// are the plan's own entries, between stages.
 // Specification: stage-list.md.
 
 import { describeValue } from "../error-messages/error-messages.js";
@@ -16,22 +17,20 @@ import {
   checkName,
 } from "../input-checks/input-checks.js";
 
-// The seven settings every stage has, in the order of the settings table (stage-list.md, section 3),
+// The five settings every stage has, in the order of the settings table (stage-list.md, section 3),
 // which is also the order they're checked in.
 const SETTING_NAMES = [
   "sourceTechnique",
   "sourceLiquidType",
   "destinationTechnique",
   "destinationLiquidType",
-  "tipType",
   "probes",
-  "changeTipsFirst",
 ];
 
 // The settings as the error messages list them. Kept in one place so the three messages that use it
 // can't drift apart.
 const SETTING_NAMES_TEXT =
-  "sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType, tipType, probes and changeTipsFirst";
+  "sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType and probes";
 
 // The Span-8 has probes 1 to 8, numbered as in Biomek Software. It's a fact about the instrument,
 // not a setting that might change, so it lives here rather than in config/.
@@ -72,7 +71,7 @@ export class StageList {
   }
 
   // Returns a new list in which a copy of `settings` replaces all of stage `id`'s settings; its ID
-  // and name are unchanged, e.g. stages = stages.changeSettings("1", { …, changeTipsFirst: false }).
+  // and name are unchanged, e.g. stages = stages.changeSettings("1", { …, probes: [1, 2] }).
   changeSettings(id, settings) {
     const position = this.#positionOf(id);
     checkSettings(settings);
@@ -139,10 +138,10 @@ export class StageList {
 
 // --- Helpers used only inside this module ---
 
-// Throws if `settings` isn't an object with exactly the seven settings, each in the right form, e.g.
+// Throws if `settings` isn't an object with exactly the five settings, each in the right form, e.g.
 // { sourceTechnique: "Aspirate_Slow", sourceLiquidType: "Cells",
-//   destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells", tipType: "BC230",
-//   probes: [1, 2, 3, 4, 5, 6, 7, 8], changeTipsFirst: true }.
+//   destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells",
+//   probes: [1, 2, 3, 4, 5, 6, 7, 8] }.
 // The checks run in the order of the spec's error table, and the first problem found is reported.
 function checkSettings(settings) {
   if (!isObject(settings)) {
@@ -166,9 +165,7 @@ function checkSettings(settings) {
   checkName(settings.sourceLiquidType, "source liquid type");
   checkName(settings.destinationTechnique, "destination technique");
   checkName(settings.destinationLiquidType, "destination liquid type");
-  checkName(settings.tipType, "tip type");
   checkProbes(settings.probes);
-  checkChangeTipsFirst(settings.changeTipsFirst);
 }
 
 // Throws if `probes` isn't a list of at least one probe number, 1 to 8, each listed once,
@@ -201,29 +198,18 @@ function isProbeNumber(probe) {
   return Number.isInteger(probe) && probe >= 1 && probe <= HIGHEST_PROBE;
 }
 
-// Throws if `changeTipsFirst` isn't true or false, e.g. "yes" and 1 throw.
-function checkChangeTipsFirst(changeTipsFirst) {
-  if (typeof changeTipsFirst !== "boolean") {
-    throw new Error(
-      `Whether to change tips first must be true or false, but got ${describeValue(changeTipsFirst)}.`,
-    );
-  }
-}
-
 // Returns a frozen copy of valid `settings`, with a frozen copy of its probes, sorted from smallest
 // to largest, e.g. probes [3, 1] → [1, 3]. Copying means changing the object given to add() later
 // doesn't change the list; freezing (Object.freeze) means changing what get() returns throws a
-// TypeError. Only the seven settings are copied, by name.
+// TypeError. Only the five settings are copied, by name.
 function copySettings(settings) {
   return Object.freeze({
     sourceTechnique: settings.sourceTechnique,
     sourceLiquidType: settings.sourceLiquidType,
     destinationTechnique: settings.destinationTechnique,
     destinationLiquidType: settings.destinationLiquidType,
-    tipType: settings.tipType,
     // sort() changes the list it's called on, so it sorts a copy. Without (a, b) => a - b it would
     // sort numbers as text, putting 10 before 2.
     probes: Object.freeze([...settings.probes].sort((a, b) => a - b)),
-    changeTipsFirst: settings.changeTipsFirst,
   });
 }
