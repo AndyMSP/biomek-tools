@@ -48,6 +48,9 @@ Last updated: 2026-10-26
   repository). Its decisions are being written into the repository one pull request at a time,
   starting with the glossary: new terms component, labware label, pipetting mode, plan file,
   substage and tip change; plan and stage revised (tips are no longer part of a stage).
+- **ADR 0007 amended (2026-10-26):** a stage may mix labware types, and the file writer splits it
+  into substages, one stage-worklist row each; tip changes are stage-worklist rows of their own,
+  chosen by one If step (Then: change tips; Else: Transfer From File).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -90,17 +93,18 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    building stages on the page can shape the file writer's specification.
 7. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
    Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
-   3 decimal places. It refuses a stage that mixes labware types (all sources one labware
-   type, all destinations one labware type: Biomek requires it, B56358AF 22-13), looking up each
-   labware's type in the deck description. It adds the page's
-   button for writing the files.
+   3 decimal places. It splits each stage into substages, one row each (each Transfer From File
+   file has one source and one destination labware type: Biomek requires it, B56358AF 22-13),
+   looking up each labware's type in the deck description, and writes tip changes as rows of
+   their own (ADR 0007, amended 2026-10-26). It adds the page's button for writing the files.
 8. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
    deck; the tool's own files run in simulation, then one real run with water. Tests to run first
    (see "Not yet known" in `biomek.md`): labware types from variables in Transfer From File (if not,
    one Transfer From File step per combination of labware types, chosen by If steps); per-trough
    starting volumes from the setup file; 8 probes drawing from one trough together; and what
    Biomek does with an unknown liquid type name from `=LiquidType`; and separate technique and
-   liquid type variables in Transfer From File's source and destination configurations.
+   liquid type variables in Transfer From File's source and destination configurations; and empty
+   transfer columns on tip-change rows.
 
 Rough schedule: Friday 1 to 7 if time allows; Saturday the rest; Sunday 8, at the Biomek. Setting up a volume
 variable for every well of the standard deck is slow clicking work, so leave time for it.

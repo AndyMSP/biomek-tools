@@ -34,11 +34,12 @@ well (e.g. `Src_A1`), set up once in Instrument Setup's Show Well Properties.
    run in any order and share one set of settings. Each row names a Transfer From File file and the
    stage's settings: the technique and liquid type at the sources and at the destinations
    (amended 2026-10-23, below), tip type, the probes to use, the probes to load, and whether tips
-   are changed first. If the method takes the source and destination labware types
+   are changed first (amended 2026-10-26: one row per substage, and tip changes are rows of their
+   own, below). If the method takes the source and destination labware types
    from variables (below), the row also gives them; the tool looks them up from the deck
    description, not from the stage (amended 2026-10-23, below).
 
-Inside the stage worklist's loop: an If step (`NewTip=1`) unloads all tips and loads tips on
+Inside the stage worklist's loop (amended 2026-10-26, below): an If step (`NewTip=1`) unloads all tips and loads tips on
 `=LoadProbes` of `=TipType`; then one Transfer From File step runs `=TransferFile` with
 `=Probes`, `=LiquidType` and `=Technique` (amended 2026-10-23: one technique and one liquid type
 for each end, below). Its tip type, in the box next to Load, is also
@@ -78,7 +79,38 @@ grid; and its labware type), and looked up from there. A stage can then never di
 labware its transfers use. Transfer From File still needs all of a step's sources to be one labware
 type, and all its destinations one labware type (B56358AF, 22-13), so the file writer refuses a
 stage whose sources, or whose destinations, aren't all one labware type, using the labware its
-transfers name.
+transfers name. (Amended 2026-10-26, below: it splits such a stage instead of refusing it.)
+
+**Amended 2026-10-26 (Andy): a stage may mix labware types; the file writer splits it into
+substages.** Refusing a stage that mixes labware types made the user build stages around a Biomek
+limit that has nothing to do with what the stage means. Instead, the file writer splits each stage
+into **substages** (`docs/glossary.md`): the stage's transfers that share one source labware type
+and one destination labware type, each type looked up in the deck description. Each substage is
+one row of the stage worklist, running one Transfer From File file, with the stage's settings. A
+stage's substages are consecutive rows, in any order among themselves, since order within a stage
+isn't fixed anyway. A stage with one labware type at each end is one substage, so one row, as
+before.
+
+**Amended 2026-10-26 (Andy): tip changes are rows of their own.** As first written, each stage row
+carried a tip type and whether tips are changed first, and an If step (`NewTip=1`) changed tips
+before that row's Transfer From File. But a tip change is its own event in the run: it unloads and
+loads tips and moves no liquid. It belongs between stages, not to one, and a stage's tip type could
+disagree with the tips already on the probes. So the stage worklist has two kinds of row, and a
+column saying which:
+- a **tip-change row** (`docs/glossary.md`, "Tip change"): unload all tips, then load tips of its
+  tip type on its probes to load;
+- a **transfer row**: one substage's Transfer From File file and settings.
+
+Inside the loop, one If step tests that column. Then: Unload Tips and Load Tips (`=TipType`,
+`=LoadProbes`). Else: Transfer From File, as before. Transfer From File still needs to know which
+tips are on (`biomek.md`), so transfer rows also carry the tip type, which the file writer takes
+from the latest tip change before them. The run always starts with a tip-change row. Tips are still
+loaded by looking ahead: a tip-change row loads tips on the largest set of probes any stage needs
+until the next tip change. An If step with Then and Else substeps is documented (B56358AF, 25-6 to
+25-8), and an If step testing a worklist column works (`NewTip=1`, `biomek.md`, "Worklist-driven
+steps"). Whether Biomek objects to the empty transfer columns on a tip-change row isn't known yet
+(`biomek.md`, "Not yet known"); if it does, those rows get harmless placeholder values. The column
+names, and the If step's exact condition, are set in the file writer's specification.
 
 ## Consequences
 - Each experiment is a few generated files; the method itself never changes.
@@ -86,7 +118,9 @@ transfers name.
 - Liquid types can't be set on wells in Instrument Setup, only per stage in Transfer From File.
 - A stage is the unit for settings: transfers that differ in liquid type or technique, at either
   end, or in tip type or probes go in different stages, and so do transfers whose source or destination labware types
-  differ (taken from the deck description; amended 2026-10-23). Within a stage, Transfer
+  differ (taken from the deck description; amended 2026-10-23). (Amended 2026-10-26: labware types
+  no longer separate stages, since the file writer splits a stage into substages, and tip type
+  belongs to tip changes, not stages.) Within a stage, Transfer
   From File chooses the order, so a well that is filled and then drawn from must have those
   transfers in different stages.
 - A Transfer From File step has one source labware type and one destination labware type
@@ -97,5 +131,8 @@ transfers name.
   tested.
 - Replacing only some tips (e.g. one contaminated probe) isn't possible; tips are always all
   unloaded. An `UnloadProbes` column could add this later.
+- (Amended 2026-10-26.) The user decides where tips change, between any two stages, and with what
+  tip type; stages no longer carry tip settings. One stage can take several stage-worklist rows,
+  one per substage.
 - Speed was measured on the real instrument (test 22, `biomek.md`). Whether a real run, unlike
   simulation, catches a technique unsuited to the tip is still to be checked.
