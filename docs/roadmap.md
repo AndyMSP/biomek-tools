@@ -90,6 +90,11 @@ Last updated: 2026-10-26
   (`src/tools/transfer-designer/plan-history.md`): the transfer designer's undo and redo, immutable
   like the operation list, keeping at most `UNDO_STATES_KEPT` (1,000) earlier states from
   `config/undo.js`. Its tests also check `config/undo.js` (ADR 0009).
+- **The `transfer-designer` module is built** (code and tests), against its Draft specification
+  (`src/tools/transfer-designer/transfer-designer.md`): the plan and every edit to it, the stage
+  order, tip groups and overdraws. Its configuration is built too: `config/pipetting-modes.js` (four
+  stand-in modes; default Medium) and `config/tip-types.js` (BC230, BC1070), which its tests check
+  (ADR 0009). `config/techniques.js` and `config/liquid-types.js` are removed.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
