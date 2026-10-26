@@ -37,7 +37,7 @@ They are constants in the module, not in `config/`: changing either one means ch
 read and written, which is a change to the code.
 
 ### What a plan file holds (version 1)
-One JSON object, with exactly these properties, in this order:
+A plan file is written as one JSON object with these properties, in this order:
 
 ```json
 {
@@ -84,20 +84,23 @@ Opening a file checks, in this order:
 4. **The properties**: exactly those listed above, none missing (except `savedBy`) and none extra.
    `components`, `startingContents`, `stages` and `operations` are lists; `plannedBefore`,
    `tipChanges` and `labwareLabels` are objects.
-5. **Components**, each added as `addComponent` would add it: a name and a color, each unique. Each
-   must be an object with exactly `name` and `color`.
+5. **Components**, each an object with exactly `name` and `color`, then added as `addComponent`
+   would add it: a name and a color, each unique. The name must already be a name (`checkName`): it
+   isn't trimmed, so it always matches the names in the starting contents.
 6. **Stages**: at least one. Each is an object with exactly `id`, `name` and `settings`; `id` is a
-   name (`checkName`), different from every other stage's; `name` and `settings` are checked by the
+   name (`checkName`), not `"start"` (which would be confused with the start tips), and different
+   from every other stage's; `name` and `settings` are checked by the
    stage list.
-7. **Operations**, each checked by the operation list (its form and the stage rule), with its
-   wells on the deck (`deck.checkWell`) and its `stage` one of the file's stages. **Each stage's
+7. **Operations**, each in turn: checked by the operation list (its form and the stage rule), then
+   its source and destination on the deck (`deck.checkWell`), then its `stage` one of the file's
+   stages. **Each stage's
    transfers are together**, as the operation list always keeps them: a file whose transfers are in
    stages `"1", "2", "1"` is refused rather than reordered.
 8. **Starting contents**: each well on the deck, and each component it names in `components`; the
    rest (each well at most once, volumes 0 or more) as `contents-tracking` checks them.
 9. **Planned places**: each key in `plannedBefore` is a stage without transfers, and each value is
    another of the file's stages or `null`.
-10. **Tip changes**: there's one at `"start"`; every other key is one of the file's stages, but not
+10. **Tip changes** (the stage order is known by now, from steps 7 and 9): there's one at `"start"`; every other key is one of the file's stages, but not
     the first in the stage order; each is an object with exactly `tipType`, one of `TIP_TYPES`.
 11. **Labels**: each as `setLabel` would set it: labware on the deck, the label text, and no two
     labware with one label.
@@ -140,6 +143,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | A component, stage, transfer, starting-contents entry or label is refused by its module | `component 2: …`, `stage 1: …`, `transfer 3: …`, `starting contents, entry 4: …`, `the label for "Plate": …`, then that module's message. |
 | No stages | `it has no stages; a plan always has at least one.` |
 | Two stages with one ID | `stages 1 and 3 both have the ID "2".` |
+| A stage's ID is `"start"` | `stage 2 has the ID "start", which is kept for the tips at the start of the run.` |
 | A transfer's stage isn't in the file | `transfer 3 is in stage "9", which isn't one of the file's stages.` |
 | A stage's transfers aren't together | `stage "1"'s transfers aren't together: transfer 3 is in stage "2", between transfers of stage "1".` |
 | A component in the starting contents isn't in `components` | `starting contents, entry 4, holds "Dye", which isn't one of the file's components.` |
@@ -167,7 +171,7 @@ row of section 5 has at least one test.
   components and labels.
 - A plan whose stages have IDs `"2"`, `"5"` and `"7"` opens with IDs `"1"`, `"2"` and `"3"`, its
   transfers, planned places and tip changes following them.
-- An `emptyPlan()` opens as itself.
+- An `emptyPlan()`, saved and opened, gives a plan with the same contents.
 
 **Refusing**
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
@@ -179,4 +183,6 @@ row of section 5 has at least one test.
 - A file with a planned place for a stage with transfers, and with a tip change keyed by the first
   stage, are refused.
 - Two labware with one label are refused.
+- A component named `" Media"` is refused (`checkName`), not trimmed.
+- A stage with the ID `"start"` is refused.
 - Checks run in order: a file with a bad version and a missing property reports the version.
