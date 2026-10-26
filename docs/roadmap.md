@@ -72,6 +72,9 @@ Last updated: 2026-10-26
   preview. Tip changes are entries in the plan, not operations. The "stage order" includes stages
   without transfers; ADR 0008's run order is still only the stages with transfers. New glossary terms: stage order,
   tip group. Not built yet.
+- **`plan-file` specification written** (Draft, 2026-10-26;
+  `src/tools/transfer-designer/plan-file.md`): what a plan file holds (format version 1), and the
+  checks on opening one, in order. Stage IDs are renumbered on opening. Not built yet.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36

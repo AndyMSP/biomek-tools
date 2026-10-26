@@ -55,7 +55,8 @@ page also keeps a browser copy** as a safety net (Andy, 2026-10-26): the third o
   closing the page by mistake.
 
 The file's exact contents are set in the transfer designer's logic specification
-(`transfer-designer.md`), which reads and writes them.
+(`transfer-designer.md`), which reads and writes them. (Since the transfer designer's logic was
+split into modules, 2026-10-26, that's `plan-file.md`.)
 
 ## Consequences
 - Plans can be kept, shared and opened on another computer.
