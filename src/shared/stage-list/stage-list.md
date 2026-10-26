@@ -29,8 +29,8 @@ Version 1 lets code add a stage (which makes its ID), rename it, change its sett
 look stages up.
 
 Not in version 1 (see `docs/roadmap.md`):
-- **Checking settings against the configuration**, such as whether a technique is in
-  `config/techniques.js` or suits the tip type. This module checks only that each setting has the
+- **Checking settings against the configuration**, such as whether a technique is one of
+  the pipetting modes in `config/pipetting-modes.js` or suits the tip type. This module checks only that each setting has the
   right form (section 3). For v0.2.0 callers choose names from `config/`, and techniques aren't
   checked against tip types (roadmap, "Technical debt").
 - **Knowing about transfers.** Removing a stage that still has transfers isn't refused here; the

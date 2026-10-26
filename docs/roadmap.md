@@ -67,6 +67,9 @@ Last updated: 2026-10-26
   another in the same stage, sharing every other stored operation, so changing a volume doesn't copy
   the whole list into each undo state (`plan-history.md`: about 13 MB at its limit with sharing, 156
   MB without, for a 1,000-transfer plan). The code doesn't have it yet.
+- **`transfer-designer` specification written** (Draft, 2026-10-26;
+  `src/tools/transfer-designer/transfer-designer.md`): the plan and every edit to it, from the
+  preview. Tip changes are entries in the plan, not operations. Not built yet.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -96,7 +99,9 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    tests. Stand-ins for now (see "Technical debt"). *Also decided 2026-10-23:* a list of liquid
    type names in `config/liquid-types.js`, the same way, so liquid types are chosen from a menu
    too; its test also checks Biomek's naming rule (letters, digits and underscores, starting with
-   a letter; B56358AF 9-4).
+   a letter; B56358AF 9-4). *Changed 2026-10-26:* both lists are replaced by
+   `config/pipetting-modes.js`, which names each pipetting mode with its technique and liquid type,
+   and `config/tip-types.js` lists the tip types (`transfer-designer.md`, "Configuration").
 5. **A deck description** in `config/`: each labware on the standard deck, with its name (exactly
    as in the general-purpose method), its grid (`GRID_96` or `GRID_1X12_NUMBERED`) and its labware
    type. The page draws the labware from it, and the file writer looks up labware types in it.
