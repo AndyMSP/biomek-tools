@@ -90,6 +90,12 @@ order they will run in. It is the stages with transfers in the operation list's 
 `plannedBefore` names (or last, for `null`, no entry, or a stage that's gone). Stages that can't be
 placed this way go last, in the order they were added.
 
+**When several stages are planned before the same stage** (or last), the one added later goes
+closer to it, because it was added just before that stage, after the others were there. For example,
+with stages 1 and 2 holding transfers, stage 3 planned before stage 2, and stage 5 added later also
+planned before stage 2, the stage order is 1, 3, 5, 2. With stages 3 and 5 both planned last, it's
+1, 2, 3, 5.
+
 The stage order isn't the **run order** of ADR 0008, which is only the stages with transfers, in the
 operation list's order: a stage without transfers has no place in the run and isn't run. Its
 `plannedBefore` entry only keeps its place for when it gets transfers. The operation list stays the
@@ -328,6 +334,8 @@ order of checks.
 **Stages and stage order**
 - Stages with transfers are in operation-list order; a stage without transfers is just before its
   planned stage, or last (for `null`, no entry, or a stage that's gone).
+- Two stages planned before the same stage: the one added later is closer to it (1, 3, 5, 2 in the
+  example of section 3); two planned last: the one added later is last.
 - `addStage` before a stage puts it there in `stageOrder`; with `null`, last; it's called
   `NEW_STAGE_NAME` and copies the settings of the stage before it; added before the first stage, it
   copies the first stage's.
