@@ -84,6 +84,10 @@ Last updated: 2026-10-26
 - **The `deck` shared module is built** (code and tests), against its Draft specification
   (`src/shared/deck/deck.md`): labware names, grids and labware types from `config/deck.js`,
   checking wells and listing the wells in a box. Its tests also check `config/deck.js` (ADR 0009).
+- **The `plan-history` module is built** (code and tests), against its Draft specification
+  (`src/tools/transfer-designer/plan-history.md`): the transfer designer's undo and redo, immutable
+  like the operation list, keeping at most `UNDO_STATES_KEPT` (1,000) earlier states from
+  `config/undo.js`. Its tests also check `config/undo.js` (ADR 0009).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
