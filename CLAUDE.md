@@ -82,6 +82,9 @@ biomek-tools/
   source of truth for the module's required behavior; implement against it. To change a module's
   behavior, update its specification first, then the code and tests. A tool's page (its HTML, CSS
   and page script) has one specification, `<tool>-page.md`.
+- **Logic specifications don't mention the page.** The specification of a logic or shared module
+  says what the module does and who uses it in general terms (a tool, the caller), never what a
+  tool's page shows or when it asks the user; that belongs in `<tool>-page.md`.
 - **Create directories only when their first file is needed.**
 
 ## Domain knowledge

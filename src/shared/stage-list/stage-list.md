@@ -4,7 +4,7 @@
 > gets all five settings when it is added; tips aren't stage settings (2026-10-26: tip changes are
 > the plan's own entries, between stages; ADR 0007, amended 2026-10-26); its sources and its destinations each have their own technique and
 > liquid type; labware types aren't stage settings (each labware's type is in the deck description
-> in `config/`); settings are checked for form only (the page offers only the names in `config/`;
+> in `config/`); settings are checked for form only (callers choose names from `config/`;
 > techniques aren't checked against tip types yet); `remove` doesn't know about transfers, and the
 > transfer designer's logic module removes a stage's transfers with it; an ID can come back after
 > undo. Still to review: the wording, including a clearer message for an empty probes list (PR
@@ -18,7 +18,7 @@ one set of settings. On the Biomek, each stage becomes one row of the stage work
 (`docs/glossary.md`; ADR 0007, amended 2026-10-26).
 
 It also makes stage IDs. Each transfer in the operation list names its stage by one of these IDs, and
-this list is where the file writer and the page look up that stage's name and settings (ADR 0008).
+this list is where the tools look up that stage's name and settings (ADR 0008).
 
 It holds no transfers and knows nothing about the run order. The order stages run in is the order of
 their transfers in the operation list, and nowhere else. This list's order means nothing; stages are
@@ -31,8 +31,8 @@ look stages up.
 Not in version 1 (see `docs/roadmap.md`):
 - **Checking settings against the configuration**, such as whether a technique is in
   `config/techniques.js` or suits the tip type. This module checks only that each setting has the
-  right form (section 3). For v0.2.0 the page offers only the names in `config/`, and techniques
-  aren't checked against tip types (roadmap, "Technical debt").
+  right form (section 3). For v0.2.0 callers choose names from `config/`, and techniques aren't
+  checked against tip types (roadmap, "Technical debt").
 - **Knowing about transfers.** Removing a stage that still has transfers isn't refused here; the
   transfer designer's logic module removes its transfers with it (section 3).
 - **Tips.** Tip changes, and the tip type they load, are the plan's own entries between stages
@@ -48,8 +48,9 @@ Not in version 1 (see `docs/roadmap.md`):
 - A stage list is an instance of the `StageList` class, created with `new StageList()`. A new list
   is empty.
 - A list is **immutable**, like the operation list: adding, renaming, changing or removing a stage
-  returns a new list and leaves the original unchanged, so code must keep the result. The page keeps
-  each version of the operation list and stage list together, so undo can go back to both (ADR 0008).
+  returns a new list and leaves the original unchanged, so code must keep the result. A tool that
+  offers undo keeps each version of the operation list and stage list together, so undo can go back
+  to both (ADR 0008).
 - The list keeps its own copy of everything it's given. Changing an object after passing it in never
   changes the list, and stages read from the list can't be changed.
 
@@ -121,18 +122,17 @@ Not in version 1 (see `docs/roadmap.md`):
   back to its counter, so after an undo the next stage added can get an ID used in the undone
   version. That's safe, because the operation list kept with that earlier version doesn't name that
   ID either.
-- This relies on the page clearing its redo history whenever a new edit follows an undo, as editors
-  usually do; otherwise a redo could bring back a second stage with the same ID. The transfer
-  designer's page specification says so.
+- This relies on a tool's undo history being cleared of redo steps whenever a new edit follows an
+  undo, as editors usually do; otherwise a redo could bring back a second stage with the same ID.
+  The transfer designer's specification says so.
 
 **Removing**
 - `remove` takes a stage out. It doesn't check whether transfers still name it, because this module
   doesn't see the operation list. A transfer naming a stage that isn't in the stage list would leave
-  the file writer with no settings for it, so a stage's transfers must go with it. That is a rule, so
-  it lives in the transfer designer's logic module (`transfer-designer.js`, tested in Node), not in
-  the page script: it removes the stage's transfers along with the stage, after the page has asked
-  the user (Andy, 2026-10-26). (The file writer also refuses a transfer whose stage isn't in the
-  stage list.)
+  the file writer with no settings for it, so a stage's transfers must go with it. The transfer
+  designer's logic module (`transfer-designer.js`) removes a stage's transfers along with the stage
+  (Andy, 2026-10-26). (The file writer also refuses a transfer whose stage isn't in the stage
+  list.)
 - A stage with no transfers can stay in the list. It has no place in the run order and isn't run
   (ADR 0008).
 
