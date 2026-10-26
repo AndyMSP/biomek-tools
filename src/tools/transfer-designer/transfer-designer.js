@@ -1,0 +1,721 @@
+// transfer-designer.js — the transfer designer's rules: what a plan is, and every edit that can be
+// made to one, each checked so that a plan is always valid.
+//
+// A plan holds the components, the starting contents, the operation list, the stage list, where
+// each stage without transfers is planned to go, the tip changes and the labware labels. It is never
+// changed after it's made: every edit returns a new plan that shares every part the edit didn't
+// change, so the plan history can keep many plans cheaply. The page shows a plan and passes on what
+// the user does; every rule about what that means lives here, so it can be tested in Node.
+// It builds on the shared modules (operation-list, stage-list, contents-tracking, deck) and doesn't
+// repeat what they do.
+// Specification: transfer-designer.md.
+
+import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
+import { TIP_TYPES } from "../../../config/tip-types.js";
+import { describeValue } from "../../shared/error-messages/error-messages.js";
+import { isObject, listNames, checkName } from "../../shared/input-checks/input-checks.js";
+import { OperationList } from "../../shared/operation-list/operation-list.js";
+import { StageList } from "../../shared/stage-list/stage-list.js";
+import { replay } from "../../shared/contents-tracking/contents-tracking.js";
+import { labwareNames, gridOf, checkWell } from "../../shared/deck/deck.js";
+
+// What a new stage is called. Not numbered: a number stopped matching the stage's place once a
+// stage was inserted before it (Andy, 2026-10-25).
+export const NEW_STAGE_NAME = "New stage";
+
+// The key of the tip change before the first stage. Stage IDs are numbers written as text, so no
+// stage is ever called "start".
+export const START = "start";
+
+// The Span-8 has probes 1 to 8. It's a fact about the instrument, not a setting that might change,
+// so it lives here rather than in config/ (stage-list.js has the same number, privately).
+const PROBE_COUNT = 8;
+
+// --- Plans ---
+
+// A new plan, and the ID of its one stage: { plan, stageId }. The plan has no components, starting
+// contents, transfers or labels; its stage is called NEW_STAGE_NAME and has the default settings;
+// and its first tips are the first tip type in config/tip-types.js.
+export function emptyPlan() {
+  const { stageList, id } = new StageList().add(NEW_STAGE_NAME, defaultSettings());
+  const plan = deepFreeze({
+    components: [],
+    startingContents: [],
+    operationList: new OperationList(),
+    stageList,
+    plannedBefore: {},
+    tipChanges: { [START]: { tipType: TIP_TYPES[0] } },
+    labwareLabels: {},
+  });
+  return { plan, stageId: id };
+}
+
+// A stage's default settings: DEFAULT_PIPETTING_MODE at both ends, and all eight probes, e.g.
+// { sourceTechnique: "StandIn_Medium", sourceLiquidType: "Water", destinationTechnique: …,
+//   destinationLiquidType: …, probes: [1, 2, 3, 4, 5, 6, 7, 8] }. A new object each time.
+export function defaultSettings() {
+  return {
+    ...modeSettings("source", DEFAULT_PIPETTING_MODE),
+    ...modeSettings("destination", DEFAULT_PIPETTING_MODE),
+    probes: probesFor(PROBE_COUNT),
+  };
+}
+
+// The first `count` probes, e.g. probesFor(4) → [1, 2, 3, 4]. A stage chooses how many probes it
+// uses, not which (Andy, 2026-10-24). Throws unless `count` is a whole number from 1 to 8.
+export function probesFor(count) {
+  // Number.isInteger is false for anything that isn't a number (such as "4") and for 2.5.
+  if (!Number.isInteger(count) || count < 1 || count > PROBE_COUNT) {
+    throw new Error(
+      `The number of probes must be a whole number from 1 to ${PROBE_COUNT}, but got ${describeValue(count)}.`,
+    );
+  }
+  // Array.from with a length makes a list of that many places; each gets its position plus 1.
+  return Array.from({ length: count }, (_, position) => position + 1);
+}
+
+// --- Pipetting modes ---
+
+// The pipetting modes usable at `end` ("source" or "destination"), in config/ order,
+// e.g. modesFor("source") → the Fast, Medium and Slow modes.
+export function modesFor(end) {
+  return PIPETTING_MODES.filter((mode) => mode.ends.includes(end));
+}
+
+// The settings the mode called `name` gives at `end`, e.g. ("source", "Slow") →
+// { sourceTechnique: "StandIn_Slow", sourceLiquidType: "Cells" }. Throws if there's no such mode
+// for that end, naming the modes there are.
+export function modeSettings(end, name) {
+  const modes = modesFor(end);
+  const mode = modes.find((candidate) => candidate.name === name);
+  if (mode === undefined) {
+    throw new Error(
+      `${describeValue(name)} isn't a pipetting mode for the ${end}. ` +
+        `The modes for the ${end} are ${listNames(modes.map((candidate) => candidate.name))}.`,
+    );
+  }
+  return { [`${end}Technique`]: mode.technique, [`${end}LiquidType`]: mode.liquidType };
+}
+
+// The name of the mode a stage's `settings` use at `end`, or null if their technique and liquid
+// type there aren't one of the modes (for example, after the modes in config/ change),
+// e.g. modeOf("source", defaultSettings()) → "Medium".
+export function modeOf(end, settings) {
+  const mode = modesFor(end).find(
+    (candidate) =>
+      candidate.technique === settings[`${end}Technique`] &&
+      candidate.liquidType === settings[`${end}LiquidType`],
+  );
+  return mode === undefined ? null : mode.name;
+}
+
+// --- Stages ---
+
+// The stage IDs in stage order (docs/glossary.md, "Stage order"), e.g. ["1", "3", "5", "2"].
+// The stages with transfers come in the operation list's order. Each stage without transfers goes
+// just before the stage its plannedBefore entry names, or last for null, no entry, or a stage
+// that's gone. Several planned before the same stage (or last) go in the order they were added, so
+// the one added later is closer to it. Stages that can't be placed this way (planned before each
+// other in a circle) go at the very end, in the order they were added.
+export function stageOrder(plan) {
+  const addedOrder = plan.stageList.listStages().map((stage) => stage.id);
+  const runOrder = plan.operationList.groupByStage().map((group) => group.stage);
+  const withTransfers = new Set(runOrder);
+
+  // For each place (a stage ID, or null for last), the stages without transfers planned just
+  // before it, in the order they were added.
+  const plannedAt = new Map();
+  for (const id of addedOrder) {
+    if (!withTransfers.has(id)) {
+      const place = plannedPlace(plan, id);
+      plannedAt.set(place, [...(plannedAt.get(place) ?? []), id]);
+    }
+  }
+
+  const order = [];
+  // Puts the stages planned before `place` into `order`, each preceded by those planned before it.
+  // It never loops forever: a stage reached from a stage with transfers (or from "last") can't be
+  // part of a circle, because each stage is planned before only one place.
+  function placeStagesBefore(place) {
+    for (const id of plannedAt.get(place) ?? []) {
+      placeStagesBefore(id);
+      order.push(id);
+    }
+  }
+  for (const id of runOrder) {
+    placeStagesBefore(id);
+    order.push(id);
+  }
+  placeStagesBefore(null);
+
+  const placed = new Set(order);
+  return [...order, ...addedOrder.filter((id) => !placed.has(id))];
+}
+
+// Returns { plan, id }: the plan with a new stage, called NEW_STAGE_NAME, just before stage
+// `beforeId` (or last, for null), and the new stage's ID. Its settings are copied from the stage
+// before it in the stage order, or from the first stage if there's none. With takeTips, a tip change
+// before `beforeId` moves onto the new stage, so the new stage is the first to use those tips;
+// without it, the new stage uses the tips before that tip change.
+// e.g. addStage(plan, "2", { takeTips: true }).
+export function addStage(plan, beforeId, { takeTips = false } = {}) {
+  if (beforeId !== null && !plan.stageList.has(beforeId)) {
+    throw new Error(`There's no stage ${describeValue(beforeId)} to add a stage before.`);
+  }
+  const order = stageOrder(plan);
+  const newPlace = beforeId === null ? order.length : order.indexOf(beforeId);
+  // order[-1] is undefined, so a stage added before the first copies the first stage.
+  const copiedFrom = order[newPlace - 1] ?? order[0];
+  const settings = plan.stageList.get(copiedFrom).settings;
+  const { stageList, id } = plan.stageList.add(NEW_STAGE_NAME, settings);
+
+  let tipChanges = plan.tipChanges;
+  if (takeTips && beforeId !== null && Object.hasOwn(tipChanges, beforeId)) {
+    tipChanges = withKey(withoutKey(tipChanges, beforeId), id, tipChanges[beforeId]);
+  }
+  const added = withParts(plan, {
+    stageList,
+    plannedBefore: withKey(plan.plannedBefore, id, beforeId),
+    tipChanges,
+  });
+  return { plan: withStartTipsFirst(added), id };
+}
+
+// Returns the plan with stage `id` called `name`. The stage list checks both.
+export function renameStage(plan, id, name) {
+  return withParts(plan, { stageList: plan.stageList.rename(id, name) });
+}
+
+// Returns the plan with stage `id`'s settings replaced by `settings`. The stage list checks both.
+export function changeStageSettings(plan, id, settings) {
+  return withParts(plan, { stageList: plan.stageList.changeSettings(id, settings) });
+}
+
+// True if stage `id` can be removed: it's a stage, and not the plan's only one.
+export function canRemoveStage(plan, id) {
+  return plan.stageList.has(id) && plan.stageList.listStages().length > 1;
+}
+
+// Returns the plan without stage `id`, its transfers, or a tip change before it. Stages planned to go
+// before it now go before the stage that followed it. Throws if canRemoveStage is false.
+export function removeStage(plan, id) {
+  if (!plan.stageList.has(id)) {
+    // get() throws the stage list's own message for a stage that isn't there.
+    plan.stageList.get(id);
+  }
+  if (!canRemoveStage(plan, id)) {
+    throw new Error("A plan needs at least one stage, so its only stage can't be removed.");
+  }
+  const follower = stageAfter(stageOrder(plan), id);
+
+  // Removing from the last transfer back keeps the positions of the ones still to remove.
+  let operationList = plan.operationList;
+  const positions = positionsInStage(plan, id);
+  for (const position of positions.reverse()) {
+    operationList = operationList.remove(position);
+  }
+
+  const plannedBefore = Object.fromEntries(
+    Object.entries(plan.plannedBefore)
+      .filter(([stage]) => stage !== id)
+      .map(([stage, place]) => [stage, place === id ? follower : place]),
+  );
+  const removed = withParts(plan, {
+    operationList,
+    stageList: plan.stageList.remove(id),
+    plannedBefore,
+    tipChanges: withoutKey(plan.tipChanges, id),
+  });
+  return withStartTipsFirst(removed);
+}
+
+// For each stage with transfers, in run order, how many transfers have run when it ends,
+// e.g. [{ stage: "1", transfersDone: 4 }, { stage: "2", transfersDone: 8 }].
+export function stageEnds(plan) {
+  let transfersDone = 0;
+  return plan.operationList.groupByStage().map((group) => {
+    transfersDone += group.operations.length;
+    return { stage: group.stage, transfersDone };
+  });
+}
+
+// The IDs of the stages with an overdraw: a transfer that asks a well for more than it holds, as
+// contents tracking finds it, e.g. new Set(["2"]).
+export function stagesWithOverdraw(plan) {
+  const operations = plan.operationList.listOperations();
+  const problems = replay(plan.startingContents, plan.operationList).listProblems();
+  return new Set(problems.map((problem) => operations[problem.operationIndex].stage));
+}
+
+// --- Transfers ---
+
+// Returns the plan with `transfer` added to its stage, without changing the stage order. If the
+// stage already has transfers, it goes after them; if not, it goes just before the next stage in the
+// stage order that has transfers, or last. Throws, in this order, if the operation list refuses it
+// (its form, then the stage rule), its source or destination well isn't on the deck, or its stage
+// isn't in the plan.
+export function addTransfer(plan, transfer) {
+  // add() runs the operation list's checks first, so a badly formed transfer never reaches the
+  // later checks. Its result is the new list if the stage already has transfers.
+  const addedAfterStage = plan.operationList.add(transfer);
+  checkWell(transfer.source);
+  checkWell(transfer.destination);
+  if (!plan.stageList.has(transfer.stage)) {
+    throw new Error(
+      `There's no stage ${describeValue(transfer.stage)} in the plan to add this transfer to.`,
+    );
+  }
+  if (positionsInStage(plan, transfer.stage).length > 0) {
+    return withParts(plan, { operationList: addedAfterStage });
+  }
+  return withFirstTransfer(plan, transfer);
+}
+
+// Returns the plan with each of `transfers` added in turn by addTransfer, as one edit, e.g. one
+// source into each of many wells. Throws, adding none, if any can't be added.
+export function addTransfers(plan, transfers) {
+  // Plans are never changed, so if one throws, the plan given is still as it was.
+  return transfers.reduce((planSoFar, transfer) => addTransfer(planSoFar, transfer), plan);
+}
+
+// Returns the plan with the transfer at `position` (counting from 0) given `volume`, keeping its
+// place and stage, e.g. changeVolume(plan, 3, 25). The operation list checks both.
+export function changeVolume(plan, position, volume) {
+  const operation = plan.operationList.listOperations()[position];
+  // replace() checks the position before anything else, so a bad position is reported even though
+  // `operation` is then undefined (spreading undefined gives nothing).
+  return withParts(plan, {
+    operationList: plan.operationList.replace(position, { ...operation, volume }),
+  });
+}
+
+// Returns the plan without the transfer at `position` (counting from 0). The operation list checks
+// the position. If it was its stage's last transfer, the stage is planned before the stage that
+// followed it, so it keeps its place.
+export function removeTransfer(plan, position) {
+  const operationList = plan.operationList.remove(position);
+  const stage = plan.operationList.listOperations()[position].stage;
+  const removed = withParts(plan, { operationList });
+  if (positionsInStage(removed, stage).length > 0) {
+    return removed;
+  }
+  const follower = stageAfter(stageOrder(plan), stage);
+  return withParts(removed, { plannedBefore: withKey(plan.plannedBefore, stage, follower) });
+}
+
+// Stage `id`'s transfers, in order, each with its position in the operation list added,
+// e.g. [{ type: "transfer", source: …, destination: …, volume: 50, stage: "2", position: 4 }].
+// A stage without transfers, or an ID that isn't a stage, gives [].
+export function transfersIn(plan, id) {
+  const operations = plan.operationList.listOperations();
+  return positionsInStage(plan, id).map((position) => ({ ...operations[position], position }));
+}
+
+// --- Tip changes ---
+
+// The tip change at `key` (START or a stage ID), e.g. { tipType: "BC230" }, or null if there's none.
+export function tipChangeAt(plan, key) {
+  return Object.hasOwn(plan.tipChanges, key) ? plan.tipChanges[key] : null;
+}
+
+// True if a tip change can be added before stage `beforeId`: it's a stage, not the first in the
+// stage order, and there's no tip change before it yet.
+export function canAddTipChange(plan, beforeId) {
+  return (
+    plan.stageList.has(beforeId) &&
+    stageOrder(plan)[0] !== beforeId &&
+    !Object.hasOwn(plan.tipChanges, beforeId)
+  );
+}
+
+// Returns the plan with a tip change before stage `beforeId`, loading the tip type already in use
+// there. Throws if canAddTipChange is false, saying why.
+export function addTipChange(plan, beforeId) {
+  if (!plan.stageList.has(beforeId)) {
+    throw new Error(`There's no stage ${describeValue(beforeId)} to add new tips before.`);
+  }
+  if (stageOrder(plan)[0] === beforeId) {
+    throw new Error(
+      "The first stage always starts with new tips, so there can't be another tip change before it.",
+    );
+  }
+  if (Object.hasOwn(plan.tipChanges, beforeId)) {
+    throw new Error(`There are already new tips before stage ${describeValue(beforeId)}.`);
+  }
+  const groupInUse = tipGroups(plan).find((group) => group.stages.includes(beforeId));
+  return withParts(plan, {
+    tipChanges: withKey(plan.tipChanges, beforeId, { tipType: groupInUse.tipType }),
+  });
+}
+
+// Returns the plan with the tip change at `key` loading `tipType`, e.g. setTipType(plan, START,
+// "BC1070"). Throws if there's no tip change at `key`, then if `tipType` isn't in TIP_TYPES.
+export function setTipType(plan, key, tipType) {
+  checkTipChangeAt(plan, key);
+  if (!TIP_TYPES.includes(tipType)) {
+    throw new Error(
+      `${describeValue(tipType)} isn't a tip type. Choose one of ${listNames(TIP_TYPES)}.`,
+    );
+  }
+  return withParts(plan, { tipChanges: withKey(plan.tipChanges, key, { tipType }) });
+}
+
+// Returns the plan without the tip change at `key`, so the stages after it use the tips before it.
+// Throws for START, which the run always has, or if there's no tip change at `key`.
+export function removeTipChange(plan, key) {
+  if (key === START) {
+    throw new Error(
+      "The run always starts by loading tips, so the first tips can't be removed.",
+    );
+  }
+  checkTipChangeAt(plan, key);
+  return withParts(plan, { tipChanges: withoutKey(plan.tipChanges, key) });
+}
+
+// The tip groups (docs/glossary.md, "Tip group"), in stage order, each with the tip change that
+// starts it, e.g. [{ key: "start", tipType: "BC230", stages: ["1", "2"], probes: [1, 2, 3, 4] }, …].
+// `probes` are the probes that get tips: every probe any of the group's stages uses, smallest first.
+export function tipGroups(plan) {
+  const groups = [];
+  stageOrder(plan).forEach((id, place) => {
+    // The first stage always starts the START group; any later stage with a tip change starts one.
+    if (place === 0 || Object.hasOwn(plan.tipChanges, id)) {
+      const key = place === 0 ? START : id;
+      groups.push({ key, tipType: plan.tipChanges[key].tipType, stages: [] });
+    }
+    groups.at(-1).stages.push(id);
+  });
+  return groups.map((group) => ({ ...group, probes: probesUsedBy(plan, group.stages) }));
+}
+
+// --- Components and starting contents ---
+
+// Returns the plan with a new component, last, called `name` (spaces at its ends removed) and drawn
+// in `color`, e.g. addComponent(plan, "Media", "#4e79a7"). Throws, in this order, if the name isn't
+// a name or is used, or the color isn't text or is used.
+export function addComponent(plan, name, color) {
+  const trimmedName = checkNewComponentName(plan, name);
+  checkComponentColor(plan, color, null);
+  return withParts(plan, {
+    components: [...plan.components, { name: trimmedName, color }],
+  });
+}
+
+// Returns the plan with component `oldName` called `newName` (spaces at its ends removed), in the
+// list and in every well, keeping each well's components in order. Renaming it to its own name
+// returns the plan unchanged. Throws if there's no such component, then as addComponent does for
+// the new name.
+export function renameComponent(plan, oldName, newName) {
+  checkComponentExists(plan, oldName);
+  const trimmedName = typeof newName === "string" ? newName.trim() : newName;
+  if (trimmedName === oldName) {
+    return plan;
+  }
+  checkNewComponentName(plan, trimmedName);
+  // Rebuilding the object from its entries in order keeps the renamed component in its place.
+  const renamed = (components) =>
+    Object.fromEntries(
+      Object.entries(components).map(([name, volume]) => [
+        name === oldName ? trimmedName : name,
+        volume,
+      ]),
+    );
+  return withParts(plan, {
+    components: plan.components.map((component) =>
+      component.name === oldName ? { ...component, name: trimmedName } : component,
+    ),
+    startingContents: changeEntriesHolding(plan, oldName, renamed),
+  });
+}
+
+// Returns the plan with component `name` drawn in `color`. Throws if there's no such component,
+// then if the color isn't text or another component has it.
+export function setComponentColor(plan, name, color) {
+  checkComponentExists(plan, name);
+  checkComponentColor(plan, color, name);
+  return withParts(plan, {
+    components: plan.components.map((component) =>
+      component.name === name ? { ...component, color } : component,
+    ),
+  });
+}
+
+// Returns the plan without component `name`, in the list or in any well. A well left with nothing
+// is no longer listed in the starting contents. Throws if there's no such component.
+export function removeComponent(plan, name) {
+  checkComponentExists(plan, name);
+  const withoutComponent = (components) => withoutKey(components, name);
+  const startingContents = changeEntriesHolding(plan, name, withoutComponent).filter(
+    (entry) => Object.keys(entry.components).length > 0,
+  );
+  return withParts(plan, {
+    components: plan.components.filter((component) => component.name !== name),
+    startingContents,
+  });
+}
+
+// How many wells hold component `name` at the start, e.g. 12. A name no well holds gives 0.
+export function countWellsWith(plan, name) {
+  return plan.startingContents.filter((entry) => Object.hasOwn(entry.components, name)).length;
+}
+
+// Returns the plan with `volume` µL of component `name` added on top of what each of `wells` holds
+// at the start, like pipetting it in: 500 µL of Media plus 1000 µL of Media is 1500 µL. Each well
+// is { labware, well }; one listed more than once gets the volume once. Throws, in this order, if
+// the component isn't in the plan, the volume isn't a number above 0, or a well isn't on the deck
+// (the first such well).
+export function addToWells(plan, wells, name, volume) {
+  checkComponentExists(plan, name);
+  // Number.isFinite is false for anything that isn't a number (such as "10"), and for NaN and
+  // Infinity.
+  if (!Number.isFinite(volume) || volume <= 0) {
+    throw new Error(
+      `The volume to add must be a number of microliters above 0, like 100, but got ${describeValue(volume)}.`,
+    );
+  }
+  wells.forEach((well) => checkWell(well));
+
+  // Each well once, keyed by wellKey, in the order given.
+  const wellsToFill = new Map(wells.map((well) => [wellKey(well), well]));
+  const addVolume = (components) => ({ ...components, [name]: (components[name] ?? 0) + volume });
+  const startingContents = plan.startingContents.map((entry) => {
+    const key = wellKey(entry);
+    if (!wellsToFill.has(key)) {
+      return entry;
+    }
+    wellsToFill.delete(key);
+    return { ...entry, components: addVolume(entry.components) };
+  });
+  // The wells left are empty so far, so they get new entries, at the end.
+  for (const well of wellsToFill.values()) {
+    startingContents.push({ labware: well.labware, well: well.well, components: { [name]: volume } });
+  }
+  return withParts(plan, { startingContents });
+}
+
+// Returns the plan with `wells` (each { labware, well }) holding nothing at the start. The
+// components stay in the plan's list. A well that's already empty is left as it is.
+export function emptyWells(plan, wells) {
+  const keys = new Set(wells.map(wellKey));
+  return withParts(plan, {
+    startingContents: plan.startingContents.filter((entry) => !keys.has(wellKey(entry))),
+  });
+}
+
+// --- Labware ---
+
+// The names of the labware the plan uses, in its starting contents or in any transfer, in the
+// deck's order, e.g. ["Plate", "Res"].
+export function labwareUsed(plan) {
+  const used = new Set(plan.startingContents.map((entry) => entry.labware));
+  for (const operation of plan.operationList.listOperations()) {
+    used.add(operation.source.labware);
+    used.add(operation.destination.labware);
+  }
+  return labwareNames().filter((name) => used.has(name));
+}
+
+// The label of the labware called `name`, or its name if it has none,
+// e.g. labelOf(plan, "Plate") → "Assay plate".
+export function labelOf(plan, name) {
+  return Object.hasOwn(plan.labwareLabels, name) ? plan.labwareLabels[name] : name;
+}
+
+// Returns the plan with the labware called `name` labelled `label`, with spaces at its ends removed.
+// A blank label, or the labware's own name, goes back to the name. Giving a labware the label it
+// already has returns the plan unchanged. Throws, in this order, if the labware isn't on the deck,
+// the label isn't text, or another labware already has that label (counting a labware without a
+// label as labelled by its name).
+export function setLabel(plan, name, label) {
+  // gridOf throws the deck's own message for a labware that isn't on the deck.
+  gridOf(name);
+  if (typeof label !== "string") {
+    throw new Error(`A label must be text, like "Assay plate", but got ${describeValue(label)}.`);
+  }
+  const trimmed = label.trim();
+  // The label the labware will be shown by: its name if the label is blank.
+  const newLabel = trimmed === "" ? name : trimmed;
+  const other = labwareNames().find(
+    (candidate) => candidate !== name && labelOf(plan, candidate) === newLabel,
+  );
+  if (other !== undefined) {
+    throw new Error(
+      `${other} already has the label ${describeValue(newLabel)}. Choose a different one.`,
+    );
+  }
+  if (labelOf(plan, name) === newLabel) {
+    return plan;
+  }
+  const labwareLabels =
+    newLabel === name
+      ? withoutKey(plan.labwareLabels, name)
+      : withKey(plan.labwareLabels, name, newLabel);
+  return withParts(plan, { labwareLabels });
+}
+
+// --- Helpers used only inside this module ---
+
+// Where stage `id` is planned to go: the stage its plannedBefore entry names, or null (last) for
+// null, no entry, or a stage that's no longer in the plan.
+function plannedPlace(plan, id) {
+  if (!Object.hasOwn(plan.plannedBefore, id)) {
+    return null;
+  }
+  const place = plan.plannedBefore[id];
+  return plan.stageList.has(place) ? place : null;
+}
+
+// The stage just after `id` in `order` (a stage order), or null if it's last,
+// e.g. stageAfter(["1", "3", "2"], "3") → "2".
+function stageAfter(order, id) {
+  return order[order.indexOf(id) + 1] ?? null;
+}
+
+// The positions in the operation list of stage `id`'s transfers, in order, e.g. [3, 4, 5].
+function positionsInStage(plan, id) {
+  const positions = [];
+  plan.operationList.listOperations().forEach((operation, position) => {
+    if (operation.stage === id) {
+      positions.push(position);
+    }
+  });
+  return positions;
+}
+
+// Returns the plan with `transfer`, the first in its stage (already checked), placed so the stage
+// order doesn't change: just before the next stage in the stage order that has transfers, or last.
+// Every stage without transfers is then planned just before the stage that came right after it in
+// the stage order, so none can move (transfer-designer.md, section 3, "Transfers").
+function withFirstTransfer(plan, transfer) {
+  const order = stageOrder(plan);
+  const runOrder = new Set(plan.operationList.groupByStage().map((group) => group.stage));
+  const nextWithTransfers = order
+    .slice(order.indexOf(transfer.stage) + 1)
+    .find((id) => runOrder.has(id));
+  const operationList =
+    nextWithTransfers === undefined
+      ? plan.operationList.add(transfer)
+      : plan.operationList.insertBeforeStage(transfer, nextWithTransfers);
+
+  const plannedBefore = Object.fromEntries(
+    order
+      .filter((id) => id !== transfer.stage && !runOrder.has(id))
+      .map((id) => [id, stageAfter(order, id)]),
+  );
+  return withParts(plan, { operationList, plannedBefore });
+}
+
+// Returns the plan with a tip change before the first stage in the stage order, if there is one,
+// made the START one (its tip type replaces START's), so there's never a tip change before the
+// first stage but START. Otherwise returns the plan as it is.
+function withStartTipsFirst(plan) {
+  const first = stageOrder(plan)[0];
+  if (!Object.hasOwn(plan.tipChanges, first)) {
+    return plan;
+  }
+  const tipChanges = withKey(withoutKey(plan.tipChanges, first), START, plan.tipChanges[first]);
+  return withParts(plan, { tipChanges });
+}
+
+// Throws if there's no tip change at `key`, e.g. 'There are no new tips before stage "2".'
+function checkTipChangeAt(plan, key) {
+  if (!Object.hasOwn(plan.tipChanges, key)) {
+    throw new Error(`There are no new tips before stage ${describeValue(key)}.`);
+  }
+}
+
+// Every probe that any of `stages` (stage IDs) uses, each once, smallest first,
+// e.g. stages using [1] and [3, 5] → [1, 3, 5].
+function probesUsedBy(plan, stages) {
+  const probes = new Set(stages.flatMap((id) => plan.stageList.get(id).settings.probes));
+  // sort() on its own compares as text; this compares numbers.
+  return [...probes].sort((a, b) => a - b);
+}
+
+// Throws if the plan has no component called `name`.
+function checkComponentExists(plan, name) {
+  if (!plan.components.some((component) => component.name === name)) {
+    throw new Error(
+      `There's no component called ${describeValue(name)} in this plan. Add it to the plan's components first.`,
+    );
+  }
+}
+
+// Returns `name` with spaces at its ends removed, if it's text, after checking it can be a new
+// component's name: a name (checkName) that no component has yet. Throws if not.
+function checkNewComponentName(plan, name) {
+  const trimmed = typeof name === "string" ? name.trim() : name;
+  checkName(trimmed, "component name");
+  if (plan.components.some((component) => component.name === trimmed)) {
+    throw new Error(
+      `There's already a component called ${describeValue(trimmed)}. Choose a different name.`,
+    );
+  }
+  return trimmed;
+}
+
+// Throws if `color` isn't text that isn't blank, or if a component other than `ownName` (null for a
+// new component) already has it, so components can always be told apart where colors are drawn.
+function checkComponentColor(plan, color, ownName) {
+  if (typeof color !== "string" || color.trim() === "") {
+    throw new Error(
+      `A component's color must be text, like "#4e79a7", but got ${describeValue(color)}.`,
+    );
+  }
+  const other = plan.components.find(
+    (component) => component.name !== ownName && component.color === color,
+  );
+  if (other !== undefined) {
+    throw new Error(`${other.name} already has that color. Choose a different one.`);
+  }
+}
+
+// The plan's starting contents with `change` applied to the components of each entry that holds
+// component `name`; the other entries are the very same objects as before.
+function changeEntriesHolding(plan, name, change) {
+  return plan.startingContents.map((entry) =>
+    Object.hasOwn(entry.components, name)
+      ? { ...entry, components: change(entry.components) }
+      : entry,
+  );
+}
+
+// One text key for a well, for looking it up in a Map or Set, e.g. { labware: "Res", well: "1" } →
+// '["Res","1"]'. A JSON list keeps the two names apart, as in contents-tracking.
+function wellKey(end) {
+  return JSON.stringify([end.labware, end.well]);
+}
+
+// A copy of `object` with `key` set to `value`, e.g. withKey({ a: 1 }, "b", 2) → { a: 1, b: 2 }.
+function withKey(object, key, value) {
+  return { ...object, [key]: value };
+}
+
+// A copy of `object` without `key`, e.g. withoutKey({ a: 1, b: 2 }, "a") → { b: 2 }.
+function withoutKey(object, key) {
+  return Object.fromEntries(Object.entries(object).filter(([existing]) => existing !== key));
+}
+
+// A new plan: `plan` with `changes` (some of its parts, e.g. { components: […] }) replacing those
+// parts. Every other part is the very same object as in `plan`, so plans share what didn't change.
+function withParts(plan, changes) {
+  return deepFreeze({ ...plan, ...changes });
+}
+
+// Freezes `value` and everything in it, if it's a list or a plain object not yet frozen, and
+// returns it, e.g. deepFreeze({ a: [1] }) freezes the object and its list. Plans use it so that
+// changing any part of one throws, as a plan must never change after it's made. Parts already frozen
+// are skipped, which keeps it quick when most parts are shared with an earlier plan. Anything else
+// (text, numbers, null, and class instances such as the operation list and stage list, which are
+// immutable already) is returned as it is.
+function deepFreeze(value) {
+  const isPlainData =
+    Array.isArray(value) || (isObject(value) && Object.getPrototypeOf(value) === Object.prototype);
+  if (!isPlainData || Object.isFrozen(value)) {
+    return value;
+  }
+  for (const part of Object.values(value)) {
+    deepFreeze(part);
+  }
+  return Object.freeze(value);
+}
