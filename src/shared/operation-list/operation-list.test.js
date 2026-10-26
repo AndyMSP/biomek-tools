@@ -165,6 +165,100 @@ describe("operation-list", () => {
     assert.deepEqual(volumesOf(removed), [20]);
   });
 
+  // --- Replacing ---
+
+  test("replace(1, …) with the middle transfer's volume changed gives the new volume there; the others keep their order and values", () => {
+    const transfers = [
+      makeTransferInStage("1", 10),
+      makeTransferInStage("1", 20),
+      makeTransferInStage("1", 30),
+    ];
+    const replaced = makeList(...transfers).replace(1, { ...transfers[1], volume: 25 });
+    assert.deepEqual(replaced.listOperations(), [
+      transfers[0],
+      { ...transfers[1], volume: 25 },
+      transfers[2],
+    ]);
+  });
+
+  test("replace returns a new list, and the original is unchanged, including the replaced operation's volume", () => {
+    const original = makeList(makeTransferInStage("1", 10), makeTransferInStage("1", 20));
+    const replaced = original.replace(0, makeTransferInStage("1", 15));
+    assert.notEqual(replaced, original);
+    assert.deepEqual(volumesOf(original), [10, 20]);
+    assert.deepEqual(volumesOf(replaced), [15, 20]);
+  });
+
+  test('in stage "1", replacing a transfer from Plate 1 B1 with one from Plate 1 A1, a destination, is refused', () => {
+    const list = makeList(
+      makeTransferBetween("Reagents/A1", "Plate 1/A1", "1"),
+      makeTransferBetween("Plate 1/B1", "Plate 1/C1", "1"),
+    );
+    assert.throws(() => list.replace(1, makeTransferBetween("Plate 1/A1", "Plate 1/C1", "1")), {
+      message:
+        'This transfer\'s source, Plate 1 A1, is a destination in stage "1" (operation 0). Within a stage, no well can be both a source and a destination. Put this transfer in another stage.',
+    });
+  });
+
+  test("replacing a transfer with a changed copy of itself is accepted: it isn't checked against the one it replaces", () => {
+    // A transfer from a well into itself would conflict with itself if it were checked against it.
+    const self = makeTransferBetween("Plate 1/A1", "Plate 1/A1", "1");
+    const list = makeList(makeTransferInStage("2"), self);
+    const replaced = list.replace(1, { ...self, volume: 75 });
+    assert.deepEqual(replaced.listOperations()[1], { ...self, volume: 75 });
+  });
+
+  test("replacing a transfer with one in another stage gives the different-stage message, even if that stage is in the list", () => {
+    const list = makeList(makeTransferInStage("1"), makeTransferInStage("2"), makeTransferInStage("2"));
+    assert.throws(() => list.replace(2, makeTransferInStage("1")), {
+      message:
+        'A replacement must stay in stage "2", the stage of operation 2, but is in stage "1". To move a transfer to another stage, remove it and add it again.',
+    });
+  });
+
+  // --- Sharing ---
+
+  test("after add, every operation that was in the original list is the very same object", () => {
+    const original = makeList(makeTransferInStage("1", 10), makeTransferInStage("2", 20));
+    const before = original.listOperations();
+    const after = original.add(makeTransferInStage("1", 30)).listOperations();
+    assert.equal(after[0], before[0]);
+    assert.equal(after[2], before[1]);
+  });
+
+  test("after remove, every remaining operation is the very same object", () => {
+    const original = makeList(
+      makeTransferInStage("1", 10),
+      makeTransferInStage("1", 20),
+      makeTransferInStage("1", 30),
+    );
+    const before = original.listOperations();
+    const after = original.remove(1).listOperations();
+    assert.equal(after[0], before[0]);
+    assert.equal(after[1], before[2]);
+  });
+
+  test("after replace, every operation except the replaced one is the very same object; the replaced one is new", () => {
+    const original = makeList(
+      makeTransferInStage("1", 10),
+      makeTransferInStage("1", 20),
+      makeTransferInStage("1", 30),
+    );
+    const before = original.listOperations();
+    const after = original.replace(1, makeTransferInStage("1", 25)).listOperations();
+    assert.equal(after[0], before[0]);
+    assert.notEqual(after[1], before[1]);
+    assert.equal(after[2], before[2]);
+  });
+
+  test("after insertBeforeStage, every operation that was in the original list is the very same object", () => {
+    const original = makeList(makeTransferInStage("1", 10), makeTransferInStage("2", 20));
+    const before = original.listOperations();
+    const after = original.insertBeforeStage(makeTransferInStage("3", 30), "2").listOperations();
+    assert.equal(after[0], before[0]);
+    assert.equal(after[2], before[1]);
+  });
+
   // --- Grouping ---
 
   test('stages "1", "1", "2", "2", "3" give three groups, in order, each with its operations in order', () => {
@@ -656,6 +750,42 @@ describe("operation-list", () => {
     const list = makeList(makeTransferInStage("1", 10), makeTransferInStage("2", 20));
     assert.throws(() => list.insertBeforeStage(makeTransferInStage("3"), "9"));
     assert.throws(() => list.remove(5));
+    assert.deepEqual(volumesOf(list), [10, 20]);
+  });
+
+  test("replace with 7 on a list of five, -1, 1.5 or \"1\" gives the position error", () => {
+    const list = makeList(...[10, 20, 30, 40, 50].map((volume) => makeTransferInStage("1", volume)));
+    for (const [position, shown] of [[7, "7"], [-1, "-1"], [1.5, "1.5"], ["1", '"1"']]) {
+      assert.throws(() => list.replace(position, makeTransfer()), {
+        message: `The position to replace must be a whole number from 0 to 4, but got ${shown}.`,
+      });
+    }
+  });
+
+  test("replace on an empty list says there are no operations to replace, whatever the position", () => {
+    for (const position of [0, 7, "1"]) {
+      assert.throws(() => new OperationList().replace(position, makeTransfer()), {
+        message: "There are no operations to replace.",
+      });
+    }
+  });
+
+  test("replace checks the position before the operation, and the operation before its stage", () => {
+    const list = makeList(makeTransferInStage("1"));
+    assert.throws(() => list.replace(5, null), { message: /^The position to replace must be/ });
+    assert.throws(() => list.replace(0, makeTransferInStage(3)), {
+      message: "The stage must be text, but got 3.",
+    });
+  });
+
+  test("a failed replace() leaves the list unchanged", () => {
+    const list = makeList(makeTransferInStage("1", 10), makeTransferInStage("2", 20));
+    assert.throws(() => list.replace(0, makeTransferInStage("2", 99)), {
+      message: /^A replacement must stay in stage "1"/,
+    });
+    assert.throws(() => list.replace(0, { ...makeTransferInStage("1"), volume: -5 }), {
+      message: /^The volume must be/,
+    });
     assert.deepEqual(volumesOf(list), [10, 20]);
   });
 });
