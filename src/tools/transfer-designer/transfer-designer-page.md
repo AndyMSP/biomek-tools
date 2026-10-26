@@ -1,0 +1,480 @@
+# transfer-designer page — specification
+
+> **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview (v126), which Andy
+> shaped and used from 2026-10-24 to 2026-10-26. Still to review: the wording of the messages, and
+> what the page opens with when there's no browser copy (section 4: an empty plan; the preview opened
+> an example plan).
+
+## 1. Purpose
+The transfer designer's page: the screen where people plan an experiment's liquid handling. This
+specification covers the three page files:
+
+| File | Job |
+|---|---|
+| `transfer-designer.html` | The page's structure: the header, the deck panel, the Stages column, the message bar. |
+| `transfer-designer.css` | The page's styling (section 15). |
+| `transfer-designer-page.js` | The page's behavior: it keeps the plan's history, passes on what the user does to the logic modules, and draws the result. |
+
+The build step joins the page files and the modules they use into one file (ADR 0004):
+`transfer-designer` is added to the build's list of tools.
+
+The page has no rules of its own about plans. Every edit goes through the transfer designer's logic
+(`transfer-designer.md`), undo and redo through `plan-history.md`, saving and opening through
+`plan-file.md`, the labware through `deck.md`, and what each well holds through
+`contents-tracking.md`. When one of them refuses an edit, the page shows its message and changes
+nothing. What the page decides itself is only how things look and how the user does them, such as
+how typing a volume works and how numbers are shown (section 13), as for the randomizer
+(`randomizer-page.md`).
+
+## 2. Scope
+Version 1 does everything below: filling wells with components before the run, building stages,
+adding transfers by clicking and dragging, tip changes, labels, undo and redo, and saving and opening
+plans, with a browser copy.
+
+Not in version 1 (see `docs/roadmap.md`):
+- **Writing the Biomek files.** The button is there (section 5) and works once the file writer is
+  built (roadmap item 7), as part of that work.
+- **A guided start** for an empty plan (Andy considered it, 2026-10-26: not now).
+- **Collapsing tip groups** in the Stages column.
+- **Moving** a stage or a transfer, **mixing**, **final concentrations** (`transfer-designer.md`).
+- **Messages in the page's own terms everywhere.** Some messages from the shared modules use
+  internal terms, such as "starting contents entry 3" (roadmap, "Technical debt").
+
+## 3. Layout
+From the top:
+
+| Where | What |
+|---|---|
+| Header | The title `Transfer designer`, with `Biomek i5 · Span-8` beside it in gray; on the right, the buttons `Biomek files`, `Save`, `Open` and `Reset` (section 5). |
+| Deck panel (left) | Two bars, then the labware that's out (section 6). |
+| Stages column (right) | Start, the tip groups with their stages, and End (section 7). |
+| Message bar | Floating at the bottom of the window, centered (section 12). |
+
+When the window is wider than 1000px, the deck panel and the Stages column sit side by side, the
+Stages column 320px to 400px wide and the deck panel taking the rest. The Stages column is then
+pinned beside the deck while the page scrolls, scrolls on its own, and is fitted to end 12px above
+the bottom of the window, wherever its top is (lower at first, under the header; at the top once the
+page scrolls), and never past the bottom of the deck panel. The area holding both panels always
+reaches at least the bottom of the window, so a short deck panel doesn't cut the Stages column
+short. In a narrower window they stack: the deck panel, then the Stages column, which is then as
+tall as its contents.
+
+## 4. What the page keeps
+**The history.** A `PlanHistory` (`plan-history.md`) whose states are each
+`{ plan, open }`: the plan, and what's **open** in the Stages column: `"start"`, a stage's ID, or
+`"end"`. So undo goes back to the plan and to where the edit was made.
+- An edit of the plan is **recorded** (one undo each).
+- Opening something else (Start, a stage, End) **replaces** the current state, so it isn't an undo
+  of its own (`replacePresent`).
+
+**When the page opens**, it brings back the browser copy (section 5) and opens the last stage in the
+stage order. With no copy, or one that can't be read, it starts with `emptyPlan()`, with Start open.
+
+**The page's own state**, which isn't part of the plan, undo, or the files:
+- which labware is **out** (in the editor) and which is put away (section 6);
+- whether arrows are shown (on at first);
+- which stages show their transfer list (none at first);
+- the open editing box, and its unsaved changes (section 10);
+- the **brush**: the component picked, or the eraser, and its volume (section 8);
+- the **next transfer's volume** (section 9);
+- a chosen **source** well, while a transfer is being made (section 9).
+
+## 5. The header
+**Biomek files** (solid blue, first). Until the file writer is built it shows the message `Not built
+yet: writing the Biomek files comes with the file writer (roadmap item 7).`
+
+**Save** saves the plan as a plan file, with `planToText(plan, savedBy)`, where `savedBy` is
+`transfer designer v` and the tools' version from `package.json` (e.g. `transfer designer v0.2.0`;
+the page imports it, and the build bundles it in). The suggested file name is
+`transfer plan YYYY-MM-DD.json`, by the computer's own date (not UTC). Where the browser can ask
+where to save (Edge and Chrome can), it asks; message `Saved the plan as <file name>.` If the user
+closes that dialog, nothing happens. Otherwise, or if the browser refuses, the file goes to the
+downloads; message `Saved the plan as <file name>, in your downloads.`
+
+**Open** asks for a `.json` file and opens it with `planFromText`. It replaces the plan shown as one
+undoable edit, opens the plan's last stage, brings out exactly the labware the plan uses, closes any
+editing box, clears any source, and picks the plan's first component (or nothing). Message `Opened
+<file name>. Undo brings back the plan you had before.` If the file can't be opened: `<file name>:
+` and `planFromText`'s message (`This file can't be opened: …`); nothing changes.
+
+**Reset** (red outline) opens a small box under it, focused on Cancel: **Reset the whole plan?**
+`This clears the starting contents, every transfer and every stage. Undo can bring them back.` with
+`Cancel` and `Reset everything` (solid red). Reset everything replaces the plan with `emptyPlan()` as
+one undoable edit, opens Start, puts all labware away, closes any editing box, clears any source,
+and picks no component. Message `Reset. Bring out the labware you need, then fill wells from the
+Start card. Undo brings the plan back.`
+
+**The browser copy** (ADR 0010). After every change to the plan, including undo and redo, the page
+stores `planToText(plan, savedBy)` in the browser's local storage, under the key
+`biomek-tools transfer designer: plan`. When the page opens, it reads that copy back with
+`planFromText`, before storing anything (so it never overwrites the copy with the plan it starts
+with), and if it opens:
+- the history starts with it (nothing to undo), its labware out, its first component picked;
+- message `Brought back the plan you were working on in this browser.`
+
+If the copy can't be read, the page starts as with no copy, with the message `The plan kept in this
+browser couldn't be brought back, so here's an empty plan instead. (<the reason>)`. If the browser
+has no local storage or refuses it (e.g. a private window), the page works without the copy and says
+nothing. Saving a file doesn't touch the copy; Reset leaves it holding the empty plan.
+
+## 6. The deck panel
+**First bar.** On the left, the timeline (section 11); on the right, `Undo`, `Redo` (each disabled
+when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the problem count: `No
+problems` in green, or `N problems` in red, counting the overdraws in the whole plan.
+
+**Second bar.** On the left, the **labware tray**; on the right, the key, the component colors and
+the `Arrows` toggle. On a narrow window, or when the key has marks, the right side wraps onto its own
+line.
+- **The tray** has a chip for each labware in the deck description: a tiny outline of its shape
+  (dots for a plate, stripes for a reservoir) and its label. They're in two groups, `Used labware:`
+  and `Unused labware:` (used: by the plan, `labwareUsed`), each in the deck's order; an empty group
+  is hidden. Clicking a chip brings that labware out, or puts it away; a chip is shown pressed (blue)
+  while its labware is out. Its tooltip says `Bring out <label>` or `Put away <label>`. Putting
+  labware away clears a source chosen on it. Undo doesn't change what's out.
+- **The key** shows only marks on the deck now: `Overdraw` (a well with a red ring and a red X) and
+  `Off plan` (a well with a red ring). With neither, the key is hidden.
+- **The component colors**: each component's swatch and name, in the plan's order.
+- **`Arrows`** (pressed while on) shows or hides the transfer arrows.
+
+**The labware** that's out, one block each, in the deck's order. With none out: `No labware is out.
+Click a labware above to bring it into the editor.`
+- **Heading:** the label in bold, as a button (tooltip `Click to rename`); beside it, small and gray,
+  the deck name and labware type, e.g. `Plate · BCFlat96`. Clicking the label turns it into a text
+  box holding the label, selected. Enter or clicking away saves it with `setLabel` (message `Renamed
+  <name> to <label>.`); Escape cancels. A label that's unchanged saves nothing. If `setLabel`
+  refuses it (e.g. another labware has it), its message is shown and the label stays as it was.
+- **A 96-well plate** is a grid of round wells, with column numbers above and row letters at the
+  left. **A reservoir** (numbered grid) is a row of 12 tall troughs, each as tall as 8 wells, with
+  rounded corners and no headings.
+- A wide labware scrolls sideways inside its block rather than shrinking its wells.
+
+**Each well** shows what it holds at the point the deck shows (section 11):
+- **Empty:** white, with its well name (e.g. `A1`, or `5` on a reservoir) in small gray text.
+- **Holding something:** filled with its components' colors, in proportion (for a plate well, a pie,
+  in the order the components are listed in the well; for a trough, bands from the bottom up), with
+  its total volume in short form (section 13) in the middle.
+- Its accessible name is the well and its contents, e.g. `Assay plate A1, 120 µL` or `Assay plate
+  A2, empty`.
+
+**Pointing at a well** shows its contents card at once, beside the well: to its left if it fits there
+(the cursor's volume label is to the right), otherwise to its right, and kept inside the window. The
+card (dark, light text) shows:
+- the well, e.g. `Assay plate A1`; its total, `120 µL total`, or `Empty`;
+- for each component: its swatch, name, volume in µL and percentage (section 13);
+- for each overdraw of this well: `Transfer #5 asked for 60 µL but this well held 50 µL.`;
+- if the well is off plan: `Contents differ from the plan because of transfer #5, #7.`
+
+Transfer numbers are positions in the operation list counting from 1. The card hides when the
+pointer leaves the well, the page scrolls, or a drag starts.
+
+**Marks on the wells** (from `contents-tracking` at the point the deck shows):
+- **Overdraw:** a source well a transfer asked for more than it held: a thick red ring and a big red
+  X behind its label.
+- **Off plan:** a well whose contents differ from the plan because of an overdraw: a thick red ring.
+- **The open stage's wells:** while a stage with transfers is open, every well its transfers don't
+  touch fades (to 30% opacity; 70% while pointed at).
+- **A chosen source:** a blue outline. **The well under a drag:** a dashed blue outline. **A box being
+  dragged across** (when filling wells, or sending a source into several): each well in it gets a
+  blue outline, and an empty one a light blue fill.
+
+**Arrows.** While a stage with transfers is open and `Arrows` is on, each of its transfers is drawn
+as a straight arrow from its source to its destination, on top of the wells, in the color of the
+source's main component (the one it holds most of) as the stage starts, or gray if it's empty then.
+Each end stops short of the well's center, by 11px or a third of the arrow's length if that's less,
+so it's inside the well but clear of the volume label. A transfer from a well into itself has no
+arrow. An end on labware that's put away ends at that labware's chip in the tray instead.
+
+## 7. The Stages column
+From the top: **Start**, then one **tip group box** per tip group (`tipGroups`), each holding its
+stages in stage order, then **End**. Exactly one of them is **open**, as a card; the others are
+one-line rows. Clicking a row opens it.
+
+**Rows and cards share one look.** A row shows a number in a small round badge, a name, and a count
+at the right. A card shows the same at the top, with `Current` in blue at the right, then its
+contents.
+
+**Start** (number `0`, name `Start`, count `N wells filled`: the wells holding something at the
+start). Its card holds `Pick what to fill wells with, then click or drag across wells on the deck.`
+and the palette (section 8).
+
+**A stage** (number: its place in the stage order, from 1; its name; count `N transfers`). Its card
+holds:
+- **its settings in one line**, gray, e.g. `↑ Slow · ↓ Non-Contact · 2 probes`: ↑ is the aspirate
+  mode (at the sources), ↓ the dispense mode (at the destinations), from `modeOf`, or `custom` if
+  the settings aren't one of the modes; then a ✎ that opens the stage's editing box (section 10).
+  Its accessible name says "aspirate" and "dispense" in place of the arrows.
+- with no transfers: `No transfers yet. Add some on the deck.`
+- otherwise, `Show transfers ▸`, which shows its **transfer list** (and becomes `Hide transfers ▾`,
+  which folds it away again). Each stage remembers whether its list is shown, while the page is open.
+  Each row is `Assay plate A1 → Drug plate B2 · 20 µL`, with a `×` at the right that removes it
+  (`removeTransfer`; message `Removed Assay plate A1 → Drug plate B2 from stage 2, “Drugs”.`). The
+  volume is a button: clicking it turns it into a text box holding the volume, selected; Enter or
+  clicking away saves it with `changeVolume` (message `Volume changed to 25 µL.`); Escape cancels; an
+  unchanged volume saves nothing. **Pointing at a row** singles out its transfer on the deck: its
+  row is tinted, its arrow stays while the stage's other arrows fade (to 12%), and its source and
+  destination wells get a blue outline.
+
+A stage **with an overdraw** (`stagesWithOverdraw`), row or card, has a light red background and
+border, and the tooltip `This stage has an overdraw: a transfer asks a well for more than it holds.`
+
+**End** (number `✓`, name `End`, count `N transfers done`: every transfer in the plan). Its card
+holds `The deck shows the plates after every stage has run. Open a stage to add or change
+transfers.`
+
+**Tip group boxes.** Each is a rounded box around its stages, light blue, alternating with light
+sand, so each tip change stands out. Its heading, at the top left, is the tip change: a small tip
+icon, `New tips · BC230` (its tip type only), and a ✎ that opens its editing box (section 10).
+
+**Adding stages and tip changes: the seams.** Stages in a box sit 10px apart. The space between two
+cards, above a box's first stage, and below a box's last stage, is a **seam**. Pointing at a seam,
+or moving keyboard focus to its buttons, shows a blue line across it with a `+` in a 26px circle in
+the middle (tooltip `Add a stage here`), floating over the cards; between two stages of a box, also a
+tip button at the right (tooltip `New tips here`). A seam never takes room of its own, and never
+takes a click meant for a card. Each `+` adds a stage into the box it's in, and opens it (message
+`Added a stage. New transfers go into it.`):
+
+| Seam | `+` adds | Accessible name |
+|---|---|---|
+| above a box's first stage | at the top of the box: `addStage(plan, thatStage, { takeTips: true })`, so the new stage takes the box's tips | `Add a stage at the start of these tips` |
+| between two stages | just before the lower one: `addStage(plan, lowerStage)` | `Insert a stage before stage 3, “Drugs”` |
+| below a box's last stage | at the end of the box: `addStage(plan, nextBoxFirstStage)`, or `null` for the last box | `Add a stage at the end of these tips` |
+
+The tip button adds a tip change before the lower stage (`addTipChange`; message `New tips before
+stage 3, “Drugs”.`), which starts a new box there.
+
+**What changed glows.** When a stage or a tip group box appears that wasn't there at the last
+drawing, it glows soft yellow (`#FFF1BF` background, a 4px `#F3D36B` ring) and fades over 1.2
+seconds. A glow carries on through redrawing. Nothing glows when the page first draws, or when
+something is only opened or edited.
+
+**Keeping things in view.** When a different entry opens, the column scrolls just enough to show
+all of it; when an editing box opens, it scrolls just enough to show the box.
+
+## 8. Starting contents (Start open)
+While Start is open, clicking a well fills it, and dragging from one well to another across one
+labware fills the box between them; each fill is one undoable edit.
+
+**The palette**, in the Start card: a chip for each component (its swatch and name), in the plan's
+order, each with a small ✎ beside it; then `+ New`; then `Eraser`. Picking a chip or the eraser
+gives it a blue outline (the eraser, red); nothing changes size or moves. Under them, one line saying
+what a click does:
+- a component picked: `Adds `**`1000 µL`**` of Media to each well you click, on top of what's there.
+  Type a number to change it.`
+- the eraser: `Eraser: click or drag to empty wells.`
+- nothing picked, with components: `Pick a component to fill wells with it.`; with none: `Add a
+  component with + New, then fill wells with it.`
+
+**Filling.** With a component picked, a click or a box adds the brush's volume of it to each well
+(`addToWells`; message `Added 1000 µL of Media to 3 wells.`). With the eraser, it empties them
+(`emptyWells`; message `Emptied 3 wells at the start.`). With nothing picked: `Pick a component in
+the Start card first, or add one with + New.` A drag that ends off the labware it started on fills
+nothing.
+
+**The brush's volume** starts at `DEFAULT_FILL_VOLUME` (section 14) and is typed (section 13). It
+stays while the page is open.
+
+**Adding components.** `+ New` becomes a text box (`Component name`). Enter adds the typed name
+(spaces at the ends removed) with `addComponent`, picks it, and opens a fresh box for the next name,
+so several can be added in a row. Enter on an empty box, Escape, or clicking away ends; clicking away
+with a name typed adds it first. The new component's color is the first in `COMPONENT_COLORS`
+(section 14) that no component has. If all are taken: `All 30 colors are in use, and two components
+can't share one. Remove a component to add another.` If `addComponent` refuses the name, its message
+is shown and the box stays open with the name, to fix it. Message `Added Media.`
+
+**Editing a component**: its ✎ opens its editing box (section 10), floating just under its chip, over
+the chips below, moved left if needed to stay inside the Start card:
+- **Name**: a text box.
+- **Color**: swatches. At first, 10: the first 10 colors in `COMPONENT_COLORS` that are free or the
+  component's own, in list order; its own color is always among them (in place of the 10th if it's
+  further down the list). `More colors` shows all 30, and becomes `Fewer colors`. A color another
+  component has is faded and crossed out, can't be chosen, and its tooltip says `Used by Drug_A`. The
+  component's own color is outlined.
+- **Remove**: asks first, in the box: `Remove Media from 4 wells?` (or `Remove Media?` if it's in no
+  well), with `Cancel` and `Remove` (solid red). Remove takes it out with `removeComponent` (message
+  `Removed Media from 4 wells. Undo can bring it back.`, or `Removed Media. Undo can bring it back.`)
+  and closes the box. If it was picked, the first component left is picked, or the eraser if none is.
+- **Save** renames and recolors as one edit (`renameComponent`, then `setComponentColor` if the color
+  changed; message `Saved Media.`). If it was picked, the renamed component stays picked.
+
+## 9. Transfers (a stage open)
+While a stage is open, transfers made on the deck go into it, with the next transfer's volume.
+
+**Clicking.** Clicking a well chooses it as the **source**: message `Source Assay plate A1 chosen.
+Click the destination well, or drag across several.`, and a dashed arrow follows the cursor from it,
+in the color of what the source holds now (gray if empty). Clicking another well adds the transfer
+and clears the source. Clicking the source again, or Escape, clears it: `Source cleared.`
+
+**Dragging** from one well to another (a move of at least 5px) adds one transfer between them, with
+the same arrow while dragging. Dropping on the same well: `Dropped back on the same well, so nothing
+was added.`; off any well: `Drop on a well to add a transfer.`
+
+**One source into many wells.** With a source chosen by clicking, dragging across a box of wells on
+one labware adds one transfer from that source into each well of the box, skipping the source
+itself, as one edit (`addTransfers`): message `Added 4 transfers of 50 µL from Drug plate A1 to stage
+2, “Drugs”.` The box is highlighted while dragging, and the source is cleared afterwards. A box
+holding only the source: `The box held only the source well, so nothing was added.` A drag ending on
+other labware: `Drag across wells of one labware to send the source into each of them.`
+
+**After adding** (`addTransfer`): `Added to stage 2, “Drugs”: Drug plate A1 → Assay plate A1, 20
+µL.` If the plan has more overdraws than before, the message is an error instead: `Added, but
+transfer #5 asks for 60 µL from Drug plate A1, which holds 50 µL.` (the last overdraw in the plan;
+with several transfers, `Added 4 transfers of 50 µL from Drug plate A1, but transfer #5 asks …`). If
+the logic refuses the transfer, its message is shown.
+
+**The next transfer's volume** starts at `DEFAULT_TRANSFER_VOLUME` (section 14), is typed (section
+13), and carries over to the next transfer. It shows at the arrow's tip while a source is chosen or
+a drag is under way.
+
+**End open.** Nothing can be added: clicking a well says `End shows the finished plates. Open a
+stage to add transfers into it.`, and dragging does nothing.
+
+## 10. Editing boxes
+Components, stages and tip changes each have a ✎ that opens an **editing box**, floating just under
+it, over what's below, so nothing moves. One box is open at a time; clicking the open box's ✎ again
+closes it, as a click outside would (below). Its ✎ is shown pressed while it's open.
+
+**Changes in a box are a draft** until saved:
+- At the bottom: `Remove` (red outline) at the left, if the box has one; `Discard` and `Save` (solid
+  blue) at the right.
+- **Save** puts all the box's changes in as one undoable edit and closes the box. Enter in a name box
+  saves too. If the logic refuses, its message is shown and the box stays open.
+- **Discard**, or **Escape**, closes the box without saving.
+- **A click outside** a box with no changes closes it, and the click still does what it would (e.g.
+  clicking another chip picks it). With unsaved changes, the click does nothing else: the box gives a
+  small sideways shake, its Save and Discard pulse twice with a thick blue ring, and the message bar
+  says `Save or discard your changes first.`
+- `Remove` acts at once after its own question (Cancel / Remove), not through Save.
+
+**A stage's box**: **Name** (a text box); **Mode**, with `Aspirate` and `Dispense` columns, each a
+menu of the pipetting modes for that end (`modesFor`), choosing one setting that end's technique and
+liquid type (`modeSettings`); if the stage's settings aren't one of the modes, the menu shows `(not
+one of the modes)` first; **Probes**, buttons `1` to `8`, choosing how many (`probesFor`), with every
+probe the stage uses highlighted (picking 4 lights up 1 to 4); and **Remove**, which asks `Remove
+stage 2, “Drugs” and its 4 transfers?` (or `Remove stage 2, “Drugs”?` with none). Remove takes it
+out (`removeStage`; message `Removed stage 2, “Drugs” and its 4 transfers. Undo brings it back.`,
+or without "and its …"); if it was open, the first stage in the stage order opens. When it's the
+only stage, Remove is disabled, with the tooltip `Keep at least one stage.` **Save** renames it (if
+the name changed) and changes its settings as one edit (message `Saved stage 2, “Drugs”.`).
+
+**A tip change's box**: **Tip type**, a button per tip type (`TIP_TYPES`), one chosen; **Remove**,
+which asks `Remove these new tips?` and removes it (`removeTipChange`; message `Removed the new tips:
+the stages after them keep the tips before.`). The first tip change has no Remove, and says `The run
+always starts by loading tips, so these can't be removed.` **Save** sets the tip type (`setTipType`;
+message `New tips are now BC230.`).
+
+**A component's box**: section 8.
+
+## 11. The timeline: what the deck shows
+The deck shows the plates at one point in the run, chosen by what's open:
+
+| Open | The deck shows | Caption |
+|---|---|---|
+| Start | the starting contents | `At the start, before any stage` |
+| a stage with transfers | the plates after that stage | `After stage 2 of 4, “Drugs”` |
+| a stage without transfers | the plates as it will start: after the stages with transfers before it | `As stage 3, “New stage”, will start (no transfers yet)` |
+| End | the plates after every stage | `At the end, after all stages` |
+
+Only a stage's end is shown, never part-way through a stage, because within a stage the Biomek
+chooses its own order (B56358AF, 22-25). Stage numbers in captions are places in the stage order,
+and the total is the number of stages.
+
+The caption sits at the top left of the deck panel, after two small buttons `‹` and `›` (side by
+side, before the caption, so they stay put however long it is). `‹` opens the entry before (Start,
+the stages in stage order, End), and `›` the one after; `‹` is disabled at Start and `›` at End.
+They're the same as clicking that entry in the Stages column.
+
+After any edit, what's open stays open (unless the edit opens something else: sections 5, 7 and 10),
+and the deck shows its point again.
+
+## 12. Keys and messages
+**Keys** (none while typing in a text box or menu, which keep their own keys):
+- **Digits, `.` and Backspace** type a volume (section 13), at any time: the brush's while Start is
+  open (not with the eraser), and the next transfer's while a stage is open. Not while End is open.
+- **Escape** closes the open editing box without saving; otherwise clears a chosen source.
+- **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac). Not while an editing
+  box is open, since its changes aren't in the plan yet.
+
+**The cursor's label.** While the pointer is over the deck, a small label beside it (14px right,
+26px up) shows what a click does: with a stage open, the next transfer's volume, `50 µL`; with Start
+open, `+ 1000 µL Media`, `Eraser`, or `No component picked`; with End open, nothing.
+
+**The message bar** floats at the bottom center of the window, at most 720px wide, and shows the
+latest message until the next replaces it; it's hidden when empty. It's announced to screen readers.
+Each message has a kind: **ok** (green on pale green), **note** (gray on white, with a border) or
+**error** (dark red on pale red, with a border). Messages are listed with what causes them in
+sections 5 to 10. The kinds: errors from the logic, overdraws after adding, a file that can't be
+opened, a browser copy that can't be read, and `All 30 colors are in use…` are **error**; `Added…`, `Saved…`, `Renamed…`, `Opened…`, `Volume changed…` and `New
+tips…` are **ok**; the rest are **note**.
+
+**Stages in messages** are named by place and name, e.g. `stage 3, “New stage”`, so two stages with
+the same name can't be confused. **Wells** are named by the labware's label and the well, e.g. `Assay
+plate A1`.
+
+## 13. Typing volumes and showing numbers
+**Typing a volume.** The first key after an edit starts a new number: a digit replaces the volume,
+`.` gives `0.`, and Backspace empties it. Later keys add to it: digits and one `.` are added at the
+end, and Backspace removes the last character. A volume typed as nothing shows as `?`. When used, a
+volume that's a number (digits, optionally `-`, and a decimal part) is passed on as a number;
+anything else is passed on as typed, so the logic's message says what's wrong.
+
+**Numbers shown:**
+- **Volumes** (cards, lists, messages): rounded to 2 decimal places, e.g. `33.33`; a volume below
+  0.01 µL that isn't 0 is shown in exponent form with one decimal, e.g. `4.0e-3`.
+- **Volumes inside wells** (short form): below 1, `<1`; from 10,000, thousands rounded with `k`,
+  e.g. `12k`; otherwise rounded to a whole number.
+- **Percentages** (contents card): rounded to 2 decimal places, e.g. `16.67%`; below 0.01% but not
+  0, in exponent form, e.g. `4.0e-3%`.
+- **Counts** take a plural `s` except for 1: `1 well`, `3 wells`.
+
+## 14. Configuration
+Two files in `config/` (ADR 0009), each data only, with comments saying where the values come from:
+- **`config/component-colors.js`** exports `COMPONENT_COLORS`: the 30 colors components can have
+  (Andy, 2026-10-25), as `#RRGGBB` text, ordered so the most distinct come first (a new component
+  takes the first free one, so similar colors only appear once there are many components):
+  `#4e79a7`, `#f28e2b`, `#59a14f`, `#e15759`, `#b07aa1`, `#edc948`, `#76b7b2`, `#ff9da7`, `#9c755f`,
+  `#17becf`, `#1f3d7a`, `#bcbd22`, `#7b2d8e`, `#a0cbe8`, `#ffbe7d`, `#8cd17d`, `#8b0000`, `#b6992d`,
+  `#499894`, `#d4a6c8`, `#c85200`, `#006d2c`, `#ff6f91`, `#6b6ecf`, `#637939`, `#fabfd2`, `#5c3c1b`,
+  `#9edae5`, `#ce6dbd`, `#2b2b2b`.
+- **`config/default-volumes.js`** exports `DEFAULT_TRANSFER_VOLUME` (`50`) and `DEFAULT_FILL_VOLUME`
+  (`1000`), in µL: the volumes the next transfer and the brush start with when the page opens.
+
+The page also uses the transfer designer's configuration (`config/pipetting-modes.js`,
+`config/tip-types.js`) through that module, and the deck description through `deck`.
+
+## 15. Visual design
+The page should look calm and be easy to scan, like the randomizer's. Its colors and sizes are
+defined once, in `transfer-designer.css`, as named CSS variables.
+
+- **Page and panels:** background `#F6F5F1`; the title 26px semibold; white panels with a thin border (`#E2E0D8`), rounded
+  corners (10px) and 20px padding, 20px apart; the page at most 1500px wide, centered.
+- **Type:** `"Segoe UI", system-ui, sans-serif`; well names and headings in `Consolas, "Cascadia
+  Mono", monospace`. Text `#1C1C1A`; secondary text gray (`#5E5E58`).
+- **Blue** (`#2F5DA8`) for actions and what's chosen, with a light border (`#9DB7DB`) and tint
+  (`#EEF3FA`). **Red** (`#C4362A`) for problems, with a pale background (`#FCE9E7`) and border
+  (`#E8A39B`). **Green** text `#22603A` on `#EDF5EF`.
+- **Buttons:** at least 34px tall, 6px corners; solid blue for the main action; red outline for
+  Reset and Remove; disabled ones gray.
+- **Wells:** 36px, 4px apart; an empty well white with a gray border (`#BDBDB5`).
+- **Tip group boxes:** 12px corners; light blue (`#EEF3FA`, border `#9DB7DB`), alternating with light
+  sand (`#F5F1E8`, border `#D9D2C3`).
+- **Contents card:** dark (`#1C1C1A`) with light text (`#F6F5F1`), problems in `#FFB4AA`.
+- **Motion:** with the system's "reduce motion" setting, no fades, glows or smooth scrolling.
+- **Headings** `Deck` and `Stages` are there for screen readers but not shown.
+
+## 16. Testing
+The page itself isn't unit-tested in Node: every rule about plans is in the logic modules, which
+are. `transfer-designer-page.test.js`, inside `describe("transfer-designer-page", …)`, checks only the
+page's configuration (ADR 0009):
+- `COMPONENT_COLORS`: 30 entries, each `#` and six hexadecimal digits, none repeated (ignoring case).
+- `DEFAULT_TRANSFER_VOLUME` and `DEFAULT_FILL_VOLUME`: numbers above 0.
+
+**By hand**, before each release, in Edge and Chrome, opening the built file:
+- each item in sections 5 to 13 behaves as described;
+- saving, then opening the saved file in a new window, gives the same plan; reloading the page
+  brings the plan back; a private window starts empty and works;
+- clicking, dragging, and sending one source into a box of wells, in all four directions;
+- every editing box: Save, Discard, Escape, a click outside with and without changes, Remove;
+- undo and redo with the buttons and the keys, after each kind of edit;
+- a plan with an overdraw shows the marks, the key, the red stage and the problem count;
+- the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
+- a window narrower than 1000px stacks the panels.

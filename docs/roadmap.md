@@ -75,6 +75,10 @@ Last updated: 2026-10-26
 - **`plan-file` specification written** (Draft, 2026-10-26;
   `src/tools/transfer-designer/plan-file.md`): what a plan file holds (format version 1), and the
   checks on opening one, in order. Stage IDs are renumbered on opening. Not built yet.
+- **Transfer designer page specification written** (Draft, 2026-10-26;
+  `src/tools/transfer-designer/transfer-designer-page.md`), from the preview: the whole screen, its
+  messages, and two new config files (`component-colors.js`, `default-volumes.js`). Display rules
+  stay in the page and are checked by hand, as for the randomizer. Not built yet.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
