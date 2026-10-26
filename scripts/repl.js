@@ -30,6 +30,7 @@ import {
   contentsToWellsText,
   wellToContentsText,
 } from "../src/tools/randomizer/randomizer.js";
+import { PlanHistory } from "../src/tools/transfer-designer/plan-history.js";
 
 // What the REPL loads, grouped by topic: one topic per module, named like its folder. Each topic
 // holds the names it loads into the session and examples to try with them. The startup message, the
@@ -142,6 +143,20 @@ const TOPICS = {
       'openWells(inputs.fixedContents, ["A1"])',
       "matchesInputs(result, inputs)",
       'findProblems({ ...inputs, filler: "", seed: 0 })',
+    ],
+  },
+  "plan-history": {
+    loaded: { PlanHistory },
+    examples: [
+      'let history = new PlanHistory("a")',
+      'history = history.record("b").record("c")',
+      "history = history.undo()",
+      "history.present",
+      "history.canRedo()",
+      'history = history.record("d")',
+      "history.canRedo()",
+      'history = history.replacePresent("d, viewed")',
+      "history.undo().present",
     ],
   },
 };
