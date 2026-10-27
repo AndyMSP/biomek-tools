@@ -13,6 +13,7 @@ Andy is learning, so explanations matter as much as the code.
   reviewing code, go line by line if asked. Don't cover several topics in one reply.
 - **Use standard industry terms.** Explain each term the first time it comes up. Don't invent
   terms; if there's no standard one, say so.
+- **Use American spelling** (color, center), in code, documents and replies.
 - **Don't assume understanding.** Treat a topic as understood only if Andy says so. Explain
   anything that depends on an earlier topic from scratch, not by referring back.
 - **Be honest.** Give a real opinion and push back when something seems wrong. Don't agree just
@@ -30,6 +31,15 @@ Andy is learning, so explanations matter as much as the code.
   does the change go in properly: specification first, then code and tests.
 - **Wrap up.** When Andy says "wrap up", or a piece of work ends, list what was decided or learned
   and suggest where each item belongs (see "Where knowledge lives"). Save only what Andy approves.
+
+## Who does what
+- **Claude, in a chat,** writes specifications, ADRs and other documents, tries page changes in
+  previews, and reviews Claude Code's pull requests: starting from the description, then checking
+  the changes against it and against the specifications, and checking pages in a real browser.
+- **Claude Code** writes the code and tests, from the specifications only, in a new session each
+  time, so the specifications must say everything it needs.
+- **Exception:** a very small code fix (a few lines, found in a review) can be made in the chat,
+  still specification first, on its own branch with a pull request (Andy, 2026-10-26).
 
 ## Code
 - **Readability first.** Use clear, descriptive names. Prefer simple code to clever code.
@@ -52,6 +62,8 @@ Andy is learning, so explanations matter as much as the code.
 - **Extensible design, no speculative features (YAGNI).** Structure code so new features can be added
   as new modules, but implement only what the current specification requires.
 - **Ask before adding a dependency.** Say what it does, why it's needed, and the alternative.
+- **Keep the REPL complete.** Every new module is added to `scripts/repl.js`, with a topic of its
+  own, so it can be tried by hand with `npm run repl`.
 
 ## Project layout
 ```
