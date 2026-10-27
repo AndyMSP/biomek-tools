@@ -1,0 +1,2729 @@
+// transfer-designer-page.js — the transfer designer page's behavior: it keeps the plan's history,
+// passes on what the user does to the logic modules, and draws the result.
+//
+// The page has no rules of its own about plans (transfer-designer-page.md, section 1). Every edit
+// goes through transfer-designer.js, undo and redo through plan-history.js, saving and opening
+// through plan-file.js, the labware through deck.js, and what each well holds through
+// contents-tracking.js. When one of them refuses an edit, the page shows its message and changes
+// nothing. What this file decides is only how things look and how the user does them: how typing
+// a volume works, how numbers are shown, where boxes float, and what each message says.
+// Specification: transfer-designer-page.md.
+
+import packageJson from "../../../package.json" with { type: "json" };
+import { COMPONENT_COLORS } from "../../../config/component-colors.js";
+import { DEFAULT_TRANSFER_VOLUME, DEFAULT_FILL_VOLUME } from "../../../config/default-volumes.js";
+import { TIP_TYPES } from "../../../config/tip-types.js";
+import { replay } from "../../shared/contents-tracking/contents-tracking.js";
+import { labwareNames, gridOf, labwareTypeOf, wellsInBox } from "../../shared/deck/deck.js";
+import { PlanHistory } from "./plan-history.js";
+import { planToText, planFromText } from "./plan-file.js";
+import {
+  START,
+  emptyPlan,
+  probesFor,
+  modesFor,
+  modeSettings,
+  modeOf,
+  stageOrder,
+  addStage,
+  renameStage,
+  changeStageSettings,
+  canRemoveStage,
+  removeStage,
+  stageEnds,
+  stagesWithOverdraw,
+  addTransfers,
+  changeVolume,
+  removeTransfer,
+  transfersIn,
+  tipChangeAt,
+  addTipChange,
+  setTipType,
+  removeTipChange,
+  tipGroups,
+  addComponent,
+  renameComponent,
+  setComponentColor,
+  removeComponent,
+  countWellsWith,
+  addToWells,
+  emptyWells,
+  labwareUsed,
+  labelOf,
+  setLabel,
+} from "./transfer-designer.js";
+
+// --- Constants ---
+
+// Who saved a plan file: the tool and the tools' version from package.json (section 5).
+const SAVED_BY = `transfer designer v${packageJson.version}`;
+
+// The key the browser copy of the plan is stored under, in the browser's local storage (section 5).
+const STORAGE_KEY = "biomek-tools transfer designer: plan";
+
+// What's open in the Stages column is START, a stage's ID, or END (section 4).
+const END = "end";
+
+// A press that moves this far (in pixels) becomes a drag rather than a click (section 9).
+const DRAG_START_DISTANCE = 5;
+
+// How long a new stage or tip group box glows (section 7).
+const GLOW_MILLISECONDS = 1200;
+
+// Each end of an arrow stops this far short of the well's center, or a third of the arrow's length
+// if that's less (section 6).
+const ARROW_END_INSET = 11;
+
+// The Stages column ends this far above the bottom of the window (section 3).
+const STAGES_BOTTOM_MARGIN = 12;
+
+// The Span-8 has probes 1 to 8 (the stage's box offers each; section 10).
+const PROBE_COUNT = 8;
+
+// How many color swatches a component's box shows at first (section 8).
+const FIRST_COLORS_SHOWN = 10;
+
+// Where the cursor's label sits, from the pointer (section 12).
+const CURSOR_LABEL_OFFSET = { x: 14, y: -26 };
+
+// The color of an arrow from an empty well, and of a well's component with no color.
+const GRAY = "#9a9a94";
+
+// The layouts of section 3: side by side above 1000px, stacked below.
+const wideLayout = window.matchMedia("(min-width: 1001px)");
+
+// With the system's "reduce motion" setting, the column jumps rather than scrolls smoothly.
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+// --- The page's state (section 4) ---
+
+// The history: a PlanHistory whose states are { plan, open }.
+let history;
+
+// The labware that's out (in the editor), by deck name.
+const labwareOut = new Set();
+
+// Whether the transfer arrows are shown.
+let arrowsShown = true;
+
+// The stages showing their transfer list, by ID.
+const expandedStages = new Set();
+
+// The open editing box (section 10), or null: { kind, key, original, draft, element, pencil }.
+let editingBox = null;
+
+// The brush (section 8): what's picked ({ kind: "none" }, { kind: "eraser" } or
+// { kind: "component", name }) and its typed volume.
+const brush = { pick: { kind: "none" }, volume: newTypedVolume(DEFAULT_FILL_VOLUME) };
+
+// The next transfer's typed volume (section 9).
+const transferVolume = newTypedVolume(DEFAULT_TRANSFER_VOLUME);
+
+// The source well chosen by clicking, { labware, well }, or null.
+let source = null;
+
+// A press on a well that hasn't moved far enough to be a drag: { end, x, y }, or null.
+let press = null;
+
+// The drag in progress: { kind: "fill" | "transfer" | "box", from, over }, or null. `over` is the
+// well under the pointer now, or null.
+let drag = null;
+
+// Where the pointer is while over the labware, { x, y } in window coordinates, or null.
+let pointerPosition = null;
+
+// The "+ New" component box while it's open: { text }, or null.
+let addingComponent = null;
+
+// What the deck shows now (section 11), and the plates as the open stage starts (for arrow colors).
+let shownSnapshot = null;
+let stageStartSnapshot = null;
+
+// Each drawn well's element, by wellKey, so marks and arrows can find them.
+const wellElements = new Map();
+
+// The stage and tip group keys drawn last time, for the glow (section 7); null before the first
+// drawing, when nothing glows.
+let lastDrawnKeys = null;
+
+// When each glow started (performance.now()), by key, so it carries on through redrawing.
+const glows = new Map();
+
+// The page's elements that transfer-designer.html gives an id, looked up once.
+const elements = {
+  biomekFiles: byId("biomek-files"),
+  save: byId("save"),
+  open: byId("open"),
+  openFile: byId("open-file"),
+  reset: byId("reset"),
+  resetBox: byId("reset-box"),
+  resetCancel: byId("reset-cancel"),
+  resetEverything: byId("reset-everything"),
+  workspace: byId("workspace"),
+  deckPanel: byId("deck-panel"),
+  previousPoint: byId("previous-point"),
+  nextPoint: byId("next-point"),
+  timelineCaption: byId("timeline-caption"),
+  undo: byId("undo"),
+  redo: byId("redo"),
+  problemCount: byId("problem-count"),
+  tray: byId("labware-tray"),
+  key: byId("key"),
+  componentColors: byId("component-colors"),
+  arrowsToggle: byId("arrows-toggle"),
+  labwareArea: byId("labware-area"),
+  noLabwareNote: byId("no-labware-note"),
+  arrowLayer: byId("arrow-layer"),
+  stagesColumn: byId("stages-column"),
+  stagesList: byId("stages-list"),
+  messageBar: byId("message-bar"),
+  cursorLabel: byId("cursor-label"),
+  contentsCard: byId("contents-card"),
+};
+
+setUpPage();
+
+// --- Setting up ---
+
+// Brings back the browser copy or starts with an empty plan (section 5), connects every control,
+// and draws the page.
+function setUpPage() {
+  startFromBrowserCopy();
+  connectHeader();
+  connectDeckBars();
+  connectDeck();
+  connectKeys();
+  connectEditingBoxGuard();
+  window.addEventListener("scroll", fitStagesColumn);
+  window.addEventListener("resize", () => {
+    fitStagesColumn();
+    drawStageArrows();
+  });
+  document.addEventListener("scroll", hideContentsCard, true);
+  refresh();
+}
+
+// Starts the history from the browser copy if there is one that can be read (its labware out, its
+// first component picked, its last stage open), otherwise from an empty plan with Start open.
+function startFromBrowserCopy() {
+  const copy = readBrowserCopy();
+  if (copy.status === "ok") {
+    history = new PlanHistory({ plan: copy.plan, open: stageOrder(copy.plan).at(-1) });
+    bringOutUsedLabware(copy.plan);
+    pickFirstComponent(copy.plan);
+    showMessage("Brought back the plan you were working on in this browser.", "note");
+    return;
+  }
+  history = new PlanHistory({ plan: emptyPlan().plan, open: START });
+  if (copy.status === "failed") {
+    showMessage(
+      "The plan kept in this browser couldn't be brought back, so here's an empty plan instead. " +
+        `(${copy.reason})`,
+      "error",
+    );
+  }
+}
+
+// Connects the header's buttons (section 5).
+function connectHeader() {
+  elements.biomekFiles.addEventListener("click", () => {
+    showMessage(
+      "Not built yet: writing the Biomek files comes with the file writer (roadmap item 7).",
+      "note",
+    );
+  });
+  elements.save.addEventListener("click", saveFile);
+  elements.open.addEventListener("click", () => {
+    // Clearing the value first means choosing the same file again still counts as a change.
+    elements.openFile.value = "";
+    elements.openFile.click();
+  });
+  elements.openFile.addEventListener("change", openChosenFile);
+  elements.reset.addEventListener("click", openResetBox);
+  elements.resetCancel.addEventListener("click", closeResetBox);
+  elements.resetEverything.addEventListener("click", resetEverything);
+}
+
+// Connects the deck panel's two bars (sections 6 and 11): the timeline, Undo, Redo and Arrows.
+function connectDeckBars() {
+  elements.previousPoint.addEventListener("click", () => openNeighbour(-1));
+  elements.nextPoint.addEventListener("click", () => openNeighbour(1));
+  elements.undo.addEventListener("click", undo);
+  elements.redo.addEventListener("click", redo);
+  elements.arrowsToggle.addEventListener("click", () => {
+    arrowsShown = !arrowsShown;
+    elements.arrowsToggle.setAttribute("aria-pressed", String(arrowsShown));
+    drawStageArrows();
+  });
+}
+
+// Connects the labware area's pointer and keyboard actions (sections 8 and 9), the contents card
+// and the cursor's label. Moving and releasing are watched on the whole document, so a drag that
+// leaves the labware still ends.
+function connectDeck() {
+  elements.labwareArea.addEventListener("pointerdown", startPress);
+  document.addEventListener("pointermove", movePointer);
+  document.addEventListener("pointerup", releasePointer);
+  document.addEventListener("pointercancel", cancelPress);
+  elements.labwareArea.addEventListener("click", clickWellWithKeyboard);
+  elements.labwareArea.addEventListener("pointerover", (event) => {
+    const wellElement = event.target.closest(".well");
+    if (wellElement !== null && drag === null) {
+      showContentsCard(wellElement);
+    }
+  });
+  elements.labwareArea.addEventListener("pointerout", (event) => {
+    if (event.target.closest(".well") !== null) {
+      hideContentsCard();
+    }
+  });
+  elements.labwareArea.addEventListener("pointerleave", () => {
+    pointerPosition = null;
+    updateCursorLabel();
+    drawCursorArrow();
+  });
+}
+
+// --- History and refreshing ---
+
+// The plan shown now.
+function currentPlan() {
+  return history.present.plan;
+}
+
+// What's open in the Stages column now: START, a stage's ID, or END.
+function currentOpen() {
+  return history.present.open;
+}
+
+// Records an edit of the plan as one undo (section 4), with `open` as what's open afterwards, then
+// updates everything.
+function recordEdit(plan, open = currentOpen()) {
+  history = history.record({ plan, open });
+  afterPlanChange();
+}
+
+// Called after every change to the plan, including undo and redo: the next volume key starts a new
+// number (section 13), the browser copy is stored (section 5), and the page is redrawn.
+function afterPlanChange() {
+  brush.volume.startsNew = true;
+  transferVolume.startsNew = true;
+  storeBrowserCopy();
+  refresh();
+}
+
+// Opens Start, a stage or End (section 7). It replaces the current state rather than recording one,
+// so it isn't an undo of its own (section 4). Closes any editing box and clears any source, since
+// both belong to what was open, then scrolls the column to show the opened entry.
+function openEntry(key) {
+  if (key === currentOpen()) {
+    return;
+  }
+  closeEditingBox();
+  source = null;
+  history = history.replacePresent({ plan: currentPlan(), open: key });
+  refresh();
+  scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(key)}"]`));
+}
+
+// Opens the entry before (`direction` -1) or after (1) the open one, in the order Start, the stages
+// in stage order, End (section 11).
+function openNeighbour(direction) {
+  const entries = allEntries(currentPlan());
+  const next = entries[entries.indexOf(currentOpen()) + direction];
+  if (next !== undefined) {
+    openEntry(next);
+  }
+}
+
+// Every entry of the Stages column in order: START, the stage IDs in stage order, END.
+function allEntries(plan) {
+  return [START, ...stageOrder(plan), END];
+}
+
+// Undoes the last edit (section 6).
+function undo() {
+  if (!history.canUndo()) {
+    return;
+  }
+  history = history.undo();
+  afterPlanChange();
+  showMessage("Undone.", "note");
+}
+
+// Redoes the last undone edit (section 6).
+function redo() {
+  if (!history.canRedo()) {
+    return;
+  }
+  history = history.redo();
+  afterPlanChange();
+  showMessage("Redone.", "note");
+}
+
+// Redraws everything from the current plan and the page's state: the deck panel, the Stages column
+// and the column's fit.
+function refresh() {
+  const plan = currentPlan();
+  // Undo or redo can take the picked component away (e.g. undoing a rename): then, as when a picked
+  // component is removed, the first component is picked, or the eraser if there's none.
+  if (brush.pick.kind === "component" && !hasComponent(plan, brush.pick.name)) {
+    const first = plan.components[0];
+    brush.pick = first === undefined ? { kind: "eraser" } : { kind: "component", name: first.name };
+  }
+  refreshDeck();
+  refreshStages();
+  updateCursorLabel();
+  requestAnimationFrame(fitStagesColumn);
+}
+
+// Runs `edit`, which returns a new plan, and records it. If the logic refuses, shows its message as
+// an error and returns false; otherwise returns the new plan.
+function tryEdit(edit) {
+  const plan = tryLogic(edit);
+  if (plan !== false) {
+    recordEdit(plan);
+  }
+  return plan;
+}
+
+// Runs `action` and returns its result. If the logic refuses, shows its message as an error and
+// returns false, so the caller changes nothing.
+function tryLogic(action) {
+  try {
+    return action();
+  } catch (error) {
+    showMessage(error.message, "error");
+    return false;
+  }
+}
+
+// --- The header (section 5) ---
+
+// Saves the plan as a plan file: through the browser's save dialog where it has one, otherwise to
+// the downloads.
+async function saveFile() {
+  const text = planToText(currentPlan(), SAVED_BY);
+  const fileName = `transfer plan ${localDate()}.json`;
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [{ description: "Transfer plan", accept: { "application/json": [".json"] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+      showMessage(`Saved the plan as ${handle.name}.`, "ok");
+      return;
+    } catch (error) {
+      // Closing the dialog gives an AbortError: nothing happens. Anything else means the browser
+      // refused, and the file goes to the downloads instead.
+      if (error.name === "AbortError") {
+        return;
+      }
+    }
+  }
+  downloadText(text, fileName);
+  showMessage(`Saved the plan as ${fileName}, in your downloads.`, "ok");
+}
+
+// Today's date by the computer's own clock (not UTC), as YYYY-MM-DD, e.g. "2026-10-26".
+function localDate() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+// Hands `text` to the browser as a file to download, named `fileName`.
+function downloadText(text, fileName) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// Opens the plan file the user chose: it replaces the plan shown as one undoable edit, or, if it
+// can't be opened, shows why and changes nothing.
+async function openChosenFile() {
+  const file = elements.openFile.files[0];
+  if (file === undefined) {
+    return;
+  }
+  const text = await file.text();
+  let plan;
+  try {
+    plan = planFromText(text);
+  } catch (error) {
+    showMessage(`${file.name}: ${error.message}`, "error");
+    return;
+  }
+  showReplacedPlan(plan, stageOrder(plan).at(-1));
+  showMessage(`Opened ${file.name}. Undo brings back the plan you had before.`, "ok");
+}
+
+// Replaces the plan shown with `plan` as one undoable edit, with `open` open: brings out exactly the
+// labware it uses, closes any editing box, clears any source, and picks its first component.
+function showReplacedPlan(plan, open) {
+  closeEditingBox();
+  source = null;
+  addingComponent = null;
+  bringOutUsedLabware(plan);
+  pickFirstComponent(plan);
+  recordEdit(plan, open);
+}
+
+// Opens Reset's question under the button, focused on Cancel.
+function openResetBox() {
+  elements.resetBox.hidden = false;
+  elements.reset.setAttribute("aria-expanded", "true");
+  elements.resetCancel.focus();
+}
+
+// Closes Reset's question.
+function closeResetBox() {
+  elements.resetBox.hidden = true;
+  elements.reset.setAttribute("aria-expanded", "false");
+}
+
+// Replaces the plan with an empty one as one undoable edit, with Start open and all labware put
+// away.
+function resetEverything() {
+  closeResetBox();
+  closeEditingBox();
+  source = null;
+  addingComponent = null;
+  labwareOut.clear();
+  brush.pick = { kind: "none" };
+  recordEdit(emptyPlan().plan, START);
+  showMessage(
+    "Reset. Bring out the labware you need, then fill wells from the Start card. Undo brings the plan back.",
+    "note",
+  );
+}
+
+// Makes exactly the labware `plan` uses the labware that's out.
+function bringOutUsedLabware(plan) {
+  labwareOut.clear();
+  for (const name of labwareUsed(plan)) {
+    labwareOut.add(name);
+  }
+}
+
+// Picks the plan's first component, or nothing if it has none.
+function pickFirstComponent(plan) {
+  const first = plan.components[0];
+  brush.pick = first === undefined ? { kind: "none" } : { kind: "component", name: first.name };
+}
+
+// --- The browser copy (section 5) ---
+
+// Stores the plan in the browser's local storage. If the browser has no storage or refuses it, the
+// page works without the copy and says nothing.
+function storeBrowserCopy() {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, planToText(currentPlan(), SAVED_BY));
+  } catch {
+    // No local storage (e.g. a private window), or it's full: the page works without the copy.
+  }
+}
+
+// Reads the browser copy back: { status: "none" } with no copy or no storage, { status: "ok", plan }
+// if it opens, or { status: "failed", reason } with planFromText's message if it doesn't.
+function readBrowserCopy() {
+  let text;
+  try {
+    text = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return { status: "none" };
+  }
+  if (text === null) {
+    return { status: "none" };
+  }
+  try {
+    return { status: "ok", plan: planFromText(text) };
+  } catch (error) {
+    return { status: "failed", reason: error.message };
+  }
+}
+
+// --- The deck panel (sections 6 and 11) ---
+
+// Redraws the deck panel: the timeline, Undo and Redo, the problem count, the tray, the key, the
+// component colors, the labware and the arrows, for the point the deck shows.
+function refreshDeck() {
+  const plan = currentPlan();
+  const open = currentOpen();
+  shownSnapshot = replay(plan.startingContents, plan.operationList, operationCountShown(plan, open));
+  stageStartSnapshot = isStage(plan, open)
+    ? replay(plan.startingContents, plan.operationList, operationCountBefore(plan, open))
+    : null;
+  refreshTimeline(plan, open);
+  elements.undo.disabled = !history.canUndo();
+  elements.redo.disabled = !history.canRedo();
+  refreshProblemCount(plan);
+  drawTray(plan);
+  drawComponentColors(plan);
+  drawLabware(plan, open);
+  drawKey();
+  drawStageArrows();
+  drawCursorArrow();
+}
+
+// True if `key` is one of the plan's stages (not START or END).
+function isStage(plan, key) {
+  return plan.stageList.has(key);
+}
+
+// How many operations have run at the point the deck shows (section 11): none for Start, all for
+// End, and for a stage, those up to the end of the last stage with transfers at or before it.
+function operationCountShown(plan, open) {
+  if (open === START) {
+    return 0;
+  }
+  if (open === END) {
+    return plan.operationList.listOperations().length;
+  }
+  return transfersDoneUpTo(plan, open, true);
+}
+
+// How many operations have run as stage `id` starts: those of the stages with transfers before it.
+function operationCountBefore(plan, id) {
+  return transfersDoneUpTo(plan, id, false);
+}
+
+// How many transfers have run when the stages before `id` in the stage order (and `id` itself,
+// if `including`) have run, from stageEnds.
+function transfersDoneUpTo(plan, id, including) {
+  const order = stageOrder(plan);
+  const place = order.indexOf(id);
+  let count = 0;
+  for (const end of stageEnds(plan)) {
+    const endPlace = order.indexOf(end.stage);
+    if (endPlace < place || (including && endPlace === place)) {
+      count = end.transfersDone;
+    }
+  }
+  return count;
+}
+
+// Shows the timeline's caption and whether ‹ and › can go anywhere (section 11).
+function refreshTimeline(plan, open) {
+  elements.timelineCaption.textContent = timelineCaption(plan, open);
+  elements.previousPoint.disabled = open === START;
+  elements.nextPoint.disabled = open === END;
+}
+
+// The caption for what the deck shows (section 11), e.g. "After stage 2 of 4, “Drugs”".
+function timelineCaption(plan, open) {
+  if (open === START) {
+    return "At the start, before any stage";
+  }
+  if (open === END) {
+    return "At the end, after all stages";
+  }
+  const order = stageOrder(plan);
+  const place = order.indexOf(open) + 1;
+  const name = plan.stageList.get(open).name;
+  if (transfersIn(plan, open).length > 0) {
+    return `After stage ${place} of ${order.length}, “${name}”`;
+  }
+  return `As stage ${place}, “${name}”, will start (no transfers yet)`;
+}
+
+// Shows "No problems" in green or "N problems" in red: the overdraws in the whole plan (section 6).
+function refreshProblemCount(plan) {
+  const count = replay(plan.startingContents, plan.operationList).listProblems().length;
+  elements.problemCount.textContent = count === 0 ? "No problems" : countOf(count, "problem");
+  elements.problemCount.classList.toggle("ok", count === 0);
+  elements.problemCount.classList.toggle("problems", count > 0);
+}
+
+// Draws the labware tray (section 6): a chip per labware, in the groups Used labware and Unused
+// labware, each in the deck's order; an empty group is hidden.
+function drawTray(plan) {
+  const used = new Set(labwareUsed(plan));
+  const groups = [
+    ["Used labware:", labwareNames().filter((name) => used.has(name))],
+    ["Unused labware:", labwareNames().filter((name) => !used.has(name))],
+  ];
+  elements.tray.replaceChildren(
+    ...groups
+      .filter(([, names]) => names.length > 0)
+      .map(([groupName, names]) => createTrayGroup(plan, groupName, names)),
+  );
+}
+
+// One group of the tray: its name and a chip per labware.
+function createTrayGroup(plan, groupName, names) {
+  const group = createElement("div", "", "tray-group");
+  group.append(createElement("span", groupName, "tray-group-name"));
+  group.append(...names.map((name) => createLabwareChip(plan, name)));
+  return group;
+}
+
+// A labware's chip: a tiny outline of its shape and its label; pressed while it's out. Clicking
+// brings it out or puts it away.
+function createLabwareChip(plan, name) {
+  const label = labelOf(plan, name);
+  const isOut = labwareOut.has(name);
+  const chip = createElement("button", "", "labware-chip");
+  chip.type = "button";
+  chip.dataset.labware = name;
+  chip.setAttribute("aria-pressed", String(isOut));
+  chip.title = isOut ? `Put away ${label}` : `Bring out ${label}`;
+  const shape = createElement("span", "", `chip-shape ${isReservoir(name) ? "reservoir" : "plate"}`);
+  chip.append(shape, createElement("span", label));
+  chip.addEventListener("click", () => toggleLabwareOut(name));
+  return chip;
+}
+
+// Brings a labware out, or puts it away. Putting labware away clears a source chosen on it.
+function toggleLabwareOut(name) {
+  if (labwareOut.has(name)) {
+    labwareOut.delete(name);
+    if (source !== null && source.labware === name) {
+      source = null;
+    }
+  } else {
+    labwareOut.add(name);
+  }
+  refreshDeck();
+  updateCursorLabel();
+  requestAnimationFrame(fitStagesColumn);
+}
+
+// True if the labware's grid names its wells by number: a reservoir, drawn as troughs.
+function isReservoir(name) {
+  return gridOf(name).naming === "number";
+}
+
+// Draws the component colors in the second bar: each component's swatch and name, in the plan's
+// order (section 6).
+function drawComponentColors(plan) {
+  elements.componentColors.replaceChildren(
+    ...plan.components.map((component) => {
+      const item = document.createElement("li");
+      item.append(createSwatch(component.color), createElement("span", component.name));
+      return item;
+    }),
+  );
+}
+
+// Draws the key (section 6): only the marks on the deck now, Overdraw and Off plan; hidden with
+// neither. Called after the wells are drawn and marked.
+function drawKey() {
+  const items = [];
+  if (elements.labwareArea.querySelector(".well.overdraw") !== null) {
+    items.push(createKeyItem("×", "Overdraw"));
+  }
+  if (elements.labwareArea.querySelector(".well.off-plan:not(.overdraw)") !== null) {
+    items.push(createKeyItem("", "Off plan"));
+  }
+  elements.key.replaceChildren(...items);
+}
+
+// One item of the key: an example well (with `mark` inside it) and its name.
+function createKeyItem(mark, name) {
+  const item = document.createElement("li");
+  item.append(createElement("span", mark, "key-well"), createElement("span", name));
+  return item;
+}
+
+// Draws the labware that's out, one block each in the deck's order, with each well showing what it
+// holds at the point the deck shows, and the marks on the wells.
+function drawLabware(plan, open) {
+  wellElements.clear();
+  const blocks = labwareNames()
+    .filter((name) => labwareOut.has(name))
+    .map((name) => createLabwareBlock(plan, name));
+  elements.labwareArea.replaceChildren(elements.noLabwareNote, ...blocks);
+  markWells(plan, open);
+}
+
+// One labware's block: its heading (the label, the deck name and the labware type) and its grid.
+function createLabwareBlock(plan, name) {
+  const block = createElement("div", "", "labware");
+  block.dataset.labware = name;
+  const heading = createElement("div", "", "labware-heading");
+  const labelButton = createElement("button", labelOf(plan, name), "label-button");
+  labelButton.type = "button";
+  labelButton.title = "Click to rename";
+  labelButton.addEventListener("click", () => startRenamingLabware(labelButton, name));
+  heading.append(labelButton, createElement("span", `${name} · ${labwareTypeOf(name)}`, "labware-type"));
+  const scroll = createElement("div", "", "labware-scroll");
+  scroll.append(createGrid(plan, name));
+  // Arrows follow the wells when a wide labware is scrolled sideways.
+  scroll.addEventListener("scroll", drawStageArrows);
+  block.append(heading, scroll);
+  return block;
+}
+
+// Turns a labware's label into a text box holding the label, selected. Enter or clicking away saves
+// it with setLabel; Escape cancels; an unchanged label saves nothing.
+function startRenamingLabware(labelButton, name) {
+  const plan = currentPlan();
+  const box = createInlineEditor({
+    value: labelOf(plan, name),
+    className: "label-box",
+    accessibleName: `Label for ${name}`,
+    onSave: (text) => {
+      const renamed = tryLogic(() => setLabel(plan, name, text));
+      // An unchanged label gives the same plan back, and saves nothing.
+      if (renamed === false || renamed === plan) {
+        refreshDeck();
+        return;
+      }
+      recordEdit(renamed);
+      showMessage(`Renamed ${name} to ${labelOf(renamed, name)}.`, "ok");
+    },
+    onCancel: refreshDeck,
+  });
+  labelButton.replaceWith(box);
+  box.focus();
+  box.select();
+}
+
+// A labware's grid of wells: for a plate, column numbers above and row letters at the left; for a
+// reservoir, a row of troughs with no headings.
+function createGrid(plan, name) {
+  const grid = gridOf(name);
+  const reservoir = isReservoir(name);
+  const gridElement = createElement("div", "", `well-grid ${reservoir ? "reservoir" : "plate"}`);
+  gridElement.style.setProperty("--rows", String(grid.rows));
+  gridElement.style.setProperty("--columns", String(grid.columns));
+  if (!reservoir) {
+    addGridHeadings(gridElement, grid);
+  }
+  for (const well of grid.wellNames()) {
+    const { row, column } = grid.wellPosition(well);
+    const wellElement = createWell(plan, { labware: name, well }, reservoir);
+    wellElement.style.gridRow = String(reservoir ? row : row + 1);
+    wellElement.style.gridColumn = String(reservoir ? column : column + 1);
+    gridElement.append(wellElement);
+  }
+  return gridElement;
+}
+
+// Adds a plate's column numbers across the top and row letters down the side.
+function addGridHeadings(gridElement, grid) {
+  for (let column = 1; column <= grid.columns; column++) {
+    gridElement.append(createGridHeading(String(column), 1, column + 1));
+  }
+  for (let row = 1; row <= grid.rows; row++) {
+    // Well names are one row letter then the column number, so the first character of the row's
+    // first well is its letter.
+    gridElement.append(createGridHeading(grid.wellNameAt(row, 1).charAt(0), row + 1, 1));
+  }
+}
+
+// A row letter or column number at the edge of a plate, placed in the grid.
+function createGridHeading(text, gridRow, gridColumn) {
+  const heading = createElement("div", text, "grid-heading");
+  heading.setAttribute("aria-hidden", "true");
+  heading.style.gridRow = String(gridRow);
+  heading.style.gridColumn = String(gridColumn);
+  return heading;
+}
+
+// One well: a button (so it can be reached with Tab and pressed with Enter or Space) showing what
+// the well holds at the point the deck shows: its name if empty, otherwise its components' colors
+// in proportion and its total volume in short form.
+function createWell(plan, end, isTrough) {
+  const wellElement = createElement("button", "", "well");
+  wellElement.type = "button";
+  wellElement.classList.toggle("trough", isTrough);
+  wellElement.dataset.labware = end.labware;
+  wellElement.dataset.well = end.well;
+  const components = shownSnapshot.componentsOf(end.labware, end.well);
+  const total = shownSnapshot.totalVolumeOf(end.labware, end.well);
+  const label = createElement("span", "");
+  if (total === 0) {
+    label.textContent = end.well;
+    wellElement.setAttribute("aria-label", `${wellName(plan, end)}, empty`);
+  } else {
+    label.textContent = formatShortVolume(total);
+    wellElement.classList.add("holding");
+    wellElement.style.setProperty("--well-fill", fillGradient(plan, components, isTrough));
+    wellElement.setAttribute("aria-label", `${wellName(plan, end)}, ${formatVolume(total)} µL`);
+  }
+  wellElement.append(label);
+  wellElements.set(wellKey(end), wellElement);
+  return wellElement;
+}
+
+// The CSS gradient filling a well with its components' colors in proportion, in the order the
+// components are listed in the well: a pie for a plate well, bands from the bottom up for a trough.
+function fillGradient(plan, components, isTrough) {
+  const total = Object.values(components).reduce((sum, volume) => sum + volume, 0);
+  const stops = [];
+  let soFar = 0;
+  for (const [name, volume] of Object.entries(components)) {
+    const from = (soFar / total) * 100;
+    soFar += volume;
+    const to = (soFar / total) * 100;
+    stops.push(`${componentColor(plan, name)} ${from}% ${to}%`);
+  }
+  return isTrough ? `linear-gradient(to top, ${stops.join(", ")})` : `conic-gradient(${stops.join(", ")})`;
+}
+
+// Puts the marks on the wells (section 6): overdraw and off plan from the shown contents, the open
+// stage's untouched wells faded, and the chosen source outlined.
+function markWells(plan, open) {
+  for (const problem of shownSnapshot.listProblems()) {
+    wellElements.get(wellKey(problem))?.classList.add("overdraw");
+  }
+  for (const affected of shownSnapshot.listAffected()) {
+    wellElements.get(wellKey(affected))?.classList.add("off-plan");
+  }
+  const transfers = isStage(plan, open) ? transfersIn(plan, open) : [];
+  if (transfers.length > 0) {
+    const touched = new Set(transfers.flatMap((transfer) => [wellKey(transfer.source), wellKey(transfer.destination)]));
+    for (const [key, wellElement] of wellElements) {
+      wellElement.classList.toggle("faded", !touched.has(key));
+    }
+  }
+  if (source !== null) {
+    wellElements.get(wellKey(source))?.classList.add("source");
+  }
+}
+
+// --- Arrows (section 6) ---
+
+// Draws the open stage's transfers as arrows from source to destination, in the color of the
+// source's main component as the stage starts (gray if empty then), while Arrows is on.
+function drawStageArrows() {
+  const plan = currentPlan();
+  const open = currentOpen();
+  const layer = arrowGroup("stage-arrows");
+  layer.replaceChildren();
+  if (!arrowsShown || !isStage(plan, open)) {
+    return;
+  }
+  for (const transfer of transfersIn(plan, open)) {
+    if (wellKey(transfer.source) === wellKey(transfer.destination)) {
+      continue;
+    }
+    const from = arrowEndpoint(transfer.source);
+    const to = arrowEndpoint(transfer.destination);
+    if (from === null || to === null) {
+      continue;
+    }
+    const color = mainComponentColor(plan, stageStartSnapshot, transfer.source);
+    const arrow = createArrow(from, to, color, { insetEnd: true, dashed: false });
+    arrow.dataset.position = String(transfer.position);
+    layer.append(arrow);
+  }
+}
+
+// Draws the dashed arrow that follows the cursor from the chosen source, or from the well a transfer
+// drag started on, in the color of what that well holds now (section 9); nothing otherwise.
+function drawCursorArrow() {
+  const layer = arrowGroup("cursor-arrow");
+  layer.replaceChildren();
+  const from = source ?? (drag !== null && drag.kind === "transfer" ? drag.from : null);
+  if (from === null || pointerPosition === null || currentOpen() === END) {
+    return;
+  }
+  const start = arrowEndpoint(from);
+  if (start === null) {
+    return;
+  }
+  const panel = elements.deckPanel.getBoundingClientRect();
+  const end = { x: pointerPosition.x - panel.left, y: pointerPosition.y - panel.top };
+  const color = mainComponentColor(currentPlan(), shownSnapshot, from);
+  layer.append(createArrow(start, end, color, { insetEnd: false, dashed: true }));
+}
+
+// The SVG group with this id inside the arrow layer, created the first time it's needed.
+function arrowGroup(id) {
+  let group = elements.arrowLayer.querySelector(`#${id}`);
+  if (group === null) {
+    group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    group.id = id;
+    elements.arrowLayer.append(group);
+  }
+  return group;
+}
+
+// Where an arrow's end goes for a well, in the deck panel's coordinates: the well's center if its
+// labware is out, otherwise its labware's chip in the tray; null if neither is drawn.
+function arrowEndpoint(end) {
+  const element =
+    wellElements.get(wellKey(end)) ??
+    elements.tray.querySelector(`[data-labware="${cssEscape(end.labware)}"]`);
+  if (element === null || element === undefined) {
+    return null;
+  }
+  const panel = elements.deckPanel.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2 - panel.left, y: rect.top + rect.height / 2 - panel.top };
+}
+
+// The color of the component a well holds most of in `snapshot`, or gray if it's empty.
+function mainComponentColor(plan, snapshot, end) {
+  const components = Object.entries(snapshot.componentsOf(end.labware, end.well));
+  if (components.length === 0) {
+    return GRAY;
+  }
+  const [name] = components.reduce((most, entry) => (entry[1] > most[1] ? entry : most));
+  return componentColor(plan, name);
+}
+
+// One arrow from `from` to `to` (points in the deck panel's coordinates): a line and an arrowhead.
+// Each end is pulled in by ARROW_END_INSET, or a third of the length if that's less; with insetEnd
+// false, only the start is, so a cursor arrow ends at the pointer.
+function createArrow(from, to, color, { insetEnd, dashed }) {
+  const svg = "http://www.w3.org/2000/svg";
+  const group = document.createElementNS(svg, "g");
+  group.classList.add("arrow");
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) {
+    return group;
+  }
+  const unit = { x: dx / length, y: dy / length };
+  const inset = Math.min(ARROW_END_INSET, length / 3);
+  const start = { x: from.x + unit.x * inset, y: from.y + unit.y * inset };
+  const end = insetEnd ? { x: to.x - unit.x * inset, y: to.y - unit.y * inset } : to;
+
+  const line = document.createElementNS(svg, "line");
+  line.setAttribute("x1", start.x);
+  line.setAttribute("y1", start.y);
+  line.setAttribute("x2", end.x - unit.x * 6);
+  line.setAttribute("y2", end.y - unit.y * 6);
+  line.setAttribute("stroke", color);
+  line.setAttribute("stroke-width", "2");
+  if (dashed) {
+    line.setAttribute("stroke-dasharray", "5 4");
+  }
+  const head = document.createElementNS(svg, "polygon");
+  const base = { x: end.x - unit.x * 8, y: end.y - unit.y * 8 };
+  const side = { x: -unit.y * 4, y: unit.x * 4 };
+  head.setAttribute(
+    "points",
+    `${end.x},${end.y} ${base.x + side.x},${base.y + side.y} ${base.x - side.x},${base.y - side.y}`,
+  );
+  head.setAttribute("fill", color);
+  group.append(line, head);
+  return group;
+}
+
+// --- The Stages column (section 7) ---
+
+// Redraws the Stages column from the plan: Start, the tip group boxes with their stages, End, and
+// the open editing box.
+function refreshStages() {
+  const plan = currentPlan();
+  const open = currentOpen();
+  const overdrawn = stagesWithOverdraw(plan);
+  const groups = tipGroups(plan);
+  const drawnKeys = new Set();
+  const items = [createEntry(plan, START, open, overdrawn)];
+  groups.forEach((group, index) => {
+    items.push(createTipGroupBox(plan, group, index, groups[index + 1], open, overdrawn, drawnKeys));
+  });
+  items.push(createEntry(plan, END, open, overdrawn));
+  elements.stagesList.replaceChildren(...items);
+  lastDrawnKeys = drawnKeys;
+  placeEditingBox();
+  // The box for a new component's name keeps the keyboard focus while it's open (section 8).
+  elements.stagesList.querySelector(".new-component-box")?.focus();
+}
+
+// Start, a stage or End as a row (closed) or a card (open), sharing one look: a number in a badge, a
+// name and a count; a card adds "Current" and its contents.
+function createEntry(plan, key, open, overdrawn) {
+  const isOpen = key === open;
+  const entry = createElement("div", "", "entry");
+  entry.dataset.entry = key;
+  entry.classList.toggle("is-open", isOpen);
+  const { badge, name, count } = entryHeading(plan, key);
+  if (isStage(plan, key) && overdrawn.has(key)) {
+    entry.classList.add("has-overdraw");
+    entry.title = "This stage has an overdraw: a transfer asks a well for more than it holds.";
+  }
+  const row = createElement(isOpen ? "div" : "button", "", "entry-row");
+  if (!isOpen) {
+    row.type = "button";
+    row.addEventListener("click", () => openEntry(key));
+  }
+  row.append(
+    createElement("span", badge, "entry-badge"),
+    createElement("span", name, "entry-name"),
+    createElement("span", count, "entry-count"),
+  );
+  if (isOpen) {
+    row.append(createElement("span", "Current", "entry-current"));
+  }
+  entry.append(row);
+  if (isOpen) {
+    entry.append(createEntryBody(plan, key));
+  }
+  return entry;
+}
+
+// The badge, name and count of an entry: Start ("0", "N wells filled"), a stage (its place, "N
+// transfers") or End ("✓", "N transfers done").
+function entryHeading(plan, key) {
+  if (key === START) {
+    return { badge: "0", name: "Start", count: `${countOf(plan.startingContents.length, "well")} filled` };
+  }
+  if (key === END) {
+    const total = plan.operationList.listOperations().length;
+    return { badge: "✓", name: "End", count: `${countOf(total, "transfer")} done` };
+  }
+  return {
+    badge: String(stageOrder(plan).indexOf(key) + 1),
+    name: plan.stageList.get(key).name,
+    count: countOf(transfersIn(plan, key).length, "transfer"),
+  };
+}
+
+// An open card's contents: the palette for Start, the settings and transfers for a stage, a note for
+// End.
+function createEntryBody(plan, key) {
+  const body = createElement("div", "", "entry-body");
+  if (key === START) {
+    body.append(
+      createElement("p", "Pick what to fill wells with, then click or drag across wells on the deck.", "note"),
+      createPalette(plan),
+      createBrushLine(plan),
+    );
+  } else if (key === END) {
+    body.append(
+      createElement(
+        "p",
+        "The deck shows the plates after every stage has run. Open a stage to add or change transfers.",
+        "note",
+      ),
+    );
+  } else {
+    body.append(createSettingsLine(plan, key), ...createTransferSection(plan, key));
+  }
+  return body;
+}
+
+// A stage card's settings in one line, e.g. "↑ Slow · ↓ Non-Contact · 2 probes", with the ✎ that
+// opens the stage's editing box.
+function createSettingsLine(plan, id) {
+  const settings = plan.stageList.get(id).settings;
+  const aspirate = modeOf("source", settings) ?? "custom";
+  const dispense = modeOf("destination", settings) ?? "custom";
+  const probes = countOf(settings.probes.length, "probe");
+  const line = createElement("div", "", "settings-line");
+  const text = createElement("span", `↑ ${aspirate} · ↓ ${dispense} · ${probes}`);
+  text.setAttribute("aria-label", `aspirate ${aspirate}, dispense ${dispense}, ${probes}`);
+  line.append(text, createPencil("stage", id, `Edit stage ${stageOrder(plan).indexOf(id) + 1}`));
+  return line;
+}
+
+// A stage card's transfers: a note with none; otherwise Show transfers / Hide transfers and, when
+// shown, the transfer list.
+function createTransferSection(plan, id) {
+  const transfers = transfersIn(plan, id);
+  if (transfers.length === 0) {
+    return [createElement("p", "No transfers yet. Add some on the deck.", "note")];
+  }
+  const shown = expandedStages.has(id);
+  const toggle = createElement("button", shown ? "Hide transfers ▾" : "Show transfers ▸", "toggle-list");
+  toggle.type = "button";
+  toggle.setAttribute("aria-expanded", String(shown));
+  toggle.addEventListener("click", () => {
+    if (shown) {
+      expandedStages.delete(id);
+    } else {
+      expandedStages.add(id);
+    }
+    refreshStages();
+  });
+  return shown ? [toggle, createTransferList(plan, id, transfers)] : [toggle];
+}
+
+// The open stage's transfer list: one row per transfer.
+function createTransferList(plan, id, transfers) {
+  const list = createElement("ul", "", "transfer-list");
+  list.append(...transfers.map((transfer) => createTransferRow(plan, id, transfer)));
+  return list;
+}
+
+// One transfer's row, e.g. "Assay plate A1 → Drug plate B2 · 20 µL" with × at the right. Its volume
+// is a button that becomes a text box; pointing at the row singles its transfer out on the deck.
+function createTransferRow(plan, id, transfer) {
+  const row = createElement("li", "", "transfer-row");
+  row.dataset.position = String(transfer.position);
+  const route = `${wellName(plan, transfer.source)} → ${wellName(plan, transfer.destination)}`;
+  const volumeButton = createElement("button", `${formatVolume(transfer.volume)} µL`, "volume-button");
+  volumeButton.type = "button";
+  volumeButton.setAttribute("aria-label", `Volume of ${route}, ${formatVolume(transfer.volume)} µL. Click to change`);
+  volumeButton.addEventListener("click", () => startEditingVolume(volumeButton, transfer));
+  const remove = createElement("button", "×", "remove-transfer");
+  remove.type = "button";
+  remove.setAttribute("aria-label", `Remove ${route}`);
+  remove.addEventListener("click", () => {
+    highlightTransfer(null);
+    if (tryEdit(() => removeTransfer(plan, transfer.position)) !== false) {
+      showMessage(`Removed ${route} from ${stageLabel(plan, id)}.`, "note");
+    }
+  });
+  row.append(createElement("span", `${route} ·`, "transfer-text"), volumeButton, remove);
+  row.addEventListener("pointerenter", () => highlightTransfer(transfer.position));
+  row.addEventListener("pointerleave", () => highlightTransfer(null));
+  return row;
+}
+
+// Turns a transfer's volume into a text box holding the volume, selected. Enter or clicking away
+// saves it with changeVolume; Escape cancels; an unchanged volume saves nothing.
+function startEditingVolume(volumeButton, transfer) {
+  const plan = currentPlan();
+  const shown = formatVolume(transfer.volume);
+  const box = createInlineEditor({
+    value: shown,
+    className: "volume-box",
+    accessibleName: "Volume in µL",
+    onSave: (text) => {
+      if (text.trim() === shown) {
+        refreshStages();
+        return;
+      }
+      const changed = tryEdit(() => changeVolume(plan, transfer.position, volumeValue(text.trim())));
+      if (changed === false) {
+        refreshStages();
+      } else {
+        showMessage(`Volume changed to ${formatVolume(changed.operationList.listOperations()[transfer.position].volume)} µL.`, "ok");
+      }
+    },
+    onCancel: refreshStages,
+  });
+  volumeButton.replaceWith(box);
+  box.focus();
+  box.select();
+}
+
+// Singles out one transfer on the deck (section 7): its row is tinted, its arrow stays while the
+// others fade, and its wells get a blue outline. null clears it.
+function highlightTransfer(position) {
+  for (const row of elements.stagesList.querySelectorAll(".transfer-row")) {
+    row.classList.toggle("highlighted", position !== null && Number(row.dataset.position) === position);
+  }
+  for (const arrow of elements.arrowLayer.querySelectorAll(".arrow[data-position]")) {
+    arrow.classList.toggle("dimmed", position !== null && Number(arrow.dataset.position) !== position);
+  }
+  const transfer = position === null ? null : currentPlan().operationList.listOperations()[position];
+  const highlighted = transfer === null ? new Set() : new Set([wellKey(transfer.source), wellKey(transfer.destination)]);
+  for (const [key, wellElement] of wellElements) {
+    wellElement.classList.toggle("highlighted", highlighted.has(key));
+  }
+}
+
+// A tip group's box: its heading (the tip change) and its stages, each between two seams. Boxes
+// alternate light blue and light sand. `nextGroup` is the box after it, if any.
+function createTipGroupBox(plan, group, index, nextGroup, open, overdrawn, drawnKeys) {
+  const box = createElement("div", "", "tip-group");
+  box.classList.toggle("sand", index % 2 === 1);
+  box.dataset.group = group.key;
+  box.append(createTipGroupHeading(plan, group));
+
+  const stages = createElement("div", "", "tip-group-stages");
+  const firstStage = group.stages[0];
+  stages.append(
+    createSeam(plan, {
+      addBefore: firstStage,
+      takeTips: true,
+      accessibleName: "Add a stage at the start of these tips",
+    }),
+  );
+  group.stages.forEach((id, place) => {
+    const entry = createEntry(plan, id, open, overdrawn);
+    applyGlow(entry, `stage:${id}`, drawnKeys);
+    stages.append(entry);
+    const lower = group.stages[place + 1];
+    if (lower !== undefined) {
+      stages.append(
+        createSeam(plan, {
+          addBefore: lower,
+          takeTips: false,
+          accessibleName: `Insert a stage before ${stageLabel(plan, lower)}`,
+          tipsBefore: lower,
+        }),
+      );
+    }
+  });
+  stages.append(
+    createSeam(plan, {
+      addBefore: nextGroup === undefined ? null : nextGroup.stages[0],
+      takeTips: false,
+      accessibleName: "Add a stage at the end of these tips",
+    }),
+  );
+  box.append(stages);
+  // A box whose key is a stage that's new itself isn't a new box: its tip change moved onto the new
+  // stage (addStage with takeTips), so only the stage glows.
+  const tipsMovedOntoNewStage = group.key !== START && isNewKey(`stage:${group.key}`);
+  if (!tipsMovedOntoNewStage) {
+    applyGlow(box, `box:${group.key}`, drawnKeys);
+  } else {
+    drawnKeys.add(`box:${group.key}`);
+  }
+  return box;
+}
+
+// A tip group's heading: a tip icon, "New tips · BC230" and the ✎ that opens the tip change's box.
+function createTipGroupHeading(plan, group) {
+  const heading = createElement("div", "", "tip-group-heading");
+  heading.append(
+    createElement("span", "", "tip-icon"),
+    createElement("span", `New tips · ${group.tipType}`),
+    createPencil("tip", group.key, "Edit these new tips"),
+  );
+  return heading;
+}
+
+// A seam (section 7): the space between two cards, which shows a line and a + for adding a stage
+// (and, between two stages, a tip button) while pointed at or focused. `addBefore` is the stage the
+// new stage goes before (null for last); `tipsBefore` the stage a tip change goes before, if any.
+function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore }) {
+  const seam = createElement("div", "", "seam");
+  seam.append(createElement("span", "", "seam-line"));
+  const add = createElement("button", "+", "seam-button add-stage");
+  add.type = "button";
+  add.title = "Add a stage here";
+  add.setAttribute("aria-label", accessibleName);
+  add.addEventListener("click", () => addStageAt(addBefore, takeTips));
+  seam.append(add);
+  if (tipsBefore !== undefined) {
+    const tips = createElement("button", "", "seam-button add-tips");
+    tips.type = "button";
+    tips.title = "New tips here";
+    tips.setAttribute("aria-label", `New tips before ${stageLabel(plan, tipsBefore)}`);
+    tips.append(createElement("span", "", "tip-icon"));
+    tips.addEventListener("click", () => addTipChangeBefore(tipsBefore));
+    seam.append(tips);
+  }
+  return seam;
+}
+
+// Adds a stage before `beforeId` (or last, for null) and opens it (section 7).
+function addStageAt(beforeId, takeTips) {
+  const added = tryLogic(() => addStage(currentPlan(), beforeId, { takeTips }));
+  if (added === false) {
+    return;
+  }
+  // The new stage opens, as openEntry would open it, but as part of the same undoable edit.
+  closeEditingBox();
+  source = null;
+  recordEdit(added.plan, added.id);
+  showMessage("Added a stage. New transfers go into it.", "ok");
+  scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(added.id)}"]`));
+}
+
+// Adds a tip change before stage `beforeId`, which starts a new tip group box there (section 7).
+function addTipChangeBefore(beforeId) {
+  const plan = currentPlan();
+  if (tryEdit(() => addTipChange(plan, beforeId)) !== false) {
+    showMessage(`New tips before ${stageLabel(plan, beforeId)}.`, "ok");
+  }
+}
+
+// --- The glow (section 7) ---
+
+// Makes `element` glow if `key` (a stage or box) wasn't drawn last time, or is still glowing from
+// an earlier drawing, and notes the key as drawn. Nothing glows at the first drawing.
+function applyGlow(element, key, drawnKeys) {
+  drawnKeys.add(key);
+  const now = performance.now();
+  if (isNewKey(key)) {
+    glows.set(key, now);
+  }
+  const started = glows.get(key);
+  if (started === undefined) {
+    return;
+  }
+  const elapsed = now - started;
+  if (elapsed >= GLOW_MILLISECONDS) {
+    glows.delete(key);
+    return;
+  }
+  element.classList.add("glowing");
+  // A negative delay starts the animation part-way through, so a glow carries on through redrawing.
+  element.style.animationDelay = `-${Math.round(elapsed)}ms`;
+}
+
+// True if `key` wasn't among the keys drawn at the last drawing (and this isn't the first).
+function isNewKey(key) {
+  return lastDrawnKeys !== null && !lastDrawnKeys.has(key);
+}
+
+// --- Starting contents: the palette (section 8) ---
+
+// The Start card's palette: a chip and ✎ per component, then + New (or the box for a new name),
+// then Eraser.
+function createPalette(plan) {
+  const palette = createElement("div", "", "palette");
+  for (const component of plan.components) {
+    const holder = createElement("span", "", "chip-holder");
+    const chip = createElement("button", "", "component-chip");
+    chip.type = "button";
+    chip.classList.toggle("picked", brush.pick.kind === "component" && brush.pick.name === component.name);
+    chip.setAttribute("aria-pressed", String(chip.classList.contains("picked")));
+    chip.append(createSwatch(component.color), createElement("span", component.name));
+    chip.addEventListener("click", () => pickBrush({ kind: "component", name: component.name }));
+    holder.append(chip, createPencil("component", component.name, `Edit ${component.name}`));
+    palette.append(holder);
+  }
+  palette.append(addingComponent === null ? createNewComponentButton() : createNewComponentBox(plan));
+  const eraser = createElement("button", "Eraser", "component-chip eraser");
+  eraser.type = "button";
+  eraser.classList.toggle("picked", brush.pick.kind === "eraser");
+  eraser.setAttribute("aria-pressed", String(brush.pick.kind === "eraser"));
+  eraser.addEventListener("click", () => pickBrush({ kind: "eraser" }));
+  palette.append(eraser);
+  return palette;
+}
+
+// Picks a component or the eraser for the brush. Not an edit: only the palette and the cursor's
+// label change.
+function pickBrush(pick) {
+  brush.pick = pick;
+  refreshStages();
+  updateCursorLabel();
+}
+
+// The "+ New" button, which becomes a text box for a new component's name.
+function createNewComponentButton() {
+  const button = createElement("button", "+ New", "component-chip");
+  button.type = "button";
+  button.addEventListener("click", () => {
+    addingComponent = { text: "" };
+    refreshStages();
+  });
+  return button;
+}
+
+// The text box for a new component's name. Enter adds the name and opens a fresh box; Enter on an
+// empty box, Escape, or clicking away ends; clicking away with a name typed adds it first.
+function createNewComponentBox(plan) {
+  const box = document.createElement("input");
+  box.type = "text";
+  box.className = "new-component-box";
+  box.placeholder = "Component name";
+  box.setAttribute("aria-label", "Component name");
+  box.value = addingComponent.text;
+  let done = false;
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      done = true;
+      addNewComponent(plan, box.value, { keepAdding: true });
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      done = true;
+      endAddingComponent();
+    }
+  });
+  box.addEventListener("blur", () => {
+    // Replacing the palette while the box has focus can fire blur too; a box that's done, or no
+    // longer on the page, does nothing more.
+    if (done || !box.isConnected) {
+      return;
+    }
+    done = true;
+    if (box.value.trim() === "") {
+      endAddingComponent();
+    } else {
+      addNewComponent(plan, box.value, { keepAdding: false });
+    }
+  });
+  return box;
+}
+
+// Closes the "+ New" box.
+function endAddingComponent() {
+  addingComponent = null;
+  refreshStages();
+}
+
+// Adds a component called `text` (spaces at the ends removed) with the first free color, and picks
+// it. An empty name just closes the box. If there's no free color or addComponent refuses the
+// name, the message is shown and the box stays open with the name, to fix it. With keepAdding, a
+// fresh box opens for the next name.
+function addNewComponent(plan, text, { keepAdding }) {
+  const name = text.trim();
+  if (name === "") {
+    endAddingComponent();
+    return;
+  }
+  const color = firstFreeColor(plan);
+  addingComponent = { text };
+  if (color === null) {
+    showMessage(
+      `All ${COMPONENT_COLORS.length} colors are in use, and two components can't share one. ` +
+        "Remove a component to add another.",
+      "error",
+    );
+    refreshStages();
+    return;
+  }
+  let added;
+  try {
+    added = addComponent(plan, name, color);
+  } catch (error) {
+    showMessage(error.message, "error");
+    refreshStages();
+    return;
+  }
+  brush.pick = { kind: "component", name };
+  addingComponent = keepAdding ? { text: "" } : null;
+  recordEdit(added);
+  showMessage(`Added ${name}.`, "ok");
+}
+
+// The first color in COMPONENT_COLORS that no component has, or null if all are taken.
+function firstFreeColor(plan) {
+  const taken = new Set(plan.components.map((component) => component.color));
+  return COMPONENT_COLORS.find((color) => !taken.has(color)) ?? null;
+}
+
+// The line under the palette saying what a click does, e.g. "Adds 1000 µL of Media to each well you
+// click, on top of what's there. Type a number to change it."
+function createBrushLine(plan) {
+  const line = createElement("p", "", "brush-line");
+  if (brush.pick.kind === "component") {
+    line.append(
+      "Adds ",
+      createElement("strong", `${volumeShown(brush.volume)} µL`),
+      ` of ${brush.pick.name} to each well you click, on top of what's there. Type a number to change it.`,
+    );
+  } else if (brush.pick.kind === "eraser") {
+    line.textContent = "Eraser: click or drag to empty wells.";
+  } else if (plan.components.length > 0) {
+    line.textContent = "Pick a component to fill wells with it.";
+  } else {
+    line.textContent = "Add a component with + New, then fill wells with it.";
+  }
+  return line;
+}
+
+// Fills `wells` with the brush (section 8): adds the brush's volume of the picked component to
+// each, or empties them with the eraser. With nothing picked, says what to do.
+function fillWells(wells) {
+  const plan = currentPlan();
+  if (brush.pick.kind === "none") {
+    showMessage("Pick a component in the Start card first, or add one with + New.", "note");
+    return;
+  }
+  if (brush.pick.kind === "eraser") {
+    if (tryEdit(() => emptyWells(plan, wells)) !== false) {
+      showMessage(`Emptied ${countOf(wells.length, "well")} at the start.`, "note");
+    }
+    return;
+  }
+  const name = brush.pick.name;
+  const volume = volumeValue(brush.volume.text);
+  if (tryEdit(() => addToWells(plan, wells, name, volume)) !== false) {
+    showMessage(`Added ${formatVolume(volume)} µL of ${name} to ${countOf(wells.length, "well")}.`, "ok");
+  }
+}
+
+// --- Transfers (section 9) ---
+
+// Acts on a click on a well: while Start is open it fills the well; while a stage is open it chooses
+// the source, clears it, or adds the transfer; while End is open it says nothing can be added.
+function clickWell(end) {
+  const open = currentOpen();
+  if (open === START) {
+    fillWells([end]);
+    return;
+  }
+  if (open === END) {
+    showMessage("End shows the finished plates. Open a stage to add transfers into it.", "note");
+    return;
+  }
+  if (source === null) {
+    chooseSource(end);
+  } else if (wellKey(source) === wellKey(end)) {
+    clearSource();
+  } else {
+    const from = source;
+    source = null;
+    addOneTransfer(from, end);
+  }
+}
+
+// Chooses a well as the source of the next transfer.
+function chooseSource(end) {
+  source = end;
+  refreshDeck();
+  showMessage(
+    `Source ${wellName(currentPlan(), end)} chosen. Click the destination well, or drag across several.`,
+    "note",
+  );
+}
+
+// Clears the chosen source.
+function clearSource() {
+  source = null;
+  refreshDeck();
+  showMessage("Source cleared.", "note");
+}
+
+// Adds one transfer from `from` to `to` into the open stage, with the next transfer's volume
+// (section 9). Says what was added, or, if the plan now has more overdraws, which transfer asks for
+// more than its well holds.
+function addOneTransfer(from, to) {
+  const plan = currentPlan();
+  const stage = currentOpen();
+  const transfer = { type: "transfer", source: from, destination: to, volume: volumeValue(transferVolume.text), stage };
+  const added = addTransfersWithReport(plan, [transfer]);
+  if (added === null) {
+    return;
+  }
+  if (added.newOverdraw === null) {
+    showMessage(
+      `Added to ${stageLabel(added.plan, stage)}: ${wellName(plan, from)} → ${wellName(plan, to)}, ` +
+        `${formatVolume(transfer.volume)} µL.`,
+      "ok",
+    );
+  } else {
+    showMessage(`Added, but ${added.newOverdraw}`, "error");
+  }
+}
+
+// Adds a transfer from `from` into each of `wells` (the source itself left out), as one edit.
+function addManyTransfers(from, wells) {
+  const plan = currentPlan();
+  const stage = currentOpen();
+  const volume = volumeValue(transferVolume.text);
+  const transfers = wells.map((well) => ({ type: "transfer", source: from, destination: well, volume, stage }));
+  const added = addTransfersWithReport(plan, transfers);
+  if (added === null) {
+    return;
+  }
+  const what = `${countOf(transfers.length, "transfer")} of ${formatVolume(volume)} µL from ${wellName(plan, from)}`;
+  if (added.newOverdraw === null) {
+    showMessage(`Added ${what} to ${stageLabel(added.plan, stage)}.`, "ok");
+  } else {
+    showMessage(`Added ${what}, but ${added.newOverdraw}`, "error");
+  }
+}
+
+// Adds `transfers` to the plan as one edit and records it. Returns null if the logic refuses (its
+// message is shown), otherwise { plan, newOverdraw }: the new plan, and, if it has more overdraws
+// than before, the last overdraw described, e.g. "transfer #5 asks for 60 µL from Drug plate A1,
+// which holds 50 µL."
+function addTransfersWithReport(plan, transfers) {
+  const problemsBefore = replay(plan.startingContents, plan.operationList).listProblems().length;
+  const added = tryEdit(() => addTransfers(plan, transfers));
+  if (added === false) {
+    return null;
+  }
+  const problems = replay(added.startingContents, added.operationList).listProblems();
+  if (problems.length <= problemsBefore) {
+    return { plan: added, newOverdraw: null };
+  }
+  const last = problems.at(-1);
+  return {
+    plan: added,
+    newOverdraw:
+      `transfer #${last.operationIndex + 1} asks for ${formatVolume(last.requested)} µL from ` +
+      `${wellName(added, last)}, which holds ${formatVolume(last.available)} µL.`,
+  };
+}
+
+// --- Pointer actions on the deck (sections 8 and 9) ---
+
+// Starts a press when the main button (or a finger or pen) presses a well. It becomes a click on
+// release, or a drag once it moves DRAG_START_DISTANCE.
+function startPress(event) {
+  const end = endOf(event.target);
+  if (end === null || event.button !== 0) {
+    return;
+  }
+  hideContentsCard();
+  press = { end, x: event.clientX, y: event.clientY };
+}
+
+// Follows the pointer: starts a drag once a press has moved far enough (while End is open, dragging
+// does nothing, so the press is dropped instead), moves the drag's far corner or drop target, and
+// moves the cursor's label and arrow.
+function movePointer(event) {
+  pointerPosition = overLabware(event) ? { x: event.clientX, y: event.clientY } : null;
+  const moved = press !== null && Math.hypot(event.clientX - press.x, event.clientY - press.y) >= DRAG_START_DISTANCE;
+  if (moved && drag === null) {
+    if (currentOpen() === END) {
+      press = null;
+    } else {
+      beginDrag();
+    }
+  }
+  if (drag !== null) {
+    const over = wellUnderPointer(event);
+    if (over !== drag.over && wellKeyOrNull(over) !== wellKeyOrNull(drag.over)) {
+      drag.over = over;
+      updateDragMarks();
+    }
+  }
+  updateCursorLabel();
+  drawCursorArrow();
+}
+
+// Turns the press into a drag: filling a box while Start is open; sending the chosen source into a
+// box, or making one transfer, while a stage is open.
+function beginDrag() {
+  hideContentsCard();
+  const kind = currentOpen() === START ? "fill" : source !== null ? "box" : "transfer";
+  drag = { kind, from: press.end, over: press.end };
+  updateDragMarks();
+}
+
+// Ends a press or a drag: a press that never moved is a click on its well.
+function releasePointer() {
+  if (drag !== null) {
+    const finished = drag;
+    drag = null;
+    press = null;
+    finishDrag(finished);
+    return;
+  }
+  if (press !== null) {
+    const end = press.end;
+    press = null;
+    clickWell(end);
+  }
+}
+
+// Abandons a press or drag the browser interrupts (e.g. a touch turned into a scroll).
+function cancelPress() {
+  press = null;
+  drag = null;
+  updateDragMarks();
+  drawCursorArrow();
+}
+
+// Acts on a well chosen with Enter or Space as a click. A mouse or touch click is already handled
+// by the press; a click event from the keyboard has event.detail 0.
+function clickWellWithKeyboard(event) {
+  const end = endOf(event.target);
+  if (end !== null && event.detail === 0) {
+    clickWell(end);
+  }
+}
+
+// Finishes a drag (sections 8 and 9): fills the box, adds one transfer, or sends the source into
+// the box.
+function finishDrag({ kind, from, over }) {
+  updateDragMarks();
+  if (kind === "fill") {
+    if (over !== null && over.labware === from.labware) {
+      fillWells(wellsInBox(from, over));
+    }
+    return;
+  }
+  if (kind === "transfer") {
+    if (over === null) {
+      showMessage("Drop on a well to add a transfer.", "note");
+    } else if (wellKey(over) === wellKey(from)) {
+      showMessage("Dropped back on the same well, so nothing was added.", "note");
+    } else {
+      addOneTransfer(from, over);
+    }
+    return;
+  }
+  finishBoxDrag(from, over);
+}
+
+// Finishes a drag across a box of wells with a source chosen: one transfer from the source into
+// each well of the box but the source itself, as one edit; the source is cleared afterwards.
+function finishBoxDrag(from, over) {
+  if (over === null || over.labware !== from.labware) {
+    showMessage("Drag across wells of one labware to send the source into each of them.", "note");
+    return;
+  }
+  const sourceKey = wellKey(source);
+  const wells = wellsInBox(from, over).filter((well) => wellKey(well) !== sourceKey);
+  if (wells.length === 0) {
+    showMessage("The box held only the source well, so nothing was added.", "note");
+    return;
+  }
+  const chosen = source;
+  source = null;
+  addManyTransfers(chosen, wells);
+}
+
+// Shows the drag on the wells: the box being dragged across outlined, or the well under a transfer
+// drag with a dashed outline.
+function updateDragMarks() {
+  for (const wellElement of wellElements.values()) {
+    wellElement.classList.remove("in-box", "drop-target");
+  }
+  if (drag === null || drag.over === null) {
+    return;
+  }
+  if (drag.kind === "transfer") {
+    wellElements.get(wellKey(drag.over))?.classList.add("drop-target");
+    return;
+  }
+  if (drag.over.labware === drag.from.labware) {
+    for (const well of wellsInBox(drag.from, drag.over)) {
+      wellElements.get(wellKey(well))?.classList.add("in-box");
+    }
+  }
+}
+
+// The well under the pointer, { labware, well }, or null. Uses the pointer's position rather than
+// the event's target, because a finger's events keep going to the well where the touch started.
+function wellUnderPointer(event) {
+  const element = document.elementFromPoint(event.clientX, event.clientY);
+  return element === null || !elements.labwareArea.contains(element) ? null : endOf(element);
+}
+
+// True if the pointer event is over the labware area.
+function overLabware(event) {
+  const element = document.elementFromPoint(event.clientX, event.clientY);
+  return element !== null && elements.labwareArea.contains(element);
+}
+
+// The well a well element (or an element inside it) stands for, { labware, well }, or null.
+function endOf(element) {
+  const wellElement = element.closest(".well");
+  return wellElement === null ? null : { labware: wellElement.dataset.labware, well: wellElement.dataset.well };
+}
+
+// --- The cursor's label and the contents card (sections 6 and 12) ---
+
+// Shows, beside the pointer, what a click does: the next transfer's volume with a stage open; the
+// brush with Start open; nothing with End open or off the labware.
+function updateCursorLabel() {
+  const label = elements.cursorLabel;
+  const open = currentOpen();
+  if (pointerPosition === null || open === END) {
+    label.hidden = true;
+    return;
+  }
+  if (open === START) {
+    if (brush.pick.kind === "component") {
+      label.textContent = `+ ${volumeShown(brush.volume)} µL ${brush.pick.name}`;
+    } else if (brush.pick.kind === "eraser") {
+      label.textContent = "Eraser";
+    } else {
+      label.textContent = "No component picked";
+    }
+  } else {
+    label.textContent = `${volumeShown(transferVolume)} µL`;
+  }
+  label.style.left = `${pointerPosition.x + CURSOR_LABEL_OFFSET.x}px`;
+  label.style.top = `${pointerPosition.y + CURSOR_LABEL_OFFSET.y}px`;
+  label.hidden = false;
+}
+
+// Shows a well's contents card beside it: to its left if it fits there, otherwise to its right, and
+// kept inside the window.
+function showContentsCard(wellElement) {
+  const end = endOf(wellElement);
+  const card = elements.contentsCard;
+  card.replaceChildren(...contentsCardLines(currentPlan(), end));
+  card.hidden = false;
+  const well = wellElement.getBoundingClientRect();
+  const width = card.offsetWidth;
+  const height = card.offsetHeight;
+  const gap = 10;
+  const left = well.left - gap - width >= 8 ? well.left - gap - width : well.right + gap;
+  const top = Math.min(Math.max(8, well.top + well.height / 2 - height / 2), window.innerHeight - 8 - height);
+  card.style.left = `${Math.min(left, window.innerWidth - 8 - width)}px`;
+  card.style.top = `${top}px`;
+}
+
+// Hides the contents card.
+function hideContentsCard() {
+  elements.contentsCard.hidden = true;
+}
+
+// The contents card's lines for a well: its name and total, each component's swatch, name, volume
+// and share, each overdraw of the well, and whether it's off plan.
+function contentsCardLines(plan, end) {
+  const total = shownSnapshot.totalVolumeOf(end.labware, end.well);
+  const lines = [
+    createElement("div", wellName(plan, end), "card-title"),
+    createElement("div", total === 0 ? "Empty" : `${formatVolume(total)} µL total`, "card-total"),
+  ];
+  const fractions = shownSnapshot.volumeFractionsOf(end.labware, end.well);
+  const list = document.createElement("ul");
+  for (const [name, volume] of Object.entries(shownSnapshot.componentsOf(end.labware, end.well))) {
+    const item = document.createElement("li");
+    item.append(
+      createSwatch(componentColor(plan, name)),
+      createElement("span", name),
+      createElement("span", `${formatVolume(volume)} µL · ${formatPercent(fractions[name] * 100)}`, "card-volume"),
+    );
+    list.append(item);
+  }
+  lines.push(list);
+  for (const problem of shownSnapshot.listProblems()) {
+    if (problem.labware === end.labware && problem.well === end.well) {
+      lines.push(
+        createElement(
+          "div",
+          `Transfer #${problem.operationIndex + 1} asked for ${formatVolume(problem.requested)} µL ` +
+            `but this well held ${formatVolume(problem.available)} µL.`,
+          "card-problem",
+        ),
+      );
+    }
+  }
+  const causes = shownSnapshot.causesOf(end.labware, end.well);
+  if (causes.length > 0) {
+    const numbers = causes.map((index) => `#${index + 1}`).join(", ");
+    lines.push(createElement("div", `Contents differ from the plan because of transfer ${numbers}.`, "card-problem"));
+  }
+  return lines;
+}
+
+// --- Editing boxes (section 10) ---
+
+// The ✎ that opens an editing box for `kind` ("component", "stage" or "tip") and `key` (a
+// component's name, a stage's ID, or a tip change's key). Clicking the open box's ✎ again closes it,
+// as a click outside would; the guard handles that, since the ✎ is outside the box.
+function createPencil(kind, key, accessibleName) {
+  const pencil = createElement("button", "✎", "edit-button");
+  pencil.type = "button";
+  pencil.dataset.boxKind = kind;
+  pencil.dataset.boxKey = key;
+  pencil.setAttribute("aria-label", accessibleName);
+  const isOpen = editingBox !== null && editingBox.kind === kind && editingBox.key === key;
+  pencil.setAttribute("aria-pressed", String(isOpen));
+  pencil.addEventListener("click", () => {
+    if (editingBox === null) {
+      openEditingBox(kind, key);
+    }
+  });
+  return pencil;
+}
+
+// Opens the editing box for `kind` and `key`, with a draft of what it edits.
+function openEditingBox(kind, key) {
+  const plan = currentPlan();
+  const original = originalFor(plan, kind, key);
+  editingBox = { kind, key, original, draft: { ...original, showAllColors: false, confirmingRemove: false } };
+  refreshStages();
+  focusEditingBox();
+}
+
+// What a box edits, before any changes: a component's name and color; a stage's name, modes and
+// probes; a tip change's tip type.
+function originalFor(plan, kind, key) {
+  if (kind === "component") {
+    const component = plan.components.find((candidate) => candidate.name === key);
+    return { name: component.name, color: component.color };
+  }
+  if (kind === "stage") {
+    const { name, settings } = plan.stageList.get(key);
+    return {
+      name,
+      aspirate: modeOf("source", settings),
+      dispense: modeOf("destination", settings),
+      probes: [...settings.probes],
+    };
+  }
+  return { tipType: tipChangeAt(plan, key).tipType };
+}
+
+// Closes the editing box without saving, taking it off the page without redrawing anything else,
+// so a click that closed it still reaches what it was aimed at.
+function closeEditingBox() {
+  if (editingBox === null) {
+    return;
+  }
+  editingBox.element?.remove();
+  editingBox.pencil?.setAttribute("aria-pressed", "false");
+  editingBox = null;
+}
+
+// True if the open box has changes that aren't saved yet.
+function isBoxDirty() {
+  const { kind, original, draft } = editingBox;
+  if (kind === "component") {
+    return draft.name !== original.name || draft.color !== original.color;
+  }
+  if (kind === "stage") {
+    return (
+      draft.name !== original.name ||
+      draft.aspirate !== original.aspirate ||
+      draft.dispense !== original.dispense ||
+      JSON.stringify(draft.probes) !== JSON.stringify(original.probes)
+    );
+  }
+  return draft.tipType !== original.tipType;
+}
+
+// Draws the open editing box under its ✎ (floating over what's below), presses the ✎, keeps the box
+// inside its column, and scrolls to show it. Called after the Stages column is redrawn.
+function placeEditingBox() {
+  if (editingBox === null) {
+    return;
+  }
+  const pencil = elements.stagesList.querySelector(
+    `[data-box-kind="${editingBox.kind}"][data-box-key="${cssEscape(editingBox.key)}"]`,
+  );
+  if (pencil === null) {
+    editingBox = null;
+    return;
+  }
+  const box = createEditingBox(currentPlan());
+  pencil.parentElement.append(box);
+  pencil.setAttribute("aria-pressed", "true");
+  editingBox.element = box;
+  editingBox.pencil = pencil;
+  keepInsideColumn(box);
+  scrollIntoColumnView(box);
+}
+
+// Moves a floating box left if it would stick out of the Stages column's content.
+function keepInsideColumn(box) {
+  const limit = elements.stagesColumn.getBoundingClientRect().right - 16;
+  const overflow = box.getBoundingClientRect().right - limit;
+  if (overflow > 0) {
+    box.style.left = `${-overflow}px`;
+  }
+}
+
+// Puts the keyboard focus in the open box: its name box if it has one, otherwise its first button.
+// Without scrolling: the column is already scrolling to show the whole box, and focusing would
+// cut that short.
+function focusEditingBox() {
+  const box = editingBox?.element;
+  if (!box) {
+    return;
+  }
+  const first = box.querySelector("input[type=text], select, button");
+  first?.focus({ preventScroll: true });
+}
+
+// Redraws the open box in place after a draft change, keeping the rest of the column as it is, and
+// keeps the keyboard focus on the same control (the button or field in the same place).
+function redrawEditingBox() {
+  const old = editingBox.element;
+  const focusables = (box) => [...box.querySelectorAll("input, select, button")];
+  const focusedAt = focusables(old).indexOf(document.activeElement);
+  const box = createEditingBox(currentPlan());
+  old.replaceWith(box);
+  editingBox.element = box;
+  keepInsideColumn(box);
+  if (focusedAt !== -1) {
+    focusables(box)[focusedAt]?.focus({ preventScroll: true });
+  }
+  // A box that grew (e.g. Remove's question appeared) is shown in full, as when it opened.
+  scrollIntoColumnView(box);
+}
+
+// The open editing box's element: its fields for its kind, then Remove, Discard and Save.
+function createEditingBox(plan) {
+  const box = createElement("div", "", "editing-box");
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-label", `Edit ${editingBox.kind === "tip" ? "new tips" : editingBox.kind}`);
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && event.target.matches("input[type=text]")) {
+      event.preventDefault();
+      saveEditingBox();
+    } else if (event.key === "Escape") {
+      // Escape closes the box from any of its fields too, where the page's keys don't apply.
+      event.preventDefault();
+      event.stopPropagation();
+      closeEditingBox();
+    }
+  });
+  if (editingBox.kind === "component") {
+    box.append(...componentBoxFields(plan));
+  } else if (editingBox.kind === "stage") {
+    box.append(...stageBoxFields(plan));
+  } else {
+    box.append(...tipBoxFields());
+  }
+  box.append(createBoxButtons(plan));
+  return box;
+}
+
+// A component's box (section 8): Name, Color swatches and More colors / Fewer colors.
+function componentBoxFields(plan) {
+  const { draft, original } = editingBox;
+  const nameField = createNameField(draft.name, "Name");
+  const colorField = createElement("div");
+  colorField.append(createElement("span", "Color", "field-name"));
+  const swatches = createElement("div", "", "color-swatches");
+  const ownedBy = new Map(plan.components.map((component) => [component.color, component.name]));
+  for (const color of colorsOffered(plan, original.name, draft.color, draft.showAllColors)) {
+    const swatch = createElement("button", "", "color-swatch");
+    swatch.type = "button";
+    swatch.style.setProperty("--swatch-color", color);
+    const owner = ownedBy.get(color);
+    const used = owner !== undefined && owner !== original.name;
+    swatch.classList.toggle("own", color === draft.color);
+    swatch.classList.toggle("used", used);
+    swatch.disabled = used;
+    swatch.title = used ? `Used by ${owner}` : color;
+    swatch.setAttribute("aria-label", used ? `${color}, used by ${owner}` : color);
+    swatch.setAttribute("aria-pressed", String(color === draft.color));
+    swatch.addEventListener("click", () => {
+      draft.color = color;
+      redrawEditingBox();
+    });
+    swatches.append(swatch);
+  }
+  const more = createElement("button", draft.showAllColors ? "Fewer colors" : "More colors", "more-colors");
+  more.type = "button";
+  more.addEventListener("click", () => {
+    draft.showAllColors = !draft.showAllColors;
+    redrawEditingBox();
+  });
+  colorField.append(swatches, more);
+  return [nameField, colorField];
+}
+
+// The colors a component's box offers: all of COMPONENT_COLORS (plus its own color, if that's not
+// one of them) with showAll; otherwise the first ten that are free or its own, its own color
+// always among them, in place of the tenth if it's further down the list.
+function colorsOffered(plan, ownName, ownColor, showAll) {
+  if (showAll) {
+    return COMPONENT_COLORS.includes(ownColor) ? COMPONENT_COLORS : [...COMPONENT_COLORS, ownColor];
+  }
+  const takenByOthers = new Set(
+    plan.components.filter((component) => component.name !== ownName).map((component) => component.color),
+  );
+  const free = COMPONENT_COLORS.filter((color) => !takenByOthers.has(color));
+  const first = free.slice(0, FIRST_COLORS_SHOWN);
+  if (first.includes(ownColor)) {
+    return first;
+  }
+  return [...first.slice(0, FIRST_COLORS_SHOWN - 1), ownColor];
+}
+
+// A stage's box (section 10): Name, the Aspirate and Dispense mode menus, and the Probes buttons.
+function stageBoxFields(plan) {
+  const { draft } = editingBox;
+  const nameField = createNameField(draft.name, "Name");
+  const modes = createElement("div");
+  modes.append(createElement("span", "Mode", "field-name"));
+  const columns = createElement("div", "", "mode-columns");
+  columns.append(
+    createModeMenu("source", "Aspirate", draft.aspirate, (name) => {
+      draft.aspirate = name;
+    }),
+    createModeMenu("destination", "Dispense", draft.dispense, (name) => {
+      draft.dispense = name;
+    }),
+  );
+  modes.append(columns);
+  const probes = createElement("div");
+  probes.append(createElement("span", "Probes", "field-name"));
+  const buttons = createElement("div", "", "probe-buttons");
+  for (let probe = 1; probe <= PROBE_COUNT; probe++) {
+    const button = createElement("button", String(probe), "probe-button");
+    button.type = "button";
+    button.classList.toggle("lit", draft.probes.includes(probe));
+    button.setAttribute("aria-label", `${countOf(probe, "probe")}`);
+    button.setAttribute("aria-pressed", String(draft.probes.length === probe && draft.probes.includes(probe)));
+    button.addEventListener("click", () => {
+      draft.probes = probesFor(probe);
+      redrawEditingBox();
+    });
+    buttons.append(button);
+  }
+  probes.append(buttons);
+  return [nameField, modes, probes];
+}
+
+// One end's menu of pipetting modes (modesFor), with "(not one of the modes)" first if the stage's
+// settings there aren't one of them. `onChoose` gets the mode's name, or null for that line.
+function createModeMenu(end, title, chosen, onChoose) {
+  const field = createElement("div");
+  const menu = document.createElement("select");
+  menu.id = `mode-${end}`;
+  const label = createElement("label", title);
+  label.htmlFor = menu.id;
+  if (chosen === null) {
+    menu.append(new Option("(not one of the modes)", ""));
+  }
+  for (const mode of modesFor(end)) {
+    menu.append(new Option(mode.name, mode.name));
+  }
+  menu.value = chosen ?? "";
+  menu.addEventListener("change", () => onChoose(menu.value === "" ? null : menu.value));
+  field.append(label, menu);
+  return field;
+}
+
+// A tip change's box (section 10): a button per tip type, one chosen.
+function tipBoxFields() {
+  const { draft } = editingBox;
+  const field = createElement("div");
+  field.append(createElement("span", "Tip type", "field-name"));
+  const buttons = createElement("div", "", "tip-type-buttons");
+  for (const tipType of TIP_TYPES) {
+    const button = createElement("button", tipType);
+    button.type = "button";
+    button.setAttribute("aria-pressed", String(tipType === draft.tipType));
+    button.addEventListener("click", () => {
+      draft.tipType = tipType;
+      redrawEditingBox();
+    });
+    buttons.append(button);
+  }
+  field.append(buttons);
+  return [field];
+}
+
+// A box's Name text box, which updates the draft as it's typed in.
+function createNameField(value, title) {
+  const field = createElement("div");
+  const box = document.createElement("input");
+  box.type = "text";
+  box.id = "editing-box-name";
+  box.value = value;
+  box.addEventListener("input", () => {
+    editingBox.draft.name = box.value;
+  });
+  const label = createElement("label", title);
+  label.htmlFor = box.id;
+  field.append(label, box);
+  return field;
+}
+
+// The box's bottom: Remove at the left (or its question, or why there's none), Discard and Save at
+// the right.
+function createBoxButtons(plan) {
+  const holder = createElement("div");
+  if (editingBox.draft.confirmingRemove) {
+    holder.append(createRemoveQuestion(plan));
+  }
+  const buttons = createElement("div", "", "box-buttons");
+  const removal = removalFor(plan);
+  if (removal.kind === "button") {
+    const remove = createElement("button", "Remove", "danger-outline");
+    remove.type = "button";
+    remove.disabled = removal.disabled;
+    if (removal.disabled) {
+      remove.title = removal.reason;
+    }
+    remove.addEventListener("click", () => {
+      editingBox.draft.confirmingRemove = true;
+      redrawEditingBox();
+    });
+    buttons.append(remove);
+  } else {
+    // Why there's no Remove, on a line of its own above the buttons.
+    holder.append(createElement("p", removal.reason, "note"));
+  }
+  const discard = createElement("button", "Discard", "discard");
+  discard.type = "button";
+  discard.addEventListener("click", closeEditingBox);
+  const save = createElement("button", "Save", "primary save");
+  save.type = "button";
+  save.addEventListener("click", saveEditingBox);
+  buttons.append(createElement("span", "", "spacer"), discard, save);
+  holder.append(buttons);
+  return holder;
+}
+
+// Whether the open box has a Remove button, and if not or if disabled, why: { kind: "button",
+// disabled, reason } or { kind: "none", reason }.
+function removalFor(plan) {
+  const { kind, key } = editingBox;
+  if (kind === "stage" && !canRemoveStage(plan, key)) {
+    return { kind: "button", disabled: true, reason: "Keep at least one stage." };
+  }
+  if (kind === "tip" && key === START) {
+    return { kind: "none", reason: "The run always starts by loading tips, so these can't be removed." };
+  }
+  return { kind: "button", disabled: false };
+}
+
+// Remove's question inside the box, with Cancel and Remove (solid red).
+function createRemoveQuestion(plan) {
+  const question = createElement("div", "", "remove-question");
+  question.append(createElement("p", removeQuestionText(plan)));
+  const buttons = createElement("div", "", "confirm-buttons");
+  const cancel = createElement("button", "Cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => {
+    editingBox.draft.confirmingRemove = false;
+    redrawEditingBox();
+  });
+  const remove = createElement("button", "Remove", "danger");
+  remove.type = "button";
+  remove.addEventListener("click", removeFromEditingBox);
+  buttons.append(cancel, remove);
+  question.append(buttons);
+  return question;
+}
+
+// The question Remove asks, e.g. "Remove Media from 4 wells?" or "Remove stage 2, “Drugs” and its
+// 4 transfers?" or "Remove these new tips?".
+function removeQuestionText(plan) {
+  const { kind, key } = editingBox;
+  if (kind === "component") {
+    const wells = countWellsWith(plan, key);
+    return wells === 0 ? `Remove ${key}?` : `Remove ${key} from ${countOf(wells, "well")}?`;
+  }
+  if (kind === "stage") {
+    const transfers = transfersIn(plan, key).length;
+    const label = stageLabel(plan, key);
+    return transfers === 0 ? `Remove ${label}?` : `Remove ${label} and its ${countOf(transfers, "transfer")}?`;
+  }
+  return "Remove these new tips?";
+}
+
+// Removes what the open box edits, after its question, and closes the box.
+function removeFromEditingBox() {
+  const plan = currentPlan();
+  const { kind, key } = editingBox;
+  if (kind === "component") {
+    removeComponentFromBox(plan, key);
+  } else if (kind === "stage") {
+    removeStageFromBox(plan, key);
+  } else {
+    closeEditingBox();
+    if (tryEdit(() => removeTipChange(plan, key)) !== false) {
+      showMessage("Removed the new tips: the stages after them keep the tips before.", "note");
+    }
+  }
+}
+
+// Removes a component (section 8). If it was picked, the first component left is picked, or the
+// eraser if none is.
+function removeComponentFromBox(plan, name) {
+  const wells = countWellsWith(plan, name);
+  const removed = tryLogic(() => removeComponent(plan, name));
+  if (removed === false) {
+    return;
+  }
+  closeEditingBox();
+  if (brush.pick.kind === "component" && brush.pick.name === name) {
+    const first = removed.components[0];
+    brush.pick = first === undefined ? { kind: "eraser" } : { kind: "component", name: first.name };
+  }
+  recordEdit(removed);
+  const from = wells === 0 ? "" : ` from ${countOf(wells, "well")}`;
+  showMessage(`Removed ${name}${from}. Undo can bring it back.`, "note");
+}
+
+// Removes a stage (section 10). If it was open, the first stage in the stage order opens.
+function removeStageFromBox(plan, id) {
+  const transfers = transfersIn(plan, id).length;
+  const label = stageLabel(plan, id);
+  const removed = tryLogic(() => removeStage(plan, id));
+  if (removed === false) {
+    return;
+  }
+  closeEditingBox();
+  const open = currentOpen() === id ? stageOrder(removed)[0] : currentOpen();
+  recordEdit(removed, open);
+  const andTransfers = transfers === 0 ? "" : ` and its ${countOf(transfers, "transfer")}`;
+  showMessage(`Removed ${label}${andTransfers}. Undo brings it back.`, "note");
+}
+
+// Saves the open box's changes as one undoable edit and closes it. If the logic refuses, its message
+// is shown and the box stays open. A box without changes just closes.
+function saveEditingBox() {
+  if (!isBoxDirty()) {
+    closeEditingBox();
+    return;
+  }
+  const plan = currentPlan();
+  const { kind, key, draft } = editingBox;
+  const saved = tryLogic(() => {
+    if (kind === "component") {
+      return saveComponentDraft(plan, key, draft);
+    }
+    if (kind === "stage") {
+      // The message names the stage as it is after saving, so a renamed stage is named by its new name.
+      const savedPlan = saveStageDraft(plan, key, draft);
+      return { plan: savedPlan, message: `Saved ${stageLabel(savedPlan, key)}.` };
+    }
+    return { plan: setTipType(plan, key, draft.tipType), message: `New tips are now ${draft.tipType}.` };
+  });
+  if (saved === false) {
+    return;
+  }
+  closeEditingBox();
+  recordEdit(saved.plan);
+  showMessage(saved.message, "ok");
+}
+
+// A component's Save: renames it and recolors it, as one edit, returning { plan, message }. If it
+// was picked, it stays picked. Throws as renameComponent and setComponentColor do.
+function saveComponentDraft(plan, name, draft) {
+  let saved = renameComponent(plan, name, draft.name);
+  const newName = draft.name.trim();
+  if (draft.color !== plan.components.find((component) => component.name === name).color) {
+    saved = setComponentColor(saved, newName, draft.color);
+  }
+  // Both edits passed, so the picked component can follow the new name.
+  if (brush.pick.kind === "component" && brush.pick.name === name) {
+    brush.pick = { kind: "component", name: newName };
+  }
+  return { plan: saved, message: `Saved ${newName}.` };
+}
+
+// A stage's Save: renames it (if the name changed) and changes its settings, as one edit. An end
+// whose menu still shows "(not one of the modes)" keeps its technique and liquid type.
+function saveStageDraft(plan, id, draft) {
+  const stage = plan.stageList.get(id);
+  let saved = draft.name === stage.name ? plan : renameStage(plan, id, draft.name);
+  const settings = {
+    sourceTechnique: stage.settings.sourceTechnique,
+    sourceLiquidType: stage.settings.sourceLiquidType,
+    destinationTechnique: stage.settings.destinationTechnique,
+    destinationLiquidType: stage.settings.destinationLiquidType,
+    ...(draft.aspirate === null ? {} : modeSettings("source", draft.aspirate)),
+    ...(draft.dispense === null ? {} : modeSettings("destination", draft.dispense)),
+    probes: draft.probes,
+  };
+  return changeStageSettings(saved, id, settings);
+}
+
+// Watches every press on the page: while an editing box is open, a press outside it closes the box
+// if it has no changes (and the press still does what it would), or, with unsaved changes, does
+// nothing else: the box shakes, Save and Discard pulse, and the message bar says what to do.
+function connectEditingBoxGuard() {
+  document.addEventListener("pointerdown", guardEditingBox, true);
+  document.addEventListener("mousedown", guardEditingBox, true);
+  document.addEventListener("click", guardEditingBox, true);
+}
+
+// The ✎ whose box a press just closed, until that press's click has passed, so the click doesn't
+// open the box again.
+let pencilJustClosed = null;
+
+// One press event's share of the guard above: pointerdown decides and shows the refusal, mousedown
+// and click are stopped too so nothing else acts on a refused press.
+function guardEditingBox(event) {
+  if (pencilJustClosed !== null && event.type === "click") {
+    const pencil = pencilJustClosed;
+    pencilJustClosed = null;
+    if (pencil.contains(event.target)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+  }
+  if (editingBox === null || editingBox.element === undefined) {
+    return;
+  }
+  if (editingBox.element.contains(event.target)) {
+    return;
+  }
+  if (!isBoxDirty()) {
+    if (event.type === "pointerdown") {
+      // The ✎ closes its box as a click outside would, and nothing more.
+      pencilJustClosed = editingBox.pencil.contains(event.target) ? editingBox.pencil : null;
+      closeEditingBox();
+    }
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.type === "pointerdown") {
+    refuseOutsideClick();
+  }
+}
+
+// Shows that a click outside a box with unsaved changes was refused (section 10).
+function refuseOutsideClick() {
+  const box = editingBox.element;
+  restartAnimation(box, "shake");
+  for (const button of box.querySelectorAll(".save, .discard")) {
+    restartAnimation(button, "pulse");
+  }
+  showMessage("Save or discard your changes first.", "note");
+}
+
+// Plays an animation class on an element again, even if it's still running.
+function restartAnimation(element, className) {
+  element.classList.remove(className);
+  // Reading offsetWidth makes the browser apply the removal before the class is added again.
+  void element.offsetWidth;
+  element.classList.add(className);
+  element.addEventListener("animationend", () => element.classList.remove(className), { once: true });
+}
+
+// --- Keys (section 12) ---
+
+// Connects the page's keys: volumes, Escape, undo and redo. None while typing in a text box or
+// menu.
+function connectKeys() {
+  document.addEventListener("keydown", handleKey);
+}
+
+// Acts on one key press (section 12).
+function handleKey(event) {
+  if (event.target.matches("input, select, textarea, [contenteditable]")) {
+    return;
+  }
+  const key = event.key.toLowerCase();
+  if (event.ctrlKey || event.metaKey) {
+    if (key === "z" && !event.shiftKey) {
+      event.preventDefault();
+      if (editingBox === null) {
+        undo();
+      }
+    } else if (key === "y" || (key === "z" && event.shiftKey)) {
+      event.preventDefault();
+      if (editingBox === null) {
+        redo();
+      }
+    }
+    return;
+  }
+  if (event.key === "Escape") {
+    pressEscape();
+    return;
+  }
+  if (isVolumeKey(event.key)) {
+    event.preventDefault();
+    typeVolume(event.key);
+  }
+}
+
+// Escape closes the open editing box without saving, or Reset's question; otherwise it clears a
+// chosen source.
+function pressEscape() {
+  if (editingBox !== null) {
+    closeEditingBox();
+  } else if (!elements.resetBox.hidden) {
+    closeResetBox();
+    elements.reset.focus();
+  } else if (source !== null) {
+    clearSource();
+  }
+}
+
+// True for the keys that type a volume: digits, "." and Backspace.
+function isVolumeKey(key) {
+  return /^[0-9]$/.test(key) || key === "." || key === "Backspace";
+}
+
+// Types one key into the volume that's being used: the brush's while Start is open (not with the
+// eraser), the next transfer's while a stage is open; nothing while End is open.
+function typeVolume(key) {
+  const open = currentOpen();
+  if (open === END) {
+    return;
+  }
+  if (open === START) {
+    if (brush.pick.kind === "eraser") {
+      return;
+    }
+    typeVolumeKey(brush.volume, key);
+    refreshStages();
+  } else {
+    typeVolumeKey(transferVolume, key);
+  }
+  updateCursorLabel();
+}
+
+// --- Typing volumes and showing numbers (section 13) ---
+
+// A typed volume starting at `number`: { text, startsNew }. startsNew means the next key starts a
+// new number rather than adding to this one.
+function newTypedVolume(number) {
+  return { text: String(number), startsNew: true };
+}
+
+// Types `key` (a digit, "." or "Backspace") into a typed volume. The first key after an edit starts
+// a new number: a digit replaces the volume, "." gives "0.", Backspace empties it. Later keys add to
+// it: digits and one "." at the end, Backspace removing the last character.
+function typeVolumeKey(volume, key) {
+  if (volume.startsNew) {
+    volume.startsNew = false;
+    volume.text = key === "Backspace" ? "" : key === "." ? "0." : key;
+    return;
+  }
+  if (key === "Backspace") {
+    volume.text = volume.text.slice(0, -1);
+  } else if (key === ".") {
+    if (!volume.text.includes(".")) {
+      volume.text += ".";
+    }
+  } else {
+    volume.text += key;
+  }
+}
+
+// How a typed volume is shown: its text, or "?" when it's empty.
+function volumeShown(volume) {
+  return volume.text === "" ? "?" : volume.text;
+}
+
+// What a typed volume is passed on as: a number if the text is one (digits, optionally "-", and a
+// decimal part), otherwise the text as typed, so the logic's message says what's wrong.
+function volumeValue(text) {
+  return /^-?(\d+\.?\d*|\.\d+)$/.test(text) ? Number(text) : text;
+}
+
+// A volume for cards, lists and messages: rounded to 2 decimal places, e.g. 33.33; below 0.01 µL
+// but not 0, in exponent form with one decimal, e.g. "4.0e-3".
+function formatVolume(volume) {
+  if (volume !== 0 && Math.abs(volume) < 0.01) {
+    return volume.toExponential(1);
+  }
+  return String(Number(volume.toFixed(2)));
+}
+
+// A volume inside a well (short form): "<1" below 1; thousands with "k" from 10,000, e.g. "12k";
+// otherwise a whole number.
+function formatShortVolume(volume) {
+  if (volume < 1) {
+    return "<1";
+  }
+  if (volume >= 10000) {
+    return `${Math.round(volume / 1000)}k`;
+  }
+  return String(Math.round(volume));
+}
+
+// A percentage for the contents card: rounded to 2 decimal places, e.g. "16.67%"; below 0.01% but
+// not 0, in exponent form, e.g. "4.0e-3%".
+function formatPercent(percent) {
+  return `${formatVolume(percent)}%`;
+}
+
+// A count with its noun, plural except for 1, e.g. countOf(1, "well") → "1 well", (3) → "3 wells".
+function countOf(count, noun) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+// --- Names in messages (section 12) ---
+
+// A stage named by place and name, e.g. 'stage 3, “New stage”'.
+function stageLabel(plan, id) {
+  return `stage ${stageOrder(plan).indexOf(id) + 1}, “${plan.stageList.get(id).name}”`;
+}
+
+// A well named by its labware's label and the well, e.g. "Assay plate A1".
+function wellName(plan, end) {
+  return `${labelOf(plan, end.labware)} ${end.well}`;
+}
+
+// --- The message bar (section 12) ---
+
+// Shows a message of a kind ("ok", "note" or "error") in the message bar, replacing the last.
+function showMessage(text, kind) {
+  const bar = elements.messageBar;
+  bar.textContent = text;
+  bar.className = `message-bar ${kind}`;
+  bar.hidden = false;
+}
+
+// --- The Stages column's fit and scrolling (sections 3 and 7) ---
+
+// Fits the Stages column so it ends STAGES_BOTTOM_MARGIN above the bottom of the window, wherever
+// its top is, and never past the bottom of the area holding both panels, in the side-by-side
+// layout. In the stacked layout it's as tall as its contents.
+function fitStagesColumn() {
+  const column = elements.stagesColumn;
+  if (!wideLayout.matches) {
+    column.style.removeProperty("--stages-max-height");
+    return;
+  }
+  // The column is pinned at STAGES_BOTTOM_MARGIN from the top of the window once the page has
+  // scrolled that far; before that its top is the area's top. Measuring the area rather than the
+  // column itself keeps the fit from depending on the column's own height.
+  const area = elements.workspace.getBoundingClientRect();
+  const top = Math.max(area.top, STAGES_BOTTOM_MARGIN);
+  const bottom = Math.min(window.innerHeight - STAGES_BOTTOM_MARGIN, area.bottom);
+  column.style.setProperty("--stages-max-height", `${Math.max(bottom - top, 0)}px`);
+}
+
+// Scrolls the Stages column just enough to show `element`, if there is one.
+function scrollIntoColumnView(element) {
+  if (element === null || element === undefined) {
+    return;
+  }
+  element.scrollIntoView({ block: "nearest", behavior: reduceMotion.matches ? "auto" : "smooth" });
+}
+
+// --- Small helpers ---
+
+// A text box that edits a value in place: Enter or clicking away calls onSave with the text, Escape
+// calls onCancel; each at most once.
+function createInlineEditor({ value, className, accessibleName, onSave, onCancel }) {
+  const box = document.createElement("input");
+  box.type = "text";
+  box.className = className;
+  box.value = value;
+  box.setAttribute("aria-label", accessibleName);
+  let done = false;
+  const finish = (action) => {
+    if (done) {
+      return;
+    }
+    done = true;
+    action();
+  };
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finish(() => onSave(box.value));
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      finish(onCancel);
+    }
+  });
+  box.addEventListener("blur", () => finish(() => onSave(box.value)));
+  return box;
+}
+
+// A small circle of a color.
+function createSwatch(color) {
+  const swatch = createElement("span", "", "swatch");
+  swatch.style.setProperty("--swatch-color", color);
+  return swatch;
+}
+
+// The color of the component called `name`, or gray if the plan has no such component.
+function componentColor(plan, name) {
+  return plan.components.find((component) => component.name === name)?.color ?? GRAY;
+}
+
+// True if the plan has a component called `name`.
+function hasComponent(plan, name) {
+  return plan.components.some((component) => component.name === name);
+}
+
+// One text key for a well, e.g. { labware: "Res", well: "1" } → '["Res","1"]'. A JSON list keeps the
+// two names apart, as in contents-tracking.
+function wellKey(end) {
+  return JSON.stringify([end.labware, end.well]);
+}
+
+// wellKey for a well that may be null.
+function wellKeyOrNull(end) {
+  return end === null ? null : wellKey(end);
+}
+
+// Escapes text for use inside a CSS attribute selector.
+function cssEscape(text) {
+  return CSS.escape(text);
+}
+
+// A new element of the given kind holding text, with a class if given,
+// e.g. createElement("li", "Ready", "note").
+function createElement(tagName, text = "", className = "") {
+  const element = document.createElement(tagName);
+  if (text !== "") {
+    element.textContent = text;
+  }
+  if (className !== "") {
+    element.className = className;
+  }
+  return element;
+}
+
+// The element of transfer-designer.html with this id.
+function byId(id) {
+  return document.getElementById(id);
+}
