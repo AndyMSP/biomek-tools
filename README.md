@@ -20,8 +20,9 @@ This runs every `*.test.js` file using Node's built-in test runner.
 ```
 npm run repl
 ```
-This opens an interactive Node session with the shared modules and the randomizer's functions
-loaded, e.g. `GRID_96.wellPosition("D3")` or `new SeededRandom(37).next()`. When it starts, it lists
+This opens an interactive Node session with every shared module and the tools' logic modules (the
+randomizer's and the transfer designer's) loaded, e.g. `GRID_96.wellPosition("D3")` or
+`new SeededRandom(37).next()`. When it starts, it lists
 what's loaded, grouped by topic (one per module, such as `layout` or `operation-list`). Type
 `.examples` and a topic, e.g. `.examples layout`, to see examples to try. Type `.exit` to quit.
 

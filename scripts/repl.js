@@ -8,7 +8,18 @@ import { WellGrid, GRID_96 } from "../src/shared/well-grid/well-grid.js";
 import { SeededRandom } from "../src/shared/random/random.js";
 import { Layout } from "../src/shared/layout/layout.js";
 import { WellSelection } from "../src/shared/well-selection/well-selection.js";
+import { describeValue } from "../src/shared/error-messages/error-messages.js";
+import {
+  isObject,
+  findMissingProperties,
+  findExtraProperties,
+  listNames,
+  checkName,
+  checkVolume,
+} from "../src/shared/input-checks/input-checks.js";
+import { parsePastedTable, isMultiCell } from "../src/shared/pasted-table/pasted-table.js";
 import { OperationList } from "../src/shared/operation-list/operation-list.js";
+import { replay, ContentsSnapshot } from "../src/shared/contents-tracking/contents-tracking.js";
 import { StageList } from "../src/shared/stage-list/stage-list.js";
 import {
   labwareNames,
@@ -126,6 +137,49 @@ const TOPICS = {
       'selection.select("I1")',
     ],
   },
+  "error-messages": {
+    loaded: { describeValue },
+    examples: [
+      'describeValue("37")',
+      "describeValue(37)",
+      "describeValue(null)",
+      'describeValue(["A", "B"])',
+      "describeValue({ rows: 8, columns: 12 })",
+      "`Well name must be text, but got ${describeValue(5)}.`",
+    ],
+  },
+  "input-checks": {
+    loaded: {
+      isObject,
+      findMissingProperties,
+      findExtraProperties,
+      listNames,
+      checkName,
+      checkVolume,
+    },
+    examples: [
+      'isObject({ well: "A1" })',
+      "isObject([])",
+      'findMissingProperties({ well: "A1" }, ["labware", "well"])',
+      'findExtraProperties({ labware: "Plate 1", wel: "D4" }, ["labware", "well"])',
+      'listNames(["source", "volume"])',
+      'checkName("Plate 1", "source labware")',
+      'checkVolume(50, "volume")',
+      'checkName(" Plate 1", "source labware")',
+      'checkVolume(-5, "volume")',
+    ],
+  },
+  "pasted-table": {
+    loaded: { parsePastedTable, isMultiCell },
+    examples: [
+      'parsePastedTable("Drug A\\t4\\r\\nVehicle\\t3\\r\\n")',
+      'parsePastedTable("A\\t\\tC")',
+      'parsePastedTable("A\\n\\n")',
+      'isMultiCell("Drug A\\t4")',
+      'isMultiCell("Drug A")',
+      "parsePastedTable(5)",
+    ],
+  },
   "operation-list": {
     loaded: { OperationList },
     examples: [
@@ -134,6 +188,22 @@ const TOPICS = {
       "list.listOperations()",
       "empty.listOperations()",
       'list.add({ type: "transfer", source: { labware: "Reagents", well: "A1" }, destination: { labware: "Plate 1", well: "D4" }, volme: 50, stage: "1" })',
+    ],
+  },
+  "contents-tracking": {
+    loaded: { replay, ContentsSnapshot },
+    examples: [
+      'const starting = [{ labware: "Reagents", well: "A1", components: { Dye: 1000 } }, { labware: "Plate 1", well: "A1", components: { Media: 90 } }, { labware: "Plate 1", well: "B1", components: { Water: 50 } }]',
+      'const transfers = new OperationList().add({ type: "transfer", source: { labware: "Reagents", well: "A1" }, destination: { labware: "Plate 1", well: "A1" }, volume: 10, stage: "1" }).add({ type: "transfer", source: { labware: "Plate 1", well: "B1" }, destination: { labware: "Plate 1", well: "B2" }, volume: 60, stage: "1" })',
+      "const after = replay(starting, transfers)",
+      'after.componentsOf("Plate 1", "A1")',
+      'after.totalVolumeOf("Plate 1", "A1")',
+      'after.volumeFractionsOf("Plate 1", "A1")',
+      "after.listProblems()",
+      'after.causesOf("Plate 1", "B2")',
+      "replay(starting, transfers, 1).listProblems()",
+      "replay(starting, transfers, 3)",
+      "new ContentsSnapshot()",
     ],
   },
   "stage-list": {
