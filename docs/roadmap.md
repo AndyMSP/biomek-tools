@@ -123,6 +123,10 @@ Last updated: 2026-10-26
   folding the open card, and a white edge around the arrows. **Built 2026-10-26** in the three page
   files, and checked in headless Chrome (70 checks, including a window narrower than 1000px); Andy
   hasn't tested the build yet, so the specification stays Draft.
+- **Two fixes from reviewing that build** (#75, 2026-10-26): clicking away from a label or volume
+  box whose save is refused closes it and does nothing else, so the message saying why stays in
+  view; and only a main-button press is passed on (a right click with a box open chose a well as a
+  source). The page specification stays Draft until Andy has tested the build with both PRs.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -426,5 +430,10 @@ overfilling a well or drawing more than it holds.
   checks it in `add`.)
 - **A programming interface from Beckman**: Andy is asking whether one exists. If it does, ADR 0006's
   option 3 would be reconsidered.
+- **How wide the transfer designer's Stages column is in mid-sized windows** (noted 2026-10-26,
+  reviewing #74). Between about 1000px and 1420px wide, the Stages column shrinks to its minimum,
+  320px, to give the deck panel the room, though the labware stack one per row anyway, so the
+  narrower column gains nothing and cuts names off sooner. Option: keep it at 400px unless the extra
+  room lets two labware sit side by side (`transfer-designer-page.md`, section 3). Not urgent.
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)
   would need a specification change.
