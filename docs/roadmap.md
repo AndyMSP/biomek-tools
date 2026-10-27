@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-26
+Last updated: 2026-10-27
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -126,7 +126,9 @@ Last updated: 2026-10-26
 - **Two fixes from reviewing that build** (#75, 2026-10-26): clicking away from a label or volume
   box whose save is refused closes it and does nothing else, so the message saying why stays in
   view; and only a main-button press is passed on (a right click with a box open chose a well as a
-  source). The page specification stays Draft until Andy has tested the build with both PRs.
+  source).
+- **The transfer designer page specification is Final** (2026-10-27): Andy tested the build with
+  #74 and #75 (`transfer-designer-page.md`).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
