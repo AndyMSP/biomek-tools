@@ -25,8 +25,8 @@
       <!-- The header's buttons (section 5). Reset's question opens in a small box under it. -->
       <div class="header-actions">
         <button id="biomek-files" class="primary" type="button">Biomek files</button>
-        <button id="save" type="button">Save</button>
-        <button id="open" type="button">Open</button>
+        <button id="save" class="action" type="button">Save</button>
+        <button id="open" class="action" type="button">Open</button>
         <input id="open-file" type="file" accept=".json,application/json" hidden />
         <div class="reset-holder">
           <button id="reset" class="danger-outline" type="button" aria-haspopup="dialog">Reset</button>
@@ -34,7 +34,7 @@
             <h3 id="reset-heading">Reset the whole plan?</h3>
             <p>This clears the starting contents, every transfer and every stage. Undo can bring them back.</p>
             <div class="confirm-buttons">
-              <button id="reset-cancel" type="button">Cancel</button>
+              <button id="reset-cancel" class="action" type="button">Cancel</button>
               <button id="reset-everything" class="danger" type="button">Reset everything</button>
             </div>
           </div>
@@ -43,7 +43,7 @@
     </header>
 
     <!-- The two panels (section 3): the deck on the left, the Stages column on the right; stacked
-         in a narrow window. -->
+         in a narrow window. The deck panel's width doesn't depend on what's in it. -->
     <main id="workspace" class="workspace">
       <section id="deck-panel" class="panel deck-panel" aria-labelledby="deck-heading">
         <h2 id="deck-heading" class="visually-hidden">Deck</h2>
@@ -52,26 +52,32 @@
              the right. -->
         <div class="deck-bar">
           <div class="timeline">
-            <button id="previous-point" class="small-button" type="button" aria-label="Open the entry before">‹</button>
-            <button id="next-point" class="small-button" type="button" aria-label="Open the entry after">›</button>
+            <button id="previous-point" class="action small-button" type="button" aria-label="Open the entry before">‹</button>
+            <button id="next-point" class="action small-button" type="button" aria-label="Open the entry after">›</button>
             <span id="timeline-caption" class="timeline-caption"></span>
           </div>
           <div class="deck-bar-right">
-            <button id="undo" type="button">Undo</button>
-            <button id="redo" type="button">Redo</button>
+            <button id="undo" class="action" type="button">Undo</button>
+            <button id="redo" class="action" type="button">Redo</button>
             <span id="problem-count" class="problem-count"></span>
           </div>
         </div>
 
-        <!-- Second bar (section 6): the labware tray on the left; the key, the component colors
-             and the Arrows toggle on the right. -->
+        <!-- Second bar (section 6): the labware tray on the left; the key and the Arrows toggle on
+             the right. -->
         <div class="deck-bar tray-bar">
           <div id="labware-tray" class="tray"></div>
           <div class="deck-bar-right">
             <ul id="key" class="key" aria-label="Key"></ul>
-            <ul id="component-colors" class="component-colors" aria-label="Component colors"></ul>
-            <button id="arrows-toggle" type="button" aria-pressed="true">Arrows</button>
+            <button id="arrows-toggle" class="action" type="button" aria-pressed="true">Arrows</button>
           </div>
+        </div>
+
+        <!-- Third bar (section 6): the component colors, from the left; hidden while the plan has no
+             components. -->
+        <div id="components-bar" class="components-bar" hidden>
+          <span class="components-label">Components:</span>
+          <ul id="component-colors" class="component-colors" aria-label="Component colors"></ul>
         </div>
 
         <!-- The labware that's out, one block each; the arrows are drawn over the whole panel. -->

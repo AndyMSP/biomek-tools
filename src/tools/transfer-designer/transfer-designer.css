@@ -40,11 +40,28 @@
 
   --well-size: 36px;
   --well-gap: 4px;
+  /* A grid's headings: the column numbers' row above and the row letters' column at the left. A
+     reservoir has both too (its left column empty), so it's exactly the same size as a plate. */
+  --grid-heading-row: 18px;
+  --grid-heading-column: 22px;
+  /* The overdraw X's lines on a well; the key's example well sets its own, thinner. */
+  --overdraw-line: 3px;
+  --labware-gap: 20px;
   --panel-padding: 20px;
   --panel-gap: 20px;
   --page-width: 1500px;
   --stages-min-width: 320px;
   --stages-max-width: 400px;
+  /* The widest labware on the deck has 12 columns (GRID_96 and GRID_1X12_NUMBERED, deck.md). The
+     deck panel is given room for two of them side by side, when the window allows (section 3). */
+  --widest-labware-columns: 12;
+  --widest-labware-width: calc(
+    var(--grid-heading-column) + var(--widest-labware-columns) * (var(--well-size) + var(--well-gap))
+  );
+  --panel-border-width: 1px;
+  --two-labware-panel-width: calc(
+    2 * var(--widest-labware-width) + var(--labware-gap) + 2 * var(--panel-padding) + 2 * var(--panel-border-width)
+  );
   --stage-gap: 10px;
   --seam-button-size: 26px;
 }
@@ -135,6 +152,8 @@ p {
 }
 
 /* --- Buttons and text boxes (section 15) --- */
+/* Buttons come in a few groups, each styled once. Every button has 13px text and 6px corners. A
+   button with no group class is a choice button, which picks something: dark text, a gray border. */
 button {
   min-height: 34px;
   padding: 0 14px;
@@ -143,17 +162,17 @@ button {
   background: var(--panel-background);
   color: var(--text);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
 }
 
-button:disabled {
-  border-color: var(--disabled-background);
-  background: #f1f0ec;
-  color: var(--disabled-text);
-  cursor: not-allowed;
+/* An action button, which does something: blue text with a light blue border. */
+button.action {
+  border-color: var(--blue-border);
+  color: var(--blue);
 }
 
+/* The main action: solid blue. */
 button.primary {
   border-color: var(--blue);
   background: var(--blue);
@@ -161,11 +180,13 @@ button.primary {
   font-weight: 600;
 }
 
+/* Danger (Reset, Remove): red text with a light red border. */
 button.danger-outline {
-  border-color: var(--red);
+  border-color: var(--red-border);
   color: var(--red);
 }
 
+/* The confirming button of a danger question: solid red. */
 button.danger {
   border-color: var(--red);
   background: var(--red);
@@ -178,6 +199,14 @@ button[aria-pressed="true"] {
   border-color: var(--blue);
   background: var(--blue-tint);
   color: var(--blue);
+}
+
+/* Disabled buttons look the same whatever their group, so this comes after the groups. */
+button:disabled {
+  border-color: var(--disabled-background);
+  background: #f1f0ec;
+  color: var(--disabled-text);
+  cursor: not-allowed;
 }
 
 .small-button {
@@ -246,21 +275,30 @@ select:focus-visible {
 /* --- Panels and layout (sections 3 and 15) --- */
 .panel {
   padding: var(--panel-padding);
-  border: 1px solid var(--panel-border);
+  border: var(--panel-border-width) solid var(--panel-border);
   border-radius: 10px;
   background: var(--panel-background);
 }
 
+/* The two panels are grid columns, so their widths depend only on the window, never on what's in
+   them (section 3). The deck panel is at least wide enough for two labware side by side, or, in a
+   window too narrow for that beside a 320px Stages column, whatever that column leaves; it takes the
+   rest. The Stages column is 320px to 400px wide. */
 .workspace {
   flex: 1;
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns:
+    minmax(
+      min(var(--two-labware-panel-width), calc(100% - var(--stages-min-width) - var(--panel-gap))),
+      1fr
+    )
+    minmax(var(--stages-min-width), var(--stages-max-width));
+  align-items: start;
   gap: var(--panel-gap);
 }
 
 .deck-panel {
   position: relative;
-  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -273,27 +311,22 @@ select:focus-visible {
 .stages-column {
   position: sticky;
   top: 12px;
-  flex: 0 1 var(--stages-max-width);
-  min-width: var(--stages-min-width);
-  max-width: var(--stages-max-width);
+  min-width: 0;
   max-height: var(--stages-max-height, none);
   overflow-y: auto;
   padding: 14px;
   scroll-behavior: smooth;
 }
 
+/* In a narrower window the panels stack: the deck panel, then the Stages column, as tall as its
+   contents. */
 @media (max-width: 1000px) {
   .workspace {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .stages-column {
     position: static;
-    flex: none;
-    width: auto;
-    min-width: 0;
-    max-width: none;
     max-height: none;
     overflow: visible;
   }
@@ -325,13 +358,14 @@ select:focus-visible {
 
 .timeline .small-button {
   flex: none;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1;
 }
 
 .timeline-caption {
   margin-left: 4px;
-  font-size: 14px;
+  color: var(--muted-text);
+  font-size: 13px;
 }
 
 .problem-count {
@@ -377,7 +411,6 @@ select:focus-visible {
   gap: 8px;
   min-height: 32px;
   padding: 0 10px 0 8px;
-  font-size: 14px;
 }
 
 /* A tiny outline of the labware's shape: dots for a plate, stripes for a reservoir. */
@@ -406,17 +439,24 @@ select:focus-visible {
   );
 }
 
-/* The key (marks on the deck) and the component colors. */
+/* The key (marks on the deck) and the component colors share one style: 12px gray, 4px apart
+   between lines and 12px between items. */
+.key,
+.component-colors,
+.components-label {
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
 .key,
 .component-colors {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 14px;
+  gap: 4px 12px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
 }
 
 .key:empty,
@@ -431,47 +471,72 @@ select:focus-visible {
   gap: 6px;
 }
 
+/* The third bar: "Components:" then the colors, from the left, wrapping under each other. */
+.components-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.components-bar[hidden] {
+  display: none;
+}
+
 /* A small circle of a component's color. */
 .swatch {
   display: inline-block;
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--swatch-color);
 }
 
-/* The key's example wells: a red ring, with a red X for an overdraw. */
+/* The key's example wells, drawn as the marks on the deck are: a red ring, and for an overdraw a
+   red X with 2px lines. */
 .key-well {
+  --overdraw-line: 2px;
+  --mark-size: 16px;
   position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
   width: 16px;
   height: 16px;
   border-radius: 50%;
   box-shadow: 0 0 0 2.5px var(--red);
   background: var(--panel-background);
-  color: var(--red);
-  font-size: 15px;
-  line-height: 1;
 }
 
 /* --- The labware (section 6) --- */
+/* The labware blocks sit two to a row, 20px apart, then the next two below. */
 .labware-area {
   display: flex;
-  flex-direction: column;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: var(--labware-gap);
 }
 
 .labware-area:has(.labware) #no-labware-note {
   display: none;
 }
 
+/* Each block takes half the row, but never less than its own width (its grid's: the heading column
+   and a well and gap per column), so when two don't fit side by side they stack; and never more
+   than the row, so a block wider than the panel scrolls sideways (.labware-scroll) instead. A basis
+   of half the row means never three in a row. --columns is set by transfer-designer-page.js. */
 .labware {
+  --labware-width: calc(var(--grid-heading-column) + var(--columns) * (var(--well-size) + var(--well-gap)));
+  flex: 1 1 calc(50% - var(--labware-gap) / 2);
+  min-width: min(100%, var(--labware-width));
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* When the window is 1000px wide or less, one labware per row. */
+@media (max-width: 1000px) {
+  .labware {
+    flex-basis: 100%;
+  }
 }
 
 .labware-heading {
@@ -515,11 +580,13 @@ select:focus-visible {
   padding-bottom: 2px;
 }
 
-/* A plate: a grid of wells with column numbers above and row letters at the left; a reservoir: a
-   row of troughs with no headings. The number of rows and columns is set by
-   transfer-designer-page.js as --rows and --columns. */
+/* A plate: a grid of wells with column numbers above and row letters at the left. A reservoir: a
+   row of troughs, each as tall as 8 wells, with its trough numbers above and the same (empty) space
+   at the left, so it's exactly the same size as a plate. The number of rows and columns is set by
+   transfer-designer-page.js as --rows and --columns, on the labware block. */
 .well-grid {
   display: grid;
+  grid-template-columns: var(--grid-heading-column) repeat(var(--columns), var(--well-size));
   gap: var(--well-gap);
   width: max-content;
   user-select: none;
@@ -528,13 +595,11 @@ select:focus-visible {
 }
 
 .well-grid.plate {
-  grid-template-columns: 22px repeat(var(--columns), var(--well-size));
-  grid-template-rows: 18px repeat(var(--rows), var(--well-size));
+  grid-template-rows: var(--grid-heading-row) repeat(var(--rows), var(--well-size));
 }
 
 .well-grid.reservoir {
-  grid-template-columns: repeat(var(--columns), var(--well-size));
-  grid-template-rows: calc(8 * var(--well-size) + 7 * var(--well-gap));
+  grid-template-rows: var(--grid-heading-row) calc(8 * var(--well-size) + 7 * var(--well-gap));
 }
 
 .grid-heading {
@@ -548,6 +613,7 @@ select:focus-visible {
 /* A well: a button, so it can be reached with Tab and pressed with Enter or Space. Its fill is set
    by transfer-designer-page.js as --well-fill (a gradient of its components' colors). */
 .well {
+  --mark-size: var(--well-size);
   position: relative;
   display: flex;
   align-items: center;
@@ -567,15 +633,23 @@ select:focus-visible {
   transition: opacity 0.12s;
 }
 
+/* The well's name or volume. It sits above the overdraw X (below). */
+.well-label {
+  position: relative;
+  z-index: 1;
+}
+
 .well.holding {
   border-color: transparent;
   color: var(--text);
   font-weight: 600;
-  /* A light halo keeps the volume readable on any component color. */
-  text-shadow:
-    0 0 2px #ffffff,
-    0 0 2px #ffffff,
-    0 0 3px #ffffff;
+}
+
+/* A volume sits on a small white label, so it reads on any component color. */
+.well.holding .well-label {
+  padding: 2px 3px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.88);
 }
 
 /* A trough: as tall as 8 wells, with rounded corners; its bands are drawn from the bottom up. */
@@ -589,18 +663,32 @@ select:focus-visible {
   box-shadow: 0 0 0 3px var(--red);
 }
 
-/* The overdraw's big red X sits behind the label. */
-.well.overdraw::before {
-  content: "×";
+/* The overdraw's X: two red lines with rounded ends, each 120% of the well's width (--mark-size:
+   the well's size, or the key's example well's), crossing at the well's center at ±45°, so it's
+   exactly centered and reaches a little past the well's edge (which the well mustn't clip). */
+.well.overdraw {
+  overflow: visible;
+}
+
+.well.overdraw::before,
+.well.overdraw::after,
+.key-well.overdraw::before,
+.key-well.overdraw::after {
+  content: "";
   position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--red);
-  font: 700 30px/1 var(--text-font);
-  opacity: 0.85;
+  top: 50%;
+  left: 50%;
+  width: calc(1.2 * var(--mark-size));
+  height: var(--overdraw-line);
+  border-radius: calc(var(--overdraw-line) / 2);
+  background: var(--red);
+  transform: translate(-50%, -50%) rotate(45deg);
   pointer-events: none;
+}
+
+.well.overdraw::after,
+.key-well.overdraw::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .well.faded {
@@ -612,9 +700,15 @@ select:focus-visible {
 }
 
 .well.source,
-.well.in-box,
-.well.highlighted {
+.well.in-box {
   box-shadow: 0 0 0 3px var(--blue);
+}
+
+/* A singled-out transfer's wells: a 3px blue ring standing 2px outside the well, with a gap, so it
+   stands out from the well's fill. */
+.well.highlighted {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .well.in-box:not(.holding) {
@@ -670,6 +764,11 @@ select:focus-visible {
   border-radius: 8px;
   background: transparent;
   text-align: left;
+}
+
+/* A closed entry's row is a button, but keeps the look it was built with (section 15). */
+button.entry-row {
+  font-size: 14px;
 }
 
 .entry.is-open {
@@ -731,10 +830,6 @@ select:focus-visible {
   font-size: 14px;
 }
 
-.entry-body .note {
-  font-size: 14px;
-}
-
 /* A stage with an overdraw: a light red background and border. */
 .entry.has-overdraw {
   border-color: var(--red-border);
@@ -764,7 +859,6 @@ select:focus-visible {
   border-color: transparent;
   background: transparent;
   color: var(--muted-text);
-  font-size: 14px;
   line-height: 1;
 }
 
@@ -787,7 +881,6 @@ select:focus-visible {
   border-color: transparent;
   background: transparent;
   color: var(--blue);
-  font-size: 13px;
 }
 
 .toggle-list:hover {
@@ -942,7 +1035,6 @@ select:focus-visible {
   border-radius: 50%;
   background: var(--blue);
   color: #ffffff;
-  font-size: 18px;
   line-height: 1;
   opacity: 0;
   pointer-events: none;
@@ -951,6 +1043,24 @@ select:focus-visible {
 .seam-button.add-stage {
   left: 50%;
   margin-left: calc(var(--seam-button-size) / -2);
+}
+
+/* The + is two white bars, 2px thick and 12px long, crossing at the circle's center, so it's
+   exactly centered. */
+.seam-button.add-stage::before,
+.seam-button.add-stage::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 2px;
+  background: #ffffff;
+  transform: translate(-50%, -50%);
+}
+
+.seam-button.add-stage::after {
+  transform: translate(-50%, -50%) rotate(90deg);
 }
 
 .seam-button.add-tips {
@@ -1025,7 +1135,6 @@ select:focus-visible {
   gap: 6px;
   min-height: 30px;
   padding: 0 10px 0 8px;
-  font-size: 13px;
 }
 
 .component-chip.picked {
@@ -1127,7 +1236,6 @@ select:focus-visible {
   min-height: 30px;
   padding: 0;
   font-family: var(--mono-font);
-  font-size: 13px;
 }
 
 .probe-button.lit {
@@ -1182,7 +1290,6 @@ select:focus-visible {
   padding: 0 8px;
   border-color: transparent;
   color: var(--blue);
-  font-size: 13px;
 }
 
 .tip-type-buttons {
