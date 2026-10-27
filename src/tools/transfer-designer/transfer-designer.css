@@ -1,0 +1,1354 @@
+/*
+  transfer-designer.css — the transfer designer page's styling.
+  Specification: transfer-designer-page.md (layout in section 3, look in section 15). Its colors and
+  sizes are defined once, as the variables below, and used by name everywhere else.
+*/
+
+/* --- Colors, sizes and fonts (section 15) --- */
+:root {
+  --page-background: #f6f5f1;
+  --panel-background: #ffffff;
+  --panel-border: #e2e0d8;
+  --text: #1c1c1a;
+  --text-light: #f6f5f1;
+  --muted-text: #5e5e58;
+  --input-border: #cfcdc4;
+
+  --blue: #2f5da8;
+  --blue-border: #9db7db;
+  --blue-tint: #eef3fa;
+  --red: #c4362a;
+  --red-tint: #fce9e7;
+  --red-border: #e8a39b;
+  --green-text: #22603a;
+  --green-tint: #edf5ef;
+  --disabled-background: #d9d7cf;
+  --disabled-text: #6b6b66;
+
+  --sand-tint: #f5f1e8;
+  --sand-border: #d9d2c3;
+  --glow-background: #fff1bf;
+  --glow-ring: #f3d36b;
+  --card-problem-text: #ffb4aa;
+
+  --empty-well-border: #bdbdb5;
+  --empty-well-text: #6b6b66;
+  --arrow-gray: #9a9a94;
+
+  --text-font: "Segoe UI", system-ui, sans-serif;
+  --mono-font: Consolas, "Cascadia Mono", monospace;
+
+  --well-size: 36px;
+  --well-gap: 4px;
+  --panel-padding: 20px;
+  --panel-gap: 20px;
+  --page-width: 1500px;
+  --stages-min-width: 320px;
+  --stages-max-width: 400px;
+  --stage-gap: 10px;
+  --seam-button-size: 26px;
+}
+
+/* --- Page --- */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+/* The body is a column that fills the window, so the area holding both panels (main) always
+   reaches at least the bottom of the window (section 3). */
+body {
+  min-height: 100%;
+  margin: 0;
+  padding: 24px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  background: var(--page-background);
+  color: var(--text);
+  font-family: var(--text-font);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.page-header,
+.workspace {
+  width: 100%;
+  max-width: var(--page-width);
+  margin: 0 auto;
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px 24px;
+  margin-bottom: var(--panel-gap);
+}
+
+.title-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+h2,
+h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+p {
+  margin: 0;
+}
+
+.subtitle,
+.muted {
+  color: var(--muted-text);
+  font-size: 14px;
+}
+
+.note {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+/* Text for screen readers only: hidden on screen but still read aloud. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- Buttons and text boxes (section 15) --- */
+button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--panel-background);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  border-color: var(--disabled-background);
+  background: #f1f0ec;
+  color: var(--disabled-text);
+  cursor: not-allowed;
+}
+
+button.primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+button.danger-outline {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+button.danger {
+  border-color: var(--red);
+  background: var(--red);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* A button shown pressed while what it controls is on or open (aria-pressed). */
+button[aria-pressed="true"] {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+  color: var(--blue);
+}
+
+.small-button {
+  min-height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+}
+
+input[type="text"],
+select {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  background: var(--panel-background);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--blue-border);
+  outline-offset: 1px;
+}
+
+/* --- The header's buttons (section 5) --- */
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset-holder {
+  position: relative;
+}
+
+/* Reset's question: a small box under the button. */
+.confirm-box {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 320px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel-background);
+  box-shadow: 0 6px 24px rgba(28, 28, 26, 0.14);
+  font-size: 14px;
+}
+
+.confirm-box p {
+  margin: 6px 0 12px;
+  color: var(--muted-text);
+}
+
+.confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* --- Panels and layout (sections 3 and 15) --- */
+.panel {
+  padding: var(--panel-padding);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel-background);
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--panel-gap);
+}
+
+.deck-panel {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* The Stages column is pinned beside the deck while the page scrolls, and scrolls on its own. Its
+   height is fitted by transfer-designer-page.js (--stages-max-height), so it ends 12px above the
+   bottom of the window wherever its top is. */
+.stages-column {
+  position: sticky;
+  top: 12px;
+  flex: 0 1 var(--stages-max-width);
+  min-width: var(--stages-min-width);
+  max-width: var(--stages-max-width);
+  max-height: var(--stages-max-height, none);
+  overflow-y: auto;
+  padding: 14px;
+  scroll-behavior: smooth;
+}
+
+@media (max-width: 1000px) {
+  .workspace {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stages-column {
+    position: static;
+    flex: none;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* --- The deck panel's bars (section 6) --- */
+.deck-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.deck-bar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-left: auto;
+}
+
+.timeline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.timeline .small-button {
+  flex: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.timeline-caption {
+  margin-left: 4px;
+  font-size: 14px;
+}
+
+.problem-count {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.problem-count.ok {
+  background: var(--green-tint);
+  color: var(--green-text);
+}
+
+.problem-count.problems {
+  background: var(--red-tint);
+  color: var(--red);
+}
+
+/* The labware tray: chips in two groups, used and unused. */
+.tray {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.tray-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tray-group-name {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.labware-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px 0 8px;
+  font-size: 14px;
+}
+
+/* A tiny outline of the labware's shape: dots for a plate, stripes for a reservoir. */
+.chip-shape {
+  display: inline-block;
+  width: 22px;
+  height: 15px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  background-size: 5px 5px;
+  background-position: 1px 1px;
+  background-clip: content-box;
+  padding: 1px;
+  opacity: 0.8;
+}
+
+.chip-shape.plate {
+  background-image: radial-gradient(circle, currentColor 1px, transparent 1.2px);
+}
+
+.chip-shape.reservoir {
+  background-image: repeating-linear-gradient(
+    to right,
+    currentColor 0 1.5px,
+    transparent 1.5px 5px
+  );
+}
+
+/* The key (marks on the deck) and the component colors. */
+.key,
+.component-colors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.key:empty,
+.component-colors:empty {
+  display: none;
+}
+
+.key li,
+.component-colors li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A small circle of a component's color. */
+.swatch {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--swatch-color);
+}
+
+/* The key's example wells: a red ring, with a red X for an overdraw. */
+.key-well {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2.5px var(--red);
+  background: var(--panel-background);
+  color: var(--red);
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* --- The labware (section 6) --- */
+.labware-area {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.labware-area:has(.labware) #no-labware-note {
+  display: none;
+}
+
+.labware {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.labware-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* The label is a button that looks like a bold heading; clicking it turns it into a text box. */
+.label-button {
+  min-height: 30px;
+  padding: 0 6px;
+  margin-left: -6px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.label-button:hover {
+  border-color: var(--input-border);
+}
+
+.label-box {
+  width: 240px;
+  min-height: 30px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.labware-type {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+/* A wide labware scrolls sideways inside its block rather than shrinking its wells. */
+.labware-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+/* A plate: a grid of wells with column numbers above and row letters at the left; a reservoir: a
+   row of troughs with no headings. The number of rows and columns is set by
+   transfer-designer-page.js as --rows and --columns. */
+.well-grid {
+  display: grid;
+  gap: var(--well-gap);
+  width: max-content;
+  user-select: none;
+  /* While dragging on the deck, the browser mustn't scroll or zoom instead. */
+  touch-action: none;
+}
+
+.well-grid.plate {
+  grid-template-columns: 22px repeat(var(--columns), var(--well-size));
+  grid-template-rows: 18px repeat(var(--rows), var(--well-size));
+}
+
+.well-grid.reservoir {
+  grid-template-columns: repeat(var(--columns), var(--well-size));
+  grid-template-rows: calc(8 * var(--well-size) + 7 * var(--well-gap));
+}
+
+.grid-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-text);
+  font: 500 12px/1 var(--mono-font);
+}
+
+/* A well: a button, so it can be reached with Tab and pressed with Enter or Space. Its fill is set
+   by transfer-designer-page.js as --well-fill (a gradient of its components' colors). */
+.well {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--well-size);
+  height: 100%;
+  min-height: var(--well-size);
+  padding: 0;
+  overflow: hidden;
+  border: 1.5px solid var(--empty-well-border);
+  border-radius: 50%;
+  background: var(--well-fill, var(--panel-background));
+  color: var(--empty-well-text);
+  font: 500 10px/1 var(--mono-font);
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  transition: opacity 0.12s;
+}
+
+.well.holding {
+  border-color: transparent;
+  color: var(--text);
+  font-weight: 600;
+  /* A light halo keeps the volume readable on any component color. */
+  text-shadow:
+    0 0 2px #ffffff,
+    0 0 2px #ffffff,
+    0 0 3px #ffffff;
+}
+
+/* A trough: as tall as 8 wells, with rounded corners; its bands are drawn from the bottom up. */
+.well.trough {
+  border-radius: 8px;
+}
+
+/* Marks on the wells (section 6). */
+.well.off-plan,
+.well.overdraw {
+  box-shadow: 0 0 0 3px var(--red);
+}
+
+/* The overdraw's big red X sits behind the label. */
+.well.overdraw::before {
+  content: "×";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--red);
+  font: 700 30px/1 var(--text-font);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.well.faded {
+  opacity: 0.3;
+}
+
+.well.faded:hover {
+  opacity: 0.7;
+}
+
+.well.source,
+.well.in-box,
+.well.highlighted {
+  box-shadow: 0 0 0 3px var(--blue);
+}
+
+.well.in-box:not(.holding) {
+  background: var(--blue-tint);
+}
+
+.well.drop-target {
+  outline: 2px dashed var(--blue);
+  outline-offset: 2px;
+}
+
+/* The arrows are drawn over the whole deck panel, above the wells, and never take the pointer. */
+.arrow-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.arrow {
+  transition: opacity 0.12s;
+}
+
+.arrow.dimmed {
+  opacity: 0.12;
+}
+
+/* --- The Stages column (section 7) --- */
+.stages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Rows and cards share one look: a number in a round badge, a name and a count at the right. */
+.entry {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-background);
+}
+
+.entry-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+.entry.is-open {
+  border-color: var(--blue-border);
+  box-shadow: 0 0 0 1px var(--blue-border);
+}
+
+.entry.is-open .entry-row {
+  cursor: default;
+}
+
+.entry-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--page-background);
+  color: var(--muted-text);
+  font: 600 12px/1 var(--mono-font);
+}
+
+.entry.is-open .entry-badge {
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.entry-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-count {
+  flex: none;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.entry-current {
+  flex: none;
+  color: var(--blue);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* The open card's contents, under its heading line. */
+.entry-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 12px 12px;
+  font-size: 14px;
+}
+
+.entry-body .note {
+  font-size: 14px;
+}
+
+/* A stage with an overdraw: a light red background and border. */
+.entry.has-overdraw {
+  border-color: var(--red-border);
+  background: var(--red-tint);
+}
+
+.entry.has-overdraw.is-open {
+  box-shadow: 0 0 0 1px var(--red-border);
+}
+
+/* The stage's settings line and its ✎. */
+.settings-line {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+/* A ✎ button: small and plain. */
+.edit-button {
+  min-height: 26px;
+  min-width: 26px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.edit-button:hover {
+  border-color: var(--input-border);
+  color: var(--text);
+}
+
+.edit-button[aria-pressed="true"] {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+  color: var(--blue);
+}
+
+/* Show transfers / Hide transfers. */
+.toggle-list {
+  align-self: flex-start;
+  min-height: 28px;
+  padding: 0 8px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--blue);
+  font-size: 13px;
+}
+
+.toggle-list:hover {
+  border-color: var(--blue-border);
+}
+
+/* The transfer list: one row per transfer, with its volume as a button and × at the right. */
+.transfer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.transfer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.transfer-row.highlighted {
+  background: var(--blue-tint);
+}
+
+.transfer-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono-font);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.volume-button {
+  min-height: 26px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  font-family: var(--mono-font);
+  font-size: 12px;
+}
+
+.volume-button:hover {
+  border-color: var(--input-border);
+}
+
+.volume-box {
+  width: 80px;
+  min-height: 26px;
+  padding: 0 6px;
+  font-family: var(--mono-font);
+  font-size: 12px;
+}
+
+.remove-transfer {
+  min-height: 26px;
+  min-width: 26px;
+  padding: 0 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.remove-transfer:hover {
+  border-color: var(--input-border);
+  color: var(--red);
+}
+
+/* Tip group boxes: rounded, light blue alternating with light sand. */
+.tip-group {
+  position: relative;
+  padding: 8px 8px 0;
+  border: 1px solid var(--blue-border);
+  border-radius: 12px;
+  background: var(--blue-tint);
+}
+
+.tip-group.sand {
+  border-color: var(--sand-border);
+  background: var(--sand-tint);
+}
+
+.tip-group-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.tip-icon {
+  display: inline-block;
+  width: 7px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px 2px 4px 4px;
+  clip-path: polygon(0 0, 100% 0, 70% 100%, 30% 100%);
+  background: currentColor;
+  opacity: 0.7;
+}
+
+/* The stages of a box, each between two seams. The seams are the 10px spaces between the stages,
+   and above the first and below the last. */
+.tip-group-stages {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A seam: the space between two cards. Its line and buttons appear only while it's pointed at or
+   one of its buttons has focus, floating over the cards, so it never takes room of its own. */
+.seam {
+  position: relative;
+  height: var(--stage-gap);
+  z-index: 2;
+}
+
+.seam-line {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  right: 8px;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--blue);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.seam-button {
+  position: absolute;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--seam-button-size);
+  height: var(--seam-button-size);
+  min-height: 0;
+  padding: 0;
+  margin-top: calc(var(--seam-button-size) / -2);
+  border: 1px solid var(--blue);
+  border-radius: 50%;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.seam-button.add-stage {
+  left: 50%;
+  margin-left: calc(var(--seam-button-size) / -2);
+}
+
+.seam-button.add-tips {
+  right: 10px;
+  background: var(--panel-background);
+  color: var(--blue);
+}
+
+.seam:hover .seam-line,
+.seam:focus-within .seam-line,
+.seam:hover .seam-button,
+.seam:focus-within .seam-button {
+  opacity: 1;
+}
+
+.seam:hover .seam-button,
+.seam:focus-within .seam-button {
+  pointer-events: auto;
+}
+
+/* What changed glows soft yellow and fades over 1.2 seconds (section 7). The page sets
+   animation-delay so a glow carries on through redrawing. */
+.glowing {
+  animation: glow 1.2s ease-out;
+}
+
+@keyframes glow {
+  from {
+    background-color: var(--glow-background);
+    box-shadow: 0 0 0 4px var(--glow-ring);
+  }
+  to {
+    background-color: var(--glow-end, transparent);
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+.tip-group.glowing {
+  --glow-end: var(--blue-tint);
+}
+
+.tip-group.sand.glowing {
+  --glow-end: var(--sand-tint);
+}
+
+.entry.glowing {
+  --glow-end: var(--panel-background);
+}
+
+.entry.has-overdraw.glowing {
+  --glow-end: var(--red-tint);
+}
+
+/* --- Starting contents: the palette in the Start card (section 8) --- */
+.palette {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip-holder {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.component-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px 0 8px;
+  font-size: 13px;
+}
+
+.component-chip.picked {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue);
+}
+
+.component-chip.eraser.picked {
+  border-color: var(--red);
+  box-shadow: 0 0 0 1px var(--red);
+}
+
+.chip-holder .edit-button {
+  margin-left: 2px;
+}
+
+.new-component-box {
+  width: 150px;
+  min-height: 30px;
+  font-size: 13px;
+}
+
+.brush-line {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.brush-line strong {
+  color: var(--text);
+}
+
+/* --- Editing boxes (section 10): floating just under their ✎, over what's below --- */
+.editing-box {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 280px;
+  max-width: calc(100vw - 48px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel-background);
+  box-shadow: 0 6px 24px rgba(28, 28, 26, 0.16);
+  font-size: 14px;
+  color: var(--text);
+}
+
+.editing-box.shake {
+  animation: shake 0.3s ease-in-out;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-6px);
+  }
+  75% {
+    transform: translateX(6px);
+  }
+}
+
+.editing-box label,
+.field-name {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.editing-box input[type="text"],
+.editing-box select {
+  width: 100%;
+}
+
+.mode-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* The probes: buttons 1 to 8, with every probe the stage uses lit. */
+.probe-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.probe-button {
+  flex: 1 1 0;
+  min-height: 30px;
+  padding: 0;
+  font-family: var(--mono-font);
+  font-size: 13px;
+}
+
+.probe-button.lit {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+  color: var(--blue);
+}
+
+/* Color swatches: the component's own color outlined, used colors faded and crossed out. */
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.color-swatch {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: var(--swatch-color);
+}
+
+.color-swatch.own {
+  box-shadow:
+    0 0 0 2px var(--panel-background),
+    0 0 0 4px var(--text);
+}
+
+.color-swatch.used {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.color-swatch.used::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -3px;
+  right: -3px;
+  height: 2px;
+  background: var(--text);
+  transform: rotate(-45deg);
+}
+
+.more-colors {
+  align-self: flex-start;
+  min-height: 26px;
+  padding: 0 8px;
+  border-color: transparent;
+  color: var(--blue);
+  font-size: 13px;
+}
+
+.tip-type-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.tip-type-buttons button {
+  flex: 1 1 0;
+}
+
+.editing-box .note {
+  margin-bottom: 8px;
+}
+
+/* The box's bottom line: Remove at the left; Discard and Save at the right. */
+.box-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.box-buttons .spacer {
+  flex: 1;
+}
+
+.box-buttons button {
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+/* Save and Discard pulse twice with a thick blue ring when a click outside is refused. */
+.pulse {
+  animation: pulse 0.35s ease-in-out 2;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 4px var(--blue-border);
+  }
+}
+
+/* Remove's question inside the box. */
+.remove-question {
+  padding: 10px 12px;
+  border: 1px solid var(--red-border);
+  border-radius: 8px;
+  background: var(--red-tint);
+}
+
+.remove-question p {
+  margin-bottom: 8px;
+}
+
+/* --- Floating elements: the message bar, the cursor's label and the contents card --- */
+.message-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 40;
+  max-width: 720px;
+  width: calc(100% - 32px);
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  transform: translateX(-50%);
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgba(28, 28, 26, 0.12);
+}
+
+.message-bar[hidden] {
+  display: none;
+}
+
+.message-bar.ok {
+  background: var(--green-tint);
+  color: var(--green-text);
+}
+
+.message-bar.note {
+  border-color: var(--panel-border);
+  background: var(--panel-background);
+  color: var(--muted-text);
+}
+
+.message-bar.error {
+  border-color: var(--red-border);
+  background: var(--red-tint);
+  color: #7a1f15;
+}
+
+.cursor-label {
+  position: fixed;
+  z-index: 35;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--text);
+  color: var(--text-light);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.cursor-label[hidden],
+.contents-card[hidden] {
+  display: none;
+}
+
+.contents-card {
+  position: fixed;
+  z-index: 36;
+  min-width: 180px;
+  max-width: 320px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--text);
+  color: var(--text-light);
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(28, 28, 26, 0.25);
+}
+
+.contents-card .card-title {
+  font-weight: 600;
+}
+
+.contents-card .card-total {
+  margin-bottom: 6px;
+  opacity: 0.8;
+}
+
+.contents-card ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contents-card li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contents-card .card-volume {
+  margin-left: auto;
+  font-family: var(--mono-font);
+  font-size: 12px;
+}
+
+.contents-card .card-problem {
+  margin-top: 6px;
+  color: var(--card-problem-text);
+}
+
+/* --- Motion: none with the system's "reduce motion" setting (section 15) --- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .stages-column {
+    scroll-behavior: auto;
+  }
+}

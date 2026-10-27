@@ -19,7 +19,7 @@ const OUTPUT_FOLDER = resolve(PROJECT_FOLDER, "dist");
 
 // The tools to build. Each tool's folder, src/tools/<name>/, holds <name>.html, <name>.css and
 // <name>-page.js. A new tool is built by adding its name here.
-const TOOLS = ["randomizer"];
+const TOOLS = ["randomizer", "transfer-designer"];
 
 await mkdir(OUTPUT_FOLDER, { recursive: true });
 for (const tool of TOOLS) {

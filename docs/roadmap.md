@@ -106,6 +106,12 @@ Last updated: 2026-10-26
   (`src/tools/transfer-designer/plan-file.md`): `planToText` and `planFromText`, with every check
   on opening in the specification's order. It builds the opened plan through the transfer
   designer's own edits, so a file is checked by the same rules as editing.
+- **The transfer designer page is built** (2026-10-26), against its Draft specification
+  (`src/tools/transfer-designer/transfer-designer-page.md`): `transfer-designer.html`,
+  `transfer-designer.css` and `transfer-designer-page.js`, with the two configuration files
+  `config/component-colors.js` and `config/default-volumes.js`, which its tests check (ADR 0009).
+  `npm run build` now makes `dist/transfer-designer.html`. Andy hasn't tested it yet, so the
+  specification stays Draft (item 6 of v0.2.0, below).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36

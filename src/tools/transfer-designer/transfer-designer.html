@@ -1,0 +1,98 @@
+<!doctype html>
+<!--
+  transfer-designer.html — the transfer designer page's structure: the header, the deck panel, the
+  Stages column and the message bar. The labware, the wells, the Stages column's cards and every
+  editing box are created by transfer-designer-page.js, because they change with the plan;
+  everything with an id here is looked up by that file. Styling is in transfer-designer.css.
+  Specification: transfer-designer-page.md (layout in section 3, look in section 15).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Transfer designer</title>
+    <!-- An empty tab icon, so the browser doesn't ask the server for one that doesn't exist. -->
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="transfer-designer.css" />
+    <script type="module" src="transfer-designer-page.js"></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <div class="title-group">
+        <h1>Transfer designer</h1>
+        <span class="subtitle">Biomek i5 · Span-8</span>
+      </div>
+      <!-- The header's buttons (section 5). Reset's question opens in a small box under it. -->
+      <div class="header-actions">
+        <button id="biomek-files" class="primary" type="button">Biomek files</button>
+        <button id="save" type="button">Save</button>
+        <button id="open" type="button">Open</button>
+        <input id="open-file" type="file" accept=".json,application/json" hidden />
+        <div class="reset-holder">
+          <button id="reset" class="danger-outline" type="button" aria-haspopup="dialog">Reset</button>
+          <div id="reset-box" class="confirm-box" role="dialog" aria-labelledby="reset-heading" hidden>
+            <h3 id="reset-heading">Reset the whole plan?</h3>
+            <p>This clears the starting contents, every transfer and every stage. Undo can bring them back.</p>
+            <div class="confirm-buttons">
+              <button id="reset-cancel" type="button">Cancel</button>
+              <button id="reset-everything" class="danger" type="button">Reset everything</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- The two panels (section 3): the deck on the left, the Stages column on the right; stacked
+         in a narrow window. -->
+    <main id="workspace" class="workspace">
+      <section id="deck-panel" class="panel deck-panel" aria-labelledby="deck-heading">
+        <h2 id="deck-heading" class="visually-hidden">Deck</h2>
+
+        <!-- First bar (section 6): the timeline on the left; Undo, Redo and the problem count on
+             the right. -->
+        <div class="deck-bar">
+          <div class="timeline">
+            <button id="previous-point" class="small-button" type="button" aria-label="Open the entry before">‹</button>
+            <button id="next-point" class="small-button" type="button" aria-label="Open the entry after">›</button>
+            <span id="timeline-caption" class="timeline-caption"></span>
+          </div>
+          <div class="deck-bar-right">
+            <button id="undo" type="button">Undo</button>
+            <button id="redo" type="button">Redo</button>
+            <span id="problem-count" class="problem-count"></span>
+          </div>
+        </div>
+
+        <!-- Second bar (section 6): the labware tray on the left; the key, the component colors
+             and the Arrows toggle on the right. -->
+        <div class="deck-bar tray-bar">
+          <div id="labware-tray" class="tray"></div>
+          <div class="deck-bar-right">
+            <ul id="key" class="key" aria-label="Key"></ul>
+            <ul id="component-colors" class="component-colors" aria-label="Component colors"></ul>
+            <button id="arrows-toggle" type="button" aria-pressed="true">Arrows</button>
+          </div>
+        </div>
+
+        <!-- The labware that's out, one block each; the arrows are drawn over the whole panel. -->
+        <div id="labware-area" class="labware-area">
+          <p id="no-labware-note" class="note">
+            No labware is out. Click a labware above to bring it into the editor.
+          </p>
+        </div>
+        <svg id="arrow-layer" class="arrow-layer" aria-hidden="true"></svg>
+      </section>
+
+      <aside id="stages-column" class="panel stages-column" aria-labelledby="stages-heading">
+        <h2 id="stages-heading" class="visually-hidden">Stages</h2>
+        <div id="stages-list" class="stages-list"></div>
+      </aside>
+    </main>
+
+    <!-- The message bar (section 12), the cursor's label and the contents card (sections 6 and 12)
+         float over the page. -->
+    <div id="message-bar" class="message-bar" role="status" aria-live="polite" hidden></div>
+    <div id="cursor-label" class="cursor-label" aria-hidden="true" hidden></div>
+    <div id="contents-card" class="contents-card" role="tooltip" hidden></div>
+  </body>
+</html>
