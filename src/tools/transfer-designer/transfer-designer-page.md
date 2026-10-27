@@ -155,7 +155,8 @@ labware above to bring it into the editor.`
   box holding the label, selected. Enter or clicking away saves it with `setLabel` (message `Renamed
   <name> to <label>.`); Escape cancels. A label that's unchanged saves nothing. If `setLabel`
   refuses it (e.g. another labware has it), its message is shown and the label stays as it was.
-  Clicking away still does what that click would, as for a transfer's volume (section 7).
+  Clicking away still does what that click would, unless the label was refused, as for a
+  transfer's volume (section 7).
 - **A 96-well plate** is a grid of round wells, with column numbers above (in an 18px row) and row
   letters at the left (in a 22px column). **A reservoir** (numbered grid) is a row of 12 tall
   troughs, each as tall as 8 wells, with rounded corners; its trough numbers `1` to `12` are above,
@@ -238,10 +239,14 @@ holds:
   - **Clicking away** saves it and closes, and the click still does what it would, once: clicking
     another transfer's volume opens that one, and clicking `×` removes that transfer. (Saving
     redraws the list, so the page saves as the press starts, then passes the click on to whatever
-    is now under the pointer; the rest of that press is stopped, so nothing acts on it twice.)
+    is now under the pointer; the rest of that press is stopped, so nothing acts on it twice.) Only
+    a press with the main button (a left click, a touch or a pen) is passed on; any other press,
+    such as a right click, saves and closes the box and does nothing else, as it would with no box
+    open.
   - **A refused volume**: its message is shown. After Enter, the box stays open with what was typed,
-    selected, to fix it. After clicking away, the box closes, so the click still lands where it
-    was meant.
+    selected, to fix it. After clicking away, the box closes and the click does nothing else, so
+    the message saying why stays in view instead of being replaced by the click's own (Andy,
+    2026-10-26); the user clicks again.
 - **Pointing at a row** singles out its transfer on the deck: its row is tinted, its arrow stays
   while the stage's other arrows fade (to 12%), and its source and destination wells get a 3px blue
   ring standing 2px outside the well, with a gap, so it stands out from the well's fill (Andy,
