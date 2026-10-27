@@ -74,6 +74,10 @@ const GLOW_MILLISECONDS = 1200;
 // if that's less (section 6).
 const ARROW_END_INSET = 11;
 
+// An arrowhead: a filled triangle this long from tip to base, and this wide at the base (section 6).
+const ARROWHEAD_LENGTH = 12;
+const ARROWHEAD_WIDTH = 12;
+
 // The Stages column ends this far above the bottom of the window (section 3).
 const STAGES_BOTTOM_MARGIN = 12;
 
@@ -122,6 +126,15 @@ const transferVolume = newTypedVolume(DEFAULT_TRANSFER_VOLUME);
 // The source well chosen by clicking, { labware, well }, or null.
 let source = null;
 
+// The text box editing something in place, if one is open: a labware's label (section 6) or a
+// transfer's volume (section 7): { box, finish }, where finish("away") saves it as a click away
+// would. Null when none is open.
+let inlineBox = null;
+
+// The transfer whose volume box is open, { stage, position }, or null (section 7). While it's open,
+// its transfer stays singled out on the deck whatever the pointer does.
+let volumeBoxOpen = null;
+
 // A press on a well that hasn't moved far enough to be a drag: { end, x, y }, or null.
 let press = null;
 
@@ -169,6 +182,7 @@ const elements = {
   problemCount: byId("problem-count"),
   tray: byId("labware-tray"),
   key: byId("key"),
+  componentsBar: byId("components-bar"),
   componentColors: byId("component-colors"),
   arrowsToggle: byId("arrows-toggle"),
   labwareArea: byId("labware-area"),
@@ -194,6 +208,7 @@ function setUpPage() {
   connectDeck();
   connectKeys();
   connectEditingBoxGuard();
+  connectInlineBoxGuard();
   window.addEventListener("scroll", fitStagesColumn);
   window.addEventListener("resize", () => {
     fitStagesColumn();
@@ -373,6 +388,7 @@ function refresh() {
   }
   refreshDeck();
   refreshStages();
+  keepVolumeBoxTransferHighlighted();
   updateCursorLabel();
   requestAnimationFrame(fitStagesColumn);
 }
@@ -701,9 +717,10 @@ function isReservoir(name) {
   return gridOf(name).naming === "number";
 }
 
-// Draws the component colors in the second bar: each component's swatch and name, in the plan's
-// order (section 6).
+// Draws the component colors in the third bar: each component's swatch and name, in the plan's
+// order (section 6). The bar is hidden while the plan has no components.
 function drawComponentColors(plan) {
+  elements.componentsBar.hidden = plan.components.length === 0;
   elements.componentColors.replaceChildren(
     ...plan.components.map((component) => {
       const item = document.createElement("li");
@@ -718,18 +735,19 @@ function drawComponentColors(plan) {
 function drawKey() {
   const items = [];
   if (elements.labwareArea.querySelector(".well.overdraw") !== null) {
-    items.push(createKeyItem("×", "Overdraw"));
+    items.push(createKeyItem("overdraw", "Overdraw"));
   }
   if (elements.labwareArea.querySelector(".well.off-plan:not(.overdraw)") !== null) {
-    items.push(createKeyItem("", "Off plan"));
+    items.push(createKeyItem("off-plan", "Off plan"));
   }
   elements.key.replaceChildren(...items);
 }
 
-// One item of the key: an example well (with `mark` inside it) and its name.
+// One item of the key: an example well, drawn as the wells with `mark` ("overdraw" or "off-plan")
+// are on the deck, and the mark's name.
 function createKeyItem(mark, name) {
   const item = document.createElement("li");
-  item.append(createElement("span", mark, "key-well"), createElement("span", name));
+  item.append(createElement("span", "", `key-well ${mark}`), createElement("span", name));
   return item;
 }
 
@@ -745,9 +763,14 @@ function drawLabware(plan, open) {
 }
 
 // One labware's block: its heading (the label, the deck name and the labware type) and its grid.
+// The grid's rows and columns are set on the block, which sizes itself from them (section 6: a
+// block is never narrower than its grid).
 function createLabwareBlock(plan, name) {
   const block = createElement("div", "", "labware");
   block.dataset.labware = name;
+  const grid = gridOf(name);
+  block.style.setProperty("--rows", String(grid.rows));
+  block.style.setProperty("--columns", String(grid.columns));
   const heading = createElement("div", "", "labware-heading");
   const labelButton = createElement("button", labelOf(plan, name), "label-button");
   labelButton.type = "button";
@@ -763,7 +786,8 @@ function createLabwareBlock(plan, name) {
 }
 
 // Turns a labware's label into a text box holding the label, selected. Enter or clicking away saves
-// it with setLabel; Escape cancels; an unchanged label saves nothing.
+// it with setLabel; Escape cancels; an unchanged label saves nothing. A click away still does what
+// it would (the inline box guard passes it on).
 function startRenamingLabware(labelButton, name) {
   const plan = currentPlan();
   const box = createInlineEditor({
@@ -772,13 +796,15 @@ function startRenamingLabware(labelButton, name) {
     accessibleName: `Label for ${name}`,
     onSave: (text) => {
       const renamed = tryLogic(() => setLabel(plan, name, text));
-      // An unchanged label gives the same plan back, and saves nothing.
+      // An unchanged label gives the same plan back, and saves nothing. A refused label's message
+      // is shown and the label stays as it was.
       if (renamed === false || renamed === plan) {
         refreshDeck();
-        return;
+        return true;
       }
       recordEdit(renamed);
       showMessage(`Renamed ${name} to ${labelOf(renamed, name)}.`, "ok");
+      return true;
     },
     onCancel: refreshDeck,
   });
@@ -787,31 +813,33 @@ function startRenamingLabware(labelButton, name) {
   box.select();
 }
 
-// A labware's grid of wells: for a plate, column numbers above and row letters at the left; for a
-// reservoir, a row of troughs with no headings.
+// A labware's grid of wells, with its headings: for a plate, column numbers above and row letters
+// at the left; for a reservoir, its trough numbers above and the left column empty, so it's the same
+// size as a plate. The headings take the grid's first row and first column, so each well sits one
+// row and one column further than its position.
 function createGrid(plan, name) {
   const grid = gridOf(name);
   const reservoir = isReservoir(name);
   const gridElement = createElement("div", "", `well-grid ${reservoir ? "reservoir" : "plate"}`);
-  gridElement.style.setProperty("--rows", String(grid.rows));
-  gridElement.style.setProperty("--columns", String(grid.columns));
-  if (!reservoir) {
-    addGridHeadings(gridElement, grid);
-  }
+  addGridHeadings(gridElement, grid, reservoir);
   for (const well of grid.wellNames()) {
     const { row, column } = grid.wellPosition(well);
     const wellElement = createWell(plan, { labware: name, well }, reservoir);
-    wellElement.style.gridRow = String(reservoir ? row : row + 1);
-    wellElement.style.gridColumn = String(reservoir ? column : column + 1);
+    wellElement.style.gridRow = String(row + 1);
+    wellElement.style.gridColumn = String(column + 1);
     gridElement.append(wellElement);
   }
   return gridElement;
 }
 
-// Adds a plate's column numbers across the top and row letters down the side.
-function addGridHeadings(gridElement, grid) {
+// Adds the column numbers across the top and, for a plate (not a reservoir, whose troughs are
+// numbered by column), the row letters down the side.
+function addGridHeadings(gridElement, grid, isReservoir) {
   for (let column = 1; column <= grid.columns; column++) {
     gridElement.append(createGridHeading(String(column), 1, column + 1));
+  }
+  if (isReservoir) {
+    return;
   }
   for (let row = 1; row <= grid.rows; row++) {
     // Well names are one row letter then the column number, so the first character of the row's
@@ -840,7 +868,7 @@ function createWell(plan, end, isTrough) {
   wellElement.dataset.well = end.well;
   const components = shownSnapshot.componentsOf(end.labware, end.well);
   const total = shownSnapshot.totalVolumeOf(end.labware, end.well);
-  const label = createElement("span", "");
+  const label = createElement("span", "", "well-label");
   if (total === 0) {
     label.textContent = end.well;
     wellElement.setAttribute("aria-label", `${wellName(plan, end)}, empty`);
@@ -917,6 +945,7 @@ function drawStageArrows() {
     arrow.dataset.position = String(transfer.position);
     layer.append(arrow);
   }
+  keepVolumeBoxTransferHighlighted();
 }
 
 // Draws the dashed arrow that follows the cursor from the chosen source, or from the well a transfer
@@ -973,9 +1002,10 @@ function mainComponentColor(plan, snapshot, end) {
   return componentColor(plan, name);
 }
 
-// One arrow from `from` to `to` (points in the deck panel's coordinates): a line and an arrowhead.
-// Each end is pulled in by ARROW_END_INSET, or a third of the length if that's less; with insetEnd
-// false, only the start is, so a cursor arrow ends at the pointer.
+// One arrow from `from` to `to` (points in the deck panel's coordinates): a 2px line and a filled
+// triangular head, ARROWHEAD_LENGTH from tip to base and ARROWHEAD_WIDTH wide. Each end is pulled
+// in by ARROW_END_INSET, or a third of the length if that's less; with insetEnd false, only the
+// start is, so a cursor arrow ends at the pointer.
 function createArrow(from, to, color, { insetEnd, dashed }) {
   const svg = "http://www.w3.org/2000/svg";
   const group = document.createElementNS(svg, "g");
@@ -991,19 +1021,20 @@ function createArrow(from, to, color, { insetEnd, dashed }) {
   const start = { x: from.x + unit.x * inset, y: from.y + unit.y * inset };
   const end = insetEnd ? { x: to.x - unit.x * inset, y: to.y - unit.y * inset } : to;
 
+  // The line runs to the head's base (a little inside it, so no gap shows between them).
+  const base = { x: end.x - unit.x * ARROWHEAD_LENGTH, y: end.y - unit.y * ARROWHEAD_LENGTH };
   const line = document.createElementNS(svg, "line");
   line.setAttribute("x1", start.x);
   line.setAttribute("y1", start.y);
-  line.setAttribute("x2", end.x - unit.x * 6);
-  line.setAttribute("y2", end.y - unit.y * 6);
+  line.setAttribute("x2", base.x + unit.x * 2);
+  line.setAttribute("y2", base.y + unit.y * 2);
   line.setAttribute("stroke", color);
   line.setAttribute("stroke-width", "2");
   if (dashed) {
     line.setAttribute("stroke-dasharray", "5 4");
   }
   const head = document.createElementNS(svg, "polygon");
-  const base = { x: end.x - unit.x * 8, y: end.y - unit.y * 8 };
-  const side = { x: -unit.y * 4, y: unit.x * 4 };
+  const side = { x: (-unit.y * ARROWHEAD_WIDTH) / 2, y: (unit.x * ARROWHEAD_WIDTH) / 2 };
   head.setAttribute(
     "points",
     `${end.x},${end.y} ${base.x + side.x},${base.y + side.y} ${base.x - side.x},${base.y - side.y}`,
@@ -1136,10 +1167,13 @@ function createTransferSection(plan, id) {
   toggle.addEventListener("click", () => {
     if (shown) {
       expandedStages.delete(id);
-    } else {
-      expandedStages.add(id);
+      refreshStages();
+      return;
     }
+    expandedStages.add(id);
     refreshStages();
+    // Showing the list scrolls the column to show the whole card; hiding it doesn't scroll.
+    scrollCardIntoView(elements.stagesList.querySelector(`[data-entry="${cssEscape(id)}"]`));
   });
   return shown ? [toggle, createTransferList(plan, id, transfers)] : [toggle];
 }
@@ -1152,7 +1186,8 @@ function createTransferList(plan, id, transfers) {
 }
 
 // One transfer's row, e.g. "Assay plate A1 → Drug plate B2 · 20 µL" with × at the right. Its volume
-// is a button that becomes a text box; pointing at the row singles its transfer out on the deck.
+// is a button that becomes a text box; pointing at the row singles its transfer out on the deck,
+// unless a volume box is open, whose transfer stays singled out until it closes.
 function createTransferRow(plan, id, transfer) {
   const row = createElement("li", "", "transfer-row");
   row.dataset.position = String(transfer.position);
@@ -1160,7 +1195,7 @@ function createTransferRow(plan, id, transfer) {
   const volumeButton = createElement("button", `${formatVolume(transfer.volume)} µL`, "volume-button");
   volumeButton.type = "button";
   volumeButton.setAttribute("aria-label", `Volume of ${route}, ${formatVolume(transfer.volume)} µL. Click to change`);
-  volumeButton.addEventListener("click", () => startEditingVolume(volumeButton, transfer));
+  volumeButton.addEventListener("click", () => startEditingVolume(volumeButton, id, transfer));
   const remove = createElement("button", "×", "remove-transfer");
   remove.type = "button";
   remove.setAttribute("aria-label", `Remove ${route}`);
@@ -1171,41 +1206,99 @@ function createTransferRow(plan, id, transfer) {
     }
   });
   row.append(createElement("span", `${route} ·`, "transfer-text"), volumeButton, remove);
-  row.addEventListener("pointerenter", () => highlightTransfer(transfer.position));
-  row.addEventListener("pointerleave", () => highlightTransfer(null));
+  row.addEventListener("pointerenter", () => {
+    if (volumeBoxOpen === null) {
+      highlightTransfer(transfer.position);
+    }
+  });
+  row.addEventListener("pointerleave", () => {
+    if (volumeBoxOpen === null) {
+      highlightTransfer(null);
+    }
+  });
   return row;
 }
 
-// Turns a transfer's volume into a text box holding the volume, selected. Enter or clicking away
-// saves it with changeVolume; Escape cancels; an unchanged volume saves nothing.
-function startEditingVolume(volumeButton, transfer) {
+// Turns a transfer's volume into a text box holding the volume, selected, and singles the transfer
+// out on the deck while the box is open (section 7). Enter saves and opens the next transfer's
+// volume box in the stage; clicking away saves and closes; Escape cancels.
+function startEditingVolume(volumeButton, stage, transfer) {
   const plan = currentPlan();
   const shown = formatVolume(transfer.volume);
+  volumeBoxOpen = { stage, position: transfer.position };
   const box = createInlineEditor({
     value: shown,
     className: "volume-box",
     accessibleName: "Volume in µL",
-    onSave: (text) => {
-      if (text.trim() === shown) {
-        refreshStages();
-        return;
-      }
-      const changed = tryEdit(() => changeVolume(plan, transfer.position, volumeValue(text.trim())));
-      if (changed === false) {
-        refreshStages();
-      } else {
-        showMessage(`Volume changed to ${formatVolume(changed.operationList.listOperations()[transfer.position].volume)} µL.`, "ok");
-      }
-    },
-    onCancel: refreshStages,
+    onSave: (text, how) => saveVolume(plan, stage, transfer, shown, text.trim(), how),
+    onCancel: closeVolumeBox,
   });
   volumeButton.replaceWith(box);
   box.focus();
   box.select();
+  highlightTransfer(transfer.position);
+}
+
+// Saves a volume box's text for `transfer` (section 7): an unchanged volume (`shown` is the volume
+// as the box showed it) saves nothing; otherwise changeVolume. Then Enter (`how` "enter") opens the
+// next transfer's volume box in the stage, and a click away ("away") just closes. Returns true when
+// the box is done, or false to keep it open: a volume the logic refused after Enter stays to be
+// fixed, while after a click away the box closes, so the click still lands where it was meant.
+function saveVolume(plan, stage, transfer, shown, text, how) {
+  let saved = plan;
+  if (text !== shown) {
+    saved = tryEdit(() => changeVolume(plan, transfer.position, volumeValue(text)));
+    if (saved === false) {
+      if (how === "enter") {
+        return false;
+      }
+      closeVolumeBox();
+      return true;
+    }
+    const volume = saved.operationList.listOperations()[transfer.position].volume;
+    showMessage(`Volume changed to ${formatVolume(volume)} µL.`, "ok");
+  }
+  closeVolumeBox();
+  if (how === "enter") {
+    openNextVolumeBox(saved, stage, transfer.position);
+  }
+  return true;
+}
+
+// Opens the volume box of the transfer after the one at `position` in `stage`, its volume selected,
+// so a list of volumes can be typed one after another. On the stage's last transfer, nothing opens.
+function openNextVolumeBox(plan, stage, position) {
+  const transfers = transfersIn(plan, stage);
+  const next = transfers[transfers.findIndex((transfer) => transfer.position === position) + 1];
+  if (next === undefined) {
+    return;
+  }
+  const button = elements.stagesList.querySelector(
+    `.transfer-row[data-position="${next.position}"] .volume-button`,
+  );
+  if (button !== null) {
+    startEditingVolume(button, stage, next);
+  }
+}
+
+// Closes the volume box: the list is redrawn with the volume as a button again, and its transfer
+// is no longer singled out.
+function closeVolumeBox() {
+  volumeBoxOpen = null;
+  refreshStages();
+  highlightTransfer(null);
+}
+
+// Keeps the open volume box's transfer singled out after a redrawing, which draws the rows, wells
+// and arrows afresh (section 7).
+function keepVolumeBoxTransferHighlighted() {
+  if (volumeBoxOpen !== null) {
+    highlightTransfer(volumeBoxOpen.position);
+  }
 }
 
 // Singles out one transfer on the deck (section 7): its row is tinted, its arrow stays while the
-// others fade, and its wells get a blue outline. null clears it.
+// others fade, and its wells get a blue ring. null clears it.
 function highlightTransfer(position) {
   for (const row of elements.stagesList.querySelectorAll(".transfer-row")) {
     row.classList.toggle("highlighted", position !== null && Number(row.dataset.position) === position);
@@ -1272,12 +1365,18 @@ function createTipGroupBox(plan, group, index, nextGroup, open, overdrawn, drawn
   return box;
 }
 
-// A tip group's heading: a tip icon, "New tips · BC230" and the ✎ that opens the tip change's box.
+// A tip group's heading: a tip icon, "New tips · BC230 · 2 tips" and the ✎ that opens the tip
+// change's box. The count is how many tips the tip change loads: one per probe that any stage in
+// the group uses, so a user can keep it down to save tips (section 7).
 function createTipGroupHeading(plan, group) {
+  const tips = countOf(group.probes.length, "tip");
   const heading = createElement("div", "", "tip-group-heading");
+  heading.title =
+    `Loads ${tips}: one for each probe that any stage using these tips uses. ` +
+    "Fewer probes in a stage can mean fewer tips.";
   heading.append(
     createElement("span", "", "tip-icon"),
-    createElement("span", `New tips · ${group.tipType}`),
+    createElement("span", `New tips · ${group.tipType} · ${tips}`),
     createPencil("tip", group.key, "Edit these new tips"),
   );
   return heading;
@@ -1289,7 +1388,8 @@ function createTipGroupHeading(plan, group) {
 function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore }) {
   const seam = createElement("div", "", "seam");
   seam.append(createElement("span", "", "seam-line"));
-  const add = createElement("button", "+", "seam-button add-stage");
+  // The + is drawn by the stylesheet, two bars crossing at the circle's center, so it's centered.
+  const add = createElement("button", "", "seam-button add-stage");
   add.type = "button";
   add.title = "Add a stage here";
   add.setAttribute("aria-label", accessibleName);
@@ -1612,26 +1712,47 @@ function addManyTransfers(from, wells) {
 }
 
 // Adds `transfers` to the plan as one edit and records it. Returns null if the logic refuses (its
-// message is shown), otherwise { plan, newOverdraw }: the new plan, and, if it has more overdraws
-// than before, the last overdraw described, e.g. "transfer #5 asks for 60 µL from Drug plate A1,
-// which holds 50 µL."
+// message is shown), otherwise { plan, newOverdraw }: the new plan, and, if the edit caused a new
+// overdraw (section 9), one described, e.g. "transfer #5 asks for 60 µL from Drug plate A1, which
+// holds 50 µL.", or null. A new overdraw is one that wasn't there before the edit: a transfer
+// that's overdrawn now but wasn't, or wasn't in the plan. An added transfer's own overdraw is
+// named first; otherwise the first new overdraw in the run, such as a later transfer left short.
 function addTransfersWithReport(plan, transfers) {
-  const problemsBefore = replay(plan.startingContents, plan.operationList).listProblems().length;
+  const overdrawnBefore = overdrawnOperations(plan);
+  const operationsBefore = new Set(plan.operationList.listOperations());
   const added = tryEdit(() => addTransfers(plan, transfers));
   if (added === false) {
     return null;
   }
-  const problems = replay(added.startingContents, added.operationList).listProblems();
-  if (problems.length <= problemsBefore) {
-    return { plan: added, newOverdraw: null };
-  }
-  const last = problems.at(-1);
+  // Transfers are recognized across the edit because the operation list keeps every unchanged
+  // transfer as the same object.
+  const operations = added.operationList.listOperations();
+  const newProblems = replay(added.startingContents, added.operationList)
+    .listProblems()
+    .filter((problem) => !overdrawnBefore.has(operations[problem.operationIndex]));
+  const reported =
+    newProblems.find((problem) => !operationsBefore.has(operations[problem.operationIndex])) ??
+    newProblems[0];
   return {
     plan: added,
-    newOverdraw:
-      `transfer #${last.operationIndex + 1} asks for ${formatVolume(last.requested)} µL from ` +
-      `${wellName(added, last)}, which holds ${formatVolume(last.available)} µL.`,
+    newOverdraw: reported === undefined ? null : describeOverdraw(added, reported),
   };
+}
+
+// The operations of `plan` with an overdraw, as a Set of the operation objects themselves.
+function overdrawnOperations(plan) {
+  const operations = plan.operationList.listOperations();
+  const problems = replay(plan.startingContents, plan.operationList).listProblems();
+  return new Set(problems.map((problem) => operations[problem.operationIndex]));
+}
+
+// An overdraw from contents tracking, described for a message, e.g. "transfer #5 asks for 60 µL from
+// Drug plate A1, which holds 50 µL."
+function describeOverdraw(plan, problem) {
+  return (
+    `transfer #${problem.operationIndex + 1} asks for ${formatVolume(problem.requested)} µL from ` +
+    `${wellName(plan, problem)}, which holds ${formatVolume(problem.available)} µL.`
+  );
 }
 
 // --- Pointer actions on the deck (sections 8 and 9) ---
@@ -2216,7 +2337,7 @@ function createBoxButtons(plan) {
     // Why there's no Remove, on a line of its own above the buttons.
     holder.append(createElement("p", removal.reason, "note"));
   }
-  const discard = createElement("button", "Discard", "discard");
+  const discard = createElement("button", "Discard", "action discard");
   discard.type = "button";
   discard.addEventListener("click", closeEditingBox);
   const save = createElement("button", "Save", "primary save");
@@ -2245,7 +2366,7 @@ function createRemoveQuestion(plan) {
   const question = createElement("div", "", "remove-question");
   question.append(createElement("p", removeQuestionText(plan)));
   const buttons = createElement("div", "", "confirm-buttons");
-  const cancel = createElement("button", "Cancel");
+  const cancel = createElement("button", "Cancel", "action");
   cancel.type = "button";
   cancel.addEventListener("click", () => {
     editingBox.draft.confirmingRemove = false;
@@ -2427,6 +2548,60 @@ function guardEditingBox(event) {
   event.stopPropagation();
   if (event.type === "pointerdown") {
     refuseOutsideClick();
+  }
+}
+
+// Watches every press on the page while a label or volume box is open (sections 6 and 7). A press
+// outside the box saves it as the press starts, then passes the click on to whatever is now under
+// the pointer (saving redraws the page), and the rest of that press is stopped, so nothing acts on
+// it twice.
+function connectInlineBoxGuard() {
+  document.addEventListener("pointerdown", guardInlineBox, true);
+  for (const type of ["mousedown", "pointerup", "mouseup", "click"]) {
+    document.addEventListener(type, stopPassedOnPress, true);
+  }
+  // The press is over once the pointer is released; its click, if the browser sends one, comes
+  // right after the release, so the flag is cleared a moment later. (No click comes when what was
+  // pressed has been redrawn, so the release, not the click, is what ends the press.)
+  for (const type of ["pointerup", "pointercancel"]) {
+    document.addEventListener(type, () => setTimeout(endPassedOnPress, 0), true);
+  }
+}
+
+// True from a press that an inline box's saving passed on, until that press is over.
+let pressPassedOn = false;
+
+// Ends a passed-on press, so the next press is acted on.
+function endPassedOnPress() {
+  pressPassedOn = false;
+}
+
+// The press's pointerdown: saves an open inline box pressed outside, and passes the click on.
+function guardInlineBox(event) {
+  pressPassedOn = false;
+  if (inlineBox === null || inlineBox.box.contains(event.target)) {
+    return;
+  }
+  inlineBox.finish("away");
+  event.preventDefault();
+  event.stopPropagation();
+  const target = document.elementFromPoint(event.clientX, event.clientY);
+  if (target instanceof HTMLElement) {
+    // A made click: it bubbles to the button it's inside, and a well treats it as a keyboard click.
+    target.click();
+  }
+  pressPassedOn = true;
+}
+
+// The rest of a passed-on press: stopped, so nothing acts on it twice.
+function stopPassedOnPress(event) {
+  if (!pressPassedOn) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.type === "click") {
+    endPassedOnPress();
   }
 }
 
@@ -2642,13 +2817,30 @@ function scrollIntoColumnView(element) {
   if (element === null || element === undefined) {
     return;
   }
-  element.scrollIntoView({ block: "nearest", behavior: reduceMotion.matches ? "auto" : "smooth" });
+  element.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
+}
+
+// Scrolls the Stages column smoothly, just enough to show the whole of `card` (section 7); a card
+// taller than the column is shown from its top, so a transfer list starts at its first transfer.
+function scrollCardIntoView(card) {
+  if (card === null) {
+    return;
+  }
+  const tallerThanColumn = card.offsetHeight > elements.stagesColumn.clientHeight;
+  card.scrollIntoView({ block: tallerThanColumn ? "start" : "nearest", behavior: scrollBehavior() });
+}
+
+// How the column scrolls: smoothly, or at once with the system's "reduce motion" setting.
+function scrollBehavior() {
+  return reduceMotion.matches ? "auto" : "smooth";
 }
 
 // --- Small helpers ---
 
-// A text box that edits a value in place: Enter or clicking away calls onSave with the text, Escape
-// calls onCancel; each at most once.
+// A text box that edits a value in place (a label or a volume), the one inline box that's open.
+// Enter calls onSave(text, "enter") and clicking away (or leaving it any other way) onSave(text,
+// "away"); Escape calls onCancel. onSave returns true when the box is done, or false to keep it
+// open with what was typed, selected, to fix it. Each ending is acted on at most once.
 function createInlineEditor({ value, className, accessibleName, onSave, onCancel }) {
   const box = document.createElement("input");
   box.type = "text";
@@ -2656,24 +2848,37 @@ function createInlineEditor({ value, className, accessibleName, onSave, onCancel
   box.value = value;
   box.setAttribute("aria-label", accessibleName);
   let done = false;
+  // Ends the box with `action` (saving or cancelling), at most once; a saving that returns false
+  // keeps the box open instead.
   const finish = (action) => {
     if (done) {
       return;
     }
     done = true;
-    action();
+    if (inlineBox !== null && inlineBox.box === box) {
+      inlineBox = null;
+    }
+    if (action() === false) {
+      // Kept open: it's the open inline box again, and the next ending is acted on.
+      done = false;
+      inlineBox = { box, finish: save };
+      box.select();
+    }
   };
+  // Saves the box's text, `how` being "enter" or "away".
+  const save = (how) => finish(() => onSave(box.value, how));
   box.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
-      finish(() => onSave(box.value));
+      save("enter");
     } else if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       finish(onCancel);
     }
   });
-  box.addEventListener("blur", () => finish(() => onSave(box.value)));
+  box.addEventListener("blur", () => save("away"));
+  inlineBox = { box, finish: save };
   return box;
 }
 

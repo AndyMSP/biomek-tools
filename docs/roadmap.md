@@ -119,8 +119,10 @@ Last updated: 2026-10-26
   edited), tip counts on tip groups, tidier bars, `Show transfers` scrolling into view, a lost
   click after a volume or label box (a bug in the build), the overdraw message naming a transfer
   the edit caused, softer buttons in two groups (action and choice), softer key and colors, and
-  bigger arrowheads. Written into `transfer-designer-page.md` (still Draft); not built yet. Tried
-  and dropped: folding the open card, and a white edge around the arrows.
+  bigger arrowheads. Written into `transfer-designer-page.md` (still Draft). Tried and dropped:
+  folding the open card, and a white edge around the arrows. **Built 2026-10-26** in the three page
+  files, and checked in headless Chrome (70 checks, including a window narrower than 1000px); Andy
+  hasn't tested the build yet, so the specification stays Draft.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
