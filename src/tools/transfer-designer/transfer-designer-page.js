@@ -787,7 +787,7 @@ function createLabwareBlock(plan, name) {
 
 // Turns a labware's label into a text box holding the label, selected. Enter or clicking away saves
 // it with setLabel; Escape cancels; an unchanged label saves nothing. A click away still does what
-// it would (the inline box guard passes it on).
+// it would (the inline box guard passes it on), unless setLabel refused the label.
 function startRenamingLabware(labelButton, name) {
   const plan = currentPlan();
   const box = createInlineEditor({
@@ -796,15 +796,19 @@ function startRenamingLabware(labelButton, name) {
     accessibleName: `Label for ${name}`,
     onSave: (text) => {
       const renamed = tryLogic(() => setLabel(plan, name, text));
-      // An unchanged label gives the same plan back, and saves nothing. A refused label's message
-      // is shown and the label stays as it was.
-      if (renamed === false || renamed === plan) {
+      // A refused label's message is shown and the label stays as it was.
+      if (renamed === false) {
         refreshDeck();
-        return true;
+        return "refused";
+      }
+      // An unchanged label gives the same plan back, and saves nothing.
+      if (renamed === plan) {
+        refreshDeck();
+        return "closed";
       }
       recordEdit(renamed);
       showMessage(`Renamed ${name} to ${labelOf(renamed, name)}.`, "ok");
-      return true;
+      return "closed";
     },
     onCancel: refreshDeck,
   });
@@ -1241,19 +1245,20 @@ function startEditingVolume(volumeButton, stage, transfer) {
 
 // Saves a volume box's text for `transfer` (section 7): an unchanged volume (`shown` is the volume
 // as the box showed it) saves nothing; otherwise changeVolume. Then Enter (`how` "enter") opens the
-// next transfer's volume box in the stage, and a click away ("away") just closes. Returns true when
-// the box is done, or false to keep it open: a volume the logic refused after Enter stays to be
-// fixed, while after a click away the box closes, so the click still lands where it was meant.
+// next transfer's volume box in the stage, and a click away ("away") just closes. Returns what
+// became of the box, as createInlineEditor's onSave does: "closed"; "kept-open", for a volume the
+// logic refused after Enter, which stays to be fixed; or "refused", for one refused after a click
+// away, which closes, and whose click then does nothing else, so the message stays in view.
 function saveVolume(plan, stage, transfer, shown, text, how) {
   let saved = plan;
   if (text !== shown) {
     saved = tryEdit(() => changeVolume(plan, transfer.position, volumeValue(text)));
     if (saved === false) {
       if (how === "enter") {
-        return false;
+        return "kept-open";
       }
       closeVolumeBox();
-      return true;
+      return "refused";
     }
     const volume = saved.operationList.listOperations()[transfer.position].volume;
     showMessage(`Volume changed to ${formatVolume(volume)} µL.`, "ok");
@@ -1262,7 +1267,7 @@ function saveVolume(plan, stage, transfer, shown, text, how) {
   if (how === "enter") {
     openNextVolumeBox(saved, stage, transfer.position);
   }
-  return true;
+  return "closed";
 }
 
 // Opens the volume box of the transfer after the one at `position` in `stage`, its volume selected,
@@ -2554,7 +2559,8 @@ function guardEditingBox(event) {
 // Watches every press on the page while a label or volume box is open (sections 6 and 7). A press
 // outside the box saves it as the press starts, then passes the click on to whatever is now under
 // the pointer (saving redraws the page), and the rest of that press is stopped, so nothing acts on
-// it twice.
+// it twice. The click isn't passed on if it wasn't the main button (a right click does nothing on
+// the page), or if the logic refused what the box held, so its message stays in view.
 function connectInlineBoxGuard() {
   document.addEventListener("pointerdown", guardInlineBox, true);
   for (const type of ["mousedown", "pointerup", "mouseup", "click"]) {
@@ -2582,14 +2588,15 @@ function guardInlineBox(event) {
   if (inlineBox === null || inlineBox.box.contains(event.target)) {
     return;
   }
-  inlineBox.finish("away");
+  const outcome = inlineBox.finish("away");
   event.preventDefault();
   event.stopPropagation();
   const target = document.elementFromPoint(event.clientX, event.clientY);
-  if (target instanceof HTMLElement) {
+  if (event.button === 0 && outcome !== "refused" && target instanceof HTMLElement) {
     // A made click: it bubbles to the button it's inside, and a well treats it as a keyboard click.
     target.click();
   }
+  // Set only after the made click, which this flag would otherwise stop too.
   pressPassedOn = true;
 }
 
@@ -2839,8 +2846,10 @@ function scrollBehavior() {
 
 // A text box that edits a value in place (a label or a volume), the one inline box that's open.
 // Enter calls onSave(text, "enter") and clicking away (or leaving it any other way) onSave(text,
-// "away"); Escape calls onCancel. onSave returns true when the box is done, or false to keep it
-// open with what was typed, selected, to fix it. Each ending is acted on at most once.
+// "away"); Escape calls onCancel. onSave returns what became of the box: "closed"; "refused" (the
+// logic refused the text, and the box closed); or "kept-open", to keep it open with what was typed,
+// selected, to fix it. Each ending is acted on at most once, and saving returns onSave's answer
+// (or undefined if the box had already ended).
 function createInlineEditor({ value, className, accessibleName, onSave, onCancel }) {
   const box = document.createElement("input");
   box.type = "text";
@@ -2848,22 +2857,24 @@ function createInlineEditor({ value, className, accessibleName, onSave, onCancel
   box.value = value;
   box.setAttribute("aria-label", accessibleName);
   let done = false;
-  // Ends the box with `action` (saving or cancelling), at most once; a saving that returns false
-  // keeps the box open instead.
+  // Ends the box with `action` (saving or cancelling), at most once, and returns its answer; a
+  // saving that answers "kept-open" keeps the box open instead.
   const finish = (action) => {
     if (done) {
-      return;
+      return undefined;
     }
     done = true;
     if (inlineBox !== null && inlineBox.box === box) {
       inlineBox = null;
     }
-    if (action() === false) {
+    const outcome = action();
+    if (outcome === "kept-open") {
       // Kept open: it's the open inline box again, and the next ending is acted on.
       done = false;
       inlineBox = { box, finish: save };
       box.select();
     }
+    return outcome;
   };
   // Saves the box's text, `how` being "enter" or "away".
   const save = (how) => finish(() => onSave(box.value, how));
