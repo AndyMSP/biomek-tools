@@ -1,8 +1,9 @@
 # transfer-designer page — specification
 
 > **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview (v126), which Andy
-> shaped and used from 2026-10-24 to 2026-10-26. It becomes Final once the page is built and Andy has
-> tested it.
+> shaped and used from 2026-10-24 to 2026-10-26. *Revised 2026-10-26* from Andy's testing of the built
+> page (PR #72): changes to how it looks and how volumes are edited, each tried first in a preview.
+> It becomes Final once these changes are built and Andy has tested them.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -45,12 +46,14 @@ From the top:
 | Where | What |
 |---|---|
 | Header | The title `Transfer designer`, with `Biomek i5 · Span-8` beside it in gray; on the right, the buttons `Biomek files`, `Save`, `Open` and `Reset` (section 5). |
-| Deck panel (left) | Two bars, then the labware that's out (section 6). |
+| Deck panel (left) | Three bars, then the labware that's out (section 6). |
 | Stages column (right) | Start, the tip groups with their stages, and End (section 7). |
 | Message bar | Floating at the bottom of the window, centered (section 12). |
 
 When the window is wider than 1000px, the deck panel and the Stages column sit side by side, the
-Stages column 320px to 400px wide and the deck panel taking the rest. The Stages column is then
+Stages column 320px to 400px wide and the deck panel taking the rest. The deck panel's width
+doesn't depend on what's in it, so bringing out or putting away labware never changes the width of
+either panel. The Stages column is then
 pinned beside the deck while the page scrolls, scrolls on its own, and is fitted to end 12px above
 the bottom of the window, wherever its top is (lower at first, under the header; at the top once the
 page scrolls), and never past the bottom of the deck panel. The area holding both panels always
@@ -123,9 +126,13 @@ nothing. Saving a file doesn't touch the copy; Reset leaves it holding the empty
 when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the problem count: `No
 problems` in green, or `N problems` in red, counting the overdraws in the whole plan.
 
-**Second bar.** On the left, the **labware tray**; on the right, the key, the component colors and
-the `Arrows` toggle. On a narrow window, or when the key has marks, the right side wraps onto its own
-line.
+**Second bar.** On the left, the **labware tray**; on the right, the key and the `Arrows` toggle,
+both about what the deck draws. On a narrow window the right side wraps onto its own line.
+
+**Third bar.** `Components:` in gray, then the component colors, from the left, wrapping onto more
+lines under each other. Hidden while the plan has no components. (Andy, 2026-10-26: the colors
+used to sit at the right of the second bar, unlabelled, and wrapped onto a line of their own pushed
+to the right, which looked scattered.)
 - **The tray** has a chip for each labware in the deck description: a tiny outline of its shape
   (dots for a plate, stripes for a reservoir) and its label. They're in two groups, `Used labware:`
   and `Unused labware:` (used: by the plan, `labwareUsed`), each in the deck's order; an empty group
@@ -133,27 +140,35 @@ line.
   while its labware is out. Its tooltip says `Bring out <label>` or `Put away <label>`. Putting
   labware away clears a source chosen on it. Undo doesn't change what's out.
 - **The key** shows only marks on the deck now: `Overdraw` (a well with a red ring and a red X) and
-  `Off plan` (a well with a red ring). With neither, the key is hidden.
-- **The component colors**: each component's swatch and name, in the plan's order.
+  `Off plan` (a well with a red ring). Its example wells are drawn as the marks on the deck are
+  (below), the X's lines 2px thick. With neither, the key is hidden.
+- **The component colors** (third bar): each component's swatch and name, in the plan's order.
 - **`Arrows`** (pressed while on) shows or hides the transfer arrows.
 
-**The labware** that's out, one block each, in the deck's order. With none out: `No labware is out.
-Click a labware above to bring it into the editor.`
+**The labware** that's out, one block each, in the deck's order, **two to a row**: side by side,
+then the next two below, never three in a row (Andy, 2026-10-26). Blocks are 20px apart. Each takes
+half the row, but never less than its own width, so when two don't fit side by side they stack.
+When the window is 1000px wide or less, one per row. With none out: `No labware is out. Click a
+labware above to bring it into the editor.`
 - **Heading:** the label in bold, as a button (tooltip `Click to rename`); beside it, small and gray,
   the deck name and labware type, e.g. `Plate · BCFlat96`. Clicking the label turns it into a text
   box holding the label, selected. Enter or clicking away saves it with `setLabel` (message `Renamed
   <name> to <label>.`); Escape cancels. A label that's unchanged saves nothing. If `setLabel`
   refuses it (e.g. another labware has it), its message is shown and the label stays as it was.
-- **A 96-well plate** is a grid of round wells, with column numbers above and row letters at the
-  left. **A reservoir** (numbered grid) is a row of 12 tall troughs, each as tall as 8 wells, with
-  rounded corners and no headings.
+  Clicking away still does what that click would, as for a transfer's volume (section 7).
+- **A 96-well plate** is a grid of round wells, with column numbers above (in an 18px row) and row
+  letters at the left (in a 22px column). **A reservoir** (numbered grid) is a row of 12 tall
+  troughs, each as tall as 8 wells, with rounded corners; its trough numbers `1` to `12` are above,
+  as a plate's column numbers are, and it has the same 22px space at the left, empty, so a reservoir
+  is exactly the same size as a plate (Andy, 2026-10-26).
 - A wide labware scrolls sideways inside its block rather than shrinking its wells.
 
 **Each well** shows what it holds at the point the deck shows (section 11):
 - **Empty:** white, with its well name (e.g. `A1`, or `5` on a reservoir) in small gray text.
 - **Holding something:** filled with its components' colors, in proportion (for a plate well, a pie,
   in the order the components are listed in the well; for a trough, bands from the bottom up), with
-  its total volume in short form (section 13) in the middle.
+  its total volume in short form (section 13) in the middle, on a small white label (white at 88%
+  opacity, 4px corners, 2px × 3px padding), so it reads on any component color (Andy, 2026-10-26).
 - Its accessible name is the well and its contents, e.g. `Assay plate A1, 120 µL` or `Assay plate
   A2, empty`.
 
@@ -170,7 +185,9 @@ pointer leaves the well, the page scrolls, or a drag starts.
 
 **Marks on the wells** (from `contents-tracking` at the point the deck shows):
 - **Overdraw:** a source well a transfer asked for more than it held: a thick red ring and a big red
-  X behind its label.
+  X behind its label. The X is two red lines, 3px thick with rounded ends, each 120% of the well's
+  width, crossing at the well's center at ±45°, so it's exactly centered (a "×" character sits
+  wherever the font puts it) and reaches a little past the well's edge.
 - **Off plan:** a well whose contents differ from the plan because of an overdraw: a thick red ring.
 - **The open stage's wells:** while a stage with transfers is open, every well its transfers don't
   touch fades (to 30% opacity; 70% while pointed at).
@@ -182,8 +199,11 @@ pointer leaves the well, the page scrolls, or a drag starts.
 as a straight arrow from its source to its destination, on top of the wells, in the color of the
 source's main component (the one it holds most of) as the stage starts, or gray if it's empty then.
 Each end stops short of the well's center, by 11px or a third of the arrow's length if that's less,
-so it's inside the well but clear of the volume label. A transfer from a well into itself has no
-arrow. An end on labware that's put away ends at that labware's chip in the tray instead.
+so it's inside the well but clear of the volume label. Each arrow is a 2px line and a filled
+triangular head, 12px from tip to base and 12px wide at the base. A head can sit on a well of its
+own color and be hard to see; that's accepted (Andy, 2026-10-26: a white edge around the arrows was
+tried and dropped, since it looked worse). A transfer from a well into itself has no arrow. An end
+on labware that's put away ends at that labware's chip in the tray instead.
 
 ## 7. The Stages column
 From the top: **Start**, then one **tip group box** per tip group (`tipGroups`), each holding its
@@ -208,12 +228,27 @@ holds:
 - otherwise, `Show transfers ▸`, which shows its **transfer list** (and becomes `Hide transfers ▾`,
   which folds it away again). Each stage remembers whether its list is shown, while the page is open.
   Each row is `Assay plate A1 → Drug plate B2 · 20 µL`, with a `×` at the right that removes it
-  (`removeTransfer`; message `Removed Assay plate A1 → Drug plate B2 from stage 2, “Drugs”.`). The
-  volume is a button: clicking it turns it into a text box holding the volume, selected; Enter or
-  clicking away saves it with `changeVolume` (message `Volume changed to 25 µL.`); Escape cancels; an
-  unchanged volume saves nothing. **Pointing at a row** singles out its transfer on the deck: its
-  row is tinted, its arrow stays while the stage's other arrows fade (to 12%), and its source and
-  destination wells get a blue outline.
+  (`removeTransfer`; message `Removed Assay plate A1 → Drug plate B2 from stage 2, “Drugs”.`).
+- **A transfer's volume** is a button: clicking it turns it into a text box holding the volume,
+  selected. It's saved with `changeVolume` (message `Volume changed to 25 µL.`); an unchanged volume
+  saves nothing; Escape cancels.
+  - **Enter** saves it and opens the next transfer's volume box in the same stage, its volume
+    selected, so a list of volumes can be typed one after another (Andy, 2026-10-26). On the
+    stage's last transfer, Enter saves and closes.
+  - **Clicking away** saves it and closes, and the click still does what it would, once: clicking
+    another transfer's volume opens that one, and clicking `×` removes that transfer. (Saving
+    redraws the list, so the page saves as the press starts, then passes the click on to whatever
+    is now under the pointer; the rest of that press is stopped, so nothing acts on it twice.)
+  - **A refused volume**: its message is shown. After Enter, the box stays open with what was typed,
+    selected, to fix it. After clicking away, the box closes, so the click still lands where it
+    was meant.
+- **Pointing at a row** singles out its transfer on the deck: its row is tinted, its arrow stays
+  while the stage's other arrows fade (to 12%), and its source and destination wells get a 3px blue
+  ring standing 2px outside the well, with a gap, so it stands out from the well's fill (Andy,
+  2026-10-26). **While a volume box is open**, its transfer is singled out the same way whatever the
+  pointer does: pointing at other rows does nothing until the box closes, so the deck never shows
+  one transfer while another's volume is being typed (Andy, 2026-10-26: letting the pointer move it
+  could cause a mistake). So Enter moves the highlight with the box.
 
 A stage **with an overdraw** (`stagesWithOverdraw`), row or card, has a light red background and
 border, and the tooltip `This stage has an overdraw: a transfer asks a well for more than it holds.`
@@ -224,12 +259,19 @@ transfers.`
 
 **Tip group boxes.** Each is a rounded box around its stages, light blue, alternating with light
 sand, so each tip change stands out. Its heading, at the top left, is the tip change: a small tip
-icon, `New tips · BC230` (its tip type only), and a ✎ that opens its editing box (section 10).
+icon, `New tips · BC230 · 2 tips`, and a ✎ that opens its editing box (section 10). The count is how
+many tips the tip change loads: one per probe that any stage in the group uses (`tipGroups`'
+`probes`), so a user can keep it down to save tips (Andy, 2026-10-26). Pointing at the heading
+shows the tooltip `Loads 2 tips: one for each probe that any stage using these tips uses. Fewer
+probes in a stage can mean fewer tips.` (The preview showed `2 probes` here until 2026-10-25, when
+it was removed as confusing; it's back, counted as tips, for a new reason: saving tips.)
 
 **Adding stages and tip changes: the seams.** Stages in a box sit 10px apart. The space between two
 cards, above a box's first stage, and below a box's last stage, is a **seam**. Pointing at a seam,
 or moving keyboard focus to its buttons, shows a blue line across it with a `+` in a 26px circle in
-the middle (tooltip `Add a stage here`), floating over the cards; between two stages of a box, also a
+the middle (tooltip `Add a stage here`), floating over the cards; the `+` is two white bars, 2px
+thick and 12px long, crossing at the circle's center, so it's exactly centered (a "+" character
+sits wherever the font puts it; Andy, 2026-10-26). Between two stages of a box, also a
 tip button at the right (tooltip `New tips here`). A seam never takes room of its own, and never
 takes a click meant for a card. Each `+` adds a stage into the box it's in, and opens it (message
 `Added a stage. New transfers go into it.`):
@@ -249,7 +291,10 @@ seconds. A glow carries on through redrawing. Nothing glows when the page first 
 something is only opened or edited.
 
 **Keeping things in view.** When a different entry opens, the column scrolls just enough to show
-all of it; when an editing box opens, it scrolls just enough to show the box.
+all of it; when an editing box opens, it scrolls just enough to show the box. When `Show
+transfers` opens a stage's list, the column scrolls smoothly (the browser's own smooth scrolling)
+just enough to show the whole card; a card taller than the column is shown from its top, so the
+list starts at its first transfer (Andy, 2026-10-26). Hiding the list doesn't scroll.
 
 ## 8. Starting contents (Start open)
 While Start is open, clicking a well fills it, and dragging from one well to another across one
@@ -317,10 +362,20 @@ holding only the source: `The box held only the source well, so nothing was adde
 other labware: `Drag across wells of one labware to send the source into each of them.`
 
 **After adding** (`addTransfer`): `Added to stage 2, “Drugs”: Drug plate A1 → Assay plate A1, 20
-µL.` If the plan has more overdraws than before, the message is an error instead: `Added, but
-transfer #5 asks for 60 µL from Drug plate A1, which holds 50 µL.` (the last overdraw in the plan;
-with several transfers, `Added 4 transfers of 50 µL from Drug plate A1, but transfer #5 asks …`). If
-the logic refuses the transfer, its message is shown.
+µL.` If the edit caused a **new overdraw**, the message is an error instead: `Added, but transfer
+#5 asks for 60 µL from Drug plate A1, which holds 50 µL.` (with several transfers, `Added 4
+transfers of 50 µL from Drug plate A1, but transfer #5 asks …`). If the logic refuses the transfer,
+its message is shown.
+- A **new overdraw** is one that wasn't there before the edit: a transfer that's overdrawn now but
+  wasn't, or wasn't in the plan. Transfers are recognized across the edit because the operation list
+  keeps every unchanged transfer as the same object (`operation-list.md`).
+- The message names a new transfer's own overdraw, if one of the added transfers asks for more
+  than its well holds; otherwise the first new overdraw in the run, such as a later transfer now
+  left short.
+- An edit that leaves only the overdraws that were already there gives the usual message.
+
+(Found 2026-10-26: the message used to name the plan's last overdraw, which needn't be one the
+edit caused. Adding a transfer that runs first and empties a well named a later transfer.)
 
 **The next transfer's volume** starts at `DEFAULT_TRANSFER_VOLUME` (section 14), is typed (section
 13), and carries over to the next transfer. It shows at the arrow's tip while a source is chosen or
@@ -446,16 +501,41 @@ The page also uses the transfer designer's configuration (`config/pipetting-mode
 The page should look calm and be easy to scan, like the randomizer's. Its colors and sizes are
 defined once, in `transfer-designer.css`, as named CSS variables.
 
-- **Page and panels:** background `#F6F5F1`; the title 26px semibold; white panels with a thin border (`#E2E0D8`), rounded
-  corners (10px) and 20px padding, 20px apart; the page at most 1500px wide, centered.
-- **Type:** `"Segoe UI", system-ui, sans-serif`; well names and headings in `Consolas, "Cascadia
-  Mono", monospace`. Text `#1C1C1A`; secondary text gray (`#5E5E58`).
+The look below is the one the page was built with (PR #72), which Andy kept (2026-10-26: "I think
+it's really good"), with the changes from his testing. Anything not listed here stays as built.
+Small text is kept soft: gray where it's secondary, and no bigger than it needs to be (Andy,
+2026-10-26: bigger, darker text in the header, the bars and the buttons "felt harsher").
+
+- **Page and panels:** background `#F6F5F1`; the title 26px semibold, with the subtitle 14px gray;
+  white panels with a thin border (`#E2E0D8`), rounded corners (10px) and 20px padding, 20px apart;
+  the page at most 1500px wide, centered.
+- **Type:** `"Segoe UI", system-ui, sans-serif`, 15px with line height 1.4; well names, grid
+  headings, stage numbers, transfer rows and volumes in `Consolas, "Cascadia Mono", monospace`. Text
+  `#1C1C1A`; secondary text gray (`#5E5E58`). Notes, counts and the settings line 13px gray.
+- **The bars above the deck:** the timeline's caption 13px gray; the tray's group names 13px gray;
+  the key and the component colors (one shared style) 12px gray, 4px apart between lines and 12px
+  between items, as is the `Components:` label; swatches (here, on component buttons, and in the
+  contents card) 12px circles.
 - **Blue** (`#2F5DA8`) for actions and what's chosen, with a light border (`#9DB7DB`) and tint
   (`#EEF3FA`). **Red** (`#C4362A`) for problems, with a pale background (`#FCE9E7`) and border
   (`#E8A39B`). **Green** text `#22603A` on `#EDF5EF`.
-- **Buttons:** at least 34px tall, 6px corners; solid blue for the main action; red outline for
-  Reset and Remove; disabled ones gray.
-- **Wells:** 36px, 4px apart; an empty well white with a gray border (`#BDBDB5`).
+- **Buttons**, in a few groups, each styled once (Andy, 2026-10-26: "if things were grouped, keep
+  them grouped. Prioritize simplicity"):
+  - every button has 13px text (the timeline's `‹` and `›`, 16px arrows) and 6px corners, and is
+    34px tall unless built smaller (chips, probe buttons, `‹` and `›`, as built);
+  - **action buttons**, which do something (`Save`, `Open`, `Undo`, `Redo`, `‹`, `›`, `Arrows`,
+    and every `Cancel` and `Discard`): blue text with a light blue border (`#9DB7DB`), white;
+  - **choice buttons**, which pick something (labware chips, component chips, probe buttons, tip
+    type buttons): dark text with a gray border (`#CFCDC4`), white; picked ones are marked in blue,
+    as sections 6, 8 and 10 say;
+  - **the main action** (`Biomek files`, a box's `Save`): solid blue, white text, semibold;
+  - **danger** (`Reset`, `Remove`): red text with a light red border (`#E8A39B`); the confirming
+    button of their questions (`Reset everything`, and `Remove` beside `Cancel`): solid red;
+  - **disabled** buttons: gray text and border on a light gray background, whatever their group;
+  - buttons with a look of their own keep it: `Show transfers`, a transfer's volume and `×`, a
+    labware's label, the seams, and the Stages column's rows.
+- **Wells:** 36px, 4px apart; an empty well white with a gray border (`#BDBDB5`), its name 10px.
+  Grid headings 12px gray.
 - **Tip group boxes:** 12px corners; light blue (`#EEF3FA`, border `#9DB7DB`), alternating with light
   sand (`#F5F1E8`, border `#D9D2C3`).
 - **Contents card:** dark (`#1C1C1A`) with light text (`#F6F5F1`), problems in `#FFB4AA`.

@@ -18,5 +18,8 @@
 export const DECK = [
   { name: "Plate", grid: "GRID_96", labwareType: "BCFlat96" },
   { name: "Deep", grid: "GRID_96", labwareType: "StandIn_Deep96" },
+  // A second deep-well plate (Andy, 2026-10-26). Its position in the general-purpose method isn't
+  // decided yet.
+  { name: "Deep2", grid: "GRID_96", labwareType: "StandIn_Deep96" },
   { name: "Res", grid: "GRID_1X12_NUMBERED", labwareType: "StandIn_Reservoir12" },
 ];
