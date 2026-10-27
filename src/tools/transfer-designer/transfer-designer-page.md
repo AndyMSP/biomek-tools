@@ -1,9 +1,8 @@
 # transfer-designer page — specification
 
-> **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview (v126), which Andy
-> shaped and used from 2026-10-24 to 2026-10-26. *Revised 2026-10-26* from Andy's testing of the built
-> page (PR #72): changes to how it looks and how volumes are edited, each tried first in a preview.
-> It becomes Final once these changes are built and Andy has tested them.
+> **Final (2026-10-27).** Written for v0.2.0, from the transfer designer preview (v126), which Andy
+> shaped and used from 2026-10-24 to 2026-10-26; revised from his testing of the built page (PR #73),
+> built in PR #74 with two fixes in PR #75, and tested by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
