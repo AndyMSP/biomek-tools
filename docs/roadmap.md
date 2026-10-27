@@ -112,6 +112,15 @@ Last updated: 2026-10-26
   `config/component-colors.js` and `config/default-volumes.js`, which its tests check (ADR 0009).
   `npm run build` now makes `dist/transfer-designer.html`. Andy hasn't tested it yet, so the
   specification stays Draft (item 6 of v0.2.0, below).
+- **Andy tested the built page** (2026-10-26) and kept its look, with 16 changes, each tried first
+  in a preview: labware two to a row, a reservoir the same size as a plate, a second deep-well
+  plate (`Deep2` in `config/deck.js`), a centered overdraw X and `+`, volumes on white labels, a
+  clearer highlight, Enter moving to the next volume (the highlight locked to the volume being
+  edited), tip counts on tip groups, tidier bars, `Show transfers` scrolling into view, a lost
+  click after a volume or label box (a bug in the build), the overdraw message naming a transfer
+  the edit caused, softer buttons in two groups (action and choice), softer key and colors, and
+  bigger arrowheads. Written into `transfer-designer-page.md` (still Draft); not built yet. Tried
+  and dropped: folding the open card, and a white edge around the arrows.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -215,7 +224,8 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   (ADR 0007).
 - **The deck description's labware names and types are stand-ins** (v0.2.0, written 2026-10-23
   before checking Biomek Software). Before the first run, replace them with the real names from the
-  general-purpose method and the real labware types from Biomek Software.
+  general-purpose method and the real labware types from Biomek Software. `Deep2`, a second
+  deep-well plate (added 2026-10-26), also needs a position on the standard deck (ADR 0007).
 - **Overdraws within a stage are found in the planned order** (v0.2.0, 2026-10-26). Within a
   stage the Biomek chooses its own order (B56358AF, 22-25), but contents tracking replays the
   planned order. When a stage draws from an overdrawn well more than once, which of its transfers
