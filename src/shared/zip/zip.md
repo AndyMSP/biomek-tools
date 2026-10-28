@@ -156,7 +156,8 @@ section 5 has at least one test.
   `"Run/Setup.csv"` (text `"a,b\r\n1,2\r\n"`) and `"Run/Stages.csv"` (text `"x\r\n"`), dated
   `new Date(2026, 9, 28, 1, 57, 32)`. Before it's saved, it's checked with two independent zip
   readers (Python's `zipfile` and Info-ZIP's `unzip -t`) and by Andy opening it in Windows
-  Explorer, each reading both files back exactly; the fixture's notes say who checked it and when.
+  Explorer, each reading both files back exactly; its notes, `tests/fixtures/zip-two-files.md`,
+  say who checked it and when (all three, 2026-10-28).
   `zipFiles` with those inputs must give exactly its bytes. It's never regenerated or edited to
   make a test pass.
 
