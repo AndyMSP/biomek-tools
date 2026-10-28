@@ -6,8 +6,9 @@
 > becomes Final once its code is built and a zip it makes has been unzipped and run there.
 
 ## 1. Purpose
-`zip.js` turns a list of text files into the bytes of one **zip file** (an archive holding several
-files and folders, which Windows opens and extracts without anything installed). The transfer
+`zip.js` turns a list of file names and their contents into the bytes of one **zip file** (an
+archive holding several files and folders, which Windows opens and extracts without anything
+installed). The transfer
 designer uses it so the Biomek files for one run download as a single file, holding the run's
 folder (Andy, 2026-10-28; `file-writer.md`, "Outputs").
 
@@ -36,12 +37,14 @@ Not in version 1:
 ## 3. Data model
 
 ### Inputs
-- **The files:** a list of `{ name, text }`.
+- **The entries:** a list of `{ name, text }`, each a file's name (its path inside the zip) and
+  its contents, as text. It's a list held in memory, the same shape as the file writer's output
+  (each file's name and contents), not something read from disk.
   - `name` is the file's path inside the zip, with folders separated by `/`, e.g.
     `"2026-10-28_015732_Exp36/Setup.csv"`. It holds only printable ASCII characters (codes 32 to
     126), doesn't start or end with `/`, has no empty folder name (`a//b`), no folder or file named
-    `.` or `..`, and no backslash (`\`), which zip programs read differently. No two files share a
-    name.
+    `.` or `..`, and no backslash (`\`), which zip programs read differently. No two entries share
+    a name.
   - `text` is the file's contents, as text. It's stored as **UTF-8**, the standard way of writing
     text as bytes, so `µ` and other characters beyond ASCII come out right.
 - **The date:** a JavaScript `Date`, given to every entry as its date and time last modified, in
@@ -57,7 +60,7 @@ The zip's bytes, as a `Uint8Array` (JavaScript's list of bytes, each 0 to 255), 
 - **A folder entry for every folder** named in the file names, each once, ending in `/`, before
   the files, in the order the folders first appear. Most programs would make the folders anyway;
   listing them makes sure an empty-looking folder can't be left out.
-- **Then one entry per file,** in the order given.
+- **Then one entry per file,** for each of the entries given, in their order.
 
 ### The format
 All numbers are **little-endian** (the lowest byte first), as the zip format requires. For each
@@ -94,7 +97,7 @@ The module exports two functions. Neither changes its inputs.
 
 | Function | Takes | Returns | Throws |
 |---|---|---|---|
-| `zipFiles(files, date)` | the files and the date (section 3) | the zip's bytes, a `Uint8Array` | if the files or the date aren't valid (section 5); nothing is returned then |
+| `zipFiles(entries, date)` | the entries and the date (section 3) | the zip's bytes, a `Uint8Array` | if the entries or the date aren't valid (section 5); nothing is returned then |
 | `crc32(bytes)` | a `Uint8Array` | its CRC-32, a whole number from 0 to 4,294,967,295, e.g. of the bytes of `"123456789"` → `0xCBF43926` | never, for a `Uint8Array` |
 
 `crc32` is exported so its tests can check it against the known values directly.
@@ -115,15 +118,15 @@ file writer's names always pass.
 
 | Problem | Message |
 |---|---|
-| `files` isn't a list | `The files to zip must be a list of { name, text }, but got null.` |
-| An entry isn't an object with exactly `name` and `text` | `File 2 to zip must be an object with a name and a text, but got "Setup.csv".` |
-| A name isn't text, or `text` isn't text | `File 2's name must be text, but got 5.` / `File 2's text must be text, but got 5.` |
-| A name breaks a rule of section 3 | `File 2's name, "a\b.csv", can't contain a backslash: separate folders with "/".` (one message per rule: a character outside printable ASCII, a `/` at the start or end, an empty folder name, `.` or `..`) |
-| Two files share a name | `Files 1 and 3 are both named "Setup.csv": each file in a zip needs its own name.` |
+| `entries` isn't a list | `The entries to zip must be a list of { name, text }, but got null.` |
+| An entry isn't an object with exactly `name` and `text` | `Entry 2 to zip must be an object with a name and a text, but got "Setup.csv".` |
+| A name isn't text, or `text` isn't text | `Entry 2's name must be text, but got 5.` / `Entry 2's text must be text, but got 5.` |
+| A name breaks a rule of section 3 | `Entry 2's name, "a\b.csv", can't contain a backslash: separate folders with "/".` (one message per rule: a character outside printable ASCII, a `/` at the start or end, an empty folder name, `.` or `..`) |
+| Two entries share a name | `Entries 1 and 3 are both named "Setup.csv": each file in a zip needs its own name.` |
 | `date` isn't a valid `Date` | `The date to zip with must be a valid date, but got "2026-10-28".` |
 | The date is before 1980 or after 2107 | `A zip can only hold dates from 1980 to 2107, but got 1979.` |
 
-Files are numbered from 1, in the order given. The list is checked first, then each file in order
+Entries are numbered from 1, in the order given. The list is checked first, then each entry in order
 (its form, then its name), then the names against each other, then the date. The first problem
 found is reported.
 
@@ -149,7 +152,7 @@ section 5 has at least one test.
 - The date `new Date(2026, 9, 28, 1, 57, 32)` is stored as time `0x0F30` (1 × 2048 + 57 × 32 +
   32 ÷ 2 = 3888) and date `0x5D5C` (46 × 512 + 10 × 32 + 28 = 23900); with 33 seconds instead, the
   time is the same (an odd second rounds down).
-- The same inputs give identical bytes twice, and the files list is unchanged afterwards.
+- The same inputs give identical bytes twice, and the list of entries is unchanged afterwards.
 
 **The golden file**
 - `tests/fixtures/zip-two-files.zip` is a **golden file** (CLAUDE.md, "Testing"): a zip of
@@ -162,8 +165,8 @@ section 5 has at least one test.
   make a test pass.
 
 **Refusing** (section 5)
-- Each row gives its message: `null` and `"files"` for the list; an entry that's a string, one
+- Each row gives its message: `null` and `"entries"` for the list; an entry that's a string, one
   missing `text`, one with an extra property; names `5`, `"/a"`, `"a/"`, `"a//b"`, `"a/../b"`,
-  `"."`, `"a\\b"` and `"Exp36_µ.csv"`; two files named alike (reported by both numbers); dates
+  `"."`, `"a\\b"` and `"Exp36_µ.csv"`; two entries named alike (reported by both numbers); dates
   `"2026-10-28"`, `new Date("x")`, `new Date(1979, 0, 1)` and `new Date(2108, 0, 1)`.
 - Order of checks: a bad entry before a duplicate name; a bad name before a bad date.
