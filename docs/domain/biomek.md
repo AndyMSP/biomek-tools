@@ -8,7 +8,8 @@ Manuals cited:
 - **B56358AF**: Biomek i-Series Software Reference Manual.
 - **B54473AD**: Biomek i-Series instructions manual, including the tutorials.
 
-Last checked against the manuals: 2026-10-20. Simulation tests: 2026-10-21.
+Last checked against the manuals: 2026-10-20. Simulation tests: 2026-10-21. Building the
+general-purpose method: 2026-10-27.
 
 ## Our instrument
 - Biomek i5 with a Span-8 pod and 1 mL syringes. *(Lab setup.)*
@@ -163,7 +164,8 @@ what the file said.)*
   isn't skipped (2026-10-22).
 - Biomek can **export every well's volume** after a run, as a CSV with the columns
   `SequentialID,Name,Barcode,Well,Volume,Liquid` (one row per well of each labware). This could check
-  the tool's contents tracking against Biomek's own.
+  the tool's contents tracking against Biomek's own. It's the Finish step's "Report on all labware
+  data" (see "Building the general-purpose method").
 
 **Speed** *(test 22, real instrument, air only, 2026-10-22)*
 
@@ -209,6 +211,94 @@ The same 24 transfers of 20 µL, from Source A1–H1 into Dest columns 1–3, ke
 - The box accepts a variable: with `=TipType` there (Load still unchecked), test 22b validated and
   ran. So with stages of different tip types, the box follows the stage's tip type.
 
+## Building the general-purpose method
+*(2026-10-27, on our Biomek i5 Span-8, with the deck Res1 and Res2 (DeepReservoir12), Deep1 and
+Deep2 (BCDeep96Square) and Plate1 to Plate6 (BCFlat96), and BC230 and BC1070 tips. The methods
+were saved as Method6 to Method32, with their files in `C:\Users\Beckman Coulter\Desktop\Andy\Method`.
+**Method31 was a real run; Method32 was simulation; for the others, whether the run was real or
+simulated wasn't recorded.** "Worked" means it validated and ran as the files said.)*
+
+**Worklists and variables**
+- **A worklist's variables exist only inside its own loop.** A Worklist step placed after the setup
+  worklist's End Worklist couldn't use a column from it: *"Error evaluating "=StageWorklist":
+  Variable StageWorklist is undefined."* (Method22). Putting the second Worklist step inside the
+  first one's loop worked (Method23).
+- **A Worklist step's file can come from a variable:** Worklist File `=StageWorklist`, a full path
+  taken from the outer worklist's column. Worked (Method23 onward).
+- **A one-row worklist of 793 columns** (the stage worklist's path, then 792 starting volumes) was
+  read in full.
+- **A reservoir's per-trough starting volumes can come from variables** in Show Well Properties, as
+  plate wells can: the report showed each trough's own value (Method11 onward).
+- **A worklist row may leave columns empty that its row doesn't use:** tip-change rows left every
+  transfer, labware-type and mix column empty, and transfer rows left the tip-loading probes and any
+  unused mix columns empty. Worked (Method23 onward).
+- **A prompted variable** (ExperimentID, with Prompt checked) is used with its default value when
+  the method is checked: with the default left empty, a path built from it read
+  `...\Method\0\Setup.csv`, and the Worklist step failed with *"Unable to open file:
+  C:\Users\Beckman Coulter\Desktop\Andy\Method\0\Setup.csv"* (Method24). With a valid default
+  it worked. How it behaves otherwise isn't known (below).
+- **An unknown liquid type name from a variable is caught:** *"Validation failure in Transfer: Key
+  "NoSuchLiquid1" is not defined."* (2026-10-27; which step and method weren't recorded.)
+
+**If steps**
+- **A condition can compare text from worklist columns, joined with And:**
+  `SrcLabwareType="BCFlat96" And DestLabwareType="BCFlat96"`. Worked, with one If step per labware
+  pair (Method23 onward).
+
+**Transfer From File**
+- **Its source and destination labware types can only be chosen from a dropdown;** they can't take
+  a variable. So the method has one Transfer From File step per pair of labware types, each inside
+  its own If step. *(Observed while building the method.)*
+- **Source and destination can take different variables:** `=SrcTechnique` and `=SrcLiquidType` at
+  the source, `=DestTechnique` and `=DestLiquidType` at the destination. Worked with the same values
+  at both ends on a real run (Method31), and with different values at the two ends in simulation
+  (Method32: Operation then NonContact; Fast then Slow).
+- **A well outside the labware's grid is caught at validation.** A step whose source labware type
+  was still DeepReservoir12, given a 96-well plate's well G7: *"Error during pass #1: Error during
+  pass #3: The expression specifies a well number (79) that is out of the range 1-12."* (Method28).
+  Whether a labware type swapped for another with the same number of wells is caught isn't known
+  (below).
+- **Not every probe reaches every position.** With probes 1 and 2, a plate at P14 failed: *"Error
+  during pass #2: Unable to transfer all wells. The following wells could not be transferred:
+  Labware at P14: 43,55,67,79,91"* (wells D7 to H7; Method14). P14 is in the front row; moving the
+  labware one row back fixed it.
+- **"Split large volumes":** 300 µL with BC230 tips went as **2 trips of 150 µL** per well
+  (Method32, simulation).
+- **"Skip zero volume transfers":** a 0 µL row was skipped (Method32, simulation).
+- **Fewer probes than have tips:** Probes `1` with tips on probes 1 and 2 used probe 1 only
+  (Method32, simulation).
+- **Order between rows is respected by validation:** a row drew from wells that an earlier row had
+  filled, which held too little before (Method32, simulation).
+
+**Mixing**
+- A technique's mix settings (volume, times, speed) can take variables, e.g. `=SrcMixVolume`,
+  `=SrcMixTimes` and `=SrcMixSpeed` in "Mix prior to aspirating liquid", and `=DestMixVolume`,
+  `=DestMixTimes` and `=DestMixSpeed` in "Mix after dispensing". The count, volume and speed of each
+  mix matched the worklist in the Details log: 10 µL × 8 at 300 µL/s and 60 µL × 2 at 20 µL/s on a
+  real run (Method31); 300 µL × 3 before aspirating, 200 µL × 2 after dispensing and 20 µL × 4 in
+  simulation (Method32).
+- **A technique that mixes rejects 0 mix times** ("Invalid range"; Method26, exact message not
+  recorded). So rows that don't mix use a technique that doesn't (e.g. Operation).
+- **A technique's mix variables are ignored at the end where it isn't used:** with OperationMix at
+  the source and Operation at the destination, the destination mix columns had no effect, and the
+  reverse (Method32, simulation).
+- **Mixing without a transfer:** a technique whose pipetting template has only a mix in its
+  Aspirate and Dispense sections (Andy's MixOnly2, on template PureMix2: an aspirate air gap and a
+  mix, then a mix and a dispense air gap), run on a well-to-itself transfer of 10 µL, mixed and left
+  the well's volume unchanged (Method31).
+
+**The Details log and the report**
+- **Plunger (D) positions in the Details log are in µL, from an absolute zero;** at rest they are
+  20, and an air gap or aspirate raises them (e.g. 20 → 30 → 40 for a 10 µL air gap, then 10 µL).
+- **Plunger speed shows as a percentage.** With Andy's liquid types: Slow 5.2%, Medium 20.7%, Fast
+  46.6% (Method32). Mix speeds came out at about 10.3% per 100 µL/s: 300 µL/s → 31%, 20 µL/s → 2.1%
+  (Method31); 200 µL/s → 20.7%, 150 µL/s → 15.5% (Method32).
+- **The report** (Finish step, "Report on all labware data") is a text file with the columns
+  `SequentialID,Name,Barcode,Well,Volume,Liquid`, one row per well. Every well starts with the
+  liquid type **Fluids**, Andy's default. A well that was dispensed into or mixed in shows the
+  liquid type used there; a well only aspirated from keeps the liquid type it had (Method31,
+  Method32).
+
 ## Methods and their files
 - A method can be exported as a `.bmf` file, which carries everything needed to run it, or as a
   `.json` file, which carries only the steps and their settings; labware and techniques must already
@@ -221,6 +311,14 @@ The same 24 transfers of 20 µL, from Source A1–H1 into Dest columns 1–3, ke
   *(B56358AF, 13-11.)*
 - Project items (techniques, labware, tip types) are exported separately, as an `.imp` file.
   *(B56358AF, 13-11; chapter 6.)*
+- **The general-purpose method's 792 starting-volume variables were written into an exported
+  `.bmf` file once, by a script** (2026-10-27), and the result imported. A `.bmf` file is a 5-byte
+  header and a zlib stream; its structure is undocumented. A first attempt missed a pair of hidden
+  per-well tables that Biomek sets when volumes are typed in by hand: the method imported and
+  validated, but runs failed with *"Cannot liquid level sense with tip type T230"* (Method6 to
+  Method9; fixed in Method10). The scripts, what was learned about the format, and warnings are in
+  the claude.ai project "Biomek Implementation" (`claude/bmf-scripts/README.md`), not committed.
+  The method is otherwise maintained by hand in Biomek Software.
 
 ## Script steps
 - The Script and Scripted Let steps run VBScript or JScript inside a method, but are "not currently
@@ -274,29 +372,22 @@ The same 24 transfers of 20 µL, from Source A1–H1 into Dest columns 1–3, ke
 ## Not yet known
 Questions to answer before relying on the answer:
 - The largest volume accepted in a volume column.
-- Where exactly the per-well volume export is in the software.
-- Whether a real run behaves like simulation for everything in "Worklist-driven steps", in
-  particular that a technique unsuited to the tip still isn't caught.
-- Whether Transfer From File's source and destination **labware type** can come from variables
-  (e.g. `=SrcType`). If not, a method needs one Transfer From File step per combination of labware
-  types.
-- Whether Transfer From File takes **different variables at its two ends**, e.g. `=SrcTechnique`
-  in the source configuration and `=DestTechnique` in the destination configuration, and the same
-  for liquid type. Only one variable used at both ends (`=Technique`, `=LiquidType`) was tested
-  (2026-10-21).
-- What happens with an **unknown liquid type name** from a variable (`=LiquidType`): whether
-  validation catches it, as it does an unknown technique, or Biomek uses the default liquid type
-  (B56358AF, 9-1) without a warning.
+- Whether a real run behaves like simulation for everything in "Worklist-driven steps" and
+  "Building the general-purpose method", in particular that a technique unsuited to the tip still
+  isn't caught. Method32's rows F and G (OperationMix and Operation, with BC1070 tips) need a real
+  run with BC1070 tips.
+- Whether validation catches a **labware type swapped for another with the same number of wells**
+  (e.g. a Transfer From File step set to BCFlat96 for labware that is BCDeep96Square).
+- How a **prompted variable** behaves apart from its default being used when the method is checked
+  (Method24, Method25).
+- How long Method32 takes on a real run.
+- Whether an air gap that isn't dispensed throws a plunger off its resting position (20), and if so,
+  whether Biomek corrects it. In Method32, probe 1's plunger started at 30, not 20, and Biomek reset
+  it at the first tip change. Possibly left over from an earlier simulated run; watch for it in the
+  next real run.
 - Whether a labware's **type in Instrument Setup** can come from a variable. If not, putting a
   different plate type in a deck position means changing the general-purpose method, whatever the
   tool stores.
-- Whether a worklist row may leave **columns empty that a skipped step uses**: on a tip-change row
-  (ADR 0007, amended 2026-10-26) the If step runs Unload Tips and Load Tips, and the Else step,
-  Transfer From File, is skipped; its columns (file name, technique, liquid type) are empty on that
-  row. To test: a stage worklist with such a row, run through validation and simulation. If
-  Biomek objects, those rows need harmless placeholder values.
-- Whether a **reservoir's** per-trough starting volumes can come from variables in Show Well
-  Properties, as plate wells can (test 8).
 - Whether **8 probes can draw from one reservoir trough** at the same time in Transfer From File.
 - Whether a technique's **dispense touches the liquid** already in the destination well, for
   example because of its dispense height. A tip that touches the liquid can carry it to later wells
