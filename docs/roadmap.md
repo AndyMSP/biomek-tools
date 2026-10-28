@@ -144,9 +144,9 @@ Last updated: 2026-10-28
   `C:\Users\Beckman Coulter\Desktop\Ento\` (`config/paths.js`), named by a timestamp and the
   experiment name; plans with overdraws are refused. Not built yet.
 - **Decided: tip groups move to a shared module, `tip-groups`** (Andy, 2026-10-28), so the transfer
-  designer and the file writer use one function. Its specification comes next; Claude Code then
-  builds `tip-groups` (moving the function and its tests, with no change in behavior), then the file
-  writer.
+  designer and the file writer use one function. Its specification is written (Draft, 2026-10-28;
+  `src/shared/tip-groups/tip-groups.md`). Next, Claude Code builds `tip-groups` (moving the function
+  and its tests, with no change in behavior), then the file writer.
 - **Decided: the randomizer link joins v0.2.0** (Andy, 2026-10-27; item 9, below).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
