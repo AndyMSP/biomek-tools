@@ -1,7 +1,9 @@
 // file-writer.js — turns a plan (docs/glossary.md) into the files the general-purpose method runs
 // (ADR 0007): the setup worklist (Setup.csv), the stage worklist (Stages.csv) and one Transfer From
 // File file per substage. It makes only the files' names and text; the caller saves them, all in
-// one folder named by the timestamp and the experiment name, inside BASE_FOLDER on the Biomek PC.
+// one folder named by the timestamp and the plan's experiment name, inside BASE_FOLDER on the
+// Biomek PC. The name comes from the plan, not as a separate input, so the files can never be named
+// after something other than the plan they hold (Andy, 2026-10-28).
 //
 // It's shared because each tool builds its own plan: the transfer designer now, the randomizer's
 // link to the Biomek later. It never reads the clock (the caller gives the timestamp), saves
@@ -49,7 +51,14 @@ const TRANSFER_FILE_COLUMNS = ["SourceLabware", "SourceWell", "DestLabware", "De
 
 // The parts of a plan the file writer reads. A plan has more (components, labware labels), which it
 // doesn't use, so it doesn't ask for them.
-const PLAN_PARTS = ["startingContents", "operationList", "stageList", "stageOrder", "tipChanges"];
+const PLAN_PARTS = [
+  "startingContents",
+  "operationList",
+  "stageList",
+  "stageOrder",
+  "tipChanges",
+  "experimentName",
+];
 
 // The experiment name's limit (Andy, 2026-10-28): it keeps every path well under Windows' limit of
 // 260 characters for a path.
@@ -76,21 +85,22 @@ const LINE_ENDING = "\r\n";
 
 // --- The interface ---
 
-// The files for one run of `plan`, as { folderName, files }: the folder's name (folderNameFor) and
-// the files, each { name, text }, in this order: Setup.csv, Stages.csv, then the Transfer From File
-// files in the order Stages.csv names them. The caller saves them in that folder inside
-// BASE_FOLDER. Checks, in this order, the experiment name, the timestamp, then the plan (its form,
-// whether it has transfers, then each stage with transfers in stage order: its place, its
-// overdraws, its volumes), and throws at the first problem, returning nothing, so a refused plan
-// gets no files.
-// e.g. writeRunFiles(plan, "Exp36", new Date(2026, 9, 28, 1, 57, 32)).folderName
-//      → "2026-10-28_015732_Exp36"
-export function writeRunFiles(plan, experimentName, timestamp) {
-  const folderName = folderNameFor(timestamp, experimentName);
+// The files for one run of `plan`, as { folderName, files }: the folder's name (folderNameFor, from
+// the timestamp and the plan's experiment name) and the files, each { name, text }, in this order:
+// Setup.csv, Stages.csv, then the Transfer From File files in the order Stages.csv names them. The
+// caller saves them in that folder inside BASE_FOLDER. Checks, in this order, the timestamp, then
+// the plan (its form, its experiment name, whether it has transfers, then each stage with transfers
+// in stage order: its place, its overdraws, its volumes), and throws at the first problem,
+// returning nothing, so a refused plan gets no files.
+// e.g. with plan.experimentName "Exp36",
+//      writeRunFiles(plan, new Date(2026, 9, 28, 1, 57, 32)).folderName → "2026-10-28_015732_Exp36"
+export function writeRunFiles(plan, timestamp) {
+  checkTimestamp(timestamp);
   checkPlan(plan);
   const stages = stagesWithTransfers(plan);
   checkStages(plan, stages);
 
+  const folderName = folderNameFor(timestamp, plan.experimentName);
   const folderPath = `${BASE_FOLDER}${folderName}\\`;
   const stagesWithSubstages = stages.map((stage) => ({ ...stage, substages: substagesOf(stage) }));
   // Tip groups follow the stage order and each holds consecutive stages, so the Transfer From File
@@ -159,15 +169,36 @@ function checkTimestamp(timestamp) {
   }
 }
 
-// Throws if `plan` isn't an object holding the parts the file writer reads (PLAN_PARTS), then if it
-// has no transfers. The parts themselves aren't checked again: a plan is made only through the
-// transfer designer's checks.
+// Throws at the first problem with `plan`, checking in this order its form, its experiment name,
+// then whether it has transfers. Its other parts aren't checked again: a plan is made only through
+// the transfer designer's checks.
 function checkPlan(plan) {
+  checkPlanForm(plan);
+  checkPlanName(plan);
+  checkPlanHasTransfers(plan);
+}
+
+// Throws if `plan` isn't an object holding the parts the file writer reads (PLAN_PARTS).
+function checkPlanForm(plan) {
   if (!isObject(plan) || findMissingProperties(plan, PLAN_PARTS).length > 0) {
     throw new Error(
       `The plan must be an object like the transfer designer makes, but got ${describeValue(plan)}.`,
     );
   }
+}
+
+// Throws if `plan` has no experiment name ("", which every new plan starts with), then if its name
+// isn't a valid one (checkExperimentName). The folder is named after it, so a plan can't be
+// written without one.
+function checkPlanName(plan) {
+  if (plan.experimentName === "") {
+    throw new Error("Name the experiment first: the files' folder is named after it.");
+  }
+  checkExperimentName(plan.experimentName);
+}
+
+// Throws if `plan` has no transfers: there would be nothing to write.
+function checkPlanHasTransfers(plan) {
   if (plan.operationList.listOperations().length === 0) {
     throw new Error(
       "There's nothing to write: the plan has no transfers. Add transfers to a stage first.",
