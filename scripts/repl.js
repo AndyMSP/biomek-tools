@@ -35,6 +35,7 @@ import {
   checkExperimentName,
   folderNameFor,
 } from "../src/shared/file-writer/file-writer.js";
+import { zipFiles, crc32 } from "../src/shared/zip/zip.js";
 import {
   findProblems,
   placeName,
@@ -265,6 +266,19 @@ const TOPICS = {
       "console.log(run.files[1].text)",
       "console.log(run.files[2].text)",
       'writeRunFiles(emptyPlan().plan, "Exp36", new Date())',
+    ],
+  },
+  zip: {
+    loaded: { zipFiles, crc32 },
+    examples: [
+      'crc32(new TextEncoder().encode("123456789")).toString(16)',
+      "crc32(new Uint8Array(0))",
+      'const zipBytes = zipFiles([{ name: "Run/Setup.csv", text: "a,b\\r\\n1,2\\r\\n" }, { name: "Run/Stages.csv", text: "x\\r\\n" }], new Date(2026, 9, 28, 1, 57, 32))',
+      "zipBytes.length",
+      "String.fromCharCode(...zipBytes.slice(0, 2))",
+      "Buffer.from(zipBytes).toString(\"hex\").match(/../g).join(\" \")",
+      'zipFiles([{ name: "Run\\\\Setup.csv", text: "" }], new Date())',
+      'zipFiles([{ name: "a.csv", text: "" }, { name: "a.csv", text: "" }], new Date())',
     ],
   },
   randomizer: {
