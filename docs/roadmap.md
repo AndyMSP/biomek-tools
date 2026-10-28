@@ -145,6 +145,10 @@ Last updated: 2026-10-28
   experiment name; plans with overdraws are refused. **Built** (#86, 2026-10-28): code and tests,
   and `config/paths.js`. The page's Biomek files button isn't connected yet: how it saves the files
   (one zip, or the browser's folder picker) is still to be decided, and tried in a preview first.
+- **Decided: the Biomek files download as one zip** (Andy, 2026-10-28), holding the run's folder,
+  built by our own small `zip` shared module (stored, uncompressed zips only; no dependency). Tried
+  in a preview on Andy's own computer; still to try on the Biomek PC. The `zip` specification is
+  written (Draft, `src/shared/zip/zip.md`); the page's button comes next.
 - **Decided: tip groups move to a shared module, `tip-groups`** (Andy, 2026-10-28), so the transfer
   designer and the file writer use one function. Its specification is written (Draft, 2026-10-28;
   `src/shared/tip-groups/tip-groups.md`). Next, Claude Code builds `tip-groups` (moving the function
