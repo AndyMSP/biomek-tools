@@ -148,7 +148,9 @@ Last updated: 2026-10-28
 - **Decided: the experiment name is part of the plan** (Andy, 2026-10-28, from the preview):
   shown as the page's heading and edited in place, undone like any edit, and saved in the plan
   file, which goes to format version 2 (version 1 files still open, with no name). Specifications
-  changed: `transfer-designer.md`, `plan-file.md`; new glossary term "Experiment name".
+  changed: `transfer-designer.md`, `plan-file.md`, and `file-writer.md` (`writeRunFiles` now takes
+  the name from the plan, so it's `writeRunFiles(plan, timestamp)`); new glossary term "Experiment
+  name".
 - **Decided: the Biomek files download as one zip** (Andy, 2026-10-28), holding the run's folder,
   built by our own small `zip` shared module (stored, uncompressed zips only; no dependency). Tried
   in a preview on Andy's own computer; still to try on the Biomek PC. The `zip` specification is

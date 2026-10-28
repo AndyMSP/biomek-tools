@@ -12,7 +12,7 @@ runs (ADR 0007): a **setup worklist**, a **stage worklist**, and one **Transfer 
 It is shared because each tool builds its own plan (Andy, 2026-10-27): the transfer designer now,
 and the randomizer's link to the Biomek later (roadmap, v0.2.0 item 9).
 
-Its inputs are a plan, an experiment name, a timestamp, the deck description (through the `deck`
+Its inputs are a plan (with its experiment name), a timestamp, the deck description (through the `deck`
 module) and the paths in `config/` (section 3).
 
 It decides nothing about the plan: the stages, their settings and the tip changes are the plan's.
@@ -50,7 +50,11 @@ Not in version 1:
   - its operation list, for the transfers;
   - its stage list, for each stage's settings;
   - its stage order;
-  - its tip changes.
+  - its tip changes;
+  - its **experiment name** (`docs/glossary.md`; `transfer-designer.md`), for the folder's name. A
+    plan with no name (`""`) is refused (section 5): the folder is named after it. Taking the name
+    from the plan, not as a separate input, means the files can never be named after something
+    other than the plan they hold (Andy, 2026-10-28).
 
   It doesn't use the components' names or colors, or the labware labels.
 
@@ -59,9 +63,10 @@ Not in version 1:
   in the list of stages, which is the number the transfer designer page shows beside it. The two
   needn't match: a stage with ID `"3"` may come second. This specification always says which it
   means.
-- **The experiment name**, typed by the user: letters, digits, hyphens and underscores only, 1 to 40
-  characters (Andy, 2026-10-28). The limit keeps every path well under Windows' 260-character limit
-  for a path.
+- **The rule for an experiment name** is this module's, `checkExperimentName` (section 4): letters,
+  digits, hyphens and underscores only, 1 to 40 characters (Andy, 2026-10-28). The limit keeps every
+  path well under Windows' 260-character limit for a path. The transfer designer checks a plan's
+  name with it, so a plan's name always passes.
 - **A timestamp** (a recorded date and time): when the files are made, given by the caller as a
   JavaScript `Date`, in the computer's local time. The file writer never reads the clock itself, so
   it is a **pure function**: its result depends only on its inputs, and it changes nothing else.
@@ -151,16 +156,17 @@ anything (section 3).
 
 | Function | Takes | Returns | Throws |
 |---|---|---|---|
-| `writeRunFiles(plan, experimentName, timestamp)` | a plan, an experiment name and a timestamp (a `Date`), as in section 3, "Inputs" | `{ folderName, files }`: the folder name, and the files as a list of `{ name, text }`, in this order: `Setup.csv`, `Stages.csv`, then the Transfer From File files in the order `Stages.csv` names them | if the experiment name or timestamp isn't valid, or the plan is refused (section 5); nothing is returned then, so a refused plan gets no files |
+| `writeRunFiles(plan, timestamp)` | a plan (holding its experiment name) and a timestamp (a `Date`), as in section 3, "Inputs" | `{ folderName, files }`: the folder name, and the files as a list of `{ name, text }`, in this order: `Setup.csv`, `Stages.csv`, then the Transfer From File files in the order `Stages.csv` names them | if the timestamp isn't valid, or the plan is refused, including for having no experiment name (section 5); nothing is returned then, so a refused plan gets no files |
 | `checkExperimentName(name)` | any value | nothing | if `name` isn't a valid experiment name (section 3). It's exported so a tool can check a name as the user types it, with the same rule |
 | `folderNameFor(timestamp, experimentName)` | a timestamp and an experiment name | the folder name, e.g. `"2026-10-28_015732_Exp36"` | if either isn't valid |
 
-`writeRunFiles` uses `folderNameFor` and `checkExperimentName`, so a name the page accepted is
-always accepted here.
+`writeRunFiles` uses `folderNameFor` and `checkExperimentName` on the plan's name, so a name the
+page accepted is always accepted here.
 
 Example:
 ```js
-const { folderName, files } = writeRunFiles(plan, "Exp36", new Date(2026, 9, 28, 1, 57, 32));
+// plan.experimentName is "Exp36"
+const { folderName, files } = writeRunFiles(plan, new Date(2026, 9, 28, 1, 57, 32));
 folderName;                       // "2026-10-28_015732_Exp36"
 files.map((file) => file.name);   // ["Setup.csv", "Stages.csv", "Stage01_A.csv", "Stage02_A.csv", "Stage02_B.csv"]
 files[1].text.split("\r\n")[1];   // '1,BC230,"1,2,3,4",,,,,,,,,,,,,,'  (the first tip-change row)
@@ -187,14 +193,16 @@ the transfer designer page shows them, never by their stage ID.
 | The experiment name is longer than 40 characters | `The experiment name is 45 characters long; it can be at most 40.` |
 | The experiment name holds a character other than a letter, digit, hyphen or underscore | `The experiment name can't contain " " (a space). Use only letters, digits, hyphens (-) and underscores (_), e.g. "Exp36_repeat".` It names the first such character; a space is called "a space". |
 | The timestamp isn't a valid `Date` (`folderNameFor`, `writeRunFiles`) | `The timestamp must be a valid date, but got "2026-10-28".` |
-| The plan isn't an object holding `startingContents`, `operationList`, `stageList`, `stageOrder` and `tipChanges` | `The plan must be an object like the transfer designer makes, but got null.` |
+| The plan isn't an object holding `startingContents`, `operationList`, `stageList`, `stageOrder`, `tipChanges` and `experimentName` | `The plan must be an object like the transfer designer makes, but got null.` |
+| The plan has no experiment name (`""`) | `Name the experiment first: the files' folder is named after it.` |
 | The plan has no transfers | `There's nothing to write: the plan has no transfers. Add transfers to a stage first.` |
 | A stage with transfers comes later than 99th in the stage order, so its file name has no room for its place (section 3) | `Stage 104, "Wash", is too far down the list: file names have room for 99 stages. Remove some stages before it.` |
 | A stage has an **overdraw**: a transfer asks a well for more than it holds (`contents-tracking`) (Andy, 2026-10-28) | `Stage 3, "Seeding", has an overdraw: a transfer asks a well for more than it holds. Fix it before writing the files.` |
 | A transfer's volume is 0 once rounded to 3 decimal places, so Biomek would skip it ("Skip zero volume transfers", ADR 0007) | `Stage 2, "Media", has a transfer of 0.0004 µL, which is 0 µL to 3 decimal places, so the Biomek would skip it. Use at least 0.001 µL.` |
 
-**Order of checks.** The experiment name, then the timestamp, then the plan. For the plan: its
-form, then whether it has transfers, then the stages in stage order, each checked for its place,
+**Order of checks.** For `writeRunFiles`: the timestamp, then the plan: its form (including that it
+holds `experimentName`), then its experiment name (none, then `checkExperimentName`), then whether
+it has transfers, then the stages in stage order, each checked for its place,
 then its overdraws, then its volumes. The first problem found is reported, and no files are
 returned.
 
@@ -275,8 +283,10 @@ still pass when the deck changes (as `deck.test.js` does).
   plan; a stage at place 100 with transfers; a stage with an overdraw (named by place and name); a
   transfer of `0.0004` µL.
 - A stage at place 100 *without* transfers is accepted (it isn't written).
-- Order of checks: a bad experiment name with a bad plan reports the name; a plan with no
-  transfers and a bad timestamp reports the timestamp; a plan with an overdraw in stage 4 and a
+- A plan with no experiment name gives its message, with no files.
+- Order of checks: a bad timestamp with a plan with no name reports the timestamp; a plan with no
+  name and no transfers reports the name; a plan with no transfers and a bad timestamp reports the
+  timestamp; a plan with an overdraw in stage 4 and a
   zero-rounding volume in stage 2 reports stage 2's.
 
 **Purity**
@@ -297,14 +307,14 @@ mistake no part-by-part test thought of still shows (Andy, 2026-10-28). There ar
   wouldn't be Exp37.
 
 Each is saved in `tests/fixtures/` as the files the writer made, the plan they came from (a plan
-file, `plan-file.md`), and the experiment name and timestamp used. **It is saved only after its
+file, `plan-file.md`, which holds the experiment name), and the timestamp used. **It is saved only after its
 files have run correctly on the Biomek,** in simulation and then for real, with the Finish step's
 report checked; the fixture records which runs (method name and date) verified it. The files are
 copied in by hand, exactly as they ran. No test or script creates or rewrites them, and they are
 never edited to make a test pass (CLAUDE.md, "Testing").
 
 The test, for each golden file: open its plan file (`planFromText`), call `writeRunFiles` with its
-experiment name and timestamp, and check that it gives the same folder name, the same file names
+timestamp, and check that it gives the same folder name, the same file names
 in the same order, and each file's text identical to its golden file, character for character.
 Nothing is written to disk: the writer returns the files in memory, and the test only reads the
 fixtures.
