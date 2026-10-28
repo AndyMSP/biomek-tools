@@ -148,7 +148,8 @@ columns:
   step whose dropdowns name the wrong labware types might not be caught if the wrong type has the
   same number of wells (`biomek.md`, "Not yet known"), so each step's labware types are checked by
   eye when the method is built or edited.
-- Liquid types can't be set on wells in Instrument Setup, only per stage in Transfer From File.
+- Liquid types in Instrument Setup can't come from variables (the field takes the text literally;
+  `biomek.md`), so the tool sets liquid types only per stage, in Transfer From File.
 - A stage is the unit for settings: transfers that differ in technique or liquid type, at either
   end, or in probes go in different stages (and, once the tool offers mixing, in how they mix). Labware types don't separate stages, since
   the file writer splits a stage into substages; tip type doesn't either, since it belongs to tip
