@@ -21,7 +21,7 @@ Beside it in this tool are two other logic modules, `plan-history` (undo and red
 
 ## 2. Scope
 Version 1 creates an empty plan; adds, removes and changes stages, transfers, tip changes,
-components, starting contents and labware labels; and answers questions about a plan: its stage
+components, starting contents, labware labels and the experiment name; and answers questions about a plan: its stage
 order, its tip groups, the stages with an overdraw, where each stage ends, and
 the labware it uses.
 
@@ -56,6 +56,7 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   stageOrder:       ["1", "3", "2"],
   tipChanges:       { start: { tipType: "BC1070" }, "2": { tipType: "BC230" } },
   labwareLabels:    { Plate: "Assay plate" },
+  experimentName:   "Exp36",
 }
 ```
 
@@ -80,6 +81,11 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
 - **`labwareLabels`**: the label the user gave each labware (`docs/glossary.md`, "Labware label"),
   by the labware's name in the deck description. A labware without one is labelled by that name.
   No two labware have the same label.
+- **`experimentName`**: the experiment's name (`docs/glossary.md`, "Experiment name"), or `""`
+  until the user gives one (Andy, 2026-10-28). A name follows the file writer's rule,
+  `checkExperimentName` (`file-writer.md`): letters, digits, hyphens and underscores, 1 to 40
+  characters. It's part of the plan, so renaming is an edit like any other: undone and redone, kept
+  in the browser copy, and saved in the plan file (`plan-file.md`).
 
 ### Stage order
 The **stage order** is the order of all the plan's stages, with or without transfers: the order a
@@ -200,7 +206,8 @@ given; "returns the plan with …" means a new plan.
 **Plans**
 | Function | Returns |
 |---|---|
-| `emptyPlan()` | `{ plan, stageId }`: a plan with no components, starting contents, transfers or labels, one stage (`NEW_STAGE_NAME`, default settings), and `START` tips of the first tip type; and that stage's ID. |
+| `emptyPlan()` | `{ plan, stageId }`: a plan with no components, starting contents, transfers or labels, no experiment name (`""`), one stage (`NEW_STAGE_NAME`, default settings), and `START` tips of the first tip type; and that stage's ID. |
+| `setExperimentName(plan, name)` | the plan with the experiment called `name`, its spaces at the ends removed; `""` (or only spaces) gives no name. Throws if `name` isn't text, or isn't a valid experiment name (`checkExperimentName`, `file-writer.md`). An unchanged name gives the same plan back. |
 | `defaultSettings()` | a stage's default settings (section 3, "Stages"). |
 | `probesFor(count)` | the first `count` probes, e.g. `4` → `[1, 2, 3, 4]`. Throws unless `count` is a whole number from 1 to 8. |
 
@@ -298,6 +305,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setLabels`: a label is blank | `The label for Plate is blank. A labware without a label is left out of the labels.` |
 | `setLabels`: a label has spaces at its ends | `The label for Plate, " Assay plate", has spaces at the start or end. Remove them.` |
 | `setLabels`: a label is its own labware's name | `The label for Plate is its own name. A labware without a label is left out of the labels.` |
+| `setExperimentName`: `name` isn't text, or isn't a valid experiment name | `checkExperimentName`'s messages (`file-writer.md`, section 5), unchanged, e.g. `The experiment name can't contain " " (a space). …` |
 | `setLabels`: two labware would show one label | `Plate and Deep would both show as "Drug plate". Give each labware a different label.` (the pair in the deck's order) |
 
 **Order of checks.** The first problem found is reported:
@@ -333,7 +341,10 @@ order of checks.
 - `defaultSettings()` gives `DEFAULT_PIPETTING_MODE`'s technique and liquid type at both ends,
   and probes 1 to 8.
 - `emptyPlan()` gives one stage named `NEW_STAGE_NAME` with default settings, `START` tips of the
-  first tip type, and nothing else; its `stageId` is that stage.
+  first tip type, an experiment name of `""`, and nothing else; its `stageId` is that stage.
+- `setExperimentName` sets `"Exp36"`; trims `" Exp36 "` to `"Exp36"`; `""` and `"  "` remove the
+  name; giving the name it already has returns the same plan; `5`, `"Exp 36"` and a name of 41
+  characters throw with `checkExperimentName`'s messages, leaving the plan unchanged.
 - `probesFor` gives `[1]` for 1 and all eight for 8; 0, 9, 2.5 and `"4"` throw.
 - `modeSettings` and `modeOf` round-trip every mode at every end it allows; a mode not allowed at an
   end throws; settings matching no mode give `null`.

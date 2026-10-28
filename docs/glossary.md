@@ -8,6 +8,12 @@ A liquid the user names in a plan, such as "Media" or "Drug_A", each with its ow
 it. A plan's starting contents say how much of each component every well holds; contents tracking
 then follows the components through the transfers. Two components never share a name or a color.
 
+**Experiment name**
+The name the user gives a plan's experiment, such as "Exp36": the transfer designer page's heading,
+and the end of the name of each run's folder of Biomek files (`file-writer.md`). It's part of the
+plan, saved with it. Letters, digits, hyphens and underscores only, 1 to 40 characters; a new plan
+has none until the user gives one.
+
 **Labware label**
 The name the user gives one labware on the deck, such as "Drug plate", shown wherever the page
 names that labware. Until the user gives one, the label is the labware's name in the deck
@@ -22,9 +28,9 @@ needn't match the liquid moved: it sets things such as syringe speeds, so it's p
 pipette. Some pipetting modes suit only one end; Non-Contact, for example, is for dispensing only.
 
 **Plan**
-Everything the tools hold about one experiment's liquid handling: its components, its starting
-contents (what each well holds before the run), its operation list, its stage list, its tip changes
-and its labware labels. The transfer designer builds a plan, and the file writer turns it into the
+Everything the tools hold about one experiment's liquid handling: its experiment name, its
+components, its starting contents (what each well holds before the run), its operation list, its
+stage list, its tip changes and its labware labels. The transfer designer builds a plan, and the file writer turns it into the
 files the Biomek runs. A plan isn't a Biomek method: the general-purpose method stays the same for
 every plan (ADR 0006, ADR 0007).
 
