@@ -51,7 +51,7 @@ export function emptyPlan() {
 }
 
 // A stage's default settings: DEFAULT_PIPETTING_MODE at both ends, and all eight probes, e.g.
-// { sourceTechnique: "StandIn_Medium", sourceLiquidType: "Water", destinationTechnique: …,
+// { sourceTechnique: "Operation", sourceLiquidType: "Medium", destinationTechnique: …,
 //   destinationLiquidType: …, probes: [1, 2, 3, 4, 5, 6, 7, 8] }. A new object each time.
 export function defaultSettings() {
   return {
@@ -83,7 +83,7 @@ export function modesFor(end) {
 }
 
 // The settings the mode called `name` gives at `end`, e.g. ("source", "Slow") →
-// { sourceTechnique: "StandIn_Slow", sourceLiquidType: "Cells" }. Throws if there's no such mode
+// { sourceTechnique: "Operation", sourceLiquidType: "Slow" }. Throws if there's no such mode
 // for that end, naming the modes there are.
 export function modeSettings(end, name) {
   const modes = modesFor(end);

@@ -2,8 +2,8 @@
 // transfer-designer.md, and each row of its error table and each order of checks has one.
 //
 // They use the real config/pipetting-modes.js, config/tip-types.js and config/deck.js, and also check
-// the first two (ADR 0009). Their names are stand-ins for now, so tests find what they need in the
-// config files rather than naming it.
+// the first two (ADR 0009). Tests find what they need in the config files rather than naming it, so
+// they still pass when the configuration changes.
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";

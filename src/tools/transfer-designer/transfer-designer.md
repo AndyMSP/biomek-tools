@@ -180,14 +180,14 @@ overdraw** if any of its transfers is one (but see "Not in version 1").
 Two files in `config/` (ADR 0009), which this module's tests check:
 - **`config/pipetting-modes.js`** exports `PIPETTING_MODES`: a list of
   `{ name, technique, liquidType, ends }`, e.g.
-  `{ name: "Slow", technique: "StandIn_Slow", liquidType: "Cells", ends: ["source", "destination"] }`.
+  `{ name: "Slow", technique: "Operation", liquidType: "Slow", ends: ["source", "destination"] }`.
   `name`, `technique` and `liquidType` are names; `liquidType` also follows Biomek's rule for liquid
   type names (letters, digits and underscores, starting with a letter; B56358AF, 9-4); `ends` is a
   non-empty list of `"source"` and `"destination"`, each at most once. No two modes share a name;
   no two modes for one end share both technique and liquid type (or reading a stage's mode back
   would be ambiguous); and each end has at least one mode. It replaces `config/techniques.js` and
   `config/liquid-types.js`, which are removed (Andy, 2026-10-26: each name is then written once).
-  The names are stand-ins until checked in Biomek Software (roadmap, "Technical debt").
+  The names are the ones used in the general-purpose method (`biomek.md`, 2026-10-27).
   It also exports `DEFAULT_PIPETTING_MODE`, the name of the mode a new plan's stage uses at both
   ends, e.g. `"Medium"`; it must be a mode usable at both ends.
 - **`config/tip-types.js`** exports `TIP_TYPES`: a non-empty list of tip type names, e.g.
@@ -208,7 +208,7 @@ given; "returns the plan with …" means a new plan.
 | Function | Returns |
 |---|---|
 | `modesFor(end)` | the pipetting modes usable at `end` (`"source"` or `"destination"`), in `config/` order. |
-| `modeSettings(end, name)` | the settings for that mode at that end, e.g. `("source", "Slow")` → `{ sourceTechnique: "StandIn_Slow", sourceLiquidType: "Cells" }`. Throws if there's no such mode for that end. |
+| `modeSettings(end, name)` | the settings for that mode at that end, e.g. `("source", "Slow")` → `{ sourceTechnique: "Operation", sourceLiquidType: "Slow" }`. Throws if there's no such mode for that end. |
 | `modeOf(end, settings)` | the name of the mode that a stage's `settings` use at `end`, or `null` if none matches. |
 
 **Stages**

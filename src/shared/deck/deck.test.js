@@ -1,7 +1,8 @@
 // Unit tests for deck.js. Each test comes from the "Test cases" section of deck.md.
 //
-// They use the real config/deck.js, and also check that file (ADR 0009). Its names are stand-ins for
-// now, so where a test needs a labware of a given grid, it finds one in DECK rather than naming it.
+// They use the real config/deck.js, and also check that file (ADR 0009). Where a test needs a
+// labware of a given grid, it finds one in DECK rather than naming it, so the tests still pass when
+// the deck changes.
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";

@@ -12,17 +12,17 @@
 // The menus list the modes in this order. Data only (ADR 0009). The transfer-designer module's tests
 // check this file (transfer-designer.md, "Configuration").
 //
-// STAND-IN: the technique and liquid type names below haven't been checked against Biomek Software.
-// Replace them with the real names from its Technique Browser and Liquid Type Editor before the
-// first run (roadmap, "Technical debt"). Techniques aren't checked against tip types yet: choose
-// one that suits the stage's tips.
+// The lab's modes (Andy, 2026-10-27), with the technique and liquid type names used in the
+// general-purpose method on 2026-10-27 (docs/domain/biomek.md, "Building the general-purpose
+// method"). Techniques aren't checked against tip types yet: choose one that suits the stage's tips
+// (roadmap, "Technical debt").
 
 export const PIPETTING_MODES = [
-  { name: "Fast", technique: "StandIn_Fast", liquidType: "Water", ends: ["source", "destination"] },
-  { name: "Medium", technique: "StandIn_Medium", liquidType: "Water", ends: ["source", "destination"] },
-  { name: "Slow", technique: "StandIn_Slow", liquidType: "Cells", ends: ["source", "destination"] },
+  { name: "Slow", technique: "Operation", liquidType: "Slow", ends: ["source", "destination"] },
+  { name: "Medium", technique: "Operation", liquidType: "Medium", ends: ["source", "destination"] },
+  { name: "Fast", technique: "Operation", liquidType: "Fast", ends: ["source", "destination"] },
   // For dispensing only (docs/glossary.md, "Pipetting mode").
-  { name: "Non-Contact", technique: "StandIn_NonContact", liquidType: "Water", ends: ["destination"] },
+  { name: "Non-Contact", technique: "NonContact", liquidType: "Medium", ends: ["destination"] },
 ];
 
 export const DEFAULT_PIPETTING_MODE = "Medium";
