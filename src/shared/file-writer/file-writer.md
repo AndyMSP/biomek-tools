@@ -1,8 +1,8 @@
 # file-writer — specification
 
 > **Draft (2026-10-28).** Written for v0.2.0, from ADR 0007 and the general-purpose method as built
-> and tested on 2026-10-27 (`docs/domain/biomek.md`). Sections 5 (Errors) and 6 (Test
-> cases) are still to be written. It becomes Final once its code is built and the files it
+> and tested on 2026-10-27 (`docs/domain/biomek.md`). Section 6 (Test cases) is still to be
+> written. It becomes Final once its code is built and the files it
 > writes have run on the Biomek.
 
 ## 1. Purpose
@@ -101,6 +101,8 @@ A header row with the 17 columns of ADR 0007, then one row per tip change or sub
 - **A tip-change row** (`NewTip` 1) comes before each tip group (`docs/glossary.md`) that has stages
   with transfers. It gives `TipType`, the tip change's tip type, and `LoadProbes`, every probe that
   any stage in the group uses, in ascending order, e.g. `1,2,3,4` (look-ahead loading, ADR 0007).
+  Tip groups and their probes are worked out by the `tip-groups` shared module, which the transfer
+  designer uses too (Andy, 2026-10-28), so both always agree.
   Its other columns are empty. A tip group whose stages have no transfers gets no row, so no tips
   are loaded for nothing.
 - **Then one transfer row per substage** (`NewTip` 0), for each stage with transfers, in stage order
@@ -173,3 +175,30 @@ This module's tests check it: it's text; it starts with a drive letter, a colon 
 (`C:\`); it ends with a backslash; and it holds none of the characters Windows refuses in a path
 (`/ * ? " < > |`, or a colon after the drive letter) and no comma, which would split a field
 (section 3, "How values are written").
+
+## 5. Errors
+Each message says what's wrong and how to fix it. Values are shown with `describeValue`
+(`error-messages` module). Stages are named by their place in the stage order and their name, as
+the transfer designer page shows them, never by their stage ID.
+
+| Problem | Message |
+|---|---|
+| The experiment name isn't text (`checkExperimentName`, `folderNameFor`, `writeRunFiles`) | `The experiment name must be text, like "Exp36", but got 5.` |
+| The experiment name is blank | `Type an experiment name, such as "Exp36".` |
+| The experiment name is longer than 40 characters | `The experiment name is 45 characters long; it can be at most 40.` |
+| The experiment name holds a character other than a letter, digit, hyphen or underscore | `The experiment name can't contain " " (a space). Use only letters, digits, hyphens (-) and underscores (_), e.g. "Exp36_repeat".` It names the first such character; a space is called "a space". |
+| The timestamp isn't a valid `Date` (`folderNameFor`, `writeRunFiles`) | `The timestamp must be a valid date, but got "2026-10-28".` |
+| The plan isn't an object holding `startingContents`, `operationList`, `stageList`, `stageOrder` and `tipChanges` | `The plan must be an object like the transfer designer makes, but got null.` |
+| The plan has no transfers | `There's nothing to write: the plan has no transfers. Add transfers to a stage first.` |
+| A stage with transfers comes later than 99th in the stage order, so its file name has no room for its place (section 3) | `Stage 104, "Wash", is too far down the list: file names have room for 99 stages. Remove some stages before it.` |
+| A stage has an **overdraw**: a transfer asks a well for more than it holds (`contents-tracking`) (Andy, 2026-10-28) | `Stage 3, "Seeding", has an overdraw: a transfer asks a well for more than it holds. Fix it before writing the files.` |
+| A transfer's volume is 0 once rounded to 3 decimal places, so Biomek would skip it ("Skip zero volume transfers", ADR 0007) | `Stage 2, "Media", has a transfer of 0.0004 µL, which is 0 µL to 3 decimal places, so the Biomek would skip it. Use at least 0.001 µL.` |
+
+**Order of checks.** The experiment name, then the timestamp, then the plan. For the plan: its
+form, then whether it has transfers, then the stages in stage order, each checked for its place,
+then its overdraws, then its volumes. The first problem found is reported, and no files are
+returned.
+
+Problems the plan's own modules already prevent (a well not on the deck, a stage's settings that
+aren't valid) aren't checked again: the plan is made only through their checks
+(`transfer-designer.md`).
