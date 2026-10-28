@@ -201,7 +201,9 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
 8. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
    deck. *Built and tested 2026-10-27* (`biomek.md`, "Building the general-purpose method"); the
    tests planned to run first are answered there, except whether 8 probes can draw from one trough
-   together. Still to do: the tool's own files in simulation, then one real run with water.
+   together. Still to do: the tool's own files in simulation, then one real run with water. The
+   files of a run that worked are kept as the file writer's golden files (`file-writer.md`,
+   "Golden files"): a coverage plan first, Exp37 once plans can hold mixing.
 9. **The randomizer link** (Andy, 2026-10-27, moved from "Later"): Biomek output for the
    randomizer, one transfer per replicate from each condition's source (see "Biomek output for the
    randomizer").
