@@ -11,6 +11,7 @@ import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetti
 import { TIP_TYPES } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
 import { checkName } from "../../shared/input-checks/input-checks.js";
+import { tipGroups as sharedTipGroups } from "../../shared/tip-groups/tip-groups.js";
 import {
   NEW_STAGE_NAME,
   START,
@@ -610,17 +611,14 @@ describe("transfer-designer", () => {
 
   // --- Tip changes ---
 
-  test("tipGroups: two groups, each loading every probe its stages use", () => {
+  test("tipGroups re-exported from this module gives the same groups as the shared module's", () => {
+    // tipGroups and START themselves are tested in tip-groups.test.js (tip-groups.md).
     let plan = planWithStages(4);
-    const probesOfStages = { 1: [1, 2], 2: [1, 2, 3, 4], 3: [1], 4: [3, 5] };
-    for (const [id, probes] of Object.entries(probesOfStages)) {
-      plan = changeStageSettings(plan, id, { ...defaultSettings(), probes });
-    }
+    plan = changeStageSettings(plan, "2", { ...defaultSettings(), probes: [1, 2, 3, 4] });
     plan = addTipChange(plan, "3");
-    assert.deepEqual(tipGroups(plan), [
-      { key: START, tipType: TIP_TYPES[0], stages: ["1", "2"], probes: [1, 2, 3, 4] },
-      { key: "3", tipType: TIP_TYPES[0], stages: ["3", "4"], probes: [1, 3, 5] },
-    ]);
+    plan = setTipType(plan, "3", TIP_TYPES.at(-1));
+    assert.deepEqual(tipGroups(plan), sharedTipGroups(plan));
+    assert.equal(tipGroups(plan).length, 2);
   });
 
   test("addTipChange takes the tip type in use", () => {

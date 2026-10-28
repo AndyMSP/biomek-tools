@@ -29,6 +29,7 @@ import {
   checkWell,
   wellsInBox,
 } from "../src/shared/deck/deck.js";
+import { START, tipGroups } from "../src/shared/tip-groups/tip-groups.js";
 import {
   findProblems,
   placeName,
@@ -44,7 +45,6 @@ import {
 import { PlanHistory } from "../src/tools/transfer-designer/plan-history.js";
 import {
   NEW_STAGE_NAME,
-  START,
   emptyPlan,
   defaultSettings,
   probesFor,
@@ -69,7 +69,6 @@ import {
   addTipChange,
   setTipType,
   removeTipChange,
-  tipGroups,
   addComponent,
   renameComponent,
   setComponentColor,
@@ -232,6 +231,19 @@ const TOPICS = {
       'checkWell({ labware: "Res", well: "13" })',
     ],
   },
+  "tip-groups": {
+    loaded: { START, tipGroups },
+    examples: [
+      "START",
+      'const tipSettings = { sourceTechnique: "Aspirate_Slow", sourceLiquidType: "Cells", destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells", probes: [1, 2] }',
+      'let tipStages = new StageList().add("Seeding", tipSettings).stageList',
+      'tipStages = tipStages.add("Treatment", { ...tipSettings, probes: [3, 5] }).stageList',
+      'tipStages = tipStages.add("Wash", { ...tipSettings, probes: [8, 1] }).stageList',
+      'const tipPlan = { stageOrder: ["1", "2", "3"], tipChanges: { [START]: { tipType: "BC230" }, "3": { tipType: "BC1070" } }, stageList: tipStages }',
+      "tipGroups(tipPlan)",
+      'tipGroups({ ...tipPlan, stageOrder: ["1", "3", "2"], tipChanges: { [START]: { tipType: "BC230" }, "2": { tipType: "BC1070" } } })',
+    ],
+  },
   randomizer: {
     loaded: {
       findProblems,
@@ -278,7 +290,6 @@ const TOPICS = {
   "transfer-designer": {
     loaded: {
       NEW_STAGE_NAME,
-      START,
       emptyPlan,
       defaultSettings,
       probesFor,
@@ -303,7 +314,6 @@ const TOPICS = {
       addTipChange,
       setTipType,
       removeTipChange,
-      tipGroups,
       addComponent,
       renameComponent,
       setComponentColor,
