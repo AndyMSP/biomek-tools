@@ -3,19 +3,19 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-27
+Last updated: 2026-10-28
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
   starting with 0 mean it may still change, for example to work with the next tool.
-- **Proposed: ADR 0006** (amending ADR 0005): the tool defines the whole method. Experiments run as
-  a worklist the tool writes, for **one general-purpose method** built once in Biomek Software, whose
-  steps take their settings from the worklist's columns. Andy is asking Beckman whether they offer a
+- **Accepted: ADR 0006** (amending ADR 0005) **and ADR 0007** (Andy, 2026-10-28): the tool defines
+  the whole method. Experiments run as files the tool writes, for **one general-purpose method** built
+  once in Biomek Software, whose steps take their settings from the files: a setup worklist, a stage
+  worklist, and one Transfer From File file per substage. Andy is asking Beckman whether they offer a
   programming interface (API).
 - **Tested in simulation, 2026-10-21:** what a worklist row can control (`docs/domain/biomek.md`,
-  "Worklist-driven steps"). Almost everything the tool needs works. ADR 0006 and the new
-  **ADR 0007** (standard deck, setup worklist, one Transfer From File file per stage,
-  look-ahead tip loading) are ready for Andy to accept.
+  "Worklist-driven steps"). Almost everything the tool needs works. These tests shaped
+  **ADR 0007** (standard deck, setup worklist, stage worklist, look-ahead tip loading).
 - **The `operation-list` shared module is built** (code and tests), against its specification
   (`src/shared/operation-list/operation-list.md`).
 - **The `input-checks` shared module is built** (code and tests), against its specification
@@ -50,7 +50,8 @@ Last updated: 2026-10-27
   substage and tip change; plan and stage revised (tips are no longer part of a stage).
 - **ADR 0007 amended (2026-10-26):** a stage may mix labware types, and the file writer splits it
   into substages, one stage-worklist row each; tip changes are stage-worklist rows of their own,
-  chosen by one If step (Then: change tips; Else: Transfer From File).
+  chosen by one If step (Then: change tips; Else: Transfer From File). (The method as built uses
+  separate If steps instead; ADR 0007 was rewritten on 2026-10-27, below.)
 - **`stage-list` specification revised (2026-10-26):** a stage has five settings; `tipType` and
   `changeTipsFirst` are gone, since tips are the plan's tip changes. The code and tests now match:
   five settings, and settings still giving `tipType` or `changeTipsFirst` are refused as extra
@@ -129,6 +130,17 @@ Last updated: 2026-10-27
   source).
 - **The transfer designer page specification is Final** (2026-10-27): Andy tested the build with
   #74 and #75 (`transfer-designer-page.md`).
+- **The general-purpose method is built and tested** (2026-10-27, Method6 to Method32;
+  `biomek.md`, "Building the general-purpose method"): nested worklists, one If step for tip changes
+  and one per pair of labware types (all nine built), a technique and liquid type at each end, and
+  mixing from the stage worklist. Method31 ran for real, Method32 in simulation. **ADR 0007 was
+  rewritten** to describe the method as built (2026-10-27). The method's 792 volume variables were
+  set once by script; the scripts are kept as reference in the claude.ai project
+  (`claude/bmf-scripts/`), not in the repository.
+- **Decided: the file writer** (Andy, 2026-10-27) is a shared module, `src/shared/file-writer/`. It
+  takes a plan, and each tool builds its own plan. Its specification's Purpose and Scope are agreed
+  (2026-10-27, not yet in the repository); the rest comes next. Mixing isn't in its version 1.
+- **Decided: the randomizer link joins v0.2.0** (Andy, 2026-10-27; item 9, below).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -171,31 +183,30 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    undo, because a stage's ID can come back after undo (`stage-list.md`, "IDs"); the page's
    specification says so. It comes before the file writer so that
    building stages on the page can shape the file writer's specification.
-7. **The file writer**: the operation list becomes a setup worklist, a stage worklist and one
-   Transfer From File file per stage (ADR 0007), with look-ahead tip loading and volumes rounded to
-   3 decimal places. It splits each stage into substages, one row each (each Transfer From File
-   file has one source and one destination labware type: Biomek requires it, B56358AF 22-13),
-   looking up each labware's type in the deck description, and writes tip changes as rows of
-   their own (ADR 0007, amended 2026-10-26). It adds the page's button for writing the files.
+7. **The file writer** (`src/shared/file-writer/`): a plan becomes a setup worklist, a stage
+   worklist and one Transfer From File file per substage (ADR 0007), with look-ahead tip loading and
+   volumes rounded to 3 decimal places. It splits each stage into substages, one row each (each
+   Transfer From File file has one source and one destination labware type: Biomek requires it,
+   B56358AF 22-13), looking up each labware's type in the deck description, and writes tip changes
+   as rows of their own (ADR 0007). It adds the page's button for writing the files.
 8. **The general-purpose method** built on the Biomek (ADR 0007), with a reservoir on the standard
-   deck; the tool's own files run in simulation, then one real run with water. Tests to run first
-   (see "Not yet known" in `biomek.md`): labware types from variables in Transfer From File (if not,
-   one Transfer From File step per combination of labware types, chosen by If steps); per-trough
-   starting volumes from the setup file; 8 probes drawing from one trough together; and what
-   Biomek does with an unknown liquid type name from `=LiquidType`; and separate technique and
-   liquid type variables in Transfer From File's source and destination configurations; and empty
-   transfer columns on tip-change rows.
+   deck. *Built and tested 2026-10-27* (`biomek.md`, "Building the general-purpose method"); the
+   tests planned to run first are answered there, except whether 8 probes can draw from one trough
+   together. Still to do: the tool's own files in simulation, then one real run with water.
+9. **The randomizer link** (Andy, 2026-10-27, moved from "Later"): Biomek output for the
+   randomizer, one transfer per replicate from each condition's source (see "Biomek output for the
+   randomizer").
 
 Rough schedule: Friday 1 to 7 if time allows; Saturday the rest; Sunday 8, at the Biomek. Setting up a volume
 variable for every well of the standard deck is slow clicking work, so leave time for it.
 
 **Later** (after v0.2.0):
-- Mixing (see "Open decisions").
+- Mixing in the transfer designer and the file writer. The general-purpose method supports it now
+  (ADR 0007: before aspirating, after dispensing, and on its own); see "Open decisions".
 - The timeline (see "Contents tracking").
 - Final concentrations.
 - Editing the list further: moving a stage, or a transfer within its stage.
 - Labware types with well capacities, to warn about overfilling.
-- Biomek output for the randomizer (the randomizer link).
 - The full technique table, from the Technique Browser.
 - **Smarter staging:** the tool works out which transfers really depend on each other, reorders the
   independent ones, and forms as few stages as possible, so the user no longer builds stages.
@@ -210,6 +221,12 @@ variable for every well of the standard deck is slow clicking work, so leave tim
   the plan is empty. Perhaps once others in the lab use the tool.
 - **Constituents of a component** (Andy, 2026-10-25): a component made of several things, such as a
   medium with a drug in it. Not designed yet.
+- **A prompted experiment ID** (tried 2026-10-27, Method24 and Method25; `biomek.md`): the method
+  asks for an experiment name when it starts, instead of the user replacing the setup worklist. It
+  worked, but warns differently from the rest, and would need its own testing before it's trusted.
+- **A script that sets the method's volume variables from `config/deck.js`**, for when the deck next
+  changes (2026-10-27). Start from the reference scripts in the claude.ai project
+  (`claude/bmf-scripts/`).
 - **Collapsing tip groups** in the Stages column, for plans with many stages (considered
   2026-10-25, when the column was made to scroll on its own).
 
@@ -224,7 +241,8 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   which replaced the technique and liquid-type lists on 2026-10-26). Properly: the full table.
 - **The pipetting modes' technique and liquid-type names are stand-ins** (v0.2.0, 2026-10-23).
   Before the first run, replace them with the real names from Biomek Software's Technique Browser
-  and Liquid Type Editor.
+  and Liquid Type Editor. (The real ones are now known: Operation and NonContact, with the liquid
+  types Slow, Medium and Fast; `biomek.md`, "Building the general-purpose method".)
 - **Techniques aren't checked against tip types** (v0.2.0, 2026-10-23). The tool treats every
   technique as usable with every tip type. Biomek doesn't check this either (`biomek.md`), so until
   it's built, the user chooses a technique that suits each stage's tips. Properly: each pipetting
@@ -232,8 +250,8 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   (ADR 0007).
 - **The deck description's labware names and types are stand-ins** (v0.2.0, written 2026-10-23
   before checking Biomek Software). Before the first run, replace them with the real names from the
-  general-purpose method and the real labware types from Biomek Software. `Deep2`, a second
-  deep-well plate (added 2026-10-26), also needs a position on the standard deck (ADR 0007).
+  general-purpose method and the real labware types from Biomek Software. (The real deck is now
+  known: Res1 and Res2, Deep1 and Deep2, Plate1 to Plate6; ADR 0007.)
 - **Overdraws within a stage are found in the planned order** (v0.2.0, 2026-10-26). Within a
   stage the Biomek chooses its own order (B56358AF, 22-25), but contents tracking replays the
   planned order. When a stage draws from an overdrawn well more than once, which of its transfers
@@ -319,7 +337,8 @@ Later additions, each as its own change:
 
 ## Biomek output for the randomizer
 *Priority changed on 2026-10-22: v0.2.0 builds the transfer designer first, and the
-randomizer link is under "Later". The shared pieces below are the same.*
+randomizer link is under "Later". Changed again on 2026-10-27: it joins v0.2.0 (item 9). The shared
+pieces below are the same.*
 
 Turn a randomized plate into the files the Biomek runs, so nobody edits Biomek files by hand. In Exp37
 that file-making was the hardest and most error-prone part (`docs/domain/exp37.md`).
@@ -346,7 +365,7 @@ was chosen, with descriptions saved and loaded, so B stays possible as one share
 Generating the method itself was ruled out: its file format isn't documented and Script steps aren't
 supported for end users.
 
-**Proposed: ADR 0006, one general-purpose method, driven by a worklist.** The tool should define the
+**Accepted: ADR 0006, one general-purpose method, driven by a worklist** (2026-10-28). The tool should define the
 whole method, including tip changes. Within the limits above, the plan is one method built once in
 Biomek Software: a Worklist loop whose steps take their settings from the worklist's columns. The
 tool writes the worklist, which becomes the experiment's method. Generating the method's `.json`
@@ -419,12 +438,13 @@ overfilling a well or drawing more than it holds.
   separate Mix step for the Span-8, so it has to be done another way. Options to look at: a transfer
   from a well back into the same well (the operation list already allows this), or a technique's
   mix settings in Transfer From File (Exp37 used "aspirate mix 75 µL × 2"; `exp37.md`). How mixing
-  is represented in the operation list is part of this.
-- **Accept ADR 0006 and ADR 0007?** The simulation tests of 2026-10-21 answered the question
-  ADR 0006 was waiting on (what a worklist row can vary). Andy to decide.
+  is represented in the operation list is part of this. *Decided for the method (2026-10-27, ADR
+  0007):* techniques' mix settings, read from the stage worklist, and a well-to-itself transfer for
+  mixing on its own. Still open: how mixing is shown in a plan and on the page.
 - **Working rule:** each setting is controlled in one place, either the worklist or the
   general-purpose method, never both, so the tool never shows one plan while the Biomek follows
-  another. ADR 0007 puts liquid type, technique, tip type, probes and tip changes in the worklist.
+  another. ADR 0007 puts liquid type, technique, tip type, probes, tip changes and mixing in the
+  worklist.
 - **How operations are checked against labware and techniques**, such as whether a well exists on
   the named labware, a volume fits in it, a technique suits its tip type (Biomek doesn't check this;
   see `biomek.md`). Ideally live, as operations are entered, so a wrong sequence is caught before

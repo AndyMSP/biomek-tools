@@ -3,10 +3,9 @@
 Date: 2026-10-20
 
 ## Status
-Proposed. The plan depended on what a general-purpose method can vary per worklist row. That has now
-been checked, in simulation on 2026-10-21 and by building and testing the method on 2026-10-27
-(`docs/domain/biomek.md`), so it is ready for Andy to accept, together with ADR 0007. Once accepted,
-it amends ADR 0005.
+Accepted (Andy, 2026-10-28), together with ADR 0007. It amends ADR 0005. The plan depended on what a
+general-purpose method can vary per worklist row; that was checked in simulation on 2026-10-21 and by
+building and testing the method on 2026-10-27 (`docs/domain/biomek.md`).
 
 ## Context
 ADR 0005 decided that the tool writes only Transfer From File files, for methods built in Biomek
