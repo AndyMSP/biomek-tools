@@ -6,10 +6,13 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
+// It writes format version 2, which holds the experiment name, and still reads version 1 files
+// (saved before plans had one), which open with no name.
 // Specification: plan-file.md.
 
 import { TIP_TYPES } from "../../../config/tip-types.js";
 import { describeValue } from "../../shared/error-messages/error-messages.js";
+import { checkExperimentName } from "../../shared/file-writer/file-writer.js";
 import {
   isObject,
   findMissingProperties,
@@ -33,20 +36,27 @@ import {
   addTipChange,
   setTipType,
   setLabels,
+  setExperimentName,
 } from "./transfer-designer.js";
 
 // The format name every plan file holds, so a file can be recognized as one.
 export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 
-// The format version. It goes up only when what a plan file holds changes, not with every release
-// of the tools (ADR 0010). Changing it means changing how files are read, so it isn't in config/.
-export const PLAN_FILE_VERSION = 1;
+// The format version written. It goes up only when what a plan file holds changes, not with every
+// release of the tools (ADR 0010). Changing it means changing how files are read, so it isn't in
+// config/. Version 2 (2026-10-28) added the experiment name.
+export const PLAN_FILE_VERSION = 2;
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3).
+// The versions this module can read: the one it writes, and version 1, which every plan saved
+// before 2026-10-28 is.
+const VERSIONS_READ = [PLAN_FILE_VERSION, 1];
+
+// A version 2 plan file's properties, in the order they are written (plan-file.md, section 3).
 const FILE_PROPERTIES = [
   "format",
   "version",
   "savedBy",
+  "experimentName",
   "components",
   "startingContents",
   "stages",
@@ -54,6 +64,9 @@ const FILE_PROPERTIES = [
   "tipChanges",
   "labwareLabels",
 ];
+
+// The properties version 2 added. A version 1 file has every other property, and can't have these.
+const VERSION_2_PROPERTIES = ["experimentName"];
 
 // savedBy is for information only, so a file may leave it out.
 const OPTIONAL_PROPERTIES = ["savedBy"];
@@ -76,6 +89,7 @@ export function planToText(plan, savedBy) {
     format: PLAN_FILE_FORMAT,
     version: PLAN_FILE_VERSION,
     savedBy,
+    experimentName: plan.experimentName,
     components: plan.components,
     startingContents: plan.startingContents,
     // In stage order, so the file needs no separate list of the order (ADR 0011).
@@ -106,7 +120,8 @@ export function planFromText(text) {
   const componentNames = file.components.map((component) => component.name);
   plan = addStartingContents(plan, file.startingContents, componentNames);
   plan = addTipChanges(plan, file.tipChanges, file.stages, added.newIds);
-  return withPlace("labels", () => setLabels(plan, file.labwareLabels));
+  plan = withPlace("labels", () => setLabels(plan, file.labwareLabels));
+  return withExperimentName(plan, file);
 }
 
 // --- Helpers used only inside this module ---
@@ -127,34 +142,46 @@ function readFile(text) {
   return file;
 }
 
-// Checks 2 and 3: throws if `file`'s format isn't PLAN_FILE_FORMAT, then if its version isn't
-// PLAN_FILE_VERSION, saying whether a newer version of the tools saved it.
+// Checks 2 and 3: throws if `file`'s format isn't PLAN_FILE_FORMAT, then if its version isn't one
+// of VERSIONS_READ, saying whether a newer version of the tools saved it.
 function checkFormatAndVersion(file) {
   if (file.format !== PLAN_FILE_FORMAT) {
     refuse("it isn't a transfer plan saved by this tool.");
   }
   const version = file.version;
-  // Number.isInteger is false for anything that isn't a number (such as "1"), and for 1.5.
+  // Number.isInteger is false for anything that isn't a number (such as "2"), and for 1.5.
   if (Number.isInteger(version) && version > PLAN_FILE_VERSION) {
     refuse(
       `it was saved by a newer version of the tools (plan format ${version}). ` +
         "Open it with that version or a later one.",
     );
   }
-  if (version !== PLAN_FILE_VERSION) {
+  if (!VERSIONS_READ.includes(version)) {
     refuse(`its plan format version, ${describeValue(version)}, isn't one this tool knows.`);
   }
 }
 
-// Check 4: throws if `file` is missing a property (all of them are listed), has one a plan file
-// doesn't have (all of them are listed), or has a list or object property of the wrong kind.
+// The properties a plan file of `version` (one of VERSIONS_READ) holds, in the order they are
+// written: a version 1 file has all but the ones version 2 added, e.g. propertiesOfVersion(1) has
+// no "experimentName".
+function propertiesOfVersion(version) {
+  if (version === 1) {
+    return FILE_PROPERTIES.filter((property) => !VERSION_2_PROPERTIES.includes(property));
+  }
+  return FILE_PROPERTIES;
+}
+
+// Check 4: throws if `file` is missing a property of its version (all of them are listed), has one
+// a plan file of its version doesn't have (all of them are listed), or has a list or object property
+// of the wrong kind.
 function checkProperties(file) {
-  const required = FILE_PROPERTIES.filter((property) => !OPTIONAL_PROPERTIES.includes(property));
+  const properties = propertiesOfVersion(file.version);
+  const required = properties.filter((property) => !OPTIONAL_PROPERTIES.includes(property));
   const missing = findMissingProperties(file, required);
   if (missing.length > 0) {
     refuse(`it's missing ${listNames(missing)}.`);
   }
-  const extras = findExtraProperties(file, FILE_PROPERTIES);
+  const extras = findExtraProperties(file, properties);
   if (extras.length > 0) {
     refuse(`it has ${listNames(extras)}, which a plan file doesn't have.`);
   }
@@ -377,6 +404,24 @@ function checkTipChangeKey(key, stages, newIds) {
         `which always starts with the tips at "start".`,
     );
   }
+}
+
+// Check 11: returns the plan with the file's experiment name. A version 1 file has none, so the
+// plan keeps the empty plan's "". For a version 2 file, the name must be "" (no name) or one
+// checkExperimentName accepts, and is then set with setExperimentName. It's never tidied: a name
+// with a space at an end is refused by checkExperimentName here, though setExperimentName on its
+// own would trim it.
+function withExperimentName(plan, file) {
+  if (file.version === 1) {
+    return plan;
+  }
+  const name = file.experimentName;
+  return withPlace("the experiment name", () => {
+    if (name !== "") {
+      checkExperimentName(name);
+    }
+    return setExperimentName(plan, name);
+  });
 }
 
 // True if `value` is an object with exactly the `properties` named, none missing and none extra,
