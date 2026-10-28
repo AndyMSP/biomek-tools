@@ -69,61 +69,63 @@ Not in version 1:
   run's folder goes inside it.
 
 ### Outputs
-- **The folder name:** the timestamp, an underscore, then the experiment name, e.g.
-  `2026-10-28_015732_Exp36`. The timestamp is written year-month-day, an underscore, then hours,
-  minutes and seconds on a 24-hour clock, every part with leading zeros (four digits for the year,
-  two for the rest): 9:07:02 am on 5 January 2026 is `2026-01-05_090702`. This follows **ISO 8601**,
-  the international standard for writing dates and times largest unit first, but with an underscore
-  instead of its `T` and without its colons, which Windows doesn't allow in folder names. Folders
-  then sort by time in Windows Explorer.
-- **The files:** each a file name and its text. The caller puts them all in one folder with the
-  folder name, inside the base folder, so each run's folder holds everything that run used (Andy,
-  2026-10-28).
-- **Absolute paths:** the files refer to each other only by **absolute path**, a path that starts
-  from the drive letter: the base folder, the folder name and the file name, e.g.
-  `C:\Users\Beckman Coulter\Desktop\Ento\2026-10-28_015732_Exp36\Stages.csv`. (A relative path,
-  such as `Stages.csv` on its own, would be read relative to some other folder; the manual always
-  asks for full paths, B56358AF 22-9 and chapter 27.)
+The file writer returns a folder name and the names and contents of the files for that folder. It
+saves nothing: the caller saves the files, all in one folder with that name, inside the base folder,
+so each run's folder holds everything that run used (Andy, 2026-10-28).
 
-### The files
-1. **`Setup.csv`, the setup worklist:** a header row and one data row.
-   - Its first column is `StageWorklist`, holding the absolute path of `Stages.csv`.
-   - Then one column per well on the deck, named `Vol_<labware>_<well>` (e.g. `Vol_Plate1_A1`,
-     `Vol_Res1_5`), labware in the deck's order and wells in their grid's order. Each holds the
-     well's starting volume in µL, or 0 if the well starts empty: every volume variable in the
-     method needs a value.
-2. **`Stages.csv`, the stage worklist:** a header row with the 17 columns of ADR 0007, then one row
-   per tip change or substage, in run order.
-   - **A tip-change row** (`NewTip` 1) comes before each tip group (`docs/glossary.md`) that has
-     stages with transfers. It gives `TipType`, the tip change's tip type, and `LoadProbes`, every
-     probe that any stage in the group uses, in ascending order, e.g. `1,2,3,4` (look-ahead loading,
-     ADR 0007). Its other columns are empty. A tip group whose stages have no transfers gets no row,
-     so no tips are loaded for nothing.
-   - **Then one transfer row per substage** (`NewTip` 0), for each stage with transfers, in stage
-     order (a stage without transfers isn't run; `transfer-designer.md`, "Stage order"). Each row
-     gives:
-     - `TipType`: its tip group's tip type;
-     - `TransferFile`: the absolute path of its Transfer From File file;
-     - `Probes`: the stage's probes, in ascending order;
-     - `SrcTechnique`, `SrcLiquidType`, `DestTechnique` and `DestLiquidType`: the stage's settings;
-     - `SrcLabwareType` and `DestLabwareType`: the substage's labware types, from the deck
-       description;
-     - the six mix columns, empty (section 2).
+#### The folder name
+The timestamp, an underscore, then the experiment name, e.g. `2026-10-28_015732_Exp36`. The
+timestamp is written year-month-day, an underscore, then hours, minutes and seconds on a 24-hour
+clock, every part with leading zeros (four digits for the year, two for the rest): 9:07:02 am on
+5 January 2026 is `2026-01-05_090702`. This follows **ISO 8601**, the international standard for
+writing dates and times largest unit first, but with an underscore instead of its `T` and without
+its colons, which Windows doesn't allow in folder names. Folders then sort by time in Windows
+Explorer.
 
-     `LoadProbes` is empty.
-3. **One Transfer From File file per substage,** named `Stage<n>_<letter>.csv`, e.g.
-   `Stage03_A.csv`.
-   - `<n>` is the stage's place in the stage order, as the transfer designer page numbers stages,
-     written with two digits.
-   - The letters `A`, `B`, … are the stage's substages, in the order their first transfers come in
-     the operation list.
-   - Each file has a header row, `SourceLabware,SourceWell,DestLabware,DestWell,Volume`, then one
-     row per transfer, in operation-list order. Wells are written as their grid names them: `A1` on
-     a plate, `5` on a reservoir.
+#### `Setup.csv`, the setup worklist
+A header row and one data row.
+- Its first column is `StageWorklist`, holding the absolute path of `Stages.csv` (below).
+- Then one column per well on the deck, named `Vol_<labware>_<well>` (e.g. `Vol_Plate1_A1`,
+  `Vol_Res1_5`), labware in the deck's order and wells in their grid's order. Each holds the well's
+  starting volume in µL, or 0 if the well starts empty: every volume variable in the method needs a
+  value.
+
+#### `Stages.csv`, the stage worklist
+A header row with the 17 columns of ADR 0007, then one row per tip change or substage, in run order.
+- **A tip-change row** (`NewTip` 1) comes before each tip group (`docs/glossary.md`) that has stages
+  with transfers. It gives `TipType`, the tip change's tip type, and `LoadProbes`, every probe that
+  any stage in the group uses, in ascending order, e.g. `1,2,3,4` (look-ahead loading, ADR 0007).
+  Its other columns are empty. A tip group whose stages have no transfers gets no row, so no tips
+  are loaded for nothing.
+- **Then one transfer row per substage** (`NewTip` 0), for each stage with transfers, in stage order
+  (a stage without transfers isn't run; `transfer-designer.md`, "Stage order"). Each row gives:
+  - `TipType`: its tip group's tip type;
+  - `TransferFile`: the absolute path of its Transfer From File file;
+  - `Probes`: the stage's probes, in ascending order;
+  - `SrcTechnique`, `SrcLiquidType`, `DestTechnique` and `DestLiquidType`: the stage's settings;
+  - `SrcLabwareType` and `DestLabwareType`: the substage's labware types, from the deck description;
+  - the six mix columns, empty (section 2).
+
+  `LoadProbes` is empty.
+
+#### The Transfer From File files
+One per substage, named `Stage<n>_<letter>.csv`, e.g. `Stage03_A.csv`.
+- `<n>` is the stage's place in the stage order, as the transfer designer page numbers stages,
+  written with two digits.
+- The letters `A`, `B`, … are the stage's substages, in the order their first transfers come in the
+  operation list.
+- Each file has a header row, `SourceLabware,SourceWell,DestLabware,DestWell,Volume`, then one row
+  per transfer, in operation-list order. Wells are written as their grid names them: `A1` on a
+  plate, `5` on a reservoir.
 
 ### How values are written
 The files are **CSV** (comma-separated values): each row is one line, and each value in it is a
 **field**, separated from the next by a comma.
+- **Absolute paths:** a file refers to another only by its **absolute path**, a path that starts
+  from the drive letter: the base folder, the folder name and the file name, e.g.
+  `C:\Users\Beckman Coulter\Desktop\Ento\2026-10-28_015732_Exp36\Stages.csv`. (A relative path,
+  such as `Stages.csv` on its own, would be read relative to some other folder; the manual always
+  asks for full paths, B56358AF 22-9 and chapter 27.)
 - **Volumes** are rounded to 3 decimal places (ADR 0007) and written without trailing zeros: `10`,
   `10.5`, `0.125`.
 - **Quoting:** a field that contains a comma is put in double quotes, e.g. `"1,2"`, as **RFC 4180**
