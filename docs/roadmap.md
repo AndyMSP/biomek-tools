@@ -176,8 +176,8 @@ Last updated: 2026-10-28
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
-Goal: the transfer designer's first lab use, for Exp36. Planned on 2026-10-22 for 2026-10-26; now
-due before Exp36 runs on Monday, 2026-11-02 (Andy, 2026-10-28), with items 10 and 11 added.
+Goal: the transfer designer's first lab use, for Exp36. Planned on 2026-10-22; items 10 and 11
+added on 2026-10-28 (Andy).
 
 **How we work towards it**
 - `main` stays the one source of truth, with one small branch per task, merged quickly.
