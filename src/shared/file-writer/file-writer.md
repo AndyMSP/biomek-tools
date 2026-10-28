@@ -54,6 +54,12 @@ Not in version 1:
   - its tip changes.
 
   It doesn't use the components' names or colors, or the labware labels.
+
+  A stage has a **stage ID**, a fixed label the stage list gives it when it's made (`stage-list.md`),
+  which says nothing about where the stage comes; and a **place in the stage order**, its position
+  in the list of stages, which is the number the transfer designer page shows beside it. The two
+  needn't match: a stage with ID `"3"` may come second. This specification always says which it
+  means.
 - **The experiment name**, typed by the user: letters, digits, hyphens and underscores only, 1 to 40
   characters (Andy, 2026-10-28). The limit keeps every path well under Windows' 260-character limit
   for a path.
@@ -110,8 +116,9 @@ A header row with the 17 columns of ADR 0007, then one row per tip change or sub
 
 #### The Transfer From File files
 One per substage, named `Stage<n>_<letter>.csv`, e.g. `Stage03_A.csv`.
-- `<n>` is the stage's place in the stage order, as the transfer designer page numbers stages,
-  written with two digits.
+- `<n>` is the stage's place in the stage order (the number the transfer designer page shows beside
+  it), not its stage ID, written with two digits: a stage with ID `"3"` that comes second writes
+  `Stage02_A.csv`.
 - The letters `A`, `B`, … are the stage's substages, in the order their first transfers come in the
   operation list.
 - Each file has a header row, `SourceLabware,SourceWell,DestLabware,DestWell,Volume`, then one row
