@@ -18,14 +18,16 @@ import { OperationList } from "../../shared/operation-list/operation-list.js";
 import { StageList } from "../../shared/stage-list/stage-list.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { labwareNames, gridOf, checkWell } from "../../shared/deck/deck.js";
+import { START, tipGroups } from "../../shared/tip-groups/tip-groups.js";
+
+// START and tipGroups live in the tip-groups shared module, which the file writer uses too. They're
+// re-exported (passed on under the same names) so the page and plan-file.js can keep importing them
+// from here (transfer-designer.md, section 4; tip-groups.md).
+export { START, tipGroups };
 
 // What a new stage is called. Not numbered: a number stopped matching the stage's place once a
 // stage was inserted before it (Andy, 2026-10-25).
 export const NEW_STAGE_NAME = "New stage";
-
-// The key of the tip change before the first stage. Stage IDs are numbers written as text, so no
-// stage is ever called "start".
-export const START = "start";
 
 // The Span-8 has probes 1 to 8. It's a fact about the instrument, not a setting that might change,
 // so it lives here rather than in config/ (stage-list.js has the same number, privately).
@@ -323,22 +325,6 @@ export function removeTipChange(plan, key) {
   return withParts(plan, { tipChanges: withoutKey(plan.tipChanges, key) });
 }
 
-// The tip groups (docs/glossary.md, "Tip group"), in stage order, each with the tip change that
-// starts it, e.g. [{ key: "start", tipType: "BC230", stages: ["1", "2"], probes: [1, 2, 3, 4] }, …].
-// `probes` are the probes that get tips: every probe any of the group's stages uses, smallest first.
-export function tipGroups(plan) {
-  const groups = [];
-  stageOrder(plan).forEach((id, place) => {
-    // The first stage always starts the START group; any later stage with a tip change starts one.
-    if (place === 0 || Object.hasOwn(plan.tipChanges, id)) {
-      const key = place === 0 ? START : id;
-      groups.push({ key, tipType: plan.tipChanges[key].tipType, stages: [] });
-    }
-    groups.at(-1).stages.push(id);
-  });
-  return groups.map((group) => ({ ...group, probes: probesUsedBy(plan, group.stages) }));
-}
-
 // --- Components and starting contents ---
 
 // Returns the plan with a new component, last, called `name` (spaces at its ends removed) and drawn
@@ -574,14 +560,6 @@ function checkTipChangeAt(plan, key) {
   if (!Object.hasOwn(plan.tipChanges, key)) {
     throw new Error(`There are no new tips before stage ${describeValue(key)}.`);
   }
-}
-
-// Every probe that any of `stages` (stage IDs) uses, each once, smallest first,
-// e.g. stages using [1] and [3, 5] → [1, 3, 5].
-function probesUsedBy(plan, stages) {
-  const probes = new Set(stages.flatMap((id) => plan.stageList.get(id).settings.probes));
-  // sort() on its own compares as text; this compares numbers.
-  return [...probes].sort((a, b) => a - b);
 }
 
 // Throws if the plan has no component called `name`.
