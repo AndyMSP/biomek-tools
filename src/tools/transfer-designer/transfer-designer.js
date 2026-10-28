@@ -2,10 +2,11 @@
 // made to one, each checked so that a plan is always valid.
 //
 // A plan holds the components, the starting contents, the operation list, the stage list, the
-// stage order (a list of stage IDs; ADR 0011), the tip changes and the labware labels. It is never
-// changed after it's made: every edit returns a new plan that shares every part the edit didn't
-// change, so the plan history can keep many plans cheaply. The page shows a plan and passes on what
-// the user does; every rule about what that means lives here, so it can be tested in Node.
+// stage order (a list of stage IDs; ADR 0011), the tip changes, the labware labels and the
+// experiment name. It is never changed after it's made: every edit returns a new plan that shares
+// every part the edit didn't change, so the plan history can keep many plans cheaply. The page
+// shows a plan and passes on what the user does; every rule about what that means lives here, so it
+// can be tested in Node.
 // It builds on the shared modules (operation-list, stage-list, contents-tracking, deck) and doesn't
 // repeat what they do.
 // Specification: transfer-designer.md.
@@ -19,6 +20,7 @@ import { StageList } from "../../shared/stage-list/stage-list.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { labwareNames, gridOf, checkWell } from "../../shared/deck/deck.js";
 import { START, tipGroups } from "../../shared/tip-groups/tip-groups.js";
+import { checkExperimentName } from "../../shared/file-writer/file-writer.js";
 
 // START and tipGroups live in the tip-groups shared module, which the file writer uses too. They're
 // re-exported (passed on under the same names) so the page and plan-file.js can keep importing them
@@ -36,8 +38,8 @@ const PROBE_COUNT = 8;
 // --- Plans ---
 
 // A new plan, and the ID of its one stage: { plan, stageId }. The plan has no components, starting
-// contents, transfers or labels; its stage is called NEW_STAGE_NAME and has the default settings;
-// and its first tips are the first tip type in config/tip-types.js.
+// contents, transfers or labels, and no experiment name (""); its stage is called NEW_STAGE_NAME
+// and has the default settings; and its first tips are the first tip type in config/tip-types.js.
 export function emptyPlan() {
   const { stageList, id } = new StageList().add(NEW_STAGE_NAME, defaultSettings());
   const plan = deepFreeze({
@@ -48,8 +50,33 @@ export function emptyPlan() {
     stageOrder: [id],
     tipChanges: { [START]: { tipType: TIP_TYPES[0] } },
     labwareLabels: {},
+    experimentName: "",
   });
   return { plan, stageId: id };
+}
+
+// Returns the plan with its experiment called `name`, with spaces at its ends removed; "" (or only
+// spaces) gives the plan no name. Giving the name it already has returns the plan unchanged.
+// Throws if `name` isn't text, or isn't a valid experiment name by the file writer's rule
+// (checkExperimentName: letters, digits, hyphens and underscores, 1 to 40 characters), with its
+// message, e.g. setExperimentName(plan, "Exp 36") throws 'The experiment name can't contain " "
+// (a space). …'. The rule is the file writer's so that a name the page accepts can always be
+// written (file-writer.md).
+export function setExperimentName(plan, name) {
+  if (typeof name !== "string") {
+    // checkExperimentName gives the message for a name that isn't text.
+    checkExperimentName(name);
+  }
+  const trimmed = name.trim();
+  // Only a blank name skips the check: checkExperimentName refuses a blank name, but here a blank
+  // name means "no name", which every new plan starts with.
+  if (trimmed !== "") {
+    checkExperimentName(trimmed);
+  }
+  if (trimmed === plan.experimentName) {
+    return plan;
+  }
+  return withParts(plan, { experimentName: trimmed });
 }
 
 // A stage's default settings: DEFAULT_PIPETTING_MODE at both ends, and all eight probes, e.g.

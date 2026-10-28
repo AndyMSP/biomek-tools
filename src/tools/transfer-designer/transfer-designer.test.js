@@ -16,6 +16,7 @@ import {
   NEW_STAGE_NAME,
   START,
   emptyPlan,
+  setExperimentName,
   defaultSettings,
   probesFor,
   modesFor,
@@ -68,6 +69,7 @@ const PLAN_PARTS = [
   "stageOrder",
   "tipChanges",
   "labwareLabels",
+  "experimentName",
 ];
 
 // A transfer in `stage` from the reservoir's trough 1 into `well` on PLATE. The reservoir is never
@@ -212,7 +214,7 @@ describe("transfer-designer", () => {
     });
   });
 
-  test("emptyPlan() gives one stage with default settings, START tips of the first tip type, and nothing else", () => {
+  test("emptyPlan() gives one stage with default settings, START tips of the first tip type, no experiment name, and nothing else", () => {
     const { plan, stageId } = emptyPlan();
     assert.deepEqual(Object.keys(plan).sort(), [...PLAN_PARTS].sort());
     assert.deepEqual(plan.stageList.listStages(), [
@@ -225,6 +227,39 @@ describe("transfer-designer", () => {
     assert.deepEqual(plan.operationList.listOperations(), []);
     assert.deepEqual(plan.stageOrder, [stageId]);
     assert.deepEqual(plan.labwareLabels, {});
+    assert.equal(plan.experimentName, "");
+  });
+
+  test('setExperimentName sets a name, trims it, and removes it for "" or only spaces', () => {
+    const { plan } = emptyPlan();
+    const named = setExperimentName(plan, "Exp36");
+    assert.equal(named.experimentName, "Exp36");
+    assert.equal(setExperimentName(plan, " Exp36 ").experimentName, "Exp36");
+    assert.equal(setExperimentName(named, "").experimentName, "");
+    assert.equal(setExperimentName(named, "  ").experimentName, "");
+  });
+
+  test("setExperimentName with the name the plan already has returns the same plan", () => {
+    const named = setExperimentName(emptyPlan().plan, "Exp36");
+    assert.equal(setExperimentName(named, "Exp36"), named);
+    assert.equal(setExperimentName(named, " Exp36 "), named);
+    const unnamed = emptyPlan().plan;
+    assert.equal(setExperimentName(unnamed, ""), unnamed);
+  });
+
+  test("setExperimentName refuses a name that isn't text, has a space, or is too long, with checkExperimentName's messages, leaving the plan unchanged", () => {
+    const plan = setExperimentName(emptyPlan().plan, "Exp36");
+    const before = snapshot(plan);
+    assert.throws(() => setExperimentName(plan, 5), {
+      message: 'The experiment name must be text, like "Exp36", but got 5.',
+    });
+    assert.throws(() => setExperimentName(plan, "Exp 36"), {
+      message: /^The experiment name can't contain " " \(a space\)\./,
+    });
+    assert.throws(() => setExperimentName(plan, "E".repeat(41)), {
+      message: "The experiment name is 41 characters long; it can be at most 40.",
+    });
+    assert.equal(snapshot(plan), before);
   });
 
   test("stageOrder(plan) gives the plan's stageOrder", () => {
@@ -1025,17 +1060,19 @@ describe("transfer-designer", () => {
     ["emptyWells", (plan) => emptyWells(plan, [trough("2")]), ["startingContents"]],
     ["setLabel", (plan) => setLabel(plan, PLATE, "Cells"), ["labwareLabels"]],
     ["setLabels", (plan) => setLabels(plan, { [PLATE]: "Cells" }), ["labwareLabels"]],
+    ["setExperimentName", (plan) => setExperimentName(plan, "Exp37"), ["experimentName"]],
   ];
 
   // A plan with something in every part: components and starting contents, stages 1 and 2 with
-  // transfers, stage 3 without, a tip change before stage 2, and a label.
+  // transfers, stage 3 without, a tip change before stage 2, a label and an experiment name.
   function fullPlan() {
     let plan = withTransfersIn(planWithContents(), ["1"]);
     plan = addStage(plan, null).plan;
     plan = addStage(plan, null).plan;
     plan = addTransfer(plan, transferTo("2", "B1"));
     plan = addTipChange(plan, "2");
-    return setLabel(plan, OTHER_PLATE, "Drug plate");
+    plan = setLabel(plan, OTHER_PLATE, "Drug plate");
+    return setExperimentName(plan, "Exp36");
   }
 
   test("every edit leaves the plan it was given unchanged", () => {
