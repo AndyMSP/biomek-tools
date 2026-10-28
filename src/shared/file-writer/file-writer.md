@@ -1,8 +1,8 @@
 # file-writer — specification
 
 > **Draft (2026-10-28).** Written for v0.2.0, from ADR 0007 and the general-purpose method as built
-> and tested on 2026-10-27 (`docs/domain/biomek.md`). Sections 4 (Interface), 5 (Errors) and 6
-> (Test cases) are still to be written. It becomes Final once its code is built and the files it
+> and tested on 2026-10-27 (`docs/domain/biomek.md`). Sections 5 (Errors) and 6 (Test
+> cases) are still to be written. It becomes Final once its code is built and the files it
 > writes have run on the Biomek.
 
 ## 1. Purpose
@@ -143,3 +143,33 @@ The files are **CSV** (comma-separated values): each row is one line, and each v
   column's name (`biomek.md`). This is the format every file used on 2026-10-27, Method23 to
   Method32. (`biomek.md` also notes that Exp37's Transfer From File files left out the last line
   break; both work.)
+
+## 4. Interface
+The module exports three functions. None changes its inputs, and none reads the clock or saves
+anything (section 3).
+
+| Function | Takes | Returns | Throws |
+|---|---|---|---|
+| `writeRunFiles(plan, experimentName, timestamp)` | a plan, an experiment name and a timestamp (a `Date`), as in section 3, "Inputs" | `{ folderName, files }`: the folder name, and the files as a list of `{ name, text }`, in this order: `Setup.csv`, `Stages.csv`, then the Transfer From File files in the order `Stages.csv` names them | if the experiment name or timestamp isn't valid, or the plan is refused (section 5); nothing is returned then, so a refused plan gets no files |
+| `checkExperimentName(name)` | any value | nothing | if `name` isn't a valid experiment name (section 3). It's exported so a tool can check a name as the user types it, with the same rule |
+| `folderNameFor(timestamp, experimentName)` | a timestamp and an experiment name | the folder name, e.g. `"2026-10-28_015732_Exp36"` | if either isn't valid |
+
+`writeRunFiles` uses `folderNameFor` and `checkExperimentName`, so a name the page accepted is
+always accepted here.
+
+Example:
+```js
+const { folderName, files } = writeRunFiles(plan, "Exp36", new Date(2026, 9, 28, 1, 57, 32));
+folderName;                       // "2026-10-28_015732_Exp36"
+files.map((file) => file.name);   // ["Setup.csv", "Stages.csv", "Stage01_A.csv", "Stage02_A.csv", "Stage02_B.csv"]
+files[1].text.split("\r\n")[1];   // '1,BC230,"1,2,3,4",,,,,,,,,,,,,,'  (the first tip-change row)
+```
+(In a JavaScript `Date`, months count from 0, so `9` is October.)
+
+### Configuration
+`config/paths.js` (ADR 0009) exports `BASE_FOLDER`, the base folder on the Biomek PC, e.g.
+`"C:\\Users\\Beckman Coulter\\Desktop\\Ento\\"` (each `\\` in JavaScript text is one backslash).
+This module's tests check it: it's text; it starts with a drive letter, a colon and a backslash
+(`C:\`); it ends with a backslash; and it holds none of the characters Windows refuses in a path
+(`/ * ? " < > |`, or a colon after the drive letter) and no comma, which would split a field
+(section 3, "How values are written").
