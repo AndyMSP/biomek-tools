@@ -24,6 +24,10 @@ const TWO_FILES = [
   { name: "Run/Stages.csv", text: "x\r\n" },
 ];
 
+// Where the golden file is, worked out from this test file's own location (import.meta.url is this
+// file's address), so the test passes whichever folder the tests are started from.
+const GOLDEN_FILE = new URL("../../../tests/fixtures/zip-two-files.zip", import.meta.url);
+
 // The signatures and fixed sizes of the format (zip.md, section 3).
 const LOCAL_SIGNATURE = [0x50, 0x4b, 0x03, 0x04];
 const CENTRAL_SIGNATURE = [0x50, 0x4b, 0x01, 0x02];
@@ -284,7 +288,7 @@ describe("zip", () => {
   // --- The golden file ---
 
   test("zipFiles gives exactly the bytes of the golden file zip-two-files.zip", () => {
-    const golden = new Uint8Array(readFileSync("tests/fixtures/zip-two-files.zip"));
+    const golden = new Uint8Array(readFileSync(GOLDEN_FILE));
     assert.deepEqual(zipFiles(TWO_FILES, DATE), golden);
   });
 
