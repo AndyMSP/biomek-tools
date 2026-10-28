@@ -138,8 +138,15 @@ Last updated: 2026-10-28
   set once by script; the scripts are kept as reference in the claude.ai project
   (`claude/bmf-scripts/`), not in the repository.
 - **Decided: the file writer** (Andy, 2026-10-27) is a shared module, `src/shared/file-writer/`. It
-  takes a plan, and each tool builds its own plan. Its specification's Purpose and Scope are agreed
-  (2026-10-27, not yet in the repository); the rest comes next. Mixing isn't in its version 1.
+  takes a plan, and each tool builds its own plan. Mixing isn't in its version 1.
+- **The file writer specification is written** (Draft, 2026-10-28;
+  `src/shared/file-writer/file-writer.md`): each run's files go in a folder of their own inside
+  `C:\Users\Beckman Coulter\Desktop\Ento\` (`config/paths.js`), named by a timestamp and the
+  experiment name; plans with overdraws are refused. Not built yet.
+- **Decided: tip groups move to a shared module, `tip-groups`** (Andy, 2026-10-28), so the transfer
+  designer and the file writer use one function. Its specification comes next; Claude Code then
+  builds `tip-groups` (moving the function and its tests, with no change in behavior), then the file
+  writer.
 - **Decided: the randomizer link joins v0.2.0** (Andy, 2026-10-27; item 9, below).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
