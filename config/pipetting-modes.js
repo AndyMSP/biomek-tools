@@ -22,7 +22,7 @@ export const PIPETTING_MODES = [
   { name: "Medium", technique: "Operation", liquidType: "Medium", ends: ["source", "destination"] },
   { name: "Fast", technique: "Operation", liquidType: "Fast", ends: ["source", "destination"] },
   // For dispensing only (docs/glossary.md, "Pipetting mode").
-  { name: "Non-contact", technique: "NonContact", liquidType: "Medium", ends: ["destination"] },
+  { name: "Non-Contact", technique: "NonContact", liquidType: "Medium", ends: ["destination"] },
 ];
 
 export const DEFAULT_PIPETTING_MODE = "Medium";
