@@ -93,7 +93,9 @@ undone, kept in the browser copy and saved like any edit.
 labware's label (section 6):
 - It's a button showing the plan's `experimentName`, or, with none, `Name this experiment` (blue, in
   a dashed outline). Its tooltip is `Click to name the experiment`.
-- Clicking it turns it into a text box, as large as the name, holding the name, selected.
+- Clicking it turns it into a text box, as large as the name, holding the name, selected. Empty,
+  the box shows the **placeholder** (gray example text) `e.g. Exp36`; spell check is off, since
+  names like `Exp36` aren't words.
 - **Checked as it's typed** with `checkExperimentName` (`file-writer.md`): while what's typed isn't a
   valid name (and isn't blank), the box has a red border and the message bar shows the check's
   message (error). Spaces at the ends don't count.
@@ -113,7 +115,8 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
   `Cancel` and `Write files` (solid blue), focused on Write files.
 - If the plan is refused, `writeRunFiles`'s message instead (for example `Name the experiment first:
   the files' folder is named after it.`, or an overdraw), in red, with Write files disabled and
-  Cancel focused.
+  Cancel focused. The page shows the writer's messages unchanged, with no wording of its own, so
+  they never name a part of the page that may later change (Andy, 2026-10-28).
 
 The time is fixed when the box opens, so the name it shows is the name Write files saves (Andy,
 2026-10-28: "tell you what file name it's actually generating").
@@ -558,8 +561,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 2026-10-26: bigger, darker text in the header, the bars and the buttons "felt harsher").
 
 - **Page and panels:** background `#F6F5F1`; the experiment's name, the page's heading, 28px
-  semibold (its text box the same size, 26px); with no name, `Name this experiment` 22px in blue,
-  regular weight, in a dashed light blue outline; white panels with a thin border (`#E2E0D8`), rounded corners (10px) and 20px padding, 20px apart;
+  semibold, and its text box 26px semibold, 340px wide; with no name, `Name this experiment` 22px
+  in blue, medium weight (500), in a dashed light blue outline; white panels with a thin border (`#E2E0D8`), rounded corners (10px) and 20px padding, 20px apart;
   the page at most 1500px wide, centered.
 - **Type:** `"Segoe UI", system-ui, sans-serif`, 15px with line height 1.4; well names, grid
   headings, stage numbers, transfer rows and volumes in `Consolas, "Cascadia Mono", monospace`. Text
