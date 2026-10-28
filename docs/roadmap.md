@@ -161,17 +161,23 @@ Last updated: 2026-10-28
   `src/tools/transfer-designer/transfer-designer-page.md`), from the preview Andy shaped: the
   experiment's name as the page's heading, edited in place; the Biomek files box, showing the zip's
   name before it's written; both header boxes closing on a press outside them; no tool name on the
-  page, only in the tab. Next, Claude Code builds the experiment name, then the page (`zip` is
-  built).
+  page, only in the tab. **The experiment name is built** (#94, 2026-10-28): in the plan
+  (`setExperimentName`), in plan files (version 2, still reading version 1), and read from the plan
+  by the file writer (`writeRunFiles(plan, timestamp)`). Next, Claude Code builds the page (`zip` is
+  built, #91).
 - **Decided: tip groups move to a shared module, `tip-groups`** (Andy, 2026-10-28), so the transfer
   designer and the file writer use one function. Its specification is written (Draft, 2026-10-28;
   `src/shared/tip-groups/tip-groups.md`). Next, Claude Code builds `tip-groups` (moving the function
   and its tests, with no change in behavior), then the file writer.
 - **Decided: the randomizer link joins v0.2.0** (Andy, 2026-10-27; item 9, below).
+- **Decided: v0.2.0 grows** (Andy, 2026-10-28): it gains **mixing** and **well capacities with dead
+  volume** (items 10 and 11, below), so each specification changes once and the Biomek is tested
+  once, on the final files. The remaining work has an order (below).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
-Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned on 2026-10-22.
+Goal: the transfer designer's first lab use, for Exp36. Planned on 2026-10-22 for 2026-10-26; now
+due before Exp36 runs on Monday, 2026-11-02 (Andy, 2026-10-28), with items 10 and 11 added.
 
 **How we work towards it**
 - `main` stays the one source of truth, with one small branch per task, merged quickly.
@@ -222,20 +228,35 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
    together. Still to do: the tool's own files in simulation, then one real run with water. The
    files of a run that worked are kept as the file writer's golden files (`file-writer.md`,
    "Golden files"): a coverage plan first, Exp37 once plans can hold mixing.
-9. **The randomizer link** (Andy, 2026-10-27, moved from "Later"): Biomek output for the
-   randomizer, one transfer per replicate from each condition's source (see "Biomek output for the
-   randomizer").
+9. **The randomizer link** (Andy, 2026-10-27, moved from "Later"): the randomizer's plates reach
+   the Biomek without anyone editing Biomek files by hand. *What "linking" means isn't decided*
+   (see "Open decisions"); it's decided before work on it starts.
+10. **Mixing** (Andy, 2026-10-28, moved from "Later"): in the plan, the plan file, the page and the
+    file writer. The general-purpose method supports it (ADR 0007: before aspirating, after
+    dispensing, and on its own). How it's shown in a plan and on the page is still open ("Open
+    decisions"), so it starts with a preview.
+11. **Well capacities and dead volume** (Andy, 2026-10-28, moved from "Later" and from "Technical
+    debt"): each labware type's capacity and dead volume, so the tool warns about overfilling and
+    about drawing into the dead volume. Starts with the facts, with sources (`docs/domain/`):
+    each value, and whether dead volume depends on the tips or technique as well as the labware.
+    How starting volumes are entered once dead volume is modelled is decided in its specification.
 
-Rough schedule: Friday 1 to 7 if time allows; Saturday the rest; Sunday 8, at the Biomek. Setting up a volume
-variable for every well of the standard deck is slow clicking work, so leave time for it.
+**Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
+final Biomek runs, so they test the files as they will be:
+1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
+   of the page's files on the Biomek, so a tested version exists before anything else changes.
+2. Mixing (item 10): preview, specifications, then builds.
+3. Well capacities and dead volume (item 11): the facts first, then preview, specification, build.
+4. The randomizer link (item 9), once decided. It comes after mixing in case Exp36's randomized
+   plates need mixing; if they don't, it can move earlier.
+5. The final Biomek runs (item 8): simulation, then one real run with water, on the final files;
+   then the golden file.
+6. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
-- Mixing in the transfer designer and the file writer. The general-purpose method supports it now
-  (ADR 0007: before aspirating, after dispensing, and on its own); see "Open decisions".
-- The timeline (see "Contents tracking").
-- Final concentrations.
+- Final concentrations, from each component's stock concentration (such as "Dye is 10 mM").
+  Each component's volume fraction of a well is already shown on the page's contents card.
 - Editing the list further: moving a stage, or a transfer within its stage.
-- Labware types with well capacities, to warn about overfilling.
 - The full technique table, from the Technique Browser.
 - **Smarter staging:** the tool works out which transfers really depend on each other, reorders the
   independent ones, and forms as few stages as possible, so the user no longer builds stages.
@@ -312,7 +333,12 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   The transfer designer page doesn't remind the user of this (Andy dropped the reminder,
   2026-10-25), so the lab needs to know it another way.
   Properly: dead volume per labware type, in contents tracking (it's under "Not in version 1" in its
-  specification).
+  specification). *Being done in v0.2.0* (item 11, Andy, 2026-10-28).
+- **The REPL's `deck` and `transfer-designer` examples name labware that's no longer on the deck**
+  (`"Res"`, `"Plate"`, `"Deep"`, the stand-ins before #82), so most of them fail with "There's no
+  labware … on the deck." Found reviewing #94, 2026-10-28; left for later (Andy). The page and the
+  tests are unaffected. Properly: rename them to real labware (`Res1`, `Plate1`, `Deep1`), keeping
+  the examples that are meant to be refused refused for the same reason, and run every example.
 
 ## Done
 - **`well-grid`** (shared module): the grid of well positions on labware — listing wells, validating
@@ -401,8 +427,9 @@ pieces.
 | Contents tracking | — | needed |
 | Drag-and-drop page | — | needed |
 
-For the randomizer this is a new output, with its current lists unchanged, so it would be a MINOR
-release (a version after v0.2.0).
+For the randomizer this is a new output, with its current lists unchanged. It's part of v0.2.0
+(item 9, Andy, 2026-10-27); the project has one version number for all its tools, so there's no
+separate randomizer version.
 
 **Decided: any method, described to the tool (ADR 0005).** Options considered were Exp37's method
 only (A), one general method with a standard deck (B), and any method described to the tool (C). C
@@ -453,7 +480,9 @@ overfilling a well or drawing more than it holds.
   immutable, so earlier versions stay as they were), and keeps the operation list as the single
   source of truth — the same list that becomes the Biomek files.
 - **A timeline** (idea): step through the plan and see every well's contents after any transfer.
-  The draft specification already allows it (contents after any number of operations).
+  *Built, by stage* (`transfer-designer-page.md`, section 11): the page shows the plates at Start,
+  after each stage, and at the end. Never after a single transfer, because within a stage the
+  Biomek chooses its own order (B56358AF, 22-25).
 - Well capacities come from the labware types.
 
 ## Ideas not yet planned
@@ -479,7 +508,13 @@ overfilling a well or drawing more than it holds.
   the wells the way contents tracking's `causes` do.
 
 ## Open decisions
-- **Mixing** (Later; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
+- **What linking the randomizer means** (v0.2.0, item 9; noted 2026-10-28; Andy will decide later,
+  before work on it starts). Options: (A) the randomizer saves its plate as a plan file, which is
+  opened in the transfer designer page and finished there (stage settings, tips, mixing) before
+  writing the Biomek files; (B) the randomizer writes the Biomek files itself, through the file
+  writer, with its own settings for techniques, tips and mixing; (C) no link in v0.2.0, and the
+  randomized transfers are entered in the transfer designer by hand.
+- **Mixing** (v0.2.0, item 10; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
   separate Mix step for the Span-8, so it has to be done another way. Options to look at: a transfer
   from a well back into the same well (the operation list already allows this), or a technique's
   mix settings in Transfer From File (Exp37 used "aspirate mix 75 µL × 2"; `exp37.md`). How mixing
