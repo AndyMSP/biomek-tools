@@ -442,7 +442,16 @@ console.log(topicTable());
 
 // Strict mode makes the REPL behave like our module code: for example, `GRID_96.rows = 4` throws
 // an error instead of silently doing nothing.
-const session = repl.start({ prompt: "biomek> ", replMode: repl.REPL_MODE_STRICT });
+// useGlobal runs typed code in the same context as the modules (a context is JavaScript's set of
+// built-in objects, such as Date and Array). Without it, Node's REPL gives typed code a context of
+// its own, so a date typed here isn't an `instanceof Date` to a module, and checks such as the file
+// writer's refuse it: `folderNameFor(new Date(), "Exp36")` failed with "The timestamp must be a
+// valid date, but got an object."
+const session = repl.start({
+  prompt: "biomek> ",
+  replMode: repl.REPL_MODE_STRICT,
+  useGlobal: true,
+});
 
 // Adds the `.examples` command. defineCommand is Node's way to add dot commands like .exit and .help;
 // it passes the text typed after the command name, e.g. "layout" for `.examples layout`.
