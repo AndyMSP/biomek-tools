@@ -115,6 +115,5 @@ Each becomes at least one unit test in `deck.test.js`, inside `describe("deck", 
 - `wellsInBox` with corners on different labware gives its message.
 - `wellsInBox` with a corner not on the deck gives `checkWell`'s message.
 
-These tests use the real `config/deck.js`, whose names are stand-ins for now (roadmap, "Technical
-debt"). Where a test needs a labware of a given grid, it finds one in `DECK` rather than naming it,
-so the tests still pass when the stand-ins are replaced.
+These tests use the real `config/deck.js`. Where a test needs a labware of a given grid, it finds one
+in `DECK` rather than naming it, so the tests still pass when the deck changes.

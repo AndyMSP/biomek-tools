@@ -101,7 +101,7 @@ Last updated: 2026-10-28
 - **The `transfer-designer` module is built** (code and tests), against its Draft specification
   (`src/tools/transfer-designer/transfer-designer.md`): the plan and every edit to it, the stage
   order, tip groups and overdraws. Its configuration is built too: `config/pipetting-modes.js` (four
-  stand-in modes; default Medium) and `config/tip-types.js` (BC230, BC1070), which its tests check
+  stand-in modes, made real on 2026-10-28; default Medium) and `config/tip-types.js` (BC230, BC1070), which its tests check
   (ADR 0009). `config/techniques.js` and `config/liquid-types.js` are removed.
 - **The `plan-file` module is built** (code and tests), against its Draft specification
   (`src/tools/transfer-designer/plan-file.md`): `planToText` and `planFromText`, with every check
@@ -176,7 +176,7 @@ Goal: the transfer designer's first lab use, for Exp36, on 2026-10-26. Planned o
 5. **A deck description** in `config/`: each labware on the standard deck, with its name (exactly
    as in the general-purpose method), its grid (`GRID_96` or `GRID_1X12_NUMBERED`) and its labware
    type. The page draws the labware from it, and the file writer looks up labware types in it.
-   Its names and types are stand-ins for now (see "Technical debt").
+   *Real names and types since 2026-10-28*, with the real pipetting modes (`config/pipetting-modes.js`).
 6. **The designer page**, built from the preview: plates and a reservoir (drawn as numbered
    troughs), from the deck description; entering starting volumes, building stages, and choosing
    each stage's settings. Its undo must clear the redo history whenever a new edit follows an
@@ -239,19 +239,11 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   each stage boundary. Properly: smarter staging.
 - **The pipetting modes cover only the lab's current techniques** (`config/pipetting-modes.js`,
   which replaced the technique and liquid-type lists on 2026-10-26). Properly: the full table.
-- **The pipetting modes' technique and liquid-type names are stand-ins** (v0.2.0, 2026-10-23).
-  Before the first run, replace them with the real names from Biomek Software's Technique Browser
-  and Liquid Type Editor. (The real ones are now known: Operation and NonContact, with the liquid
-  types Slow, Medium and Fast; `biomek.md`, "Building the general-purpose method".)
 - **Techniques aren't checked against tip types** (v0.2.0, 2026-10-23). The tool treats every
   technique as usable with every tip type. Biomek doesn't check this either (`biomek.md`), so until
   it's built, the user chooses a technique that suits each stage's tips. Properly: each pipetting
   mode records the tip types its technique suits, and the page and the file writer check them
   (ADR 0007).
-- **The deck description's labware names and types are stand-ins** (v0.2.0, written 2026-10-23
-  before checking Biomek Software). Before the first run, replace them with the real names from the
-  general-purpose method and the real labware types from Biomek Software. (The real deck is now
-  known: Res1 and Res2, Deep1 and Deep2, Plate1 to Plate6; ADR 0007.)
 - **Overdraws within a stage are found in the planned order** (v0.2.0, 2026-10-26). Within a
   stage the Biomek chooses its own order (B56358AF, 22-25), but contents tracking replays the
   planned order. When a stage draws from an overdrawn well more than once, which of its transfers

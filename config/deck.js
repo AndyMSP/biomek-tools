@@ -10,16 +10,19 @@
 // The page draws the labware from this list, and the file writer looks up labware types in it.
 // Data only (ADR 0009).
 //
-// STAND-IN: the names and labware types below haven't been checked against Biomek Software, and the
-// general-purpose method isn't built yet. Replace them with the real ones before the first run
-// (roadmap, "Technical debt"). BCFlat96 is a labware type in the lab's Biomek Software (biomek.md),
-// but whether it is the plate Exp36 uses isn't known.
+// The real deck of the general-purpose method as built on 2026-10-27 (docs/domain/biomek.md,
+// "Building the general-purpose method"; ADR 0007). Deck positions are set in the method, not here:
+// the tool never knows them (ADR 0007).
 
 export const DECK = [
-  { name: "Plate", grid: "GRID_96", labwareType: "BCFlat96" },
-  { name: "Deep", grid: "GRID_96", labwareType: "StandIn_Deep96" },
-  // A second deep-well plate (Andy, 2026-10-26). Its position in the general-purpose method isn't
-  // decided yet.
-  { name: "Deep2", grid: "GRID_96", labwareType: "StandIn_Deep96" },
-  { name: "Res", grid: "GRID_1X12_NUMBERED", labwareType: "StandIn_Reservoir12" },
+  { name: "Plate1", grid: "GRID_96", labwareType: "BCFlat96" },
+  { name: "Plate2", grid: "GRID_96", labwareType: "BCFlat96" },
+  { name: "Plate3", grid: "GRID_96", labwareType: "BCFlat96" },
+  { name: "Plate4", grid: "GRID_96", labwareType: "BCFlat96" },
+  { name: "Plate5", grid: "GRID_96", labwareType: "BCFlat96" },
+  { name: "Plate6", grid: "GRID_96", labwareType: "BCFlat96" },
+  { name: "Deep1", grid: "GRID_96", labwareType: "BCDeep96Square" },
+  { name: "Deep2", grid: "GRID_96", labwareType: "BCDeep96Square" },
+  { name: "Res1", grid: "GRID_1X12_NUMBERED", labwareType: "DeepReservoir12" },
+  { name: "Res2", grid: "GRID_1X12_NUMBERED", labwareType: "DeepReservoir12" },
 ];

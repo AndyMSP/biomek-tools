@@ -1,8 +1,8 @@
 // Unit tests for plan-file.js. Each test comes from the "Test cases" section of plan-file.md, and
 // each row of its error table has at least one.
 //
-// They use the real config/deck.js and config/tip-types.js. Their names are stand-ins for now, so
-// tests find what they need in the config files rather than naming it.
+// They use the real config/deck.js and config/tip-types.js. Tests find what they need in the config
+// files rather than naming it, so they still pass when the configuration changes.
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
