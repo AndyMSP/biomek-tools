@@ -3,9 +3,10 @@
 Date: 2026-10-20
 
 ## Status
-Proposed. The plan depends on what a general-purpose method can vary per worklist row, which is
-still an open decision (see `docs/roadmap.md`); it becomes Accepted once that is checked. Once
-accepted, it amends ADR 0005.
+Proposed. The plan depended on what a general-purpose method can vary per worklist row. That has now
+been checked, in simulation on 2026-10-21 and by building and testing the method on 2026-10-27
+(`docs/domain/biomek.md`), so it is ready for Andy to accept, together with ADR 0007. Once accepted,
+it amends ADR 0005.
 
 ## Context
 ADR 0005 decided that the tool writes only Transfer From File files, for methods built in Biomek
@@ -44,9 +45,15 @@ would be reconsidered. Option 4 is ruled out.
 ## Consequences
 - The tool, not the method, decides things like tip changes, so they can be traced and changed per
   experiment.
-- What the general-purpose method can vary from one worklist row to the next (for example whether
-  Biomek Software has conditional steps) isn't known yet. It limits which operations the tool can
-  offer, and must be checked against the manuals and the instrument.
+- What the general-purpose method can vary from one worklist row to the next has been checked
+  (2026-10-21 and 2026-10-27; `biomek.md`). A row can set nearly everything the tool needs,
+  including tip changes, techniques, liquid types and mixing, and If steps can choose what runs.
+  Labware types can't come from variables, so the method has one Transfer From File step per pair
+  of labware types (ADR 0007).
+- Option 2 is still not pursued, but the method file was edited once, by script, to give the
+  general-purpose method its 792 starting-volume variables (2026-10-27; `biomek.md`, "Methods and
+  their files"). That set up the one method; it doesn't generate methods. The scripts are kept
+  outside the repository, as reference only.
 - The method description from ADR 0005 now mainly describes this one method: its labware, and where
   the worklist and its files go on the Biomek PC.
 - The general-purpose method must itself be built carefully and tested in simulation, since every
