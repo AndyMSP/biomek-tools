@@ -236,13 +236,13 @@ given; "returns the plan with …" means a new plan.
 **Tip changes**
 | Function | Returns |
 |---|---|
-| `START` | (a constant) `"start"`. |
+| `START` | (a constant) `"start"`. Re-exported from the `tip-groups` shared module (`tip-groups.md`). |
 | `tipChangeAt(plan, key)` | the tip change at `key` (`START` or a stage ID), or `null`. |
 | `canAddTipChange(plan, beforeId)` | `true` if `beforeId` is a stage, not the first in the stage order, without a tip change before it. |
 | `addTipChange(plan, beforeId)` | the plan with a tip change before stage `beforeId`, loading the tip type in use there. Throws if `canAddTipChange` is `false`. |
 | `setTipType(plan, key, tipType)` | the plan with the tip change at `key` loading `tipType`. Throws if there's none at `key`, or `tipType` isn't in `TIP_TYPES`. |
 | `removeTipChange(plan, key)` | the plan without the tip change at `key`. Throws for `START`, or if there's none at `key`. |
-| `tipGroups(plan)` | the tip groups, in stage order, each with the tip change that starts it: `{ key, tipType, stages, probes }` each, `stages` being stage IDs in stage order and `probes` the probes that get tips, smallest first. |
+| `tipGroups(plan)` | the tip groups, in stage order, each with the tip change that starts it: `{ key, tipType, stages, probes }` each, `stages` being stage IDs in stage order and `probes` the probes that get tips, smallest first. Re-exported from the `tip-groups` shared module, which the file writer uses too (`tip-groups.md`; Andy, 2026-10-28). |
 
 **Components and starting contents**
 | Function | Returns |
@@ -384,9 +384,8 @@ order of checks.
   that isn't a stage.
 
 **Tip changes**
-- `tipGroups` of a plan with `START` and a tip change before its third stage gives two tip groups;
-  each group's `probes` are every probe its stages use: `[1, 2]` and `[1, 2, 3, 4]` give `[1, 2, 3, 4]`;
-  `[1]` and `[3, 5]` give `[1, 3, 5]`.
+- `tipGroups` and `START` are tested in `tip-groups.test.js` (`tip-groups.md`); here, `tipGroups`
+  re-exported from this module gives the same groups as the shared module's.
 - `addTipChange` takes the tip type in use; adding before the first stage, twice in one place, or
   before a stage that isn't in the plan throws; `canAddTipChange` is `false` for each.
 - `setTipType` with a known type works; an unknown one throws.
