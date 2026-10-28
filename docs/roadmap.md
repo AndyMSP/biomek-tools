@@ -138,8 +138,15 @@ Last updated: 2026-10-28
   set once by script; the scripts are kept as reference in the claude.ai project
   (`claude/bmf-scripts/`), not in the repository.
 - **Decided: the file writer** (Andy, 2026-10-27) is a shared module, `src/shared/file-writer/`. It
-  takes a plan, and each tool builds its own plan. Its specification's Purpose and Scope are agreed
-  (2026-10-27, not yet in the repository); the rest comes next. Mixing isn't in its version 1.
+  takes a plan, and each tool builds its own plan. Mixing isn't in its version 1.
+- **The file writer specification is written** (Draft, 2026-10-28;
+  `src/shared/file-writer/file-writer.md`): each run's files go in a folder of their own inside
+  `C:\Users\Beckman Coulter\Desktop\Ento\` (`config/paths.js`), named by a timestamp and the
+  experiment name; plans with overdraws are refused. Not built yet.
+- **Decided: tip groups move to a shared module, `tip-groups`** (Andy, 2026-10-28), so the transfer
+  designer and the file writer use one function. Its specification comes next; Claude Code then
+  builds `tip-groups` (moving the function and its tests, with no change in behavior), then the file
+  writer.
 - **Decided: the randomizer link joins v0.2.0** (Andy, 2026-10-27; item 9, below).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
@@ -221,6 +228,11 @@ variable for every well of the standard deck is slow clicking work, so leave tim
   the plan is empty. Perhaps once others in the lab use the tool.
 - **Constituents of a component** (Andy, 2026-10-25): a component made of several things, such as a
   medium with a drug in it. Not designed yet.
+- **A run code** (Andy, 2026-10-28): the file writer puts a new code in every setup worklist it
+  writes, and the general-purpose method asks for it first thing when it starts, refusing to run
+  if it's wrong. So the method could read its setup worklist from one fixed path (ADR 0007) without
+  running an old one by mistake. Needs testing first: how a prompted variable behaves during
+  validation (`biomek.md`, "Not yet known").
 - **A prompted experiment ID** (tried 2026-10-27, Method24 and Method25; `biomek.md`): the method
   asks for an experiment name when it starts, instead of the user replacing the setup worklist. It
   worked, but warns differently from the rest, and would need its own testing before it's trusted.
@@ -232,6 +244,11 @@ variable for every well of the standard deck is slow clicking work, so leave tim
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **The method's setup worklist is pointed at each run's folder by hand** (v0.2.0, Andy,
+  2026-10-28; `file-writer.md`). Each run's files go in a folder of their own, and before each run
+  the method's first Worklist step is pointed at that folder's `Setup.csv` and the method saved.
+  ADR 0007 plans a fixed path so the method never changes. Properly: the fixed path, with a run
+  code (see "Later").
 - **Users build stages by hand** (v0.2.0). Properly: smarter staging (see "Later").
 - **The stage rule is simple:** within one stage, no well may be both a source and a destination;
   the operation list refuses a transfer that breaks it, with a message saying why. It is stricter than needed (it
