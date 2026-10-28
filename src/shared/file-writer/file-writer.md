@@ -1,9 +1,8 @@
 # file-writer — specification
 
 > **Draft (2026-10-28).** Written for v0.2.0, from ADR 0007 and the general-purpose method as built
-> and tested on 2026-10-27 (`docs/domain/biomek.md`). Section 6 (Test cases) is still to be
-> written. It becomes Final once its code is built and the files it
-> writes have run on the Biomek.
+> and tested on 2026-10-27 (`docs/domain/biomek.md`). It becomes Final once its code is built and
+> the files it writes have run on the Biomek.
 
 ## 1. Purpose
 `file-writer.js` turns a **plan** (`docs/glossary.md`) into the files the general-purpose method
@@ -202,3 +201,84 @@ returned.
 Problems the plan's own modules already prevent (a well not on the deck, a stage's settings that
 aren't valid) aren't checked again: the plan is made only through their checks
 (`transfer-designer.md`).
+
+## 6. Test cases
+Each becomes at least one unit test in `file-writer.test.js`, inside `describe("file-writer", …)`.
+Each row of section 5 has at least one test. The tests build plans through the transfer designer's
+own edits (`transfer-designer.md`), so every plan is one the page could make. They use the real
+`config/` files, and find labware by grid and labware type in `DECK` rather than naming it, so they
+still pass when the deck changes (as `deck.test.js` does).
+
+**Configuration** (`config/paths.js`, ADR 0009)
+- `BASE_FOLDER` is text, starts with a drive letter, a colon and a backslash, ends with a
+  backslash, and holds none of `/ * ? " < > |`, no colon after the drive letter, and no comma.
+
+**The experiment name and the folder name**
+- `checkExperimentName` accepts `"Exp36"`, `"Exp36_repeat"`, `"A-1"`, `"x"` and a name of 40
+  characters.
+- It refuses, each with its message: `5` and `null` (not text); `""` (blank); a name of 41
+  characters; `"Exp 36"` (names "a space"); `"Exp36,b"`, `"Exp/36"` and `"Expé36"` (each names
+  its character).
+- `folderNameFor(new Date(2026, 9, 28, 1, 57, 32), "Exp36")` gives `"2026-10-28_015732_Exp36"`.
+- Leading zeros: `new Date(2026, 0, 5, 9, 7, 2)` gives `"2026-01-05_090702_…"`; and
+  `new Date(2026, 11, 31, 23, 59, 59)` gives `"2026-12-31_235959_…"`.
+- `folderNameFor` refuses `new Date("not a date")` and the text `"2026-10-28"` (not a valid date),
+  and a bad name with `checkExperimentName`'s message.
+
+**`Setup.csv`**
+- The header is `StageWorklist`, then one `Vol_<labware>_<well>` per well on the deck, labware in
+  `DECK`'s order and wells in grid order: as many columns as there are wells, plus one (793 for
+  today's deck).
+- `StageWorklist` holds `BASE_FOLDER`, the folder name, a backslash and `Stages.csv`.
+- A well holding 500 µL of one component and 250 µL of another gives `750`; an empty well gives
+  `0`; a reservoir well's column is named with its number, e.g. `Vol_<reservoir>_5`.
+
+**`Stages.csv`**
+- The header is ADR 0007's 17 columns, in order.
+- A plan with one stage, one substage and the start tip change gives two rows: a tip-change row
+  (`1`, the tip type, the stage's probes, then 14 empty fields) and a transfer row (`0`, the tip
+  type, an empty `LoadProbes`, the file's absolute path, the probes, the four settings from the
+  stage, the two labware types from `DECK`, then 6 empty mix fields).
+- Probes `[1, 2]` are written `"1,2"` (quoted); probes `[1]` are written `1` (not quoted).
+- **Look-ahead loading:** a tip group whose stages use `[1, 2]` and `[1, 2, 3, 4]` gives
+  `LoadProbes` `"1,2,3,4"`; one whose stages use `[1]` and `[3, 5]` gives `"1,3,5"`.
+- **Two tip groups:** a tip change before the third stage gives a second tip-change row just
+  before that stage's transfer rows, and those rows carry its tip type.
+- **Stages without transfers:** a stage without transfers gets no row and no file; a tip group
+  whose stages have no transfers gets no tip-change row.
+
+**Places and stage IDs**
+- With a stage order of `["1", "3", "2"]`, stage `"3"` writes `Stage02_A.csv` and stage `"2"`
+  writes `Stage03_A.csv`.
+- A stage without transfers still counts for the places after it: with three stages and the
+  second empty, the third writes `Stage03_A.csv`.
+- A stage at place 99 is written as `Stage99_A.csv`.
+
+**Substages and Transfer From File files**
+- A stage whose transfers go from a reservoir to a plate, then a plate to a deep-well plate, then a
+  reservoir to a plate again gives two transfer rows and two files: `…_A` (reservoir to plate,
+  holding both of those transfers, in operation-list order) and `…_B` (plate to deep-well plate),
+  each row with its own labware types.
+- Each file's header is `SourceLabware,SourceWell,DestLabware,DestWell,Volume`; a reservoir well is
+  written as its number, a plate well as its name.
+- `files` lists `Setup.csv`, `Stages.csv`, then the Transfer From File files in the order
+  `Stages.csv` names them.
+
+**How values are written**
+- Volumes `10`, `10.5`, `0.125`, `1/3` and `10.000000000000002` are written `10`, `10.5`,
+  `0.125`, `0.333` and `10`.
+- Every line of every file ends with CRLF, the last line included; no file starts with a byte order
+  mark; and only fields containing a comma are quoted.
+
+**Refusing** (section 5)
+- Each row of section 5 gives its message, with no files: a plan that isn't an object; an empty
+  plan; a stage at place 100 with transfers; a stage with an overdraw (named by place and name); a
+  transfer of `0.0004` µL.
+- A stage at place 100 *without* transfers is accepted (it isn't written).
+- Order of checks: a bad experiment name with a bad plan reports the name; a plan with no
+  transfers and a bad timestamp reports the timestamp; a plan with an overdraw in stage 4 and a
+  zero-rounding volume in stage 2 reports stage 2's.
+
+**Purity**
+- The plan is unchanged after `writeRunFiles`, and two calls with the same inputs give identical
+  results.
