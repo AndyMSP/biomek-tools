@@ -145,6 +145,10 @@ Last updated: 2026-10-28
   experiment name; plans with overdraws are refused. **Built** (#86, 2026-10-28): code and tests,
   and `config/paths.js`. The page's Biomek files button isn't connected yet: how it saves the files
   (one zip, or the browser's folder picker) is still to be decided, and tried in a preview first.
+- **Decided: the experiment name is part of the plan** (Andy, 2026-10-28, from the preview):
+  shown as the page's heading and edited in place, undone like any edit, and saved in the plan
+  file, which goes to format version 2 (version 1 files still open, with no name). Specifications
+  changed: `transfer-designer.md`, `plan-file.md`; new glossary term "Experiment name".
 - **Decided: the Biomek files download as one zip** (Andy, 2026-10-28), holding the run's folder,
   built by our own small `zip` shared module (stored, uncompressed zips only; no dependency). Tried
   in a preview on Andy's own computer; still to try on the Biomek PC. The `zip` specification is
@@ -253,6 +257,10 @@ variable for every well of the standard deck is slow clicking work, so leave tim
 - **A script that sets the method's volume variables from `config/deck.js`**, for when the deck next
   changes (2026-10-27). Start from the reference scripts in the claude.ai project
   (`claude/bmf-scripts/`).
+- **One look for every tool's page** (Andy, 2026-10-28): once there are more tools, give their
+  headers and names one style, including whether a tool's name shows on the page (the transfer
+  designer's was taken off, to keep its header clean) and how names are written in browser tabs
+  (now "Transfer Designer" and "Plate randomizer").
 - **Collapsing tip groups** in the Stages column, for plans with many stages (considered
   2026-10-25, when the column was made to scroll on its own).
 

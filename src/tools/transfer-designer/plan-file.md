@@ -1,7 +1,8 @@
 # plan-file — specification
 
-> **Draft (2026-10-26).** Written for v0.2.0, from ADR 0010 and the transfer designer preview, where
-> saving and opening plans were tried (2026-10-25). It becomes Final once its code is built and Andy
+> **Draft (2026-10-26; format version 2, 2026-10-28).** Written for v0.2.0, from ADR 0010 and the
+> transfer designer preview, where saving and opening plans were tried (2026-10-25), and the
+> experiment name added (2026-10-28). It becomes Final once its code is built and Andy
 > has tested the page.
 
 ## 1. Purpose
@@ -22,12 +23,13 @@ never quietly tidied. The tool always writes valid files, so such a file was dam
 hand, and that's better reported than changed.
 
 ## 2. Scope
-Version 1 writes and reads format version 1 (below).
+Version 1 writes format version 2, and reads versions 2 and 1 (below). Version 2 adds the
+experiment name (Andy, 2026-10-28). Plans saved as version 1, before plans had an experiment name,
+still open, with no experiment name (ADR 0010, "Consequences").
 
 Not in version 1:
-- **Older format versions.** There are none yet. When the format changes, the version goes up, and
-  this specification says whether files of the older version are still read (ADR 0010,
-  "Consequences").
+- **Upgrading files in place.** A version 1 file stays as it is; saving the plan again writes
+  version 2.
 - **Undo history, and how a plan was being viewed** (such as which stage is open). A plan file holds
   only the plan (ADR 0010; `plan-history.md`).
 
@@ -36,20 +38,21 @@ Not in version 1:
 ### The format name and version
 - **`PLAN_FILE_FORMAT`** is `"biomek-tools transfer plan"`, so a file can be recognized as a plan
   file.
-- **`PLAN_FILE_VERSION`** is `1`, the format version: it goes up only when what a plan file holds
+- **`PLAN_FILE_VERSION`** is `2`, the format version written: it goes up only when what a plan file holds
   changes, not with every release of the tools (ADR 0010).
 
 They are constants in the module, not in `config/`: changing either one means changing how files are
 read and written, which is a change to the code.
 
-### What a plan file holds (version 1)
+### What a plan file holds (version 2)
 A plan file is written as one JSON object with these properties, in this order:
 
 ```json
 {
   "format": "biomek-tools transfer plan",
-  "version": 1,
+  "version": 2,
   "savedBy": "transfer designer v0.2.0",
+  "experimentName": "Exp36",
   "components": [{ "name": "Media", "color": "#4e79a7" }],
   "startingContents": [{ "labware": "Res", "well": "1", "components": { "Media": 12000 } }],
   "stages": [{ "id": "1", "name": "Seeding", "settings": { "sourceTechnique": "…", "…": "…" } }],
@@ -65,11 +68,14 @@ A plan file is written as one JSON object with these properties, in this order:
   `"transfer designer v0.2.0"`. It's for information only, such as finding where a troublesome file
   came from, and never decides whether a file opens (ADR 0010), so opening a file doesn't check it:
   it may even be missing.
+- `experimentName`: the plan's experiment name, or `""` if it has none (`transfer-designer.md`).
 - `components`, `startingContents`, `tipChanges`, `labwareLabels`: the plan's parts of the same
   names, as `transfer-designer.md` describes them.
 - `stages`: every stage, **in stage order** (the plan's `stageOrder`), each `{ id, name,
   settings }`. So the file needs no separate list of the order (ADR 0011).
 - `operations`: every operation, in the operation list's order (`listOperations()`).
+
+**Version 1** files hold the same properties except `experimentName`, with `"version": 1`.
 
 The text is written with an indent of 2 spaces, so it's easy to read. Volumes are written at full
 precision; JSON keeps numbers exactly, so a plan reads back with the same volumes.
@@ -86,8 +92,10 @@ and are then replaced by the new ones. The plan's `stageOrder` is the stages in 
 Opening a file checks, in this order:
 1. **The text is JSON**, and holds an object.
 2. **The format**: `format` is `PLAN_FILE_FORMAT`.
-3. **The version**: `version` is `PLAN_FILE_VERSION`.
-4. **The properties**: exactly those listed above, none missing (except `savedBy`) and none extra.
+3. **The version**: `version` is `2` or `1`.
+4. **The properties**: exactly those listed above for the file's version, none missing (except
+   `savedBy`) and none extra. So a version 2 file needs `experimentName`, and a version 1 file
+   can't have it.
    `components`, `startingContents`, `stages` and `operations` are lists; `tipChanges` and
    `labwareLabels` are objects.
 5. **Components**, each an object with exactly `name` and `color`, then added as `addComponent`
@@ -114,7 +122,9 @@ Opening a file checks, in this order:
 10. **Labels**: all at once, as `setLabels` checks and sets them (`transfer-designer.md`): judged
     as a whole table, so any labels the tool wrote open, and strictly, so a label with spaces at
     its ends, a blank one, or one equal to its labware's name is refused rather than tidied.
-
+11. **The experiment name** (version 2): `""`, or a name `checkExperimentName` accepts
+    (`file-writer.md`), set with `setExperimentName`. It's never tidied: a name the tool would
+    refuse is refused. A version 1 file opens with no experiment name.
 The first problem found is reported (section 5).
 
 ## 4. Interface
@@ -123,7 +133,7 @@ The module exports two constants and two functions.
 | Member | Description |
 |---|---|
 | `PLAN_FILE_FORMAT` | `"biomek-tools transfer plan"`. |
-| `PLAN_FILE_VERSION` | `1`. |
+| `PLAN_FILE_VERSION` | `2`, the version written. Versions 2 and 1 are read. |
 | `planToText(plan, savedBy)` | Returns the plan file's text for `plan` (section 3). `savedBy` is text naming the tool and its version, e.g. `"transfer designer v0.2.0"`. Throws if `savedBy` isn't a name (`checkName`). |
 | `planFromText(text)` | Returns the plan in `text`, checked (section 3). Throws if anything in it is wrong, saying what and where. |
 
@@ -144,7 +154,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 |---|---|
 | Not JSON, or not an object | `it isn't a plan file: its contents aren't the JSON a plan file holds.` |
 | `format` isn't `PLAN_FILE_FORMAT` | `it isn't a transfer plan saved by this tool.` |
-| `version` is a whole number above `PLAN_FILE_VERSION` | `it was saved by a newer version of the tools (plan format 2). Open it with that version or a later one.` |
+| `version` is a whole number above `PLAN_FILE_VERSION` | `it was saved by a newer version of the tools (plan format 3). Open it with that version or a later one.` |
 | `version` is anything else | `its plan format version, "x", isn't one this tool knows.` |
 | A property is missing | `it's missing "stages".` With several, all are listed (`listNames`), in the order of section 3. |
 | An extra property | `it has "notes", which a plan file doesn't have.` With several, all are listed, in the order they appear. |
@@ -162,6 +172,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | A starting-contents entry holds nothing | `starting contents, entry 4, holds nothing; a well that holds nothing is left out.` |
 | The starting contents are refused as a whole (`contents-tracking`) | `starting contents: ` and its message, e.g. for a well listed twice. |
 | The labels are refused (`setLabels`) | `labels: ` and its message. |
+| The experiment name is refused (`checkExperimentName`) | `the experiment name: ` and its message. |
 | No tip change at `"start"` | `it has no tips at the start of the run.` |
 | A tip change at a stage that isn't in the file, or at the first stage | `a tip change is before stage "9", which isn't one of the file's stages.` / `a tip change is before stage "1", the first stage, which always starts with the tips at "start".` |
 | A tip type isn't in `TIP_TYPES` | `the tip change at "2" loads "BC50", which isn't one of "BC230", "BC1070".` |
@@ -186,12 +197,18 @@ row of section 5 has at least one test.
   before the first is written first.
 - A plan whose stages have IDs `"2"`, `"5"` and `"7"` opens with IDs `"1"`, `"2"` and `"3"`, its
   transfers and tip changes following them.
-- An `emptyPlan()`, saved and opened, gives a plan with the same contents.
+- An `emptyPlan()`, saved and opened, gives a plan with the same contents, and is written as version 2.
 
 **Refusing**
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
-- `version` `2` gives the newer-version message; `0`, `"1"` and `1.5` give the unknown-version
+- `version` `3` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
   message.
+- **Version 1:** a version 1 file (as saved before 2026-10-28, without `experimentName`) opens,
+  with an experiment name of `""`; a version 1 file *with* `experimentName` is refused as having an
+  extra property; a version 2 file without it is refused as missing it.
+- **The experiment name:** a plan named `"Exp36"`, saved and opened, keeps its name; one with no
+  name saves `"experimentName": ""` and opens with none; a file with `"Exp 36"` or `5` is refused
+  with `the experiment name: ` and `checkExperimentName`'s message.
 - A file without `savedBy`, and one whose `savedBy` is `5`, open: it isn't checked.
 - A file with transfers in stages `"1", "2", "1"` is refused.
 - A file whose third transfer names labware not on the deck names `transfer 3`.
