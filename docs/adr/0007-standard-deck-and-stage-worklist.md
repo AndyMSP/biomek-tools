@@ -3,7 +3,7 @@
 Date: 2026-10-21. Rewritten 2026-10-27, after the method was built and tested.
 
 ## Status
-Proposed. It builds on ADR 0006, which is also still proposed; both can be accepted together.
+Accepted (Andy, 2026-10-28), together with ADR 0006, which it builds on.
 
 Rewritten on 2026-10-27 to describe the general-purpose method as built (Andy chose a rewrite over
 another amendment). Earlier versions are in the git history; "History", below, lists what changed
