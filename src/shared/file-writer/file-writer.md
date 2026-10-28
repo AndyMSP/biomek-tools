@@ -282,3 +282,32 @@ still pass when the deck changes (as `deck.test.js` does).
 **Purity**
 - The plan is unchanged after `writeRunFiles`, and two calls with the same inputs give identical
   results.
+
+### Golden files
+A **golden file** is a saved copy of output that has been verified correct (CLAUDE.md, "Testing").
+The tests above each check one part of the output; golden files check whole runs at once, so a
+mistake no part-by-part test thought of still shows (Andy, 2026-10-28). There are two:
+
+- **A coverage plan:** a small plan built to use every feature at least once: several tip groups,
+  one of them with no transfers; a stage without transfers; a stage that splits into substages;
+  reservoirs as sources and as destinations; a stage past 9th in the stage order (two-digit file
+  names); and volumes that need rounding.
+- **Exp37,** made in the transfer designer and run through the tool. Exp37 mixes (`exp37.md`), so
+  this one is made only once plans can hold mixing (roadmap, "Later"): without its mixing it
+  wouldn't be Exp37.
+
+Each is saved in `tests/fixtures/` as the files the writer made, the plan they came from (a plan
+file, `plan-file.md`), and the experiment name and timestamp used. **It is saved only after its
+files have run correctly on the Biomek,** in simulation and then for real, with the Finish step's
+report checked; the fixture records which runs (method name and date) verified it. The files are
+copied in by hand, exactly as they ran. No test or script creates or rewrites them, and they are
+never edited to make a test pass (CLAUDE.md, "Testing").
+
+The test, for each golden file: open its plan file (`planFromText`), call `writeRunFiles` with its
+experiment name and timestamp, and check that it gives the same folder name, the same file names
+in the same order, and each file's text identical to its golden file, character for character.
+Nothing is written to disk: the writer returns the files in memory, and the test only reads the
+fixtures.
+
+These tests are added when their fixtures exist; until then, this part of the specification is
+waiting on the Biomek runs (roadmap, v0.2.0 item 8).
