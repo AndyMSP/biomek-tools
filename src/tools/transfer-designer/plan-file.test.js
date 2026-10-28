@@ -24,6 +24,7 @@ import {
   addTipChange,
   setTipType,
   setLabel,
+  setExperimentName,
 } from "./transfer-designer.js";
 import { PLAN_FILE_FORMAT, PLAN_FILE_VERSION, planToText, planFromText } from "./plan-file.js";
 
@@ -55,12 +56,13 @@ function transferTo(stage, well, volume = 50, from = "1") {
   };
 }
 
-// A plan with something in every part: components Media and Dye in troughs 1 and 2; stages
-// "1" (Seeding), "2" (Wait, without transfers) and "3" (Treatment, 4 probes), in that order;
-// transfers of 2.5 and 50 µL in stage 1 and 0.1 µL in stage 3; a tip change before stage 3 with
-// the last tip type; and a label on PLATE.
+// A plan with something in every part: the experiment name "Exp36"; components Media and Dye in
+// troughs 1 and 2; stages "1" (Seeding), "2" (Wait, without transfers) and "3" (Treatment, 4
+// probes), in that order; transfers of 2.5 and 50 µL in stage 1 and 0.1 µL in stage 3; a tip change
+// before stage 3 with the last tip type; and a label on PLATE.
 function fullPlan() {
   let { plan } = emptyPlan();
+  plan = setExperimentName(plan, "Exp36");
   plan = addComponent(plan, "Media", "#4e79a7");
   plan = addComponent(plan, "Dye", "#e15759");
   plan = addToWells(plan, [trough("1")], "Media", 12000);
@@ -91,6 +93,7 @@ function open(file) {
 // its ID, name and settings), its operations, and its other parts.
 function contentsOf(plan) {
   return {
+    experimentName: plan.experimentName,
     components: plan.components,
     startingContents: plan.startingContents,
     stages: stageOrder(plan).map((id) => plan.stageList.get(id)),
@@ -125,6 +128,7 @@ describe("plan-file", () => {
       "format",
       "version",
       "savedBy",
+      "experimentName",
       "components",
       "startingContents",
       "stages",
@@ -135,12 +139,13 @@ describe("plan-file", () => {
     assert.equal(file.format, PLAN_FILE_FORMAT);
     assert.equal(file.version, PLAN_FILE_VERSION);
     assert.equal(file.savedBy, SAVED_BY);
+    assert.equal(file.experimentName, "Exp36");
     assert.equal(text, JSON.stringify(file, null, 2));
   });
 
   test("the format and version are the specification's", () => {
     assert.equal(PLAN_FILE_FORMAT, "biomek-tools transfer plan");
-    assert.equal(PLAN_FILE_VERSION, 1);
+    assert.equal(PLAN_FILE_VERSION, 2);
   });
 
   test("planToText refuses a savedBy that isn't a name", () => {
@@ -158,13 +163,21 @@ describe("plan-file", () => {
 
   // --- Round trip ---
 
-  test("a plan saved and opened has the same stages, transfers, tip changes, components and labels", () => {
+  test("a plan saved and opened has the same name, stages, transfers, tip changes, components and labels", () => {
     const plan = fullPlan();
     const opened = planFromText(planToText(plan, SAVED_BY));
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
+    assert.equal(opened.experimentName, "Exp36");
     assert.deepEqual(stageOrder(opened), ["1", "2", "3"]);
     const volumes = opened.operationList.listOperations().map((operation) => operation.volume);
     assert.deepEqual(volumes, [2.5, 50, 0.1]);
+  });
+
+  test('a plan with no name saves "experimentName": "" and opens with none', () => {
+    const plan = setExperimentName(fullPlan(), "");
+    const text = planToText(plan, SAVED_BY);
+    assert.equal(JSON.parse(text).experimentName, "");
+    assert.equal(planFromText(text).experimentName, "");
   });
 
   test("planToText writes the stages in stage order, not the order they were added", () => {
@@ -201,10 +214,64 @@ describe("plan-file", () => {
     assert.deepEqual(Object.keys(opened.tipChanges).sort(), ["3", START].sort());
   });
 
-  test("an empty plan, saved and opened, has the same contents", () => {
+  test("an empty plan, saved and opened, has the same contents, and is written as version 2", () => {
     const plan = emptyPlan().plan;
-    const opened = planFromText(planToText(plan, SAVED_BY));
+    const text = planToText(plan, SAVED_BY);
+    assert.equal(JSON.parse(text).version, 2);
+    const opened = planFromText(text);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
+  });
+
+  // --- Version 1 files ---
+
+  // fullFile() as a version 1 file: saved before 2026-10-28, without experimentName.
+  function version1File() {
+    const file = { ...fullFile(), version: 1 };
+    delete file.experimentName;
+    return file;
+  }
+
+  test("a version 1 file opens, with an experiment name of \"\"", () => {
+    const opened = open(version1File());
+    assert.equal(opened.experimentName, "");
+    const { experimentName, ...rest } = contentsOf(opened);
+    const { experimentName: ignored, ...expected } = contentsOf(fullPlan());
+    assert.deepEqual(rest, expected);
+  });
+
+  test("a version 1 file with experimentName is refused as having an extra property", () => {
+    assertRefused(
+      { ...version1File(), experimentName: "Exp36" },
+      'it has "experimentName", which a plan file doesn\'t have.',
+    );
+  });
+
+  test("a version 2 file without experimentName is refused as missing it", () => {
+    const file = fullFile();
+    delete file.experimentName;
+    assertRefused(file, 'it\'s missing "experimentName".');
+  });
+
+  // --- The experiment name ---
+
+  test('a file with "Exp 36", " Exp36" or 5 as its experiment name is refused, not tidied', () => {
+    assertRefused(
+      { ...fullFile(), experimentName: "Exp 36" },
+      /the experiment name: The experiment name can't contain " " \(a space\)\./,
+    );
+    assertRefused(
+      { ...fullFile(), experimentName: " Exp36" },
+      /the experiment name: The experiment name can't contain " " \(a space\)\./,
+    );
+    assertRefused(
+      { ...fullFile(), experimentName: 5 },
+      'the experiment name: The experiment name must be text, like "Exp36", but got 5.',
+    );
+  });
+
+  test("the experiment name is checked last: bad labels and a bad name report the labels", () => {
+    const file = { ...fullFile(), experimentName: "Exp 36", labwareLabels: { [PLATE]: "" } };
+    assertRefused(file, /labels: The label for .+ is blank\./);
   });
 
   // --- Refusing: the file as a whole ---
@@ -223,13 +290,13 @@ describe("plan-file", () => {
 
   test("a version above this one was saved by a newer version of the tools", () => {
     assertRefused(
-      { ...fullFile(), version: 2 },
-      "it was saved by a newer version of the tools (plan format 2). Open it with that version or a later one.",
+      { ...fullFile(), version: 3 },
+      "it was saved by a newer version of the tools (plan format 3). Open it with that version or a later one.",
     );
   });
 
   test("any other version isn't one this tool knows", () => {
-    for (const [version, shown] of [[0, "0"], ["1", '"1"'], [1.5, "1.5"]]) {
+    for (const [version, shown] of [[0, "0"], ["2", '"2"'], [1.5, "1.5"]]) {
       assertRefused(
         { ...fullFile(), version },
         `its plan format version, ${shown}, isn't one this tool knows.`,

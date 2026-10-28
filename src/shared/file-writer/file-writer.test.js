@@ -14,6 +14,7 @@ import { TIP_TYPES } from "../../../config/tip-types.js";
 import { labwareNames, gridOf } from "../deck/deck.js";
 import {
   emptyPlan,
+  setExperimentName,
   addStage,
   renameStage,
   changeStageSettings,
@@ -33,7 +34,8 @@ const DEEP = DECK.find(
 );
 const RESERVOIR = DECK.find((entry) => entry.grid === "GRID_1X12_NUMBERED");
 
-// The timestamp and name most tests write with, and the folder they give.
+// The timestamp most tests write with, the experiment name their plans have, and the folder they
+// give.
 const TIMESTAMP = new Date(2026, 9, 28, 1, 57, 32);
 const NAME = "Exp36";
 const FOLDER = "2026-10-28_015732_Exp36";
@@ -68,10 +70,12 @@ function well(entry, name) {
   return { labware: entry.name, well: name };
 }
 
-// A plan with `count` stages, "1" to `count`, each added last, Media in the plan's components, and
-// 1000 µL of Media in troughs 1 and 2 of the reservoir, so transfers from them don't overdraw.
+// A plan named NAME with `count` stages, "1" to `count`, each added last, Media in the plan's
+// components, and 1000 µL of Media in troughs 1 and 2 of the reservoir, so transfers from them
+// don't overdraw.
 function planWithStages(count) {
   let { plan } = emptyPlan();
+  plan = setExperimentName(plan, NAME);
   for (let added = 1; added < count; added += 1) {
     plan = addStage(plan, null).plan;
   }
@@ -105,9 +109,9 @@ function withProbes(plan, id, probes) {
   return changeStageSettings(plan, id, { ...plan.stageList.get(id).settings, probes });
 }
 
-// writeRunFiles with the usual name and timestamp.
+// writeRunFiles with the usual timestamp.
 function write(plan) {
-  return writeRunFiles(plan, NAME, TIMESTAMP);
+  return writeRunFiles(plan, TIMESTAMP);
 }
 
 // The file called `name` in a writeRunFiles result.
@@ -262,6 +266,13 @@ describe("file-writer", () => {
   test("Setup.csv's StageWorklist is the absolute path of Stages.csv", () => {
     const setup = fileNamed(write(withTransfersIn(planWithStages(1), ["1"])), "Setup.csv");
     assert.equal(rowsOf(setup)[0].StageWorklist, `${FOLDER_PATH}Stages.csv`);
+  });
+
+  test("the folder is named after the plan's experiment name", () => {
+    const plan = withTransfersIn(planWithStages(1), ["1"]);
+    assert.equal(write(plan).folderName, FOLDER);
+    const renamed = setExperimentName(plan, "Exp36_repeat");
+    assert.equal(write(renamed).folderName, "2026-10-28_015732_Exp36_repeat");
   });
 
   test("Setup.csv gives each well the sum of its components, 0 if empty, and names reservoir wells by number", () => {
@@ -475,11 +486,30 @@ describe("file-writer", () => {
   test("a plan that isn't an object with the parts the file writer reads is refused", () => {
     const message = (got) =>
       `The plan must be an object like the transfer designer makes, but got ${got}.`;
-    assert.throws(() => writeRunFiles(null, NAME, TIMESTAMP), { message: message("null") });
-    assert.throws(() => writeRunFiles([], NAME, TIMESTAMP), { message: message("a list") });
-    const { operationList, ...withoutTransfers } = withTransfersIn(planWithStages(1), ["1"]);
-    assert.throws(() => writeRunFiles(withoutTransfers, NAME, TIMESTAMP), {
-      message: message("an object"),
+    assert.throws(() => write(null), { message: message("null") });
+    assert.throws(() => write([]), { message: message("a list") });
+    const plan = withTransfersIn(planWithStages(1), ["1"]);
+    const { operationList, ...withoutTransfers } = plan;
+    assert.throws(() => write(withoutTransfers), { message: message("an object") });
+    const { experimentName, ...withoutName } = plan;
+    assert.throws(() => write(withoutName), { message: message("an object") });
+  });
+
+  test("a plan with no experiment name is refused, with no files", () => {
+    const plan = setExperimentName(withTransfersIn(planWithStages(1), ["1"]), "");
+    assert.throws(() => write(plan), {
+      message: "Name the experiment first: the files' folder is named after it.",
+    });
+  });
+
+  test("a plan whose experiment name isn't valid is refused with checkExperimentName's message", () => {
+    const plan = withTransfersIn(planWithStages(1), ["1"]);
+    // The transfer designer never stores such a name; a copy of the plan with one stands in.
+    assert.throws(() => write({ ...plan, experimentName: 5 }), {
+      message: 'The experiment name must be text, like "Exp36", but got 5.',
+    });
+    assert.throws(() => write({ ...plan, experimentName: "Exp 36" }), {
+      message: /^The experiment name can't contain " " \(a space\)\./,
     });
   });
 
@@ -522,11 +552,16 @@ describe("file-writer", () => {
     });
   });
 
-  test("order of checks: the name, then the timestamp, then the plan, then each stage in stage order", () => {
-    assert.throws(() => writeRunFiles(null, "Exp 36", TIMESTAMP), {
-      message: /^The experiment name can't contain/,
+  test("order of checks: the timestamp, then the plan's form, name and transfers, then each stage in stage order", () => {
+    // A plan with no name and no transfers.
+    const unnamed = setExperimentName(planWithStages(1), "");
+    assert.throws(() => writeRunFiles(unnamed, "2026-10-28"), {
+      message: /^The timestamp must be a valid date/,
     });
-    assert.throws(() => writeRunFiles(planWithStages(1), NAME, "2026-10-28"), {
+    assert.throws(() => writeRunFiles(unnamed, TIMESTAMP), {
+      message: /^Name the experiment first/,
+    });
+    assert.throws(() => writeRunFiles(planWithStages(1), "2026-10-28"), {
       message: /^The timestamp must be a valid date/,
     });
     // An overdraw in stage 4 and a zero-rounding volume in stage 2: stage 2 comes first.
