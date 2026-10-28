@@ -142,7 +142,9 @@ Last updated: 2026-10-28
 - **The file writer specification is written** (Draft, 2026-10-28;
   `src/shared/file-writer/file-writer.md`): each run's files go in a folder of their own inside
   `C:\Users\Beckman Coulter\Desktop\Ento\` (`config/paths.js`), named by a timestamp and the
-  experiment name; plans with overdraws are refused. Not built yet.
+  experiment name; plans with overdraws are refused. **Built** (#86, 2026-10-28): code and tests,
+  and `config/paths.js`. The page's Biomek files button isn't connected yet: how it saves the files
+  (one zip, or the browser's folder picker) is still to be decided, and tried in a preview first.
 - **Decided: tip groups move to a shared module, `tip-groups`** (Andy, 2026-10-28), so the transfer
   designer and the file writer use one function. Its specification is written (Draft, 2026-10-28;
   `src/shared/tip-groups/tip-groups.md`). Next, Claude Code builds `tip-groups` (moving the function
@@ -228,6 +230,12 @@ variable for every well of the standard deck is slow clicking work, so leave tim
   the plan is empty. Perhaps once others in the lab use the tool.
 - **Constituents of a component** (Andy, 2026-10-25): a component made of several things, such as a
   medium with a drug in it. Not designed yet.
+- **Tips only for stages that run** (Andy, 2026-10-28, reviewing #86): a tip group's probes count
+  only its stages with transfers, so an empty stage left in the plan with more probes than the rest
+  doesn't load extra tips. To keep the page's tip counts and the files agreeing, the change goes in
+  `tip-groups` (which would then read the operation list), and the page's tip counts would change as
+  transfers are added and removed, so it's tried in a preview first. Until then, deleting unused
+  stages before writing files avoids it.
 - **A run code** (Andy, 2026-10-28): the file writer puts a new code in every setup worklist it
   writes, and the general-purpose method asks for it first thing when it starts, refusing to run
   if it's wrong. So the method could read its setup worklist from one fixed path (ADR 0007) without
@@ -261,6 +269,10 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   it's built, the user chooses a technique that suits each stage's tips. Properly: each pipetting
   mode records the tip types its technique suits, and the page and the file writer check them
   (ADR 0007).
+- **Finding stages with overdraws is written twice** (v0.2.0, #86, 2026-10-28): the file writer
+  has its own copy of the transfer designer's four-line `stagesWithOverdraw`, because a shared
+  module can't import from a tool. Properly: move it into a shared module (`contents-tracking` is
+  the natural home), specification first, and have both use it.
 - **Overdraws within a stage are found in the planned order** (v0.2.0, 2026-10-26). Within a
   stage the Biomek chooses its own order (B56358AF, 22-25), but contents tracking replays the
   planned order. When a stage draws from an overdrawn well more than once, which of its transfers

@@ -31,6 +31,11 @@ import {
 } from "../src/shared/deck/deck.js";
 import { START, tipGroups } from "../src/shared/tip-groups/tip-groups.js";
 import {
+  writeRunFiles,
+  checkExperimentName,
+  folderNameFor,
+} from "../src/shared/file-writer/file-writer.js";
+import {
   findProblems,
   placeName,
   openWells,
@@ -242,6 +247,24 @@ const TOPICS = {
       'const tipPlan = { stageOrder: ["1", "2", "3"], tipChanges: { [START]: { tipType: "BC230" }, "3": { tipType: "BC1070" } }, stageList: tipStages }',
       "tipGroups(tipPlan)",
       'tipGroups({ ...tipPlan, stageOrder: ["1", "3", "2"], tipChanges: { [START]: { tipType: "BC230" }, "2": { tipType: "BC1070" } } })',
+    ],
+  },
+  "file-writer": {
+    loaded: { writeRunFiles, checkExperimentName, folderNameFor },
+    examples: [
+      'checkExperimentName("Exp36_repeat")',
+      'checkExperimentName("Exp 36")',
+      'folderNameFor(new Date(2026, 0, 5, 9, 7, 2), "Exp36")',
+      'let runPlan = addComponent(emptyPlan().plan, "Media", "#4e79a7")',
+      'runPlan = addToWells(runPlan, [{ labware: "Res1", well: "1" }, { labware: "Plate1", well: "H12" }], "Media", 1000)',
+      'runPlan = addTransfer(runPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "A1" }, volume: 100, stage: "1" })',
+      'runPlan = addTransfer(runPlan, { type: "transfer", source: { labware: "Plate1", well: "H12" }, destination: { labware: "Deep1", well: "A1" }, volume: 1 / 3, stage: "1" })',
+      'const run = writeRunFiles(runPlan, "Exp36", new Date(2026, 9, 28, 1, 57, 32))',
+      "run.folderName",
+      "run.files.map((file) => file.name)",
+      "console.log(run.files[1].text)",
+      "console.log(run.files[2].text)",
+      'writeRunFiles(emptyPlan().plan, "Exp36", new Date())',
     ],
   },
   randomizer: {
