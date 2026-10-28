@@ -123,9 +123,9 @@ columns:
   row doesn't mix, it uses a technique that doesn't (e.g. Operation), because a technique that
   mixes rejects 0 mix times.
 - **Mixing on its own,** without moving liquid, is a stage whose transfers go from a well to itself,
-  with a volume above 0, using a technique that only mixes (Andy's MixOnly2) at both ends. Biomek
-  doesn't change the well's volume, and the tool doesn't count those transfers in its contents
-  tracking.
+  with a volume above 0, using a technique that only mixes (Andy's MixOnly2) at both ends, whose
+  template mixes only at the dispense end. Biomek doesn't change the well's volume, and the tool
+  doesn't count those transfers in its contents tracking.
 
 ### Volumes and checks
 - **Volumes in the files are rounded to 3 decimal places** (1 nL). Biomek keeps 15 significant
