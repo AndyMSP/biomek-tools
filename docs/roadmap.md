@@ -154,7 +154,12 @@ Last updated: 2026-10-28
 - **Decided: the Biomek files download as one zip** (Andy, 2026-10-28), holding the run's folder,
   built by our own small `zip` shared module (stored, uncompressed zips only; no dependency). Tried
   in a preview on Andy's own computer; still to try on the Biomek PC. The `zip` specification is
-  written (Draft, `src/shared/zip/zip.md`); the page's button comes next.
+  written (Draft, `src/shared/zip/zip.md`).
+- **The page specification is updated** (Draft changes, 2026-10-28;
+  `src/tools/transfer-designer/transfer-designer-page.md`), from the preview Andy shaped: the
+  experiment's name as the page's heading, edited in place; the Biomek files box, showing the zip's
+  name before it's written; both header boxes closing on a press outside them; no tool name on the
+  page, only in the tab. Next, Claude Code builds `zip`, then the experiment name, then the page.
 - **Decided: tip groups move to a shared module, `tip-groups`** (Andy, 2026-10-28), so the transfer
   designer and the file writer use one function. Its specification is written (Draft, 2026-10-28;
   `src/shared/tip-groups/tip-groups.md`). Next, Claude Code builds `tip-groups` (moving the function

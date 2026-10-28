@@ -3,6 +3,10 @@
 > **Final (2026-10-27).** Written for v0.2.0, from the transfer designer preview (v126), which Andy
 > shaped and used from 2026-10-24 to 2026-10-26; revised from his testing of the built page (PR #73),
 > built in PR #74 with two fixes in PR #75, and tested by Andy.
+>
+> **Draft changes (2026-10-28):** the experiment name as the page's heading, and writing the Biomek
+> files, from the preview Andy shaped on 2026-10-28 (sections 2, 3, 4, 5, 12, 15 and 16). They
+> become Final once built and tested by Andy, including a zip unzipped and run on the Biomek PC.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -26,13 +30,11 @@ how typing a volume works and how numbers are shown (section 13), as for the ran
 (`randomizer-page.md`).
 
 ## 2. Scope
-Version 1 does everything below: filling wells with components before the run, building stages,
-adding transfers by clicking and dragging, tip changes, labels, undo and redo, and saving and opening
-plans, with a browser copy.
+Version 1 does everything below: naming the experiment, filling wells with components before the
+run, building stages, adding transfers by clicking and dragging, tip changes, labels, undo and redo,
+saving and opening plans, with a browser copy, and writing the Biomek files as one zip.
 
 Not in version 1 (see `docs/roadmap.md`):
-- **Writing the Biomek files.** The button is there (section 5) and works once the file writer is
-  built (roadmap item 7), as part of that work.
 - **A guided start** for an empty plan (Andy considered it, 2026-10-26: not now).
 - **Collapsing tip groups** in the Stages column.
 - **Moving** a stage or a transfer, **mixing**, **final concentrations** (`transfer-designer.md`).
@@ -44,7 +46,7 @@ From the top:
 
 | Where | What |
 |---|---|
-| Header | The title `Transfer designer`, with `Biomek i5 · Span-8` beside it in gray; on the right, the buttons `Biomek files`, `Save`, `Open` and `Reset` (section 5). |
+| Header | The experiment's name, as the page's heading; on the right, the buttons `Biomek files`, `Save`, `Open` and `Reset` (section 5). The tool's name isn't shown on the page (Andy, 2026-10-28): the browser tab says `Transfer Designer`. |
 | Deck panel (left) | Three bars, then the labware that's out (section 6). |
 | Stages column (right) | Start, the tip groups with their stages, and End (section 7). |
 | Message bar | Floating at the bottom of the window, centered (section 12). |
@@ -80,11 +82,55 @@ data everyone has to clear first).
 - the open editing box, and its unsaved changes (section 10);
 - the **brush**: the component picked, or the eraser, and its volume (section 8);
 - the **next transfer's volume** (section 9);
-- a chosen **source** well, while a transfer is being made (section 9).
+- a chosen **source** well, while a transfer is being made (section 9);
+- the **Biomek files box**, while it's open, and the run it will write (section 5).
+
+The experiment's name isn't the page's own: it's part of the plan (`transfer-designer.md`), so it's
+undone, kept in the browser copy and saved like any edit.
 
 ## 5. The header
-**Biomek files** (solid blue, first). Until the file writer is built it shows the message `Not built
-yet: writing the Biomek files comes with the file writer (roadmap item 7).`
+**The experiment's name** is the page's heading, at the left (Andy, 2026-10-28). It works like a
+labware's label (section 6):
+- It's a button showing the plan's `experimentName`, or, with none, `Name this experiment` (blue, in
+  a dashed outline). Its tooltip is `Click to name the experiment`.
+- Clicking it turns it into a text box, as large as the name, holding the name, selected.
+- **Checked as it's typed** with `checkExperimentName` (`file-writer.md`): while what's typed isn't a
+  valid name (and isn't blank), the box has a red border and the message bar shows the check's
+  message (error). Spaces at the ends don't count.
+- **Enter** or **clicking away** saves it with `setExperimentName` as one undoable edit: message
+  `Named the experiment Exp36.` (ok), or, for a blank name, `The experiment has no name now.`
+  (note). An unchanged name saves nothing. A name that isn't valid isn't saved: Enter keeps the box
+  open with what was typed, selected, to fix it; clicking away closes it, leaving the name as it was,
+  with the check's message showing.
+- **Escape** closes the box without saving.
+
+**Biomek files** (solid blue, first) opens a small box under it, like Reset's: **Write the Biomek
+files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (`file-writer.md`),
+`now` being the moment the box opens, and shows what Write files will save:
+- If the files can be written: `This saves`, the zip's name on a line of its own in monospace
+  (`<folder name>.zip`, e.g. `2026-10-28_172600_Exp36.zip`), then `holding the folder <folder name>,
+  with Setup.csv, Stages.csv and 3 Transfer From File files.` (the count from the files), with
+  `Cancel` and `Write files` (solid blue), focused on Write files.
+- If the plan is refused, `writeRunFiles`'s message instead (for example `Name the experiment first:
+  the files' folder is named after it.`, or an overdraw), in red, with Write files disabled and
+  Cancel focused.
+
+The time is fixed when the box opens, so the name it shows is the name Write files saves (Andy,
+2026-10-28: "tell you what file name it's actually generating").
+
+**Write files** builds one zip with `zipFiles` (`zip.md`): each file under the folder, as
+`<folder name>/<file name>`, dated with the same moment. Where the browser can ask where to save
+(Edge and Chrome can), it asks, suggesting `<folder name>.zip`; message `Saved <file name>. Unzip it
+into <BASE_FOLDER>, then point the method's setup worklist at <BASE_FOLDER><folder name>\Setup.csv.`
+(ok; `BASE_FOLDER` from `config/paths.js`). If the user closes that dialog, nothing happens and the
+box stays open. Otherwise, or if the browser refuses, the zip goes to the downloads; message `Saved
+<file name>, in your downloads.` and the same instructions. The box then closes.
+
+**The header's two boxes**, Biomek files' and Reset's, close with Cancel, with Escape, by clicking
+their button again, by opening the other one, and with **a press anywhere outside them**: they hold
+nothing the user has done, so closing loses nothing (Andy, 2026-10-28). The Biomek files box also
+closes **whenever the plan changes** (including undo and redo by key), so it never saves files
+worked out before a change.
 
 **Save** saves the plan as a plan file, with `planToText(plan, savedBy)`, where `savedBy` is
 `transfer designer v` and the tools' version from `package.json` (e.g. `transfer designer v0.2.0`;
@@ -450,7 +496,8 @@ and the deck shows its point again.
 **Keys** (none while typing in a text box or menu, which keep their own keys):
 - **Digits, `.` and Backspace** type a volume (section 13), at any time: the brush's while Start is
   open (not with the eraser), and the next transfer's while a stage is open. Not while End is open.
-- **Escape** closes the open editing box without saving; otherwise clears a chosen source.
+- **Escape** closes the open editing box without saving, or the open header box (section 5);
+  otherwise clears a chosen source.
 - **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac). Not while an editing
   box is open, since its changes aren't in the plan yet.
 
@@ -463,7 +510,7 @@ latest message until the next replaces it; it's hidden when empty. It's announce
 Each message has a kind: **ok** (green on pale green), **note** (gray on white, with a border) or
 **error** (dark red on pale red, with a border). Messages are listed with what causes them in
 sections 5 to 10. The kinds: errors from the logic, overdraws after adding, a file that can't be
-opened, a browser copy that can't be read, and `All 30 colors are in use…` are **error**; `Added…`, `Saved…`, `Renamed…`, `Opened…`, `Volume changed…` and `New
+opened, a browser copy that can't be read, and `All 30 colors are in use…` are **error**; `Added…`, `Saved…`, `Renamed…`, `Named…`, `Opened…`, `Volume changed…` and `New
 tips…` are **ok**; the rest are **note**.
 
 **Stages in messages** are named by place and name, e.g. `stage 3, “New stage”`, so two stages with
@@ -510,8 +557,9 @@ it's really good"), with the changes from his testing. Anything not listed here 
 Small text is kept soft: gray where it's secondary, and no bigger than it needs to be (Andy,
 2026-10-26: bigger, darker text in the header, the bars and the buttons "felt harsher").
 
-- **Page and panels:** background `#F6F5F1`; the title 26px semibold, with the subtitle 14px gray;
-  white panels with a thin border (`#E2E0D8`), rounded corners (10px) and 20px padding, 20px apart;
+- **Page and panels:** background `#F6F5F1`; the experiment's name, the page's heading, 28px
+  semibold (its text box the same size, 26px); with no name, `Name this experiment` 22px in blue,
+  regular weight, in a dashed light blue outline; white panels with a thin border (`#E2E0D8`), rounded corners (10px) and 20px padding, 20px apart;
   the page at most 1500px wide, centered.
 - **Type:** `"Segoe UI", system-ui, sans-serif`, 15px with line height 1.4; well names, grid
   headings, stage numbers, transfer rows and volumes in `Consolas, "Cascadia Mono", monospace`. Text
@@ -559,6 +607,14 @@ page's configuration (ADR 0009):
   brings the plan back; a private window starts empty and works;
 - clicking, dragging, and sending one source into a box of wells, in all four directions;
 - every editing box: Save, Discard, Escape, a click outside with and without changes, Remove;
+- the experiment's name: naming, a name refused as typed, Enter and clicking away, Escape, undo and
+  redo, and the name kept after saving and opening, reloading, and in a plan file of version 1
+  (none);
+- Biomek files: the box with no name, with an overdraw, and ready; the zip's name it shows is the one
+  saved; the header boxes closing on a press outside, on Escape, and the Biomek files box on undo by
+  key;
+- a zip saved, unzipped into the base folder on the Biomek PC, and run there in simulation, with
+  any security warnings noted;
 - undo and redo with the buttons and the keys, after each kind of edit;
 - a plan with an overdraw shows the marks, the key, the red stage and the problem count;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
