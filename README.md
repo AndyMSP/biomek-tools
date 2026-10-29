@@ -1,5 +1,8 @@
 # biomek-tools
 Tools for developing methods on the Biomek i5 with a Span-8 pod.
+- **Randomizer** (`randomizer.html`): places samples in random wells of one 96-well plate.
+- **Transfer Designer** (`transfer-designer.html`): plans transfers by clicking and dragging between
+  wells, in stages, and writes the Biomek files for the general-purpose method.
 
 ## Setup
 Install [Node.js](https://nodejs.org/) (version 20 or later). Then, in the project folder, run
@@ -26,23 +29,25 @@ randomizer's and the transfer designer's) loaded, e.g. `GRID_96.wellPosition("D3
 what's loaded, grouped by topic (one per module, such as `layout` or `operation-list`). Type
 `.examples` and a topic, e.g. `.examples layout`, to see examples to try. Type `.exit` to quit.
 
-## Trying the randomizer page
+## Trying the pages
 ```
 npm run serve
 ```
-This starts a small web server on this computer and prints the randomizer page's address
-(`http://localhost:8000/src/tools/randomizer/randomizer.html`); open it in Edge or Chrome. Browsers
-won't load the page's modules from a file opened directly, so during development the page has to be
-served this way. Press Ctrl+C to stop the server.
+This starts a small web server on this computer. Open a page at its address in Edge or Chrome:
+- the randomizer: `http://localhost:8000/src/tools/randomizer/randomizer.html`
+- the Transfer Designer: `http://localhost:8000/src/tools/transfer-designer/transfer-designer.html`
+
+Browsers won't load the pages' modules from a file opened directly, so during development the pages
+have to be served this way. Press Ctrl+C to stop the server.
 
 ## Building the tools
 ```
 npm run build
 ```
-This makes one self-contained HTML file per tool in `dist/` (e.g. `dist/randomizer.html`), with the
-page's styling and all its code inside. That file is what goes to the lab: it opens in Edge or Chrome
-with a double-click, with nothing installed and no internet needed. `dist/` is not committed. See
-ADR 0004.
+This makes one self-contained HTML file per tool in `dist/` (`dist/randomizer.html` and
+`dist/transfer-designer.html`), with the page's styling and all its code inside. That file is what
+goes to the lab: it opens in Edge or Chrome with a double-click, with nothing installed and no
+internet needed. `dist/` is not committed. See ADR 0004.
 
 ## Making a release
 Releases follow semantic versioning (MAJOR.MINOR.PATCH); versions starting with 0 may still change.
