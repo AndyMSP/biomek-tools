@@ -345,6 +345,9 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   text box is 14px, regular weight and 34px tall: the label shrinks and loses its bold while being
   renamed. The page specification doesn't give the box's size. Properly: select it so it wins, as
   the experiment name's text box does (`input.experiment-name-box`).
+- **`npm run serve` prints only the randomizer's address** (found 2026-10-29, updating the README
+  in #98; left as it is, Andy). The README gives both pages' addresses, so nothing is missing for
+  someone reading it. Properly: `scripts/serve.js` prints the Transfer Designer's address too.
 - **The REPL's `deck` and `transfer-designer` examples name labware that's no longer on the deck**
   (`"Res"`, `"Plate"`, `"Deep"`, the stand-ins before #82), so most of them fail with "There's no
   labware … on the deck." Found reviewing #94, 2026-10-28; left for later (Andy). The page and the
