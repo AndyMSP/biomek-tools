@@ -164,7 +164,11 @@ Last updated: 2026-10-28
   page, only in the tab. **The experiment name is built** (#94, 2026-10-28): in the plan
   (`setExperimentName`), in plan files (version 2, still reading version 1), and read from the plan
   by the file writer (`writeRunFiles(plan, timestamp)`). Next, Claude Code builds the page (`zip` is
-  built, #91).
+  built, #91). **The page is built** (#96, 2026-10-28): the experiment's name as the heading, the
+  Biomek files box and the zip download, and both header boxes closing on a press outside them.
+  Still to check by Andy: Write files through the save dialog in Edge or Chrome, and a zip
+  unzipped and run in simulation on the Biomek PC (step 1 of the order, below). The page
+  specification's changed sections stay Draft until then.
 - **Decided: tip groups move to a shared module, `tip-groups`** (Andy, 2026-10-28), so the transfer
   designer and the file writer use one function. Its specification is written (Draft, 2026-10-28;
   `src/shared/tip-groups/tip-groups.md`). Next, Claude Code builds `tip-groups` (moving the function
@@ -334,6 +338,13 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   2026-10-25), so the lab needs to know it another way.
   Properly: dead volume per labware type, in contents tracking (it's under "Not in version 1" in its
   specification). *Being done in v0.2.0* (item 11, Andy, 2026-10-28).
+- **A label's text box doesn't match the label** (found by Claude Code in #96, 2026-10-28;
+  measured in Chromium the same day). The label is 15px semibold and 30px tall, and its text box's
+  own style (`.label-box`) asks for the same, but the general rule for every text box
+  (`input[type="text"]`) outweighs it (CSS specificity: the more specific selector wins), so the
+  text box is 14px, regular weight and 34px tall: the label shrinks and loses its bold while being
+  renamed. The page specification doesn't give the box's size. Properly: select it so it wins, as
+  the experiment name's text box does (`input.experiment-name-box`).
 - **The REPL's `deck` and `transfer-designer` examples name labware that's no longer on the deck**
   (`"Res"`, `"Plate"`, `"Deep"`, the stand-ins before #82), so most of them fail with "There's no
   labware … on the deck." Found reviewing #94, 2026-10-28; left for later (Andy). The page and the
