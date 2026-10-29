@@ -3,23 +3,28 @@
 //
 // The page has no rules of its own about plans (transfer-designer-page.md, section 1). Every edit
 // goes through transfer-designer.js, undo and redo through plan-history.js, saving and opening
-// through plan-file.js, the labware through deck.js, and what each well holds through
-// contents-tracking.js. When one of them refuses an edit, the page shows its message and changes
-// nothing. What this file decides is only how things look and how the user does them: how typing
-// a volume works, how numbers are shown, where boxes float, and what each message says.
+// through plan-file.js, the labware through deck.js, what each well holds through
+// contents-tracking.js, and the Biomek files through file-writer.js and zip.js. When one of them
+// refuses an edit, the page shows its message and changes nothing. What this file decides is only
+// how things look and how the user does them: how typing a volume works, how numbers are shown,
+// where boxes float, and what each message says.
 // Specification: transfer-designer-page.md.
 
 import packageJson from "../../../package.json" with { type: "json" };
 import { COMPONENT_COLORS } from "../../../config/component-colors.js";
 import { DEFAULT_TRANSFER_VOLUME, DEFAULT_FILL_VOLUME } from "../../../config/default-volumes.js";
 import { TIP_TYPES } from "../../../config/tip-types.js";
+import { BASE_FOLDER } from "../../../config/paths.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { labwareNames, gridOf, labwareTypeOf, wellsInBox } from "../../shared/deck/deck.js";
+import { writeRunFiles, checkExperimentName } from "../../shared/file-writer/file-writer.js";
+import { zipFiles } from "../../shared/zip/zip.js";
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
 import {
   START,
   emptyPlan,
+  setExperimentName,
   probesFor,
   modesFor,
   modeSettings,
@@ -164,7 +169,12 @@ const glows = new Map();
 
 // The page's elements that transfer-designer.html gives an id, looked up once.
 const elements = {
+  experimentHeading: byId("experiment-heading"),
   biomekFiles: byId("biomek-files"),
+  biomekBox: byId("biomek-box"),
+  biomekSummary: byId("biomek-summary"),
+  biomekCancel: byId("biomek-cancel"),
+  writeFiles: byId("write-files"),
   save: byId("save"),
   open: byId("open"),
   openFile: byId("open-file"),
@@ -209,6 +219,7 @@ function setUpPage() {
   connectKeys();
   connectEditingBoxGuard();
   connectInlineBoxGuard();
+  connectHeaderBoxGuard();
   window.addEventListener("scroll", fitStagesColumn);
   window.addEventListener("resize", () => {
     fitStagesColumn();
@@ -239,22 +250,19 @@ function startFromBrowserCopy() {
   }
 }
 
-// Connects the header's buttons (section 5).
+// Connects the header's buttons (section 5). The experiment's name is connected when it's drawn.
 function connectHeader() {
-  elements.biomekFiles.addEventListener("click", () => {
-    showMessage(
-      "Not built yet: writing the Biomek files comes with the file writer (roadmap item 7).",
-      "note",
-    );
-  });
-  elements.save.addEventListener("click", saveFile);
+  elements.biomekFiles.addEventListener("click", toggleBiomekBox);
+  elements.biomekCancel.addEventListener("click", closeBiomekBox);
+  elements.writeFiles.addEventListener("click", writeBiomekFiles);
+  elements.save.addEventListener("click", savePlanFile);
   elements.open.addEventListener("click", () => {
     // Clearing the value first means choosing the same file again still counts as a change.
     elements.openFile.value = "";
     elements.openFile.click();
   });
   elements.openFile.addEventListener("change", openChosenFile);
-  elements.reset.addEventListener("click", openResetBox);
+  elements.reset.addEventListener("click", toggleResetBox);
   elements.resetCancel.addEventListener("click", closeResetBox);
   elements.resetEverything.addEventListener("click", resetEverything);
 }
@@ -319,10 +327,12 @@ function recordEdit(plan, open = currentOpen()) {
 }
 
 // Called after every change to the plan, including undo and redo: the next volume key starts a new
-// number (section 13), the browser copy is stored (section 5), and the page is redrawn.
+// number (section 13), the Biomek files box closes, so it never saves files worked out before the
+// change (section 5), the browser copy is stored (section 5), and the page is redrawn.
 function afterPlanChange() {
   brush.volume.startsNew = true;
   transferVolume.startsNew = true;
+  closeBiomekBox();
   storeBrowserCopy();
   refresh();
 }
@@ -376,8 +386,8 @@ function redo() {
   showMessage("Redone.", "note");
 }
 
-// Redraws everything from the current plan and the page's state: the deck panel, the Stages column
-// and the column's fit.
+// Redraws everything from the current plan and the page's state: the heading, the deck panel, the
+// Stages column and the column's fit.
 function refresh() {
   const plan = currentPlan();
   // Undo or redo can take the picked component away (e.g. undoing a rename): then, as when a picked
@@ -386,6 +396,7 @@ function refresh() {
     const first = plan.components[0];
     brush.pick = first === undefined ? { kind: "eraser" } : { kind: "component", name: first.name };
   }
+  refreshHeading();
   refreshDeck();
   refreshStages();
   keepVolumeBoxTransferHighlighted();
@@ -416,32 +427,19 @@ function tryLogic(action) {
 
 // --- The header (section 5) ---
 
-// Saves the plan as a plan file: through the browser's save dialog where it has one, otherwise to
-// the downloads.
-async function saveFile() {
-  const text = planToText(currentPlan(), SAVED_BY);
-  const fileName = `transfer plan ${localDate()}.json`;
-  if (typeof window.showSaveFilePicker === "function") {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: fileName,
-        types: [{ description: "Transfer plan", accept: { "application/json": [".json"] } }],
-      });
-      const writable = await handle.createWritable();
-      await writable.write(text);
-      await writable.close();
-      showMessage(`Saved the plan as ${handle.name}.`, "ok");
-      return;
-    } catch (error) {
-      // Closing the dialog gives an AbortError: nothing happens. Anything else means the browser
-      // refused, and the file goes to the downloads instead.
-      if (error.name === "AbortError") {
-        return;
-      }
-    }
+// Saves the plan as a plan file, suggesting the name "transfer plan YYYY-MM-DD.json".
+async function savePlanFile() {
+  const saved = await saveFile({
+    contents: planToText(currentPlan(), SAVED_BY),
+    fileName: `transfer plan ${localDate()}.json`,
+    type: "application/json",
+    description: "Transfer plan",
+  });
+  if (saved.how === "dialog") {
+    showMessage(`Saved the plan as ${saved.name}.`, "ok");
+  } else if (saved.how === "downloads") {
+    showMessage(`Saved the plan as ${saved.name}, in your downloads.`, "ok");
   }
-  downloadText(text, fileName);
-  showMessage(`Saved the plan as ${fileName}, in your downloads.`, "ok");
 }
 
 // Today's date by the computer's own clock (not UTC), as YYYY-MM-DD, e.g. "2026-10-26".
@@ -452,9 +450,40 @@ function localDate() {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-// Hands `text` to the browser as a file to download, named `fileName`.
-function downloadText(text, fileName) {
-  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+// Saves `contents` (text, or bytes as a Uint8Array) as a file called `fileName`: through the
+// browser's save dialog where it has one (Edge and Chrome do), otherwise to the downloads. The
+// dialog suggests `fileName` and offers files of `type` (a media type, such as "application/zip")
+// with `fileName`'s extension, described as `description`. Returns how the file was saved:
+// { how: "dialog", name } (the name the user chose), { how: "downloads", name }, or
+// { how: "cancelled" } if the user closed the dialog, when nothing was saved.
+async function saveFile({ contents, fileName, type, description }) {
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const extension = fileName.slice(fileName.lastIndexOf("."));
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [{ description, accept: { [type]: [extension] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(contents);
+      await writable.close();
+      return { how: "dialog", name: handle.name };
+    } catch (error) {
+      // Closing the dialog gives an AbortError: nothing happens. Anything else means the browser
+      // refused, and the file goes to the downloads instead.
+      if (error.name === "AbortError") {
+        return { how: "cancelled" };
+      }
+    }
+  }
+  downloadFile(contents, fileName, type);
+  return { how: "downloads", name: fileName };
+}
+
+// Hands `contents` (text or bytes) to the browser as a file of `type` to download, named
+// `fileName`.
+function downloadFile(contents, fileName, type) {
+  const url = URL.createObjectURL(new Blob([contents], { type }));
   const link = document.createElement("a");
   link.href = url;
   link.download = fileName;
@@ -492,8 +521,14 @@ function showReplacedPlan(plan, open) {
   recordEdit(plan, open);
 }
 
-// Opens Reset's question under the button, focused on Cancel.
-function openResetBox() {
+// Opens Reset's question under its button, focused on Cancel, or closes it if it's open. Opening
+// it closes the Biomek files box.
+function toggleResetBox() {
+  if (!elements.resetBox.hidden) {
+    closeResetBox();
+    return;
+  }
+  closeBiomekBox();
   elements.resetBox.hidden = false;
   elements.reset.setAttribute("aria-expanded", "true");
   elements.resetCancel.focus();
@@ -503,6 +538,24 @@ function openResetBox() {
 function closeResetBox() {
   elements.resetBox.hidden = true;
   elements.reset.setAttribute("aria-expanded", "false");
+}
+
+// Watches every press on the page: a press outside an open header box (Biomek files' or Reset's)
+// closes it, and still does what it would, since the boxes hold nothing the user has done. A press
+// on the box's own button is left to the button, which closes the box itself.
+function connectHeaderBoxGuard() {
+  document.addEventListener("pointerdown", closeHeaderBoxesPressedOutside, true);
+}
+
+// One press's share of the guard above.
+function closeHeaderBoxesPressedOutside(event) {
+  const pressed = (element) => element.contains(event.target);
+  if (!elements.biomekBox.hidden && !pressed(elements.biomekBox) && !pressed(elements.biomekFiles)) {
+    closeBiomekBox();
+  }
+  if (!elements.resetBox.hidden && !pressed(elements.resetBox) && !pressed(elements.reset)) {
+    closeResetBox();
+  }
 }
 
 // Replaces the plan with an empty one as one undoable edit, with Start open and all labware put
@@ -533,6 +586,194 @@ function bringOutUsedLabware(plan) {
 function pickFirstComponent(plan) {
   const first = plan.components[0];
   brush.pick = first === undefined ? { kind: "none" } : { kind: "component", name: first.name };
+}
+
+// --- The experiment's name (section 5) ---
+
+// Draws the page's heading: a button showing the experiment's name, or "Name this experiment" with
+// none. Left as it is while the name's text box is open, so redrawing doesn't close the box.
+function refreshHeading() {
+  const heading = elements.experimentHeading;
+  if (inlineBox !== null && heading.contains(inlineBox.box)) {
+    return;
+  }
+  heading.replaceChildren(createExperimentNameButton(currentPlan()));
+}
+
+// The heading's button: the experiment's name, or, with none, "Name this experiment" (blue, in a
+// dashed outline). Clicking it turns it into a text box.
+function createExperimentNameButton(plan) {
+  const named = plan.experimentName !== "";
+  const button = createElement(
+    "button",
+    named ? plan.experimentName : "Name this experiment",
+    named ? "experiment-name" : "experiment-name unnamed",
+  );
+  button.type = "button";
+  button.title = "Click to name the experiment";
+  button.addEventListener("click", () => startNamingExperiment(button));
+  return button;
+}
+
+// Turns the heading into a text box holding the name, selected, checked as it's typed. Enter or
+// clicking away saves it with setExperimentName as one undoable edit; an unchanged name saves
+// nothing; Escape closes the box without saving. A name that isn't valid isn't saved: after Enter
+// the box stays open with what was typed, selected, to fix it; after clicking away it closes,
+// leaving the name as it was, with the check's message showing (the inline box guard doesn't pass
+// a refused click on, so the message stays in view).
+function startNamingExperiment(button) {
+  const plan = currentPlan();
+  nameCheckMessage = null;
+  const box = createInlineEditor({
+    value: plan.experimentName,
+    className: "experiment-name-box",
+    accessibleName: "Experiment name",
+    onSave: (text, how) => {
+      const named = tryLogic(() => setExperimentName(plan, text));
+      if (named === false) {
+        if (how === "enter") {
+          return "kept-open";
+        }
+        refreshHeading();
+        return "refused";
+      }
+      if (named === plan) {
+        refreshHeading();
+        return "closed";
+      }
+      recordEdit(named);
+      if (named.experimentName === "") {
+        showMessage("The experiment has no name now.", "note");
+      } else {
+        showMessage(`Named the experiment ${named.experimentName}.`, "ok");
+      }
+      return "closed";
+    },
+    onCancel: refreshHeading,
+  });
+  box.placeholder = "e.g. Exp36";
+  // Names like "Exp36" aren't words, so the browser's spell check would only underline them.
+  box.spellcheck = false;
+  box.addEventListener("input", () => checkNameAsTyped(box));
+  button.replaceWith(box);
+  box.focus();
+  box.select();
+}
+
+// The message the typed check put in the message bar, or null, so it can be taken away once what's
+// typed is a valid name again.
+let nameCheckMessage = null;
+
+// Checks the name box's text as it's typed (section 5): while it isn't a valid name (and isn't
+// blank), the box has a red border and the message bar shows checkExperimentName's message as an
+// error. Spaces at the ends don't count. Once it's valid again, that message is taken away.
+function checkNameAsTyped(box) {
+  const typed = box.value.trim();
+  let problem = null;
+  if (typed !== "") {
+    try {
+      checkExperimentName(typed);
+    } catch (error) {
+      problem = error.message;
+    }
+  }
+  box.classList.toggle("invalid", problem !== null);
+  if (problem !== null) {
+    showMessage(problem, "error");
+    nameCheckMessage = problem;
+  } else if (nameCheckMessage !== null) {
+    if (elements.messageBar.textContent === nameCheckMessage) {
+      hideMessage();
+    }
+    nameCheckMessage = null;
+  }
+}
+
+// --- The Biomek files box (section 5) ---
+
+// The run the Biomek files box will write, { folderName, files, now }: the file writer's folder
+// name and files, and the moment the box opened, which they're named and dated by. Null while the
+// box is closed, or open with a plan the writer refused.
+let biomekRun = null;
+
+// Opens the Biomek files box under its button, or closes it if it's open. Opening it closes
+// Reset's question, and works out the run's files at once with writeRunFiles, the moment the box
+// opens as their timestamp, so the zip's name it shows is the one Write files saves. If the writer
+// refuses the plan, its message is shown instead, unchanged, with Write files disabled.
+function toggleBiomekBox() {
+  if (!elements.biomekBox.hidden) {
+    closeBiomekBox();
+    return;
+  }
+  closeResetBox();
+  const now = new Date();
+  const summary = elements.biomekSummary;
+  try {
+    const { folderName, files } = writeRunFiles(currentPlan(), now);
+    biomekRun = { folderName, files, now };
+    summary.classList.remove("refused");
+    summary.replaceChildren(
+      "This saves",
+      createElement("code", `${folderName}.zip`, "zip-name"),
+      `holding the folder ${folderName}, with ${describeRunFiles(files)}.`,
+    );
+    elements.writeFiles.disabled = false;
+  } catch (error) {
+    biomekRun = null;
+    summary.classList.add("refused");
+    summary.textContent = error.message;
+    elements.writeFiles.disabled = true;
+  }
+  elements.biomekBox.hidden = false;
+  elements.biomekFiles.setAttribute("aria-expanded", "true");
+  (biomekRun === null ? elements.biomekCancel : elements.writeFiles).focus();
+}
+
+// The run's files, for the box, e.g. "Setup.csv, Stages.csv and 3 Transfer From File files". The
+// file writer lists Setup.csv and Stages.csv first, then the Transfer From File files
+// (file-writer.md, section 4).
+function describeRunFiles(files) {
+  const transferFileCount = files.length - 2;
+  return `Setup.csv, Stages.csv and ${countOf(transferFileCount, "Transfer From File file")}`;
+}
+
+// Closes the Biomek files box, forgetting the run it worked out.
+function closeBiomekBox() {
+  biomekRun = null;
+  elements.biomekBox.hidden = true;
+  elements.biomekFiles.setAttribute("aria-expanded", "false");
+}
+
+// Write files: builds one zip of the run's files with zipFiles, each under the run's folder, dated
+// with the moment the box opened, and saves it through the save dialog where the browser has one,
+// otherwise to the downloads; then the box closes. If the user closes the dialog, nothing happens
+// and the box stays open.
+async function writeBiomekFiles() {
+  if (biomekRun === null) {
+    return;
+  }
+  const { folderName, files, now } = biomekRun;
+  const entries = files.map((file) => ({ name: `${folderName}/${file.name}`, text: file.text }));
+  const bytes = tryLogic(() => zipFiles(entries, now));
+  if (bytes === false) {
+    return;
+  }
+  const saved = await saveFile({
+    contents: bytes,
+    fileName: `${folderName}.zip`,
+    type: "application/zip",
+    description: "Zip file",
+  });
+  if (saved.how === "cancelled") {
+    return;
+  }
+  const where = saved.how === "downloads" ? ", in your downloads" : "";
+  showMessage(
+    `Saved ${saved.name}${where}. Unzip it into ${BASE_FOLDER}, then point the method's setup ` +
+      `worklist at ${BASE_FOLDER}${folderName}\\Setup.csv.`,
+    "ok",
+  );
+  closeBiomekBox();
 }
 
 // --- The browser copy (section 5) ---
@@ -2669,11 +2910,14 @@ function handleKey(event) {
   }
 }
 
-// Escape closes the open editing box without saving, or Reset's question; otherwise it clears a
-// chosen source.
+// Escape closes the open editing box without saving, or the open header box (Biomek files' or
+// Reset's), putting the focus back on its button; otherwise it clears a chosen source.
 function pressEscape() {
   if (editingBox !== null) {
     closeEditingBox();
+  } else if (!elements.biomekBox.hidden) {
+    closeBiomekBox();
+    elements.biomekFiles.focus();
   } else if (!elements.resetBox.hidden) {
     closeResetBox();
     elements.reset.focus();
@@ -2797,6 +3041,13 @@ function showMessage(text, kind) {
   bar.textContent = text;
   bar.className = `message-bar ${kind}`;
   bar.hidden = false;
+}
+
+// Takes the message away: the bar is hidden when empty (section 12).
+function hideMessage() {
+  const bar = elements.messageBar;
+  bar.textContent = "";
+  bar.hidden = true;
 }
 
 // --- The Stages column's fit and scrolling (sections 3 and 7) ---

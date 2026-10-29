@@ -106,16 +106,10 @@ body {
   margin-bottom: var(--panel-gap);
 }
 
-.title-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 12px;
-}
-
+/* The page's heading is the experiment's name (section 5), 28px semibold. */
 h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 600;
 }
 
@@ -130,7 +124,6 @@ p {
   margin: 0;
 }
 
-.subtitle,
 .muted {
   color: var(--muted-text);
   font-size: 14px;
@@ -234,7 +227,46 @@ select:focus-visible {
   outline-offset: 1px;
 }
 
-/* --- The header's buttons (section 5) --- */
+/* --- The header (section 5) --- */
+/* The experiment's name: a button that looks like the heading (28px semibold); clicking it turns
+   it into a text box. With no name, "Name this experiment": 22px in blue, medium weight, in a
+   dashed light blue outline. */
+.experiment-name {
+  min-height: 40px;
+  padding: 0 8px;
+  margin-left: -8px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.experiment-name:hover {
+  border-color: var(--input-border);
+}
+
+.experiment-name.unnamed {
+  border: 1px dashed var(--blue-border);
+  color: var(--blue);
+  font-size: 22px;
+  font-weight: 500;
+}
+
+/* The name's text box: 26px semibold, 340px wide. Selected as input.…, so it outweighs the
+   input[type="text"] rule above (CSS specificity: the more specific selector wins). */
+input.experiment-name-box {
+  width: 340px;
+  max-width: 100%;
+  min-height: 40px;
+  font-size: 26px;
+  font-weight: 600;
+}
+
+/* While what's typed isn't a valid name. */
+input.experiment-name-box.invalid {
+  border-color: var(--red);
+}
+
 .header-actions {
   display: flex;
   flex-wrap: wrap;
@@ -242,11 +274,12 @@ select:focus-visible {
   gap: 8px;
 }
 
-.reset-holder {
+/* Each header box (Biomek files' summary, Reset's question) floats under its own button. */
+.box-holder {
   position: relative;
 }
 
-/* Reset's question: a small box under the button. */
+/* A header box: a small box under its button, at the button's right edge. */
 .confirm-box {
   position: absolute;
   top: calc(100% + 6px);
@@ -264,6 +297,25 @@ select:focus-visible {
 .confirm-box p {
   margin: 6px 0 12px;
   color: var(--muted-text);
+}
+
+/* The Biomek files box sits under the left edge of its button, the first in the row. */
+.biomek-box {
+  right: auto;
+  left: 0;
+}
+
+/* The zip's name, on a line of its own in monospace; a long name wraps rather than overflowing. */
+.zip-name {
+  display: block;
+  margin: 4px 0;
+  font-family: var(--mono-font);
+  overflow-wrap: anywhere;
+}
+
+/* The file writer's message when it refuses the plan: in red. */
+.confirm-box p.refused {
+  color: var(--red);
 }
 
 .confirm-buttons {
