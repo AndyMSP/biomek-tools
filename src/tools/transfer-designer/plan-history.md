@@ -1,8 +1,8 @@
 # plan-history — specification
 
-> **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview, where undo and redo
-> were tried (2026-10-24 to 2026-10-26). It becomes Final once its code is built and Andy has tested
-> the page.
+> **Final (2026-10-29).** Written for v0.2.0, from the transfer designer preview, where undo and redo
+> were tried (2026-10-24 to 2026-10-26); built, and tested by Andy with the page (whose
+> specification became Final on 2026-10-27).
 
 ## 1. Purpose
 `plan-history.js` gives the transfer designer undo and redo. It keeps the versions of what the tool

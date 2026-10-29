@@ -1,8 +1,7 @@
 # tip-groups — specification
 
-> **Draft (2026-10-28).** Written for v0.2.0, moving the transfer designer's `tipGroups` into a
-> shared module (Andy, 2026-10-28). It becomes Final once its code is built and the file writer
-> uses it.
+> **Final (2026-10-29).** Written for v0.2.0, moving the transfer designer's `tipGroups` into a
+> shared module (Andy, 2026-10-28); built in #85, and used by the file writer since #86.
 
 ## 1. Purpose
 `tip-groups.js` works out a plan's **tip groups** (`docs/glossary.md`, "Tip group"): the stages
