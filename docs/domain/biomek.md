@@ -369,8 +369,38 @@ simulated wasn't recorded.** "Worked" means it validated and ran as the files sa
   about 20 µL, check them gravimetrically or with dye.
 - Each technique's volume range sets its practical minimum (see the Technique Browser).
 
+## Liquid levels and starting volumes
+*(Read in the manuals, 2026-10-29.)*
+- **A technique measures each height from the top of the well, its bottom, or the liquid's
+  surface.** A liquid level is needed only when the height is measured from the liquid.
+  *(B56358AF, 7-12 for aspirating and 7-15 for dispensing.)*
+- **With standard tips, the liquid level comes from the well's known volume.** It's defined "by
+  either setting a known volume in the Labware Properties (in the Instrument Setup step) or by
+  sensing the level"; with standard tips, measuring from the liquid "requires that a known volume
+  of liquid be entered in Labware Properties". *(B56358AF, 7-15 and 22-53.)* So the starting
+  volumes the setup worklist gives (the `Vol_` variables) decide where the tips go, for any
+  technique that measures from the liquid; for one that measures from the bottom or the top, they
+  don't.
+- **A known volume is used as entered:** with "Known", "the liquid level is not detected during
+  method run and the entered value is used during validation and method run". *(B56358AF, 17-21.)*
+- **The Biomek checks draws against the starting volumes.** It refuses "Cannot pipette X µL; the
+  well only has Y µL", whose first listed cause is "An incorrect starting volume was entered".
+  *(B54473AD, 6-9; B56358AF, D-3.)* So a starting volume lower than what's really in the well can
+  make it refuse a draw that's physically possible.
+- **Each technique has a minimum pipetting height:** "the number of millimeters from the bottom of
+  the labware that the tip is not allowed to go below". *(B56358AF, 7-36.)* The manuals don't
+  define dead volume, but this implies that how much liquid the tips can't reach depends on the
+  technique as well as the well's shape.
+- **Labware types hold a maximum volume per well, and a default volume.** Labware Properties shows
+  "Maximum volume per well"; a reservoir's sections each have "Height, Max Volume, and Default
+  Volume", set in the Labware Type Editor. *(B56358AF, 17-18 and 10-22.)*
+
 ## Not yet known
 Questions to answer before relying on the answer:
+- Whether each of the lab's techniques (Operation, NonContact, OperationMix, MixOnly2) measures
+  its aspirate, dispense and mix heights from the top, the bottom or the liquid, and its minimum
+  pipetting height (in the Technique Browser). This decides whether the starting volumes move the
+  tips, and how much liquid they leave behind (see "Liquid levels and starting volumes").
 - The largest volume accepted in a volume column.
 - Whether a real run behaves like simulation for everything in "Worklist-driven steps" and
   "Building the general-purpose method", in particular that a technique unsuited to the tip still
