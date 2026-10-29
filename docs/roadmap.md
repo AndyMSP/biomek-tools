@@ -170,9 +170,9 @@ Last updated: 2026-10-28
   unzipped and run in simulation on the Biomek PC (step 1 of the order, below). The page
   specification's changed sections stay Draft until then.
 - **Decided: tip groups move to a shared module, `tip-groups`** (Andy, 2026-10-28), so the transfer
-  designer and the file writer use one function. Its specification is written (Draft, 2026-10-28;
-  `src/shared/tip-groups/tip-groups.md`). Next, Claude Code builds `tip-groups` (moving the function
-  and its tests, with no change in behavior), then the file writer.
+  designer and the file writer use one function. **Built** (#85, 2026-10-28): the function and its
+  tests moved, with no change in behavior; the file writer uses it (#86). Its specification is
+  Final (#99, 2026-10-29; `src/shared/tip-groups/tip-groups.md`).
 - **Decided: the randomizer link joins v0.2.0** (Andy, 2026-10-27; item 9, below).
 - **Decided: v0.2.0 grows** (Andy, 2026-10-28): it gains **mixing** and **well capacities with dead
   volume** (items 10 and 11, below), so each specification changes once and the Biomek is tested
