@@ -116,7 +116,7 @@ Opening a file checks, in this order:
    from every other stage's; `name` and `settings` are checked by the
    stage list. In a version 1 or 2 file, `settings` must also hold `probes`, checked as
    `setTipProbes` checks probes (`transfer-designer.md`), and taken out before the stage list
-   checks the rest. In a version 1, 2 or 3 file, `settings` can't hold `sourceMix` or
+   checks the rest. Then, in a version 1, 2 or 3 file, `settings` can't hold `sourceMix` or
    `destinationMix` (plans couldn't mix then), and both are added as `null` before the stage list
    checks them, so the stage doesn't mix.
 7. **Operations**, each in turn: checked by the operation list (its form and the stage rule), then
@@ -132,7 +132,7 @@ Opening a file checks, in this order:
    (`addToWells` adds only volumes above 0, and an emptied well is left out), so opening refuses
    both. The plan's starting contents are then the file's, in its order.
 9. **Tip changes**: there's one at `"start"`; every other key is one of the file's stages, but not
-   the first in `stages`. In a version 3 file, each is an object with exactly `tipType`, one of
+   the first in `stages`. In a version 3 or 4 file, each is an object with exactly `tipType`, one of
    `TIP_TYPES`, and `probes`, set with `setTipProbes` (so checked as it checks them). In a version 1
    or 2 file, each is an object with exactly `tipType`, and its probes are **every probe its stages
    used**, smallest first: the stages from it up to the next tip change, in the file's stage order
@@ -196,10 +196,10 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | No tip change at `"start"` | `it has no tips at the start of the run.` |
 | A tip change at a stage that isn't in the file, or at the first stage | `a tip change is before stage "9", which isn't one of the file's stages.` / `a tip change is before stage "1", the first stage, which always starts with the tips at "start".` |
 | A tip type isn't in `TIP_TYPES` | `the tip change at "2" loads "BC50", which isn't one of "BC230", "BC1070".` |
-| A tip change's probes are refused (`setTipProbes`; version 3) | `the tip change at "2": ` and its message, e.g. `Probe numbers must be whole numbers from 1 to 8, but got 9.` |
-| A stage's settings hold a mix (versions 1 to 3) | `stage 2's settings have "sourceMix", which a version 3 file's stages don't have.` (with the file's version, naming the first such setting) |
+| A tip change's probes are refused (`setTipProbes`; versions 3 and 4) | `the tip change at "2": ` and its message, e.g. `Probe numbers must be whole numbers from 1 to 8, but got 9.` |
 | A stage has no `probes` (versions 1 and 2) | `stage 2's settings are missing "probes", which a version 2 file's stages have.` (with the file's version) |
 | A stage's probes are refused (versions 1 and 2) | `stage 2: ` and `setTipProbes`'s message, e.g. `Probe 3 is listed more than once. List each probe once.` |
+| A stage's settings hold a mix (versions 1 to 3) | `stage 2's settings have "sourceMix", which a version 3 file's stages don't have.` (with the file's version, naming the first such setting) |
 
 Stage IDs in messages are the file's own, so they can be found in the file.
 
@@ -239,8 +239,8 @@ row of section 5 has at least one test.
   `START` on `[1, 2, 3, 4]` and that tip change on `[1]`; the stages' settings have no probes.
   A version 2 stage without `probes` gets the missing-probes message; one with `[3, 1, 3]` gets
   `stage N: ` and the repeated-probe message. A version 2 tip change with `probes` is refused as
-  not having exactly its properties; so is a version 3 tip change without them, and a version 3
-  stage with `probes` is refused by the stage list as an extra setting.
+  not having exactly its properties; so is a version 3 or 4 tip change without them, and a version
+  3 or 4 stage with `probes` is refused by the stage list as an extra setting.
 - **Version 1:** a version 1 file (as saved before 2026-10-28, without `experimentName`, with probes
   in its stages) opens, with an experiment name of `""` and probes as for version 2; a version 1
   file *with* `experimentName` is refused as having an extra property; a version 2 file without it
