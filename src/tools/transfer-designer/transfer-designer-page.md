@@ -23,6 +23,13 @@
 > mixing (sections 3, 7 and 10). Nothing on the page switches mixing on yet (roadmap, mixing layer
 > (c)), so only a plan file can bring in a stage that mixes. They become Final once built and tested
 > by Andy.
+>
+> **Draft changes (2026-10-30, mixing layer (c1)):** mixing in transfer stages, from the mixing
+> preview Andy shaped on 2026-10-29 and 2026-10-30 (its changes 8, 10, 12 to 14 and 24 to 28): a
+> Mix checkbox for each end in a stage's box; ⟳ after an end's mode on the stage's card; a ⟳ badge
+> on each well the open stage mixes, yellow when the mix is short; and `Mixed N% of well` in the
+> contents card (sections 6, 7, 10, 15 and 16). Mix steps come in layer (c2). They become Final once
+> built and tested by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -239,7 +246,7 @@ labware above to bring it into the editor.`
   its total volume in short form (section 13) in the middle, on a small white label (white at 88%
   opacity, 4px corners, 2px × 3px padding), so it reads on any component color (Andy, 2026-10-26).
 - Its accessible name is the well and its contents, e.g. `Assay plate A1, 120 µL` or `Assay plate
-  A2, empty`.
+  A2, empty`, then, if the open stage mixes it, how much: `Assay plate A1, 120 µL, mixed 17%`.
 
 **Pointing at a well** shows its contents card at once, beside the well: to its left if it fits there
 (the cursor's volume label is to the right), otherwise to its right, and kept inside the window. The
@@ -247,7 +254,11 @@ card (dark, light text) shows:
 - the well, e.g. `Assay plate A1`; its total, `120 µL total`, or `Empty`;
 - for each component: its swatch, name, volume in µL and percentage (section 13);
 - for each overdraw of this well: `Transfer #5 asked for 60 µL but this well held 50 µL.`;
-- if the well is off plan: `Contents differ from the plan because of transfer #5, #7.`
+- if the well is off plan: `Contents differ from the plan because of transfer #5, #7.`;
+- if the open stage mixes the well: `Mixed 17% of well`: its mixed share (`mixVolumes`,
+  `mixedWells`; `mix-volumes.md`), rounded **down** to a whole percent, so a short mix never reads
+  as 40%; if the stage mixes it in more than one row, the smallest. In yellow (`#FFD45C`) when the
+  mix is short.
 
 Transfer numbers are positions in the operation list counting from 1. The card hides when the
 pointer leaves the well, the page scrolls, or a drag starts.
@@ -260,6 +271,13 @@ pointer leaves the well, the page scrolls, or a drag starts.
 - **Off plan:** a well whose contents differ from the plan because of an overdraw: a thick red ring.
 - **The open stage's wells:** while a stage with transfers is open, every well its transfers don't
   touch fades (to 30% opacity; 70% while pointed at).
+- **Mixing:** while a stage with transfers is open, each well it mixes, at either end, has a **⟳
+  badge** at its top right (section 15), in blue, or in yellow when the mix is **short** (under
+  `SHORT_MIX_SHARE` of what the well holds; `mix-volumes.md`). A well mixed in more than one row is
+  yellow if any of them is short. Only the open stage's badges show, as with its arrows; Start and
+  End show none. A short mix is a warning, not a problem: it doesn't count in the problem count,
+  and the files can still be written (Andy, 2026-10-30: the warning shows only on the deck; a
+  warning in the Stages column was tried and left for later).
 - **A chosen source:** a blue outline. **The well under a drag:** a dashed blue outline. **A box being
   dragged across** (when filling wells, or sending a source into several): each well in it gets a
   blue outline, and an empty one a light blue fill.
@@ -292,11 +310,14 @@ and the palette (section 8).
 
 **A stage** (number: its place in the stage order, from 1; its name; count `N transfers`). Its card
 holds:
-- **its settings in one line**, gray, e.g. `↑ Slow · ↓ Non-Contact`: ↑ is the aspirate mode (at the
-  sources), ↓ the dispense mode (at the destinations), from `modeOf`, or `custom` if the settings
-  aren't one of the modes. (No probe count: a stage uses all its tips' probes, and the tip group's
-  heading counts them.) Its accessible name says "aspirate" and "dispense" in place
-  of the arrows. (Its ✎ is beside the stage's name, above.)
+- **its settings in one line**, gray, e.g. `↑ Slow ⟳   ↓ Non-Contact`: ↑ is the aspirate mode (at
+  the sources), ↓ the dispense mode (at the destinations), from `modeOf`, or `custom` if the
+  settings aren't one of the modes; a **⟳** after an end's mode means that end mixes. The two ends
+  sit 18px apart, with no `·` between them, and wrap onto two lines if the card is narrow (Andy,
+  2026-10-30: modes and ⟳ only; the volumes are in the editing box and the contents card). (No
+  probe count: a stage uses all its tips' probes, and the tip group's heading counts them.) Its
+  accessible name says "aspirate" and "dispense" in place of the arrows, and "mixing" in place of
+  ⟳, e.g. `aspirate Slow, mixing, dispense Non-Contact`. (Its ✎ is beside the stage's name, above.)
 - with no transfers: `No transfers yet. Add some on the deck.`
 - otherwise, `Show transfers ▸`, which shows its **transfer list** (and becomes `Hide transfers ▾`,
   which folds it away again). Each stage remembers whether its list is shown, while the page is open.
@@ -488,16 +509,34 @@ as `Non-Contact`. From the top:
 - **Name** (a text box).
 - **A grid** with the stage's ends as columns, headed `Aspirate` and `Dispense`, and its settings
   as rows, each labeled once at the left (Andy, 2026-10-29: simpler and less cluttered, with no
-  information lost). For now it has one row, **Mode**: in each column a menu of the pipetting modes
+  information lost). It has two rows. **Mode**: in each column a menu of the pipetting modes
   for that end (`modesFor`), choosing one setting that end's technique and liquid type
   (`modeSettings`, with `mixes` `true` when that end of the stage mixes, so it keeps mixing; if the
   chosen mode can't mix, Save shows the logic's message and saves nothing); if the stage's settings at that end aren't one of the modes, its menu shows
   `(not one of the modes)` first. The menus' accessible names are `Aspirate mode` and `Dispense
-  mode`, since their column headings aren't their labels.
+  mode`, since their column headings aren't their labels. **Mix**: in each column a checkbox,
+  checked while that end mixes (Andy, 2026-10-29: on or off, with no options). Checking it gives
+  the end `DEFAULT_MIX` (`transfer-designer.md`), or its own mix if it already had one; unchecking
+  it stops the end mixing. Its accessible names are `Mix before aspirating` and `Mix after
+  dispensing`, and its tooltip says what it does, from that end's mix (or `DEFAULT_MIX` if it
+  doesn't mix): `Mix before aspirating: 90% of the well, 3 times, at 400 µL/s.`. When the saved
+  stage mixes at that end and has transfers, the volume it works out to comes after "of the well":
+  `(≈ 108 µL)`, or `(≈ 18–200 µL)` when its rows differ (`mixVolumes`).
+  - **A mode that can't mix** (Non-Contact): that end's Mix cell shows `Can't mix` in gray, with the
+    tooltip `Non-Contact can't mix.`, instead of a checkbox. Choosing it in the menu unchecks that
+    end's Mix in the draft; choosing a mode that can mix brings the checkbox back, unchecked.
+  - **An end that isn't one of the modes** (`(not one of the modes)`): its checkbox shows whether it
+    mixes, disabled, with the tooltip `Choose a mode to switch mixing.`, since the tool can't know
+    which technique mixes.
+
+  **Save** builds the stage's settings from the draft, end by end: the chosen mode's settings, with
+  its mixing technique when that end's Mix is checked (`modeSettings`), and the end's mix
+  (`DEFAULT_MIX`, its own mix, or `null`); then `changeStageSettings`, which checks them.
 
   ```
               ASPIRATE      DISPENSE
   MODE      [ Medium  ▾ ]  [ Medium  ▾ ]
+  MIX         [✓]            [ ]
   ```
 - **Remove**, which asks `Remove stage 2, “Drugs” and its 4 transfers?` (or `Remove stage 2,
   “Drugs”?` with none). Remove takes it out (`removeStage`; message `Removed stage 2, “Drugs” and
@@ -643,7 +682,14 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   headings and row labels look like the box's other field names (12px, semibold, gray, capitals);
   the label column is as wide as its widest label, and the two end columns share the rest equally,
   8px apart; the menus there have 4px side padding instead of 10px, so whole mode names fit.
-- **Contents card:** dark (`#1C1C1A`) with light text (`#F6F5F1`), problems in `#FFB4AA`.
+- **Contents card:** dark (`#1C1C1A`) with light text (`#F6F5F1`), problems in `#FFB4AA`, a short
+  mix's line in `#FFD45C`.
+- **⟳ badges** (section 6): a 14px circle centered on the well's top-right edge (at 45° from its
+  center; a reservoir trough's top-right corner), with a ⟳ in it, 10px, and a 1px white border so it
+  stands out on any fill. Blue: fill `#2F5DA8`, ⟳ white. Short: fill `#FFD45C`, ⟳ `#8A6400`. Drawn
+  above the well and its label, below arrows; they don't fade with the open stage's other wells
+  (they're on the stage's own wells).
+- **The Mix row** in a stage's box: the checkboxes centered in their columns; `Can't mix` 13px gray.
 - **Motion:** with the system's "reduce motion" setting, no fades, glows or smooth scrolling.
 - **Headings** `Deck` and `Stages` are there for screen readers but not shown.
 
@@ -674,5 +720,11 @@ page's configuration (ADR 0009):
   any security warnings noted;
 - undo and redo with the buttons and the keys, after each kind of edit;
 - a plan with an overdraw shows the marks, the key, the red stage and the problem count;
+- mixing: checking and unchecking Mix at each end, then Save, Undo and Redo; the card's ⟳; choosing
+  Non-Contact for Dispense on a stage whose destination mixes unchecks it and shows `Can't mix`; an
+  end `(not one of the modes)` shows a disabled checkbox; the tooltips' volumes; ⟳ badges on the open
+  stage's mixed wells only, yellow for a short mix (e.g. BC230 tips mixing a deep well holding
+  1000 µL), and `Mixed N% of well` in the contents card; a short mix isn't counted as a problem;
+  a saved plan reopens with the same mixing, and its Biomek files have the mix columns;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels.

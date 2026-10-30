@@ -223,6 +223,15 @@ Last updated: 2026-10-28
   steps, and the short-mix warning (40%). **At the Biomek:** a simulation run with files from a
   mixing plan, checking each row mixes the volume written.
   **Built** (#109, 2026-10-30): code, tests and REPL of `substages`, `mix-volumes`, the transfer designer, the file writer and the page; checked in headless Chrome.
+- **Mixing layer (c), the page, goes in two parts** (Andy, 2026-10-30): **(c1) mixing in transfer
+  stages is specified** (Draft, 2026-10-30): a Mix checkbox for each end in a stage's box, giving
+  `DEFAULT_MIX` (`config/mixing.js`); ⟳ after a mode on the stage's card; a ⟳ badge on each well
+  the open stage mixes, yellow under `SHORT_MIX_SHARE` (40%); `Mixed N% of well` in the contents
+  card; each well's mixed share from `mix-volumes`. **(c2) mix steps**, next, decided so far (Andy,
+  2026-10-30): added with a ⟳ button beside each seam's `+`; a new stage copies the nearest stage of
+  its own kind (above); each mixed well stored as a transfer into itself with a **1 µL placeholder**
+  volume (whether the volume matters is to check at the Biomek); End's count leaves mix steps' wells
+  out; a mix step's card has ⟳ after its name and no separate `⟳ Mixes` line.
 - **Trying: Claude starts Claude Code's builds itself,** as a background agent with only the
   specifications and the repository, then reviews them (Andy, 2026-10-30; first used for #106).
   CLAUDE.md's "Who does what" stays unchanged until Andy decides after a longer trial.
