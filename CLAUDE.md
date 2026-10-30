@@ -125,6 +125,10 @@ biomek-tools/
   needed.
 - Push the branch after every commit, since work happens on more than one computer.
 - When the task is done, open a pull request. Only Andy merges into `main`.
+- **A specification and the code built from it may share one pull request** (Andy, 2026-10-30): the
+  specification commits come first, and Andy reviews them; then Claude Code builds on the same
+  branch and pushes there, adding a "Build" section to the PR's description instead of opening a new
+  PR. Anything the build or its review shows about the specification is fixed in the same PR.
 - A pull request's description summarizes what changed and lists any choices made where a
   specification left room, so whoever reviews it can read them there. A review starts from the
   description, then checks the changes against it and against the specifications.
