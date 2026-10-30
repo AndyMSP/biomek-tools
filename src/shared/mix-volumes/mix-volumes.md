@@ -143,8 +143,9 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
   30 + 30), so at 90% row B mixes `36`.
 - **A well into itself:** a transfer of 10 µL from a well holding 50 µL into itself, alone in its
   stage, mixed at both ends at 90%, holds `50` at each end (50 − 10 + 10), so both mix `45`.
-- **Never below 0:** a stage with an overdraw from a source gives that source `0` held, and a mix
-  problem, besides its overdraw.
+- **Never below 0:** a source holding 10 µL drawn from twice in one row, 30 µL and 5 µL (an
+  overdraw), holds `0` when mixed (10 − 35 + 5 is below 0), so its mix is a problem besides the
+  overdraw. (One draw alone can't go below 0: the rule gives back what the well held before.)
 - **Rounding:** 75% of 120 µL gives `90`; 90% of 99.99 µL gives `89.9` (89.991 rounded down); 33%
   of 10 µL gives `3.3`.
 - **The tip limit:** a mix that works out above `MIX_VOLUME_LIMITS` of the stage's tip type gives
