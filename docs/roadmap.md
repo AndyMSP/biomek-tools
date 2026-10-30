@@ -222,6 +222,7 @@ Last updated: 2026-10-28
   switching mixing on and off on the page, the default mix in `config/` (90% × 3 at 400 µL/s), mix
   steps, and the short-mix warning (40%). **At the Biomek:** a simulation run with files from a
   mixing plan, checking each row mixes the volume written.
+  **Built** (#109, 2026-10-30): code, tests and REPL of `substages`, `mix-volumes`, the transfer designer, the file writer and the page; checked in headless Chrome.
 - **Trying: Claude starts Claude Code's builds itself,** as a background agent with only the
   specifications and the repository, then reviews them (Andy, 2026-10-30; first used for #106).
   CLAUDE.md's "Who does what" stays unchanged until Andy decides after a longer trial.
