@@ -145,7 +145,7 @@ aren't one of the modes (for example, after the modes in `config/` change).
 
 ### Tip changes and tip groups
 - The run starts with the `START` tip change, which can't be removed. A new plan's `START` tips go
-  on all eight probes. Another tip change can be added just before any stage except the first in
+  on the first `DEFAULT_PROBE_COUNT` probes, from `config/` (below): 4 (Andy, 2026-10-30). Another tip change can be added just before any stage except the first in
   the stage order, at most one per place. It loads the tip type and probes already in use there,
   until changed. Removing one leaves the stages after it on the tips before it.
 - How many probes a tip change loads is chosen as a number: it gets the first that many probes
@@ -204,6 +204,9 @@ Two files in `config/` (ADR 0009), which this module's tests check:
   ends, e.g. `"Medium"`; it must be a mode usable at both ends.
 - **`config/tip-types.js`** exports `TIP_TYPES`: a non-empty list of tip type names, e.g.
   `["BC230", "BC1070"]`, each a name, none repeated.
+- **`config/tip-types.js`** also exports `DEFAULT_PROBE_COUNT`: how many probes a new plan's first
+  tips go on, the first that many (`probesFor`). A whole number from 1 to 8; `4` (Andy, 2026-10-30).
+  It's in `config/` because it may change (CLAUDE.md, "No hard-coded configuration").
 
 ## 4. Interface
 The module exports the functions and constants below. None changes the plan or the values it's
@@ -347,13 +350,14 @@ order of checks.
   `liquidType`, `ends`; names valid and unique; liquid types follow Biomek's rule; `ends` valid;
   no two modes for one end share both technique and liquid type; each end has at least one mode;
   `DEFAULT_PIPETTING_MODE` names a mode usable at both ends.
-- `config/tip-types.js`: a non-empty list of valid names, none repeated.
+- `config/tip-types.js`: a non-empty list of valid names, none repeated; `DEFAULT_PROBE_COUNT` a
+  whole number from 1 to 8.
 
 **Plans and modes**
 - `defaultSettings()` gives `DEFAULT_PIPETTING_MODE`'s technique and liquid type at both ends,
   and nothing else (no probes).
 - `emptyPlan()` gives one stage named `NEW_STAGE_NAME` with default settings, `START` tips of the
-  first tip type on probes 1 to 8, an experiment name of `""`, and nothing else; its `stageId` is
+  first tip type on the first `DEFAULT_PROBE_COUNT` probes (`[1, 2, 3, 4]`), an experiment name of `""`, and nothing else; its `stageId` is
   that stage.
 - `setExperimentName` sets `"Exp36"`; trims `" Exp36 "` to `"Exp36"`; `""` and `"  "` remove the
   name; giving the name it already has returns the same plan; `5`, `"Exp 36"` and a name of 41
