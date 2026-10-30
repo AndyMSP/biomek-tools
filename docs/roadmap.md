@@ -177,6 +177,12 @@ Last updated: 2026-10-28
 - **Decided: v0.2.0 grows** (Andy, 2026-10-28): it gains **mixing** and **well capacities with dead
   volume** (items 10 and 11, below), so each specification changes once and the Biomek is tested
   once, on the final files. The remaining work has an order (below).
+- **The mixing preview is done** (2026-10-29 and 2026-10-30; its changes and decisions are in the
+  claude.ai project, `claude/mixing-preview-changes.md`, until each goes to its place). It goes in
+  in three chunks (Andy, 2026-10-30), each leaving `main` working: (1) page layout only, (2) probes
+  chosen with the tips, (3) mixing, in layers. **Chunk 1's page specification is written** (Draft,
+  2026-10-30; `transfer-designer-page.md`): an open stage's ✎ beside its name, and the stage's
+  editing box as a grid (Aspirate and Dispense columns, a Mode row). Next, Claude Code builds it.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
