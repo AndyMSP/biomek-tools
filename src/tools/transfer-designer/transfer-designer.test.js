@@ -195,6 +195,7 @@ describe("transfer-designer", () => {
   });
 
   test("the lab's modes: Slow, Medium and Fast mix with OperationMix; Non-Contact can't mix", () => {
+    // The mixing technique of the mode called `name`, e.g. "Medium" → "OperationMix".
     const mixingOf = (name) => PIPETTING_MODES.find((mode) => mode.name === name).mixingTechnique;
     for (const name of ["Slow", "Medium", "Fast"]) {
       assert.equal(mixingOf(name), "OperationMix", name);
