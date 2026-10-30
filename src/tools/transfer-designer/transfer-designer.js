@@ -7,8 +7,8 @@
 // every part the edit didn't change, so the plan history can keep many plans cheaply. The page
 // shows a plan and passes on what the user does; every rule about what that means lives here, so it
 // can be tested in Node.
-// It builds on the shared modules (operation-list, stage-list, contents-tracking, deck) and doesn't
-// repeat what they do.
+// It builds on the shared modules (operation-list, stage-list, contents-tracking, mix-volumes, deck)
+// and doesn't repeat what they do.
 // Specification: transfer-designer.md.
 
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
@@ -18,6 +18,7 @@ import { isObject, listNames, checkName } from "../../shared/input-checks/input-
 import { OperationList } from "../../shared/operation-list/operation-list.js";
 import { StageList } from "../../shared/stage-list/stage-list.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
+import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
 import { labwareNames, gridOf, checkWell } from "../../shared/deck/deck.js";
 import { START, tipGroups } from "../../shared/tip-groups/tip-groups.js";
 import { checkExperimentName } from "../../shared/file-writer/file-writer.js";
@@ -34,6 +35,9 @@ export const NEW_STAGE_NAME = "New stage";
 // The Span-8 has probes 1 to 8, numbered as in Biomek Software. It's a fact about the instrument,
 // not a setting that might change, so it lives here rather than in config/.
 const PROBE_COUNT = 8;
+
+// The two ends of a stage, as setStageMix takes them.
+const ENDS = ["source", "destination"];
 
 // --- Plans ---
 
@@ -115,9 +119,11 @@ export function modesFor(end) {
 }
 
 // The settings the mode called `name` gives at `end`, e.g. ("source", "Slow") →
-// { sourceTechnique: "Operation", sourceLiquidType: "Slow" }. Throws if there's no such mode
-// for that end, naming the modes there are.
-export function modeSettings(end, name) {
+// { sourceTechnique: "Operation", sourceLiquidType: "Slow" }. With `mixes` true, for an end that
+// mixes, the technique is the mode's mixing one: ("source", "Slow", true) →
+// { sourceTechnique: "OperationMix", sourceLiquidType: "Slow" }. Throws if there's no such mode for
+// that end, naming the modes there are, then if `mixes` is true and the mode can't mix.
+export function modeSettings(end, name, mixes = false) {
   const modes = modesFor(end);
   const mode = modes.find((candidate) => candidate.name === name);
   if (mode === undefined) {
@@ -126,18 +132,21 @@ export function modeSettings(end, name) {
         `The modes for the ${end} are ${listNames(modes.map((candidate) => candidate.name))}.`,
     );
   }
-  return { [`${end}Technique`]: mode.technique, [`${end}LiquidType`]: mode.liquidType };
+  if (mixes && mode.mixingTechnique === null) {
+    throw new Error(
+      `${mode.name} can't mix, so it can't be used at the ${end} while the ${end} mixes. ` +
+        `Turn the ${end}'s mixing off first.`,
+    );
+  }
+  const technique = mixes ? mode.mixingTechnique : mode.technique;
+  return { [`${end}Technique`]: technique, [`${end}LiquidType`]: mode.liquidType };
 }
 
-// The name of the mode a stage's `settings` use at `end`, or null if their technique and liquid
-// type there aren't one of the modes (for example, after the modes in config/ change),
-// e.g. modeOf("source", defaultSettings()) → "Medium".
+// The name of the mode a stage's `settings` use at `end`, matching either of its techniques (with
+// or without mixing), or null if their technique and liquid type there aren't one of the modes (for
+// example, after the modes in config/ change), e.g. modeOf("source", defaultSettings()) → "Medium".
 export function modeOf(end, settings) {
-  const mode = modesFor(end).find(
-    (candidate) =>
-      candidate.technique === settings[`${end}Technique`] &&
-      candidate.liquidType === settings[`${end}LiquidType`],
-  );
+  const mode = modeAt(end, settings);
   return mode === undefined ? null : mode.name;
 }
 
@@ -185,9 +194,55 @@ export function renameStage(plan, id, name) {
   return withParts(plan, { stageList: plan.stageList.rename(id, name) });
 }
 
-// Returns the plan with stage `id`'s settings replaced by `settings`. The stage list checks both.
+// Returns the plan with stage `id`'s settings replaced by `settings`. The stage list checks both;
+// then each end's technique must match its mixing, the source's first (checkMixingMatches), so a
+// plan file can't bring in a stage whose technique Biomek would mix with when the plan says not to,
+// or the reverse (transfer-designer.md, section 3, "Mixing").
 export function changeStageSettings(plan, id, settings) {
-  return withParts(plan, { stageList: plan.stageList.changeSettings(id, settings) });
+  const stageList = plan.stageList.changeSettings(id, settings);
+  for (const end of ENDS) {
+    checkMixingMatches(settings, end);
+  }
+  return withParts(plan, { stageList });
+}
+
+// Returns the plan with stage `id` mixing at `end` ("source" or "destination") as `mix`, a mix such
+// as { share: 90, times: 3, speed: 400 } or null for no mixing, and that end's technique switched to
+// its mode's mixing technique or its technique without mixing, keeping the liquid type, in one edit,
+// e.g. setStageMix(plan, "2", "source", { share: 90, times: 3, speed: 400 }). If the end already
+// has that mix, the same plan is returned. Throws, in this order, if `id` isn't a stage, `end`
+// isn't an end, the end isn't one of the modes, the stage list refuses the mix, or `mix` isn't null
+// and the end's mode can't mix.
+export function setStageMix(plan, id, end, mix) {
+  if (!plan.stageList.has(id)) {
+    throw new Error(`There's no stage ${describeValue(id)} in the plan.`);
+  }
+  if (!ENDS.includes(end)) {
+    throw new Error(`The end must be "source" or "destination", but got ${describeValue(end)}.`);
+  }
+  const { settings } = plan.stageList.get(id);
+  const mode = modeAt(end, settings);
+  if (mode === undefined) {
+    throw new Error(
+      `The ${end}'s technique and liquid type aren't one of the pipetting modes, ` +
+        "so its mixing can't be switched. Choose a mode for it first.",
+    );
+  }
+  const mixSetting = `${end}Mix`;
+  // The stage list checks the mix itself; its result is set aside, since the technique changes too.
+  plan.stageList.changeSettings(id, { ...settings, [mixSetting]: mix });
+  if (mix !== null && mode.mixingTechnique === null) {
+    throw new Error(`${mode.name} can't mix. Choose another mode for the ${end} first.`);
+  }
+  if (sameMix(settings[mixSetting], mix)) {
+    return plan;
+  }
+  const newSettings = {
+    ...settings,
+    ...modeSettings(end, mode.name, mix !== null),
+    [mixSetting]: mix,
+  };
+  return withParts(plan, { stageList: plan.stageList.changeSettings(id, newSettings) });
 }
 
 // True if stage `id` can be removed: it's a stage, and not the plan's only one.
@@ -237,6 +292,13 @@ export function stagesWithOverdraw(plan) {
   const operations = plan.operationList.listOperations();
   const problems = replay(plan.startingContents, plan.operationList).listProblems();
   return new Set(problems.map((problem) => operations[problem.operationIndex].stage));
+}
+
+// The IDs of the stages with a mix problem: a mix that works out to 0 µL in any of their rows,
+// because the well it's worked out from holds too little when it's mixed (mix-volumes.md),
+// e.g. new Set(["3"]).
+export function stagesWithMixProblem(plan) {
+  return new Set(mixVolumes(plan).problems.map((problem) => problem.stage));
 }
 
 // --- Transfers ---
@@ -562,6 +624,59 @@ export function setLabels(plan, labels) {
 }
 
 // --- Helpers used only inside this module ---
+
+// The pipetting mode that a stage's `settings` use at `end`: the mode for that end whose liquid type
+// is the end's and whose technique, or mixing technique, is the end's; undefined if none is. The
+// configuration's tests make sure at most one matches.
+function modeAt(end, settings) {
+  const technique = settings[`${end}Technique`];
+  return modesFor(end).find(
+    (mode) =>
+      mode.liquidType === settings[`${end}LiquidType`] &&
+      (mode.technique === technique || mode.mixingTechnique === technique),
+  );
+}
+
+// Throws if, at `end` of a stage's `settings`, the technique doesn't match the mixing: an end that
+// is one of the modes mixes exactly when its technique is that mode's mixing technique
+// (transfer-designer.md, section 3, "Mixing"). An end that isn't one of the modes isn't checked,
+// since the tool can't know whether its technique mixes.
+// e.g. a source mixing with Medium's "Operation" throws 'The source mixes, so its technique must be
+// "OperationMix" (Medium's technique for mixing), but it's "Operation".'
+function checkMixingMatches(settings, end) {
+  const mode = modeAt(end, settings);
+  if (mode === undefined) {
+    return;
+  }
+  const technique = settings[`${end}Technique`];
+  const mixes = settings[`${end}Mix`] !== null;
+  if (mixes && mode.mixingTechnique === null) {
+    throw new Error(
+      `The ${end} mixes, but ${mode.name} can't mix. ` +
+        `Turn the ${end}'s mixing off, or choose another mode.`,
+    );
+  }
+  if (mixes && technique !== mode.mixingTechnique) {
+    throw new Error(
+      `The ${end} mixes, so its technique must be ${describeValue(mode.mixingTechnique)} ` +
+        `(${mode.name}'s technique for mixing), but it's ${describeValue(technique)}.`,
+    );
+  }
+  if (!mixes && technique !== mode.technique) {
+    throw new Error(
+      `The ${end} doesn't mix, so its technique must be ${describeValue(mode.technique)} ` +
+        `(${mode.name}'s technique without mixing), but it's ${describeValue(technique)}.`,
+    );
+  }
+}
+
+// True if mixes `a` and `b` are the same: both null, or equal share, times and speed.
+function sameMix(a, b) {
+  if (a === null || b === null) {
+    return a === b;
+  }
+  return a.share === b.share && a.times === b.times && a.speed === b.speed;
+}
 
 // The positions in the operation list of stage `id`'s transfers, in order, e.g. [3, 4, 5].
 function positionsInStage(plan, id) {

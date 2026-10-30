@@ -4,7 +4,9 @@
 // For each mode:
 // - name: what the page's menus show, e.g. "Slow";
 // - technique: exactly as in Biomek Software, or Biomek refuses the method ("Unable to find
-//   technique", docs/domain/biomek.md);
+//   technique", docs/domain/biomek.md); used when that end doesn't mix;
+// - mixingTechnique: the technique used when that end mixes, exactly as in Biomek Software, or null
+//   if the mode can't mix (transfer-designer.md, "Mixing"). Its liquid type is the same either way;
 // - liquidType: exactly as in Biomek Software. Liquid type names may contain only letters, digits
 //   and underscores, and must start with a letter (B56358AF, 9-4);
 // - ends: where the mode can be used, "source" (aspirating), "destination" (dispensing) or both.
@@ -16,13 +18,39 @@
 // general-purpose method on 2026-10-27 (docs/domain/biomek.md, "Building the general-purpose
 // method"). Techniques aren't checked against tip types yet: choose one that suits the stage's tips
 // (roadmap, "Technical debt").
+// Slow, Medium and Fast mix with OperationMix, Andy's technique, which works with any liquid type;
+// NonContact can't mix: it dispenses without touching the liquid (docs/domain/biomek.md, "Mixing").
 
 export const PIPETTING_MODES = [
-  { name: "Slow", technique: "Operation", liquidType: "Slow", ends: ["source", "destination"] },
-  { name: "Medium", technique: "Operation", liquidType: "Medium", ends: ["source", "destination"] },
-  { name: "Fast", technique: "Operation", liquidType: "Fast", ends: ["source", "destination"] },
-  // For dispensing only (docs/glossary.md, "Pipetting mode").
-  { name: "Non-Contact", technique: "NonContact", liquidType: "Medium", ends: ["destination"] },
+  {
+    name: "Slow",
+    technique: "Operation",
+    mixingTechnique: "OperationMix",
+    liquidType: "Slow",
+    ends: ["source", "destination"],
+  },
+  {
+    name: "Medium",
+    technique: "Operation",
+    mixingTechnique: "OperationMix",
+    liquidType: "Medium",
+    ends: ["source", "destination"],
+  },
+  {
+    name: "Fast",
+    technique: "Operation",
+    mixingTechnique: "OperationMix",
+    liquidType: "Fast",
+    ends: ["source", "destination"],
+  },
+  // For dispensing only (docs/glossary.md, "Pipetting mode"); it can't mix.
+  {
+    name: "Non-Contact",
+    technique: "NonContact",
+    mixingTechnique: null,
+    liquidType: "Medium",
+    ends: ["destination"],
+  },
 ];
 
 export const DEFAULT_PIPETTING_MODE = "Medium";

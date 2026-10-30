@@ -30,6 +30,8 @@ import {
   wellsInBox,
 } from "../src/shared/deck/deck.js";
 import { START, tipGroups } from "../src/shared/tip-groups/tip-groups.js";
+import { substagesOf } from "../src/shared/substages/substages.js";
+import { mixVolumes } from "../src/shared/mix-volumes/mix-volumes.js";
 import {
   writeRunFiles,
   checkExperimentName,
@@ -62,10 +64,12 @@ import {
   addStage,
   renameStage,
   changeStageSettings,
+  setStageMix,
   canRemoveStage,
   removeStage,
   stageEnds,
   stagesWithOverdraw,
+  stagesWithMixProblem,
   addTransfer,
   addTransfers,
   changeVolume,
@@ -253,6 +257,34 @@ const TOPICS = {
       'tipGroups({ ...tipPlan, stageOrder: ["1", "3", "2"], tipChanges: { [START]: { tipType: "BC230", probes: [1, 2] }, "2": { tipType: "BC1070", probes: [1, 2, 3, 4, 5, 6, 7, 8] } } })',
     ],
   },
+  substages: {
+    loaded: { substagesOf },
+    examples: [
+      'const toPlate = { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "A1" }, volume: 50, stage: "1" }',
+      'const toDeep = { type: "transfer", source: { labware: "Plate1", well: "H12" }, destination: { labware: "Deep1", well: "A1" }, volume: 20, stage: "1" }',
+      'const toPlate2 = { ...toPlate, destination: { labware: "Plate2", well: "A2" } }',
+      "substagesOf([toPlate, toDeep, toPlate2])",
+      "substagesOf([toPlate, toDeep, toPlate2]).map((substage) => substage.transfers.length)",
+      "substagesOf([])",
+    ],
+  },
+  "mix-volumes": {
+    loaded: { mixVolumes },
+    examples: [
+      'let mixPlan = addComponent(emptyPlan().plan, "Media", "#4e79a7")',
+      'mixPlan = addToWells(mixPlan, [{ labware: "Res1", well: "1" }], "Media", 1000)',
+      'mixPlan = addToWells(mixPlan, [{ labware: "Plate1", well: "A2" }], "Media", 50)',
+      'mixPlan = addTransfer(mixPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "A1" }, volume: 20, stage: "1" })',
+      'mixPlan = addTransfer(mixPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "A2" }, volume: 100, stage: "1" })',
+      'mixPlan = setStageMix(mixPlan, "1", "destination", { share: 90, times: 3, speed: 400 })',
+      'mixPlan = setStageMix(mixPlan, "1", "source", { share: 90, times: 3, speed: 400 })',
+      "mixVolumes(mixPlan).stages[0].rows[0]",
+      "mixVolumes(mixPlan).problems",
+      'mixPlan = addTransfer(mixPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "B1" }, volume: 0.05, stage: "1" })',
+      "mixVolumes(mixPlan).stages[0].rows[0].destinationMixVolume",
+      "mixVolumes(mixPlan).problems",
+    ],
+  },
   "file-writer": {
     loaded: { writeRunFiles, checkExperimentName, folderNameFor },
     examples: [
@@ -343,10 +375,12 @@ const TOPICS = {
       addStage,
       renameStage,
       changeStageSettings,
+      setStageMix,
       canRemoveStage,
       removeStage,
       stageEnds,
       stagesWithOverdraw,
+      stagesWithMixProblem,
       addTransfer,
       addTransfers,
       changeVolume,
@@ -389,6 +423,12 @@ const TOPICS = {
       'transfersIn(plan, "1")',
       'modeOf("destination", defaultSettings())',
       "defaultSettings()",
+      'modeSettings("source", "Slow", true)',
+      'modeSettings("destination", "Non-Contact", true)',
+      'plan = setStageMix(plan, "1", "source", { share: 90, times: 3, speed: 400 })',
+      'plan.stageList.get("1").settings',
+      'changeStageSettings(plan, "1", { ...plan.stageList.get("1").settings, sourceTechnique: "Operation" })',
+      "stagesWithMixProblem(plan)",
       'plan.stageList.get("2").settings',
       'plan = setLabels(plan, { Plate: "Cells", Deep: "Drugs" })',
       'plan = setLabels(plan, { Plate: "Drugs", Deep: "Cells" })',
@@ -402,7 +442,7 @@ const TOPICS = {
     examples: [
       'let saved = setExperimentName(emptyPlan().plan, "Exp36")',
       'saved = addStage(addStage(saved, null).plan, "1").plan',
-      'saved = changeStageSettings(saved, "1", { ...defaultSettings(), sourceMix: { share: 90, times: 3, speed: 400 } })',
+      'saved = setStageMix(saved, "1", "source", { share: 90, times: 3, speed: 400 })',
       "stageOrder(saved)",
       'const text = planToText(saved, "transfer designer v0.2.0")',
       "console.log(text)",

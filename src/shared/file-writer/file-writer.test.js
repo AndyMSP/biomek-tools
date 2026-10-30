@@ -18,7 +18,7 @@ import {
   setExperimentName,
   addStage,
   renameStage,
-  changeStageSettings,
+  setStageMix,
   addTransfer,
   addTipChange,
   setTipType,
@@ -26,6 +26,7 @@ import {
   addComponent,
   addToWells,
 } from "../../tools/transfer-designer/transfer-designer.js";
+import { mixVolumes } from "../mix-volumes/mix-volumes.js";
 import { writeRunFiles, checkExperimentName, folderNameFor } from "./file-writer.js";
 
 // A 96-well labware, a 96-well labware of another labware type (a deep-well plate), and the
@@ -110,6 +111,17 @@ function withTransfersIn(plan, stages) {
 // e.g. withTipChange(plan, "3", TIP_TYPES[1], [1, 3, 5]).
 function withTipChange(plan, beforeId, tipType, probes) {
   return setTipProbes(setTipType(addTipChange(plan, beforeId), beforeId, tipType), beforeId, probes);
+}
+
+// The mix the specification's examples use. A new object each time.
+function exampleMix() {
+  return { share: 90, times: 3, speed: 400 };
+}
+
+// The three mix columns of one end ("Src" or "Dest") of a Stages.csv row, as a list,
+// e.g. ["108", "3", "400"].
+function mixFieldsOf(row, prefix) {
+  return ["Volume", "Times", "Speed"].map((part) => row[`${prefix}Mix${part}`]);
 }
 
 // writeRunFiles with the usual timestamp.
@@ -322,20 +334,57 @@ describe("file-writer", () => {
     ]);
   });
 
-  test("a stage's mixes are ignored: the mix columns are written empty, and the files are the same as without them", () => {
-    const plan = withTransfersIn(planWithStages(1), ["1"]);
-    const settings = plan.stageList.get("1").settings;
-    const mixing = changeStageSettings(plan, "1", {
-      ...settings,
-      sourceMix: { share: 90, times: 3, speed: 400 },
-      destinationMix: { share: 50, times: 2, speed: 100 },
-    });
-    const result = write(mixing);
-    const [, transferRow] = rowsOf(fileNamed(result, "Stages.csv"));
-    for (const column of STAGE_COLUMNS.filter((name) => name.includes("Mix"))) {
-      assert.equal(transferRow[column], "", column);
-    }
-    assert.deepEqual(result, write(plan));
+  test("mixing at the source only fills the SrcMix columns with the row's mix volume, times and speed, and its SrcTechnique is the stored mixing technique", () => {
+    const plan = setStageMix(withTransfersIn(planWithStages(1), ["1"]), "1", "source", exampleMix());
+    const [, row] = rowsOf(fileNamed(write(plan), "Stages.csv"));
+    const volume = mixVolumes(plan).stages[0].rows[0].sourceMixVolume;
+    assert.deepEqual(mixFieldsOf(row, "Src"), [String(volume), "3", "400"]);
+    assert.deepEqual(mixFieldsOf(row, "Dest"), ["", "", ""]);
+    assert.equal(row.SrcTechnique, plan.stageList.get("1").settings.sourceTechnique);
+    assert.equal(row.SrcTechnique, "OperationMix");
+    assert.equal(row.DestTechnique, "Operation");
+  });
+
+  test("mixing at the destination only fills the DestMix columns, and leaves the SrcMix columns empty", () => {
+    // Trough 1 into A1, empty before: 90% of 50 µL is 45.
+    const plan = setStageMix(withTransfersIn(planWithStages(1), ["1"]), "1", "destination", exampleMix());
+    const [, row] = rowsOf(fileNamed(write(plan), "Stages.csv"));
+    assert.deepEqual(mixFieldsOf(row, "Src"), ["", "", ""]);
+    assert.deepEqual(mixFieldsOf(row, "Dest"), ["45", "3", "400"]);
+    assert.equal(row.DestTechnique, "OperationMix");
+    assert.equal(row.SrcTechnique, "Operation");
+  });
+
+  test("mixing at both ends fills all six mix columns", () => {
+    let plan = withTransfersIn(planWithStages(1), ["1"]);
+    plan = setStageMix(plan, "1", "source", { share: 10, times: 2, speed: 100 });
+    plan = setStageMix(plan, "1", "destination", exampleMix());
+    const [, row] = rowsOf(fileNamed(write(plan), "Stages.csv"));
+    // Trough 1 holds 1000 µL when it's mixed (1000 − 50 + 50): 10% is 100.
+    assert.deepEqual(mixFieldsOf(row, "Src"), ["100", "2", "100"]);
+    assert.deepEqual(mixFieldsOf(row, "Dest"), ["45", "3", "400"]);
+  });
+
+  test("one mix volume per row: a mixing stage split into two substages writes each row's own mix volume", () => {
+    let plan = addToWells(planWithStages(1), [well(PLATE, "H12")], MEDIA, 100);
+    plan = addTransfer(plan, transfer("1", well(RESERVOIR, "1"), well(PLATE, "A1"), 10));
+    plan = addTransfer(plan, transfer("1", well(PLATE, "H12"), well(DEEP, "A1"), 20));
+    plan = setStageMix(plan, "1", "destination", { share: 50, times: 2, speed: 100 });
+    const rows = rowsOf(fileNamed(write(plan), "Stages.csv")).slice(1);
+    assert.deepEqual(
+      rows.map((row) => [row.DestLabwareType, row.DestMixVolume]),
+      [
+        [PLATE.labwareType, "5"],
+        [DEEP.labwareType, "10"],
+      ],
+    );
+  });
+
+  test("a mix speed of 150.5 is written 150.5, and a mix volume of 89.9 is written 89.9", () => {
+    let plan = addTransfer(planWithStages(1), transferTo("1", "A1", 99.99));
+    plan = setStageMix(plan, "1", "destination", { share: 90, times: 3, speed: 150.5 });
+    const [, row] = rowsOf(fileNamed(write(plan), "Stages.csv"));
+    assert.deepEqual(mixFieldsOf(row, "Dest"), ["89.9", "3", "150.5"]);
   });
 
   test("probes with a comma are quoted; a single probe isn't", () => {
@@ -571,6 +620,30 @@ describe("file-writer", () => {
     });
   });
 
+  test("a stage with a mix problem at the destination is refused, naming the well and its volume", () => {
+    let plan = renameStage(planWithStages(3), "3", "Seeding");
+    plan = withTransfersIn(plan, ["1", "2"]);
+    plan = addTransfer(plan, transferTo("3", "A3", 0.05));
+    plan = setStageMix(plan, "3", "destination", exampleMix());
+    assert.throws(() => write(plan), {
+      message:
+        `Stage 3, "Seeding", mixes ${PLATE.name} A3 after dispensing when it holds only 0.05 µL, ` +
+        "and 90% of that is 0 µL. Turn that mixing off, or put more in the well first.",
+    });
+  });
+
+  test("a stage with a mix problem at the source is refused, saying before aspirating", () => {
+    let plan = renameStage(planWithStages(1), "1", "Wash");
+    plan = addToWells(plan, [well(PLATE, "H1")], MEDIA, 0.1);
+    plan = addTransfer(plan, transfer("1", well(PLATE, "H1"), well(DEEP, "A1"), 0.1));
+    plan = setStageMix(plan, "1", "source", { share: 50, times: 2, speed: 100 });
+    assert.throws(() => write(plan), {
+      message:
+        `Stage 1, "Wash", mixes ${PLATE.name} H1 before aspirating when it holds only 0.1 µL, ` +
+        "and 50% of that is 0 µL. Turn that mixing off, or put more in the well first.",
+    });
+  });
+
   test("a transfer whose volume is 0 to 3 decimal places is refused", () => {
     let plan = renameStage(planWithStages(2), "2", "Media");
     plan = withTransfersIn(plan, ["1"]);
@@ -599,6 +672,19 @@ describe("file-writer", () => {
     plan = addTransfer(plan, transferTo("2", "B1", 0.0004));
     plan = addTransfer(plan, transferTo("4", "B2", 5000));
     assert.throws(() => write(plan), { message: /^Stage 2, .* has a transfer of 0.0004 µL/ });
+  });
+
+  test("order of checks: a stage with an overdraw and a mix problem reports the overdraw", () => {
+    let plan = addTransfer(planWithStages(1), transferTo("1", "A3", 5000));
+    plan = addTransfer(plan, transferTo("1", "A4", 0.05));
+    plan = setStageMix(plan, "1", "destination", exampleMix());
+    assert.throws(() => write(plan), { message: /^Stage 1, .* has an overdraw/ });
+  });
+
+  test("order of checks: a stage with a mix problem and a zero-rounding volume reports the mix problem", () => {
+    let plan = addTransfer(planWithStages(1), transferTo("1", "A5", 0.0004));
+    plan = setStageMix(plan, "1", "destination", exampleMix());
+    assert.throws(() => write(plan), { message: /^Stage 1, .* mixes .* after dispensing/ });
   });
 
   // --- Purity ---
