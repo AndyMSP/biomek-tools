@@ -53,9 +53,12 @@ when it's mixed, whatever that order, assuming the row's draws from it come firs
   own problem and is fixed first (`contents-tracking.md`; `file-writer.md` checks overdraws before
   mix problems).
 
-So a well that's both drawn from and dispensed into in one stage is judged by what it holds at its
-own row. For example, Plate1 A1 holds 100 µL; row A draws 95 µL from it, then row B dispenses 10 µL
-into it: as row A's source it holds at least 100 µL when mixed, and as row B's destination 15 µL.
+Within a stage, no well is both a source and a destination (the operation list's stage rule,
+`operation-list.md`), except a transfer from a well into itself. So a destination is never drawn
+from by its stage unless it's mixed into itself, and earlier rows only ever add to a destination or
+take from a source. Judging each well at its own row still matters: a source drawn from by row A
+holds less by row B, and a well-to-itself transfer holds what the well held before the row, not
+that plus the transfer.
 
 A row's **emptiest well** at an end is the well that holds the least then; with a tie, the first of
 them in the row's transfer order.
@@ -135,11 +138,11 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
 - **Its own stage, not the whole plan:** a destination filled again by a later stage is judged by
   what it held before its own stage; a source drawn from by an earlier stage is judged by what it
   held after that.
-- **Earlier rows count:** the example in section 3 (Plate1 A1 holding 100 µL, row A drawing 95 µL
-  from it, row B dispensing 10 µL into it) gives row A's source `100` held and row B's destination
-  `15` held, so at 90% row B mixes `13.5`.
-- **Draws and dispenses in one row:** a well holding 50 µL that a row both draws 40 µL from and
-  dispenses 30 µL into holds at least `40` as that row's destination (50 − 40 + 30).
+- **Earlier rows count:** a source holding 100 µL, drawn 60 µL by row A and 30 µL by row B (two
+  rows, different destination labware types), holds at least `40` when row B mixes it (100 − 60 −
+  30 + 30), so at 90% row B mixes `36`.
+- **A well into itself:** a transfer of 10 µL from a well holding 50 µL into itself, alone in its
+  stage, mixed at both ends at 90%, holds `50` at each end (50 − 10 + 10), so both mix `45`.
 - **Never below 0:** a stage with an overdraw from a source gives that source `0` held, and a mix
   problem, besides its overdraw.
 - **Rounding:** 75% of 120 µL gives `90`; 90% of 99.99 µL gives `89.9` (89.991 rounded down); 33%
