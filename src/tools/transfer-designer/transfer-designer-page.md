@@ -8,8 +8,8 @@
 > files, from the preview Andy shaped on 2026-10-28 (sections 2, 3, 4, 5, 12, 15 and 16). They
 > become Final once built and tested by Andy, including a zip unzipped and run on the Biomek PC.
 >
-> **Draft changes (2026-10-30):** an open stage's ✎ beside its name, and the stage's editing box as
-> a grid, from the mixing preview Andy shaped on 2026-10-29 and 2026-10-30 (sections 7, 10, 15 and
+> **Draft changes (2026-10-30):** an open stage's ✎ beside its name, no dot after a transfer's
+> route, and the stage's editing box as a grid, from the mixing preview Andy shaped on 2026-10-29 and 2026-10-30 (sections 7, 10, 15 and
 > 16). Layout only: the plan, plan files and Biomek files don't change. They become Final once
 > built and tested by Andy.
 
@@ -283,8 +283,10 @@ holds:
 - with no transfers: `No transfers yet. Add some on the deck.`
 - otherwise, `Show transfers ▸`, which shows its **transfer list** (and becomes `Hide transfers ▾`,
   which folds it away again). Each stage remembers whether its list is shown, while the page is open.
-  Each row is `Assay plate A1 → Drug plate B2 · 20 µL`, with a `×` at the right that removes it
-  (`removeTransfer`; message `Removed Assay plate A1 → Drug plate B2 from stage 2, “Drugs”.`).
+  Each row is `Assay plate A1 → Drug plate B2`, then its volume, `20 µL`, and a `×` at the right
+  that removes it (`removeTransfer`; message `Removed Assay plate A1 → Drug plate B2 from stage 2,
+  “Drugs”.`). No `·` separates the route from the volume: the volume sits at the right, so a dot
+  after the route was left hanging (Andy, 2026-10-30).
 - **A transfer's volume** is a button: clicking it turns it into a text box holding the volume,
   selected. It's saved with `changeVolume` (message `Volume changed to 25 µL.`); an unchanged volume
   saves nothing; Escape cancels.
