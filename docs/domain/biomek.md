@@ -286,9 +286,10 @@ simulated wasn't recorded.** "Worked" means it validated and ran as the files sa
   Aspirate and Dispense sections (Andy's MixOnly2, on template PureMix2: an aspirate air gap and a
   mix, then a mix and a dispense air gap), run on a well-to-itself transfer of 10 µL, mixed and left
   the well's volume unchanged (Method31).
-- **Non-Contact dispensing can't mix:** it dispenses without touching the liquid (Andy,
-  2026-10-29).
-- **OperationMix works with any liquid type** (Andy, 2026-10-29).
+- **NonContact can't mix:** it dispenses without touching the liquid (the lab's own technique,
+  defined by Andy in Biomek Software; Andy, 2026-10-29).
+- **OperationMix works with any liquid type** (the lab's own technique, defined by Andy in Biomek
+  Software; Andy, 2026-10-29).
 - **No way is shown to mix a share of each well's own volume** (from the manual, 2026-10-29; not
   tested on the instrument). The Technique Editor's mix takes an amount in µL and a number of
   times, with no percentage option (B56358AF 7-13 to 7-15). A pipetting template sees the mix
