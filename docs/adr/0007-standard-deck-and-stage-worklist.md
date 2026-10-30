@@ -117,10 +117,10 @@ gets a tip change of its own. (Until 2026-10-30 each stage chose its probes, and
 the largest set any stage before the next tip change needed, "by looking ahead".)
 
 ### Mixing
-The method supports mixing now; the tool will offer it later (`docs/roadmap.md`). A stage can then
-mix at its sources before aspirating, and at its destinations after dispensing, each
-with its own volume, number of times and speed. Mixing is done by techniques that read the mix
-columns:
+The method supports mixing, and the tool offers it (Andy, 2026-10-29 and 2026-10-30, from the
+mixing preview). A stage can mix at its sources before aspirating, and at its destinations after
+dispensing, each with its own volume, number of times and speed. Mixing is done by techniques that
+read the mix columns:
 - **A technique that mixes** (Andy's OperationMix) mixes before aspirating with `=SrcMixVolume`,
   `=SrcMixTimes` and `=SrcMixSpeed`, and after dispensing with the `=DestMix...` variables. Where a
   row doesn't mix, it uses a technique that doesn't (e.g. Operation), because a technique that
@@ -128,7 +128,33 @@ columns:
 - **Mixing on its own,** without moving liquid, is a stage whose transfers go from a well to itself,
   with a volume above 0, using a technique that only mixes (Andy's MixOnly2) at both ends, whose
   template mixes only at the dispense end. Biomek doesn't change the well's volume, and the tool
-  doesn't count those transfers in its contents tracking.
+  doesn't count those transfers in its contents tracking. The tool calls such a stage a **mix
+  step** (`docs/glossary.md`).
+
+How the tool decides the mix columns:
+- **A stage holds a mix for each end,** `sourceMix` and `destinationMix`: none, or a **share** of
+  the well (a percentage), a number of **times** and a **speed** (µL/s). The page offers mixing as
+  on or off; switching it on copies the **default mix** from `config/` (90% of the well, 3 times, at
+  400 µL/s; Andy, 2026-10-29). The values are stored, not just "on", so options can be offered later
+  without changing the plan format, and a saved plan keeps the mix it was made with even if the
+  default changes.
+- **One mix volume per row, worked out by the tool.** Each stage-worklist row takes one mix volume
+  for each end, and Biomek can't work out a volume per well itself (the manual shows no way:
+  `biomek.md`). So the tool works it out, from what the wells hold (contents tracking): the share
+  of the least any of the row's wells holds when it's mixed, rounded down to 0.1 µL, and no more
+  than the **mix volume limit** of the stage's tip type, from `config/`. So no well mixes more than
+  it holds, and no mix asks a tip for more than it can take. A source is mixed before each draw and
+  a destination after each dispense, in an order Biomek chooses, so the least a source holds is
+  what it holds after the stage plus its smallest draw, and the least a destination holds is what
+  it held before the stage plus its smallest dispense; a mix step's well, what it holds as the
+  stage starts. Wells holding much more than the stage's emptiest are mixed less than their share;
+  the page shows how much (`transfer-designer-page.md`).
+- **The technique follows the mixing.** Each pipetting mode in `config/` names the technique used
+  when that end doesn't mix and the one used when it does (Operation and OperationMix), or none if
+  the mode can't mix there (Non-Contact). Switching mixing on or off at an end switches that end's
+  stored technique in the same edit, so the stored technique is always the one Biomek gets.
+- **A mix step** uses its own mode, from `config/` (MixOnly2 at both ends), and its `destinationMix`,
+  since MixOnly2 mixes at the dispense end.
 
 ### Volumes and checks
 - **Volumes in the files are rounded to 3 decimal places** (1 nL). Biomek keeps 15 significant
@@ -179,3 +205,6 @@ columns:
   names; the tool never knows deck positions; every position reachable by any probes.
 - **2026-10-30 (Andy):** a tip change chooses its probes, and every stage until the next tip change
   uses all of them, replacing per-stage probes and look-ahead tip loading.
+- **2026-10-30 (Andy):** how the tool decides the mix columns (from the mixing preview): a mix for
+  each end of a stage as a share of the well, times and speed; one mix volume per row, worked out
+  by the tool and capped at the tip's limit; the technique following the mixing; mix steps.

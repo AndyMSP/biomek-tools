@@ -6,6 +6,10 @@
 >
 > **Draft change (2026-10-30):** each tip change chooses its probes, and stages no longer have
 > probes (ADR 0007, "Tip changes"; sections 3, 4, 5 and 6), from the mixing preview.
+>
+> **Draft change (2026-10-30, mixing settings):** a stage's settings hold its mixes, `sourceMix` and
+> `destinationMix` (ADR 0007, "Mixing"); a new stage copies them with its other settings (sections 3
+> and 6). Nothing here switches mixing on yet: that comes with the mixing edits, in a later change.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -30,7 +34,8 @@ the labware it uses.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Moving** a stage, or a transfer within its stage. A transfer can be removed and added again.
-- **Mixing**, final concentrations, smarter staging (the tool forming stages itself).
+- **Switching mixing on or off** (stages hold their mixes, but nothing here changes them yet; ADR
+  0007, "Mixing"), final concentrations, smarter staging (the tool forming stages itself).
 - **Checking techniques against tip types** (roadmap, "Technical debt").
 - **Dead volume** (roadmap, "Technical debt").
 - **Which transfer runs short when a stage draws from an overdrawn well more than once** (roadmap,
@@ -74,7 +79,7 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   microliters (µL) of each. Every well is on the deck, and every component named is in `components`.
 - **`operationList`**: the transfers. Every transfer's `stage` is a stage in `stageList`, and its
   wells are on the deck.
-- **`stageList`**: the stages, with their four settings (`stage-list.md`).
+- **`stageList`**: the stages, with their six settings (`stage-list.md`), including their mixes.
 - **`stageOrder`**: the stage order (below), as a list of stage IDs holding every stage in
   `stageList` exactly once (ADR 0011).
 - **`tipChanges`**: the plan's tip changes (`docs/glossary.md`, "Tip change"), each `{ tipType,
@@ -112,10 +117,11 @@ without transfers isn't run.
   stopped matching the stage's place once one was inserted). Stage names needn't be unique
   (`stage-list.md`).
 - A new stage's settings are copied from the stage just before it in the stage order, or, with none
-  before it, from the first stage. The stage of a new plan has the **default settings**: the default
-  pipetting mode, `DEFAULT_PIPETTING_MODE` in `config/` (below), at both ends (Andy, 2026-10-26:
-  named in `config/`, so the menus keep their order and the default can change without changing
-  code).
+  before it, from the first stage, **mixes included**, so it mixes as that stage does, with the
+  techniques that go with its mixing (Andy, 2026-10-30: one rule, and a new stage is often "another
+  one like the last"). The stage of a new plan has the **default settings**: the default pipetting
+  mode, `DEFAULT_PIPETTING_MODE` in `config/` (below), at both ends, and no mixing (Andy, 2026-10-26: named in `config/`, so the menus
+  keep their order and the default can change without changing code).
 - A stage is added **before** a given stage (or last). With **take tips**, a tip change keyed by that
   stage moves onto the new stage, so the new stage is the first to use those tips; without it, the
   new stage uses the tips before that tip change (Andy, 2026-10-25: so a stage can be added at the
@@ -355,7 +361,7 @@ order of checks.
 
 **Plans and modes**
 - `defaultSettings()` gives `DEFAULT_PIPETTING_MODE`'s technique and liquid type at both ends,
-  and nothing else (no probes).
+  `sourceMix` and `destinationMix` `null`, and nothing else (no probes).
 - `emptyPlan()` gives one stage named `NEW_STAGE_NAME` with default settings, `START` tips of the
   first tip type on the first `DEFAULT_PROBE_COUNT` probes (`[1, 2, 3, 4]`), an experiment name of `""`, and nothing else; its `stageId` is
   that stage.
@@ -371,7 +377,8 @@ order of checks.
   list's blocks (`groupByStage()`) are in the same order as those stages in the stage order.
 - `addStage` before a stage puts it there in `stageOrder`; with `null`, last; it's called
   `NEW_STAGE_NAME` and copies the settings of the stage before it; added before the first stage, it
-  copies the first stage's.
+  copies the first stage's. Its mixes are copied too: copying a stage with a `sourceMix` and a
+  `destinationMix` gives a stage with the same mixes, techniques and liquid types.
 - `addStage` with `takeTips` before a stage with a tip change moves the tip change to the new stage;
   without it, the new stage joins the tip group before.
 - `addStage` before the first stage keeps the `START` tips first.

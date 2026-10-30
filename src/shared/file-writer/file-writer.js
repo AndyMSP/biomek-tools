@@ -359,8 +359,9 @@ function tipChangeRow(group) {
 // A transfer row for `substage` of `stage`, which runs in tip group `group`, as an object of the
 // columns it fills: NewTip 0, the group's tip type, the file's absolute path, the group's probes
 // (the same as its tip-change row's LoadProbes, since every stage uses all the probes its tips are
-// on), the stage's four settings, and the substage's labware types. LoadProbes and the mix columns
-// stay empty.
+// on), the stage's technique and liquid type at each end, and the substage's labware types.
+// LoadProbes and the mix columns stay empty: this version ignores a stage's mixes (file-writer.md,
+// section 2), so they're written in a later version.
 function transferRow(stage, substage, group, folderPath) {
   const { settings } = stage;
   return {

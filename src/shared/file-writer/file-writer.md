@@ -33,8 +33,9 @@ transfer row the tip type and probes of the tip change before it, and rounds vol
 Not in version 1:
 - **Checking techniques against tip types** (roadmap, "Technical debt").
 - **Dead volume** (roadmap, "Technical debt").
-- **Mixing.** The general-purpose method supports it (ADR 0007), but plans don't hold it yet
-  (roadmap, "Later"); the mix columns are written empty.
+- **Mixing.** The general-purpose method supports it (ADR 0007), and stages hold their mixes
+  (`stage-list.md`, since 2026-10-30), but this version doesn't write them yet: the mix columns are
+  written empty, and a stage's mixes are ignored.
 - **Replacing only some tips** (ADR 0007, "Consequences").
 - **Well capacities**, to warn about overfilling (roadmap, "Later").
 - **Resuming after an interruption** (roadmap, "Later").
@@ -249,8 +250,8 @@ still pass when the deck changes (as `deck.test.js` does).
 - The header is ADR 0007's 17 columns, in order.
 - A plan with one stage, one substage and the start tip change gives two rows: a tip-change row
   (`1`, the tip type, the tip change's probes, then 14 empty fields) and a transfer row (`0`, the
-  tip type, an empty `LoadProbes`, the file's absolute path, the same probes, the four settings
-  from the stage, the two labware types from `DECK`, then 6 empty mix fields).
+  tip type, an empty `LoadProbes`, the file's absolute path, the same probes, the stage's four
+  technique and liquid-type settings, the two labware types from `DECK`, then 6 empty mix fields).
 - Probes `[1, 2]` are written `"1,2"` (quoted); probes `[1]` are written `1` (not quoted).
 - **Probes from the tip change:** a tip change on `[1, 2, 3, 4]` gives `LoadProbes` `"1,2,3,4"`,
   and every transfer row in its group `Probes` `"1,2,3,4"`; a second tip change on `[1, 3, 5]`

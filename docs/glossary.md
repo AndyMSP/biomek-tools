@@ -20,6 +20,18 @@ names that labware. Until the user gives one, the label is the labware's name in
 description. A label is only for people: transfers and the Biomek files always use the deck
 description's name.
 
+**Mix**
+How a stage mixes at one end: before aspirating, at its sources, or after dispensing, into its
+destinations. A mix is a share of the well's volume (a percentage), a number of times and a speed.
+The tool turns the share into one volume for each stage-worklist row, from what the wells hold
+(ADR 0007, "Mixing"). An end of a stage either has a mix or doesn't mix.
+
+**Mix step**
+A stage that only mixes: it moves no liquid, and each of its wells is mixed in place (a transfer
+from the well to itself, run with a technique that only mixes; ADR 0007, "Mixing"). On the page it's
+added with its own button, and shown with a ⟳ after its name. It's still a stage: it has a place in
+the stage order, uses the tips of its tip group, and becomes stage-worklist rows.
+
 **Pipetting mode**
 What the user chooses for how one end of a stage pipettes, such as "Slow" at the sources and
 "Non-Contact" at the destinations. Each pipetting mode stands for one Biomek technique and one

@@ -1,15 +1,17 @@
 # stage-list — specification
 
 > **Draft (2026-10-23; revised 2026-10-26 and 2026-10-30).** Written for v0.2.0 (ADR 0008). Decided
-> by Andy: a stage gets all four settings when it is added; probes aren't stage settings
-> (2026-10-30: each tip change chooses its probes; ADR 0007, "Tip changes"); tips aren't stage settings (2026-10-26: tip changes are
-> the plan's own entries, between stages; ADR 0007, amended 2026-10-26); its sources and its destinations each have their own technique and
-> liquid type; labware types aren't stage settings (each labware's type is in the deck description
-> in `config/`); settings are checked for form only (callers choose names from `config/`;
-> techniques aren't checked against tip types yet); `remove` doesn't know about transfers, and the
-> transfer designer's logic module removes a stage's transfers with it; an ID can come back after
-> undo. Still to review: the wording. (The review point about an empty probes list, PR #37, moves
-> with probes to the transfer designer.)
+> by Andy: a stage gets all six settings when it is added (2026-10-30: two of them its mixing,
+> `sourceMix` and `destinationMix`; ADR 0007, "Mixing"); probes aren't stage settings (2026-10-30:
+> each tip change chooses its probes; ADR 0007, "Tip changes"); tips aren't stage settings
+> (2026-10-26: tip changes are the plan's own entries, between stages; ADR 0007, amended
+> 2026-10-26); its sources and its destinations each have their own technique and liquid type;
+> labware types aren't stage settings (each labware's type is in the deck description in `config/`);
+> settings are checked for form only (callers choose names from `config/`; techniques aren't checked
+> against tip types yet); `remove` doesn't know about transfers, and the transfer designer's logic
+> module removes a stage's transfers with it; an ID can come back after undo. Still to review: the
+> wording. (The review point about an empty probes list, PR #37, moves with probes to the transfer
+> designer.)
 
 ## 1. Purpose
 `stage-list.js` holds the stages of a **plan** (`docs/glossary.md`): each stage's ID, name and
@@ -41,7 +43,8 @@ Not in version 1 (see `docs/roadmap.md`):
   uses all of them (ADR 0007, "Tip changes"), so probes are held by the transfer designer with the
   tip changes, not by stages.
 - **Replacing only some tips** (an `UnloadProbes` setting, ADR 0007).
-- **Mixing** settings.
+- **Checking a mix against the technique,** such as a mix with a technique that doesn't mix. The
+  transfer designer keeps them matched (ADR 0007, "Mixing"); this module checks each setting's form.
 - **Saving and loading** the list as a file.
 
 ## 3. Data model
@@ -64,7 +67,9 @@ Not in version 1 (see `docs/roadmap.md`):
     sourceTechnique: "Aspirate_Slow",
     sourceLiquidType: "Cells",
     destinationTechnique: "Dispense_Clean",
-    destinationLiquidType: "Cells"
+    destinationLiquidType: "Cells",
+    sourceMix: { share: 90, times: 3, speed: 400 },
+    destinationMix: null
   }
 }
 ```
@@ -74,7 +79,7 @@ Not in version 1 (see `docs/roadmap.md`):
 - `id` is made by the list; code never chooses one (below).
 - `name` is chosen by the user: text that isn't blank and has no whitespace at the start or end.
   Two stages may have the same name (for example two "Seeding" stages).
-- `settings` is an object with exactly four properties. Any missing or extra property is rejected,
+- `settings` is an object with exactly six properties. Any missing or extra property is rejected,
   so a typo such as `tiptype` is caught rather than stored. As in the operation list, only properties
   the object holds itself count.
 
@@ -86,6 +91,8 @@ Not in version 1 (see `docs/roadmap.md`):
 | `sourceLiquidType` | the Biomek liquid type at the sources, by name | a name |
 | `destinationTechnique` | the Biomek technique for dispensing into the destinations, by name | a name |
 | `destinationLiquidType` | the Biomek liquid type at the destinations, by name | a name |
+| `sourceMix` | how the stage mixes its sources before aspirating, or `null` if it doesn't | `null` or a mix (below) |
+| `destinationMix` | how the stage mixes its destinations after dispensing, or `null` if it doesn't | `null` or a mix (below) |
 
 - A **name** is text that isn't blank and has no whitespace at the start or end (`checkName`,
   `input-checks` module). Biomek finds these only by their exact names (`biomek.md`), so stray spaces
@@ -94,6 +101,15 @@ Not in version 1 (see `docs/roadmap.md`):
   File sets them separately, in its source configuration and its destination configuration
   (B56358AF, 22-13 and 22-14). A stage may, for example, aspirate slowly and dispense above the
   liquid so the tip stays clean.
+- **A mix** (`docs/glossary.md`, "Mix") is an object with exactly three properties, as only
+  properties the object holds itself count (as for settings):
+  - `share`: the share of the well's volume to mix, a percentage: a number above 0 and at most 100;
+  - `times`: how many times to mix: a whole number, at least 1 (a technique that mixes refuses 0;
+    `biomek.md`);
+  - `speed`: how fast, in µL/s: a number above 0.
+
+  The list stores its own copy of a mix, which can't be changed. Whether a stage mixes, and with
+  what values, is the caller's choice (ADR 0007, "Mixing"); this module only checks the form.
 - **Labware types aren't settings.** A labware's type is a fact about the labware, not the stage,
   so it is stated once, in the deck description in `config/`, and looked up from there. That way a
   stage can't disagree with the labware its transfers use. Transfer From File needs all of a step's
@@ -178,14 +194,22 @@ message says what is wrong and how to fix it. Values are shown with `describeVal
 |---|---|
 | `id` isn't in the list (any type of value) | `There's no stage "9" in the stage list.` |
 | `name` not text, blank, or with whitespace at the start or end | `checkName`'s three messages, naming `stage name`: `The stage name must be text, but got 5.` |
-| `settings` isn't an object (including `null` and lists) | `A stage's settings must be an object with sourceTechnique, sourceLiquidType, destinationTechnique and destinationLiquidType, but got null.` |
-| A setting is missing | `A stage's settings need sourceTechnique, sourceLiquidType, destinationTechnique and destinationLiquidType, but are missing "destinationLiquidType".` With several, all are listed in that order. |
-| Extra settings | `A stage's settings can only have sourceTechnique, sourceLiquidType, destinationTechnique and destinationLiquidType, but also got "probes".` With several, all are listed in the order they appear. |
+| `settings` isn't an object (including `null` and lists) | `A stage's settings must be an object with sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType, sourceMix and destinationMix, but got null.` |
+| A setting is missing | `A stage's settings need sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType, sourceMix and destinationMix, but are missing "destinationLiquidType".` With several, all are listed in that order. |
+| Extra settings | `A stage's settings can only have sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType, sourceMix and destinationMix, but also got "probes".` With several, all are listed in the order they appear. |
 | A name setting not text, blank, or with whitespace at the start or end | `checkName`'s three messages, naming the setting in words: `source technique`, `source liquid type`, `destination technique`, `destination liquid type`. E.g. `The source technique " Aspirate_Slow" has spaces at the start or end. Remove them.` |
+| A mix setting is neither `null` nor an object (including lists) | `The source mix must be null (no mixing) or an object with share, times and speed, but got 5.` (or `destination mix`) |
+| A mix is missing a property | `The source mix needs share, times and speed, but is missing "speed".` With several, all are listed in that order. |
+| A mix has an extra property | `The source mix can only have share, times and speed, but also got "volume".` With several, all are listed in the order they appear. |
+| A mix's `share` isn't a number above 0 and at most 100 | `The source mix's share must be a number above 0 and at most 100 (a percentage of the well), but got 0.` |
+| A mix's `times` isn't a whole number of at least 1 | `The source mix's times must be a whole number, at least 1, but got 2.5.` |
+| A mix's `speed` isn't a number above 0 | `The source mix's speed must be a number of µL/s above 0, but got 0.` |
 
 The checks run in this order: `id` (for `rename`, `changeSettings`, `remove`, `get`), then `name`
 (for `add` and `rename`), then `settings`: the object check, missing settings, extra settings, then
-each setting in the order of the settings table (section 3). The first problem found is reported.
+each setting in the order of the settings table (section 3); within a mix, its form, missing
+properties, extra properties, then `share`, `times` and `speed`. The first problem found is
+reported.
 
 A failed call changes nothing: the original list is never touched, and a failed `add` doesn't use up
 an ID.
@@ -203,6 +227,11 @@ Each becomes at least one unit test in `stage-list.test.js`, inside `describe("s
 - A failed `add` doesn't use up an ID: after one, the next good add gets the ID it would have got.
 - An earlier version keeps its own counter: adding to it again gives the ID it would have given.
 
+**Mixes**
+- `sourceMix` and `destinationMix` `null` are accepted; so is `{ share: 90, times: 3, speed: 400 }`,
+  and `{ share: 100, times: 1, speed: 0.5 }`.
+- A mix's properties may come in any order.
+
 **Renaming, changing, removing, looking up**
 - `rename` changes only the name; ID and settings are unchanged; the original list is unchanged.
 - `changeSettings` replaces all the settings; ID and name are unchanged; the original list is
@@ -215,10 +244,11 @@ Each becomes at least one unit test in `stage-list.test.js`, inside `describe("s
   settings.
 
 **Immutability and copies**
-- Changing the settings object passed to `add` afterwards doesn't change the list.
+- Changing the settings object passed to `add` afterwards, including its mixes, doesn't change the
+  list.
 - Changing what `listStages()` returns doesn't change the list.
-- Changing a stage returned by `get` or `listStages()`, or its settings, throws, and the list is
-  unchanged.
+- Changing a stage returned by `get` or `listStages()`, or its settings, or a mix in them, throws,
+  and the list is unchanged.
 - An earlier list is unchanged after later adds, renames, changes and removals.
 
 **Errors** (each row of section 5 has at least one test, including:)
@@ -228,7 +258,10 @@ Each becomes at least one unit test in `stage-list.test.js`, inside `describe("s
 - Settings missing `destinationLiquidType` give the missing error; missing `sourceTechnique` and
   `destinationLiquidType` name both, in that order.
 - Settings with `technique` and `liquidType` (the earlier form) instead of the four source and
-  destination settings give the missing error, naming all four.
+  destination technique and liquid type settings give the missing error, naming those four and
+  both mixes.
+- Settings without `sourceMix` and `destinationMix` (the form before 2026-10-30) give the missing
+  error, naming both.
 - Settings with an extra `tiptype` give the extra-setting error, and so do settings with a
   `sourceLabwareType`.
 - Settings in the earlier form, with `tipType` and `changeTipsFirst`, give the extra-setting error,
@@ -237,5 +270,12 @@ Each becomes at least one unit test in `stage-list.test.js`, inside `describe("s
   `probes`.
 - Each name setting given `5`, `""` and `" Aspirate_Slow"` gives its error, naming the setting in
   words.
+- `sourceMix` `5`, `"x"` and `[]` give the mix-form error; `destinationMix` `5` names `destination
+  mix`.
+- A mix `{ share: 90, times: 3 }` gives the missing error, naming `speed`; `{ share: 90, times: 3,
+  speed: 400, volume: 50 }` gives the extra error, naming `volume`.
+- `share` `0`, `-5`, `100.5`, `"90"` and `null` give the share error; `100` and `0.1` are accepted.
+- `times` `0`, `2.5`, `-1` and `"3"` give the times error.
+- `speed` `0`, `-1` and `"400"` give the speed error.
 - Checks run in order: `rename("9", "")` reports the missing stage; settings with a bad source technique
   and a bad destination liquid type report the source technique.

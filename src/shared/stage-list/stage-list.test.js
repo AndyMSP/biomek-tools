@@ -14,6 +14,8 @@ function makeSettings() {
     sourceLiquidType: "Cells",
     destinationTechnique: "Dispense_Clean",
     destinationLiquidType: "Cells",
+    sourceMix: { share: 90, times: 3, speed: 400 },
+    destinationMix: null,
   };
 }
 
@@ -28,9 +30,9 @@ function idsOf(list) {
   return list.listStages().map((stage) => stage.id);
 }
 
-// The four settings as the object, missing and extra settings errors list them.
+// The six settings as the object, missing and extra settings errors list them.
 const SETTING_NAMES_TEXT =
-  "sourceTechnique, sourceLiquidType, destinationTechnique and destinationLiquidType";
+  "sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType, sourceMix and destinationMix";
 
 describe("stage-list", () => {
   // --- Adding and IDs ---
@@ -91,6 +93,42 @@ describe("stage-list", () => {
     assert.equal(earlier.add("Treatment again", makeSettings()).id, "2");
   });
 
+  // --- Mixes ---
+
+  test("sourceMix and destinationMix null are accepted", () => {
+    const settings = { ...makeSettings(), sourceMix: null, destinationMix: null };
+    const { stageList, id } = new StageList().add("Seeding", settings);
+    assert.equal(stageList.get(id).settings.sourceMix, null);
+    assert.equal(stageList.get(id).settings.destinationMix, null);
+  });
+
+  test("mixes { share: 90, times: 3, speed: 400 } and { share: 100, times: 1, speed: 0.5 } are accepted, at either end", () => {
+    const mixes = [
+      { share: 90, times: 3, speed: 400 },
+      { share: 100, times: 1, speed: 0.5 },
+    ];
+    for (const mix of mixes) {
+      for (const setting of ["sourceMix", "destinationMix"]) {
+        const { stageList, id } = new StageList().add("Seeding", { ...makeSettings(), [setting]: mix });
+        assert.deepEqual(stageList.get(id).settings[setting], mix);
+      }
+    }
+  });
+
+  test("a mix's properties may come in any order", () => {
+    const settings = { ...makeSettings(), destinationMix: { speed: 400, times: 3, share: 90 } };
+    const { stageList, id } = new StageList().add("Seeding", settings);
+    assert.deepEqual(stageList.get(id).settings.destinationMix, { share: 90, times: 3, speed: 400 });
+  });
+
+  test("changeSettings can switch a mix on and off", () => {
+    const list = makeList("Seeding");
+    const off = list.changeSettings("1", { ...makeSettings(), sourceMix: null });
+    assert.equal(off.get("1").settings.sourceMix, null);
+    const on = off.changeSettings("1", makeSettings());
+    assert.deepEqual(on.get("1").settings.sourceMix, { share: 90, times: 3, speed: 400 });
+  });
+
   // --- Renaming, changing, removing, looking up ---
 
   test("rename changes only the name; ID and settings are unchanged; the original list is unchanged", () => {
@@ -107,6 +145,8 @@ describe("stage-list", () => {
       sourceLiquidType: "Water",
       destinationTechnique: "Dispense_Dirty",
       destinationLiquidType: "Water",
+      sourceMix: null,
+      destinationMix: { share: 50, times: 2, speed: 100 },
     };
     const changed = original.changeSettings("1", newSettings);
     assert.deepEqual(changed.get("1"), { id: "1", name: "Seeding", settings: newSettings });
@@ -149,6 +189,14 @@ describe("stage-list", () => {
     assert.deepEqual(stageList.get(id).settings, makeSettings());
   });
 
+  test("changing a mix in the settings passed to add() afterwards doesn't change the list", () => {
+    const settings = makeSettings();
+    const { stageList, id } = new StageList().add("Seeding", settings);
+    settings.sourceMix.share = 10;
+    settings.sourceMix.volume = 50;
+    assert.deepEqual(stageList.get(id).settings, makeSettings());
+  });
+
   test("changing the settings passed to changeSettings() afterwards doesn't change the list", () => {
     const settings = makeSettings();
     const list = makeList("Seeding").changeSettings("1", settings);
@@ -164,7 +212,7 @@ describe("stage-list", () => {
     assert.deepEqual(idsOf(list), ["1", "2"]);
   });
 
-  test("changing a stage from get() or listStages(), or its settings, throws and leaves the list unchanged", () => {
+  test("changing a stage from get() or listStages(), or its settings, or a mix in them, throws and leaves the list unchanged", () => {
     const list = makeList("Seeding");
     for (const stage of [list.get("1"), list.listStages()[0]]) {
       assert.throws(() => {
@@ -175,6 +223,12 @@ describe("stage-list", () => {
       }, TypeError);
       assert.throws(() => {
         stage.settings.sourceTechnique = "Aspirate_Fast";
+      }, TypeError);
+      assert.throws(() => {
+        stage.settings.sourceMix.share = 10;
+      }, TypeError);
+      assert.throws(() => {
+        stage.settings.sourceMix = null;
       }, TypeError);
     }
     assert.deepEqual(list.get("1"), { id: "1", name: "Seeding", settings: makeSettings() });
@@ -253,12 +307,25 @@ describe("stage-list", () => {
     });
   });
 
-  test("settings in the earlier form, with technique and liquidType, give the missing error, naming all four", () => {
+  test("settings in the earlier form, with technique and liquidType, give the missing error, naming the four technique and liquid type settings and both mixes", () => {
     const earlierForm = { technique: "Aspirate_Slow", liquidType: "Cells" };
-    const missing = '"sourceTechnique", "sourceLiquidType", "destinationTechnique", "destinationLiquidType"';
+    const missing =
+      '"sourceTechnique", "sourceLiquidType", "destinationTechnique", "destinationLiquidType", "sourceMix", "destinationMix"';
     assert.throws(() => new StageList().add("Seeding", earlierForm), {
       message: `A stage's settings need ${SETTING_NAMES_TEXT}, but are missing ${missing}.`,
     });
+  });
+
+  test("settings without sourceMix and destinationMix (the form before 2026-10-30) give the missing error, naming both", () => {
+    const beforeMixing = {
+      sourceTechnique: "Aspirate_Slow",
+      sourceLiquidType: "Cells",
+      destinationTechnique: "Dispense_Clean",
+      destinationLiquidType: "Cells",
+    };
+    const message = `A stage's settings need ${SETTING_NAMES_TEXT}, but are missing "sourceMix", "destinationMix".`;
+    assert.throws(() => new StageList().add("Seeding", beforeMixing), { message });
+    assert.throws(() => makeList("Seeding").changeSettings("1", beforeMixing), { message });
   });
 
   test("a setting that comes from a class, not the object itself, counts as missing", () => {
@@ -271,6 +338,8 @@ describe("stage-list", () => {
         this.sourceTechnique = settings.sourceTechnique;
         this.sourceLiquidType = settings.sourceLiquidType;
         this.destinationTechnique = settings.destinationTechnique;
+        this.sourceMix = settings.sourceMix;
+        this.destinationMix = settings.destinationMix;
       }
 
       // Returns the destination liquid type from the class, not from the object.
@@ -339,6 +408,122 @@ describe("stage-list", () => {
         assert.throws(() => list.add("Seeding", { ...makeSettings(), [setting]: value }), { message });
       }
     }
+  });
+
+  test('sourceMix 5, "x" and [] give the mix-form error; destinationMix 5 names destination mix', () => {
+    const list = makeList("Seeding");
+    const start = "The source mix must be null (no mixing) or an object with share, times and speed, but got";
+    for (const [mix, shown] of [[5, "5"], ["x", '"x"'], [[], "a list"]]) {
+      const message = `${start} ${shown}.`;
+      assert.throws(() => list.add("Treatment", { ...makeSettings(), sourceMix: mix }), { message });
+      assert.throws(() => list.changeSettings("1", { ...makeSettings(), sourceMix: mix }), { message });
+    }
+    assert.throws(() => list.add("Treatment", { ...makeSettings(), destinationMix: 5 }), {
+      message:
+        "The destination mix must be null (no mixing) or an object with share, times and speed, but got 5.",
+    });
+  });
+
+  test("a mix missing speed gives the missing error; missing several names them all, in order", () => {
+    const list = new StageList();
+    assert.throws(() => list.add("Seeding", { ...makeSettings(), sourceMix: { share: 90, times: 3 } }), {
+      message: 'The source mix needs share, times and speed, but is missing "speed".',
+    });
+    assert.throws(() => list.add("Seeding", { ...makeSettings(), destinationMix: { times: 3 } }), {
+      message: 'The destination mix needs share, times and speed, but is missing "share", "speed".',
+    });
+  });
+
+  test("a mix with an extra volume gives the extra error; several extras are named in the order they appear", () => {
+    const list = new StageList();
+    const withVolume = { share: 90, times: 3, speed: 400, volume: 50 };
+    assert.throws(() => list.add("Seeding", { ...makeSettings(), sourceMix: withVolume }), {
+      message: 'The source mix can only have share, times and speed, but also got "volume".',
+    });
+    const twoExtras = { volume: 50, share: 90, times: 3, speed: 400, on: true };
+    assert.throws(() => list.add("Seeding", { ...makeSettings(), destinationMix: twoExtras }), {
+      message: 'The destination mix can only have share, times and speed, but also got "volume", "on".',
+    });
+  });
+
+  test("a mix missing a property is reported before an extra one", () => {
+    const mix = { share: 90, times: 3, volume: 50 };
+    assert.throws(() => new StageList().add("Seeding", { ...makeSettings(), sourceMix: mix }), {
+      message: 'The source mix needs share, times and speed, but is missing "speed".',
+    });
+  });
+
+  test("a mix property that comes from a class, not the object itself, counts as missing", () => {
+    // A test-only class whose speed comes from a getter on the class, so the object itself doesn't
+    // hold it.
+    class MixWithClassSpeed {
+      // Sets share and times on the object itself.
+      constructor() {
+        this.share = 90;
+        this.times = 3;
+      }
+
+      // Returns the speed from the class, not from the object.
+      get speed() {
+        return 400;
+      }
+    }
+    assert.throws(() => new StageList().add("Seeding", { ...makeSettings(), sourceMix: new MixWithClassSpeed() }), {
+      message: 'The source mix needs share, times and speed, but is missing "speed".',
+    });
+  });
+
+  test('share 0, -5, 100.5, "90" and null give the share error; 100 and 0.1 are accepted', () => {
+    const list = new StageList();
+    for (const [share, shown] of [[0, "0"], [-5, "-5"], [100.5, "100.5"], ["90", '"90"'], [null, "null"]]) {
+      assert.throws(
+        () => list.add("Seeding", { ...makeSettings(), sourceMix: { share, times: 3, speed: 400 } }),
+        {
+          message: `The source mix's share must be a number above 0 and at most 100 (a percentage of the well), but got ${shown}.`,
+        },
+      );
+    }
+    for (const share of [100, 0.1]) {
+      const { stageList, id } = list.add("Seeding", { ...makeSettings(), sourceMix: { share, times: 3, speed: 400 } });
+      assert.equal(stageList.get(id).settings.sourceMix.share, share);
+    }
+  });
+
+  test('times 0, 2.5, -1 and "3" give the times error', () => {
+    const list = new StageList();
+    for (const [times, shown] of [[0, "0"], [2.5, "2.5"], [-1, "-1"], ["3", '"3"']]) {
+      assert.throws(
+        () => list.add("Seeding", { ...makeSettings(), destinationMix: { share: 90, times, speed: 400 } }),
+        { message: `The destination mix's times must be a whole number, at least 1, but got ${shown}.` },
+      );
+    }
+  });
+
+  test('speed 0, -1 and "400" give the speed error', () => {
+    const list = new StageList();
+    for (const [speed, shown] of [[0, "0"], [-1, "-1"], ["400", '"400"']]) {
+      assert.throws(
+        () => list.add("Seeding", { ...makeSettings(), sourceMix: { share: 90, times: 3, speed } }),
+        { message: `The source mix's speed must be a number of µL/s above 0, but got ${shown}.` },
+      );
+    }
+  });
+
+  test("checks run in order: within a mix, share before times before speed; the source mix before the destination mix; names before mixes", () => {
+    const list = new StageList();
+    const allBad = { share: 0, times: 0, speed: 0 };
+    assert.throws(() => list.add("Seeding", { ...makeSettings(), sourceMix: allBad }), {
+      message: "The source mix's share must be a number above 0 and at most 100 (a percentage of the well), but got 0.",
+    });
+    assert.throws(() => list.add("Seeding", { ...makeSettings(), sourceMix: { share: 90, times: 0, speed: 0 } }), {
+      message: "The source mix's times must be a whole number, at least 1, but got 0.",
+    });
+    assert.throws(() => list.add("Seeding", { ...makeSettings(), sourceMix: 5, destinationMix: 5 }), {
+      message: "The source mix must be null (no mixing) or an object with share, times and speed, but got 5.",
+    });
+    assert.throws(() => list.add("Seeding", { ...makeSettings(), destinationLiquidType: "", sourceMix: 5 }), {
+      message: "The destination liquid type is blank. Give it at least one character that isn't a space.",
+    });
   });
 
   test('checks run in order: rename("9", "") reports the missing stage', () => {

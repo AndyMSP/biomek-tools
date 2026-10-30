@@ -18,6 +18,7 @@ import {
   setExperimentName,
   addStage,
   renameStage,
+  changeStageSettings,
   addTransfer,
   addTipChange,
   setTipType,
@@ -319,6 +320,22 @@ describe("file-writer", () => {
       PLATE.labwareType,
       ...Array(6).fill(""),
     ]);
+  });
+
+  test("a stage's mixes are ignored: the mix columns are written empty, and the files are the same as without them", () => {
+    const plan = withTransfersIn(planWithStages(1), ["1"]);
+    const settings = plan.stageList.get("1").settings;
+    const mixing = changeStageSettings(plan, "1", {
+      ...settings,
+      sourceMix: { share: 90, times: 3, speed: 400 },
+      destinationMix: { share: 50, times: 2, speed: 100 },
+    });
+    const result = write(mixing);
+    const [, transferRow] = rowsOf(fileNamed(result, "Stages.csv"));
+    for (const column of STAGE_COLUMNS.filter((name) => name.includes("Mix"))) {
+      assert.equal(transferRow[column], "", column);
+    }
+    assert.deepEqual(result, write(plan));
   });
 
   test("probes with a comma are quoted; a single probe isn't", () => {

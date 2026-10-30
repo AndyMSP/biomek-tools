@@ -6,9 +6,11 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 3, in which each tip change holds its probes, and still reads version 2
-// files (probes in each stage's settings) and version 1 files (also without an experiment name):
-// their tip changes get every probe their stages used, which is where look-ahead loading put tips.
+// It writes format version 4, in which each stage's settings hold its mixes and each tip change its
+// probes. It still reads version 3 files (no mixes), version 2 files (also probes in each stage's
+// settings) and version 1 files (also without an experiment name). Their stages get no mixing, since
+// plans couldn't mix then; in versions 1 and 2, their tip changes get every probe their stages
+// used, which is where look-ahead loading put tips.
 // Specification: plan-file.md.
 
 import { TIP_TYPES } from "../../../config/tip-types.js";
@@ -47,18 +49,27 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // The format version written. It goes up only when what a plan file holds changes, not with every
 // release of the tools (ADR 0010). Changing it means changing how files are read, so it isn't in
 // config/. Version 2 (2026-10-28) added the experiment name; version 3 (2026-10-30) moved probes
-// from the stages to the tip changes (ADR 0007, "Tip changes").
-export const PLAN_FILE_VERSION = 3;
+// from the stages to the tip changes (ADR 0007, "Tip changes"); version 4 (2026-10-30) added each
+// stage's mixes (ADR 0007, "Mixing").
+export const PLAN_FILE_VERSION = 4;
 
-// The versions this module can read: the one it writes, version 2 (plans saved from 2026-10-28 to
-// 2026-10-30) and version 1 (plans saved before 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 2, 1];
+// The versions this module can read: the one it writes, version 3 (plans saved on 2026-10-30,
+// before mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version 1 (plans saved
+// before 2026-10-28).
+const VERSIONS_READ = [PLAN_FILE_VERSION, 3, 2, 1];
 
 // The versions in which each stage's settings hold its probes, and a tip change is { tipType } only.
 const VERSIONS_WITH_STAGE_PROBES = [1, 2];
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 2 and
-// 3 have all of them.
+// The versions whose stages' settings hold no mixes, because plans couldn't mix before version 4.
+const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
+
+// The settings that hold a stage's mixes (stage-list.md), in the order of the stage list's settings
+// table: an older file's stages can't hold them, and get them as null.
+const MIX_SETTINGS = ["sourceMix", "destinationMix"];
+
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 2, 3 and
+// 4 have all of them.
 const FILE_PROPERTIES = [
   "format",
   "version",
@@ -176,8 +187,8 @@ function checkFormatAndVersion(file) {
 
 // The properties a plan file of `version` (one of VERSIONS_READ) holds, in the order they are
 // written: a version 1 file has all but the ones version 2 added, e.g. propertiesOfVersion(1) has
-// no "experimentName". Version 3 added no property: it moved probes from the stages to the tip
-// changes.
+// no "experimentName". Versions 3 and 4 added no property: version 3 moved probes from the stages to
+// the tip changes, and version 4 added mixes inside each stage's settings.
 function propertiesOfVersion(version) {
   if (version === 1) {
     return FILE_PROPERTIES.filter((property) => !VERSION_2_PROPERTIES.includes(property));
@@ -235,8 +246,10 @@ function addComponents(plan, components) {
 // with its name and settings; a Map from each stage's ID in the file to its new ID, e.g. "5" → "2";
 // and, for a file of `version` whose stages hold probes (hasStageProbes), a Map from each stage's ID
 // in the file to its probes, for its tip change (addTipChanges). The empty plan's own stage becomes
-// the first. Throws if there are no stages, or a stage's form or ID is wrong, or the stage list
-// refuses its name or settings, or (in an older file) its settings have no probes or bad ones.
+// the first. In a file of a version without mixes, each stage gets sourceMix and destinationMix
+// null. Throws if there are no stages, or a stage's form or ID is wrong, or the stage list refuses
+// its name or settings, or (in an older file) its settings have no probes or bad ones, or hold a
+// mix.
 function addStages(plan, stages, version) {
   if (stages.length === 0) {
     refuse("it has no stages; a plan always has at least one.");
@@ -260,6 +273,9 @@ function addStages(plan, stages, version) {
       const { probes, ...rest } = settings;
       settings = rest;
     }
+    if (VERSIONS_WITHOUT_MIXES.includes(version) && isObject(settings)) {
+      settings = withoutMixing(settings, index, version);
+    }
     planSoFar = withPlace(place, () => changeStageSettings(planSoFar, id, settings));
     newIds.set(stage.id, id);
   }
@@ -279,6 +295,22 @@ function checkStageProbes(plan, settings, index, version) {
   }
   const checked = withPlace(place, () => setTipProbes(plan, START, settings.probes));
   return checked.tipChanges[START].probes;
+}
+
+// Returns `settings`, the settings of the stage at `index` in a file of `version` from before
+// mixing, with sourceMix and destinationMix null, so the stage doesn't mix, e.g.
+// { sourceTechnique: …, … } → { sourceTechnique: …, …, sourceMix: null, destinationMix: null }.
+// Throws if they already hold either, naming the first in the stage list's order: the tool never
+// wrote a mix in such a file, so it's refused rather than dropped.
+function withoutMixing(settings, index, version) {
+  const mixSetting = MIX_SETTINGS.find((setting) => Object.hasOwn(settings, setting));
+  if (mixSetting !== undefined) {
+    refuse(
+      `stage ${index + 1}'s settings have ${describeValue(mixSetting)}, ` +
+        `which a version ${version} file's stages don't have.`,
+    );
+  }
+  return { ...settings, sourceMix: null, destinationMix: null };
 }
 
 // Throws if the stage at `index` in `stages` isn't an object with exactly an ID, a name and
@@ -398,7 +430,7 @@ function addStartingContents(plan, startingContents, componentNames) {
 }
 
 // Check 9: returns the plan with the file's tip changes, each keyed by START or a stage's ID in the
-// file, which `newIds` turns into its new ID. In a version 3 file each holds its tip type and
+// file, which `newIds` turns into its new ID. In a version 3 or 4 file each holds its tip type and
 // probes; in an older file each holds only its tip type, and gets every probe its stages used
 // (`stageProbes`, from addStages), which is where look-ahead loading put tips. Throws if there's
 // none at START; then, for each tip change in turn, if its key isn't one of the file's stages or is
@@ -464,7 +496,7 @@ function checkTipChangeKey(key, stages, newIds) {
 }
 
 // Check 11: returns the plan with the file's experiment name. A version 1 file has none, so the
-// plan keeps the empty plan's "". For a version 2 file, the name must be "" (no name) or one
+// plan keeps the empty plan's "". For a later file, the name must be "" (no name) or one
 // checkExperimentName accepts, and is then set with setExperimentName. It's never tidied: a name
 // with a space at an end is refused by checkExperimentName here, though setExperimentName on its
 // own would trim it.
