@@ -15,6 +15,7 @@ import {
   stageOrder,
   addStage,
   renameStage,
+  changeStageSettings,
   removeStage,
   addTransfer,
   addComponent,
@@ -84,12 +85,39 @@ function fullFile() {
   return JSON.parse(planToText(fullPlan(), SAVED_BY));
 }
 
-// fullFile() as a version 2 file, as saved from 2026-10-28 to 2026-10-30: each stage's settings
+// The mix the specification's examples use, e.g. { share: 90, times: 3, speed: 400 }. A new object
+// each time.
+function exampleMix() {
+  return { share: 90, times: 3, speed: 400 };
+}
+
+// fullPlan() with stage "1" mixing its sources with exampleMix() and stage "3" mixing its
+// destinations with { share: 50, times: 2, speed: 100 }; stage "2" doesn't mix.
+function mixingPlan() {
+  let plan = fullPlan();
+  const settingsOf = (id) => plan.stageList.get(id).settings;
+  plan = changeStageSettings(plan, "1", { ...settingsOf("1"), sourceMix: exampleMix() });
+  const destinationMix = { share: 50, times: 2, speed: 100 };
+  return changeStageSettings(plan, "3", { ...settingsOf("3"), destinationMix });
+}
+
+// fullFile() as a version 3 file, as saved on 2026-10-30 before mixing: each stage's settings have
+// no sourceMix or destinationMix. Opened, it gives fullPlan(), whose stages don't mix.
+function version3File() {
+  const file = { ...fullFile(), version: 3 };
+  file.stages = file.stages.map((stage) => {
+    const { sourceMix, destinationMix, ...settings } = stage.settings;
+    return { ...stage, settings };
+  });
+  return file;
+}
+
+// version3File() as a version 2 file, as saved from 2026-10-28 to 2026-10-30: each stage's settings
 // hold its probes (stages 1 and 2, under START, use [1, 2] and [1, 2, 3, 4]; stage 3, under its own
 // tip change, uses [1]), and each tip change is { tipType } only. Opened, it gives fullPlan():
 // START on [1, 2, 3, 4] and the tip change on [1].
 function version2File() {
-  const file = { ...fullFile(), version: 2 };
+  const file = { ...version3File(), version: 2 };
   const probesOfStages = [[1, 2], [1, 2, 3, 4], [1]];
   file.stages = file.stages.map((stage, index) => ({
     ...stage,
@@ -170,7 +198,7 @@ describe("plan-file", () => {
 
   test("the format and version are the specification's", () => {
     assert.equal(PLAN_FILE_FORMAT, "biomek-tools transfer plan");
-    assert.equal(PLAN_FILE_VERSION, 3);
+    assert.equal(PLAN_FILE_VERSION, 4);
   });
 
   test("planToText writes each tip change with its probes, and each stage's settings without any", () => {
@@ -182,6 +210,17 @@ describe("plan-file", () => {
     for (const stage of file.stages) {
       assert.equal(Object.hasOwn(stage.settings, "probes"), false, stage.id);
     }
+  });
+
+  test("planToText writes each stage's settings as the stage list holds them, mixes included", () => {
+    const file = JSON.parse(planToText(mixingPlan(), SAVED_BY));
+    const plan = mixingPlan();
+    for (const stage of file.stages) {
+      assert.deepEqual(stage.settings, plan.stageList.get(stage.id).settings, stage.id);
+    }
+    assert.deepEqual(file.stages[0].settings.sourceMix, exampleMix());
+    assert.equal(file.stages[0].settings.destinationMix, null);
+    assert.equal(file.stages[1].settings.sourceMix, null);
   });
 
   test("planToText refuses a savedBy that isn't a name", () => {
@@ -256,12 +295,79 @@ describe("plan-file", () => {
     assert.deepEqual(Object.keys(opened.tipChanges).sort(), ["3", START].sort());
   });
 
-  test("an empty plan, saved and opened, has the same contents, and is written as version 3", () => {
+  test("an empty plan, saved and opened, has the same contents, and is written as version 4", () => {
     const plan = emptyPlan().plan;
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 3);
+    assert.equal(JSON.parse(text).version, 4);
     const opened = planFromText(text);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
+  });
+
+  test("stages keep their mixes: sourceMix { share: 90, times: 3, speed: 400 } and destinationMix null, saved and opened, give the same mixes", () => {
+    const plan = mixingPlan();
+    const opened = planFromText(planToText(plan, SAVED_BY));
+    assert.deepEqual(opened.stageList.get("1").settings.sourceMix, exampleMix());
+    assert.equal(opened.stageList.get("1").settings.destinationMix, null);
+    assert.deepEqual(contentsOf(opened), contentsOf(plan));
+  });
+
+  // --- Version 4 files ---
+
+  test("a version 4 stage without sourceMix gets the stage list's missing-setting message", () => {
+    const file = fullFile();
+    delete file.stages[1].settings.sourceMix;
+    assertRefused(file, /stage 2: A stage's settings need .+, but are missing "sourceMix"\./);
+  });
+
+  test("a version 4 stage whose mix the stage list refuses gives its message", () => {
+    const file = fullFile();
+    file.stages[2].settings.destinationMix = { share: 0, times: 3, speed: 400 };
+    assertRefused(file, /stage 3: The destination mix's share must be a number above 0 and at most 100/);
+  });
+
+  // --- Version 3 files ---
+
+  test("a version 3 file opens, each stage with sourceMix and destinationMix null", () => {
+    const opened = open(version3File());
+    for (const stage of opened.stageList.listStages()) {
+      assert.equal(stage.settings.sourceMix, null, stage.id);
+      assert.equal(stage.settings.destinationMix, null, stage.id);
+    }
+    assert.deepEqual(contentsOf(opened), contentsOf(fullPlan()));
+  });
+
+  test("a version 3 file whose stage has a sourceMix gets the stage-mix message", () => {
+    const file = version3File();
+    file.stages[1].settings.sourceMix = exampleMix();
+    assertRefused(file, 'stage 2\'s settings have "sourceMix", which a version 3 file\'s stages don\'t have.');
+  });
+
+  test("a version 3 stage holding both mixes, even null, is refused, naming sourceMix", () => {
+    const file = version3File();
+    file.stages[0].settings = { ...file.stages[0].settings, destinationMix: null, sourceMix: null };
+    assertRefused(file, 'stage 1\'s settings have "sourceMix", which a version 3 file\'s stages don\'t have.');
+  });
+
+  test("a version 3 stage with only a destinationMix is refused, naming destinationMix", () => {
+    const file = version3File();
+    file.stages[2].settings.destinationMix = exampleMix();
+    assertRefused(file, 'stage 3\'s settings have "destinationMix", which a version 3 file\'s stages don\'t have.');
+  });
+
+  test("a version 3 stage's name is checked before its mixes", () => {
+    const file = version3File();
+    file.stages[1].name = "";
+    file.stages[1].settings.sourceMix = exampleMix();
+    assertRefused(file, /stage 2: The stage name is blank\./);
+  });
+
+  test("saving an opened version 3 file writes version 4, with the stages' mixes null", () => {
+    const file = JSON.parse(planToText(open(version3File()), SAVED_BY));
+    assert.equal(file.version, 4);
+    for (const stage of file.stages) {
+      assert.equal(stage.settings.sourceMix, null, stage.id);
+      assert.equal(stage.settings.destinationMix, null, stage.id);
+    }
   });
 
   // --- Version 2 files ---
@@ -309,23 +415,49 @@ describe("plan-file", () => {
     assertRefused(file, 'the tip change at "start" must be an object with exactly "tipType".');
   });
 
-  test("a version 3 tip change without probes is refused as not having exactly its properties", () => {
-    const file = fullFile();
-    file.tipChanges.start = { tipType: TIP_TYPES[0] };
-    assertRefused(file, 'the tip change at "start" must be an object with exactly "tipType" and "probes".');
+  test("a version 2 file opens with no mixing", () => {
+    for (const stage of open(version2File()).stageList.listStages()) {
+      assert.equal(stage.settings.sourceMix, null, stage.id);
+      assert.equal(stage.settings.destinationMix, null, stage.id);
+    }
   });
 
-  test("a version 3 stage with probes is refused by the stage list as an extra setting", () => {
-    const file = fullFile();
-    file.stages[0].settings.probes = [1, 2];
-    assertRefused(file, /stage 1: A stage's settings can only have .+, but also got "probes"\./);
+  test("a version 2 stage's probes are checked before its mixes", () => {
+    const file = version2File();
+    delete file.stages[1].settings.probes;
+    file.stages[1].settings.sourceMix = exampleMix();
+    assertRefused(file, 'stage 2\'s settings are missing "probes", which a version 2 file\'s stages have.');
+  });
+
+  test("a version 2 stage with a mix gets the stage-mix message, naming version 2", () => {
+    const file = version2File();
+    file.stages[0].settings.destinationMix = exampleMix();
+    assertRefused(file, 'stage 1\'s settings have "destinationMix", which a version 2 file\'s stages don\'t have.');
+  });
+
+  test("a version 3 or 4 tip change without probes is refused as not having exactly its properties", () => {
+    for (const file of [version3File(), fullFile()]) {
+      file.tipChanges.start = { tipType: TIP_TYPES[0] };
+      assertRefused(file, 'the tip change at "start" must be an object with exactly "tipType" and "probes".');
+    }
+  });
+
+  test("a version 3 or 4 stage with probes is refused by the stage list as an extra setting", () => {
+    for (const file of [version3File(), fullFile()]) {
+      file.stages[0].settings.probes = [1, 2];
+      assertRefused(file, /stage 1: A stage's settings can only have .+, but also got "probes"\./);
+    }
   });
 
   // --- Version 1 files ---
 
-  test('a version 1 file opens, with an experiment name of "" and probes as for version 2', () => {
+  test('a version 1 file opens, with an experiment name of "", probes as for version 2, and no mixing', () => {
     const opened = open(version1File());
     assert.equal(opened.experimentName, "");
+    for (const stage of opened.stageList.listStages()) {
+      assert.equal(stage.settings.sourceMix, null, stage.id);
+      assert.equal(stage.settings.destinationMix, null, stage.id);
+    }
     const { experimentName, ...rest } = contentsOf(opened);
     const { experimentName: ignored, ...expected } = contentsOf(fullPlan());
     assert.deepEqual(rest, expected);
@@ -389,8 +521,8 @@ describe("plan-file", () => {
 
   test("a version above this one was saved by a newer version of the tools", () => {
     assertRefused(
-      { ...fullFile(), version: 4 },
-      "it was saved by a newer version of the tools (plan format 4). Open it with that version or a later one.",
+      { ...fullFile(), version: 5 },
+      "it was saved by a newer version of the tools (plan format 5). Open it with that version or a later one.",
     );
   });
 
