@@ -1312,7 +1312,7 @@ function refreshStages() {
 }
 
 // Start, a stage or End as a row (closed) or a card (open), sharing one look: a number in a badge, a
-// name and a count; a card adds "Current" and its contents.
+// name and a count; a card adds "Current" and its contents, and a stage's card its ✎ after the name.
 function createEntry(plan, key, open, overdrawn) {
   const isOpen = key === open;
   const entry = createElement("div", "", "entry");
@@ -1328,11 +1328,14 @@ function createEntry(plan, key, open, overdrawn) {
     row.type = "button";
     row.addEventListener("click", () => openEntry(key));
   }
-  row.append(
-    createElement("span", badge, "entry-badge"),
-    createElement("span", name, "entry-name"),
-    createElement("span", count, "entry-count"),
-  );
+  row.append(createElement("span", badge, "entry-badge"), createElement("span", name, "entry-name"));
+  // An open stage's ✎ sits just after its name, so its editing box floats under the heading
+  // (section 10); the count stays at the right.
+  if (isOpen && isStage(plan, key)) {
+    row.classList.add("with-pencil");
+    row.append(createPencil("stage", key, `Edit stage ${stageOrder(plan).indexOf(key) + 1}`));
+  }
+  row.append(createElement("span", count, "entry-count"));
   if (isOpen) {
     row.append(createElement("span", "Current", "entry-current"));
   }
@@ -1384,8 +1387,8 @@ function createEntryBody(plan, key) {
   return body;
 }
 
-// A stage card's settings in one line, e.g. "↑ Slow · ↓ Non-Contact · 2 probes", with the ✎ that
-// opens the stage's editing box.
+// A stage card's settings in one line, e.g. "↑ Slow · ↓ Non-Contact · 2 probes". (The ✎ that opens
+// the stage's editing box is in the card's heading, beside its name.)
 function createSettingsLine(plan, id) {
   const settings = plan.stageList.get(id).settings;
   const aspirate = modeOf("source", settings) ?? "custom";
@@ -1394,7 +1397,7 @@ function createSettingsLine(plan, id) {
   const line = createElement("div", "", "settings-line");
   const text = createElement("span", `↑ ${aspirate} · ↓ ${dispense} · ${probes}`);
   text.setAttribute("aria-label", `aspirate ${aspirate}, dispense ${dispense}, ${probes}`);
-  line.append(text, createPencil("stage", id, `Edit stage ${stageOrder(plan).indexOf(id) + 1}`));
+  line.append(text);
   return line;
 }
 
@@ -1430,8 +1433,8 @@ function createTransferList(plan, id, transfers) {
   return list;
 }
 
-// One transfer's row, e.g. "Assay plate A1 → Drug plate B2 · 20 µL" with × at the right. Its volume
-// is a button that becomes a text box; pointing at the row singles its transfer out on the deck,
+// One transfer's row, e.g. "Assay plate A1 → Drug plate B2", then "20 µL" and × at the right. Its
+// volume is a button that becomes a text box; pointing at the row singles its transfer out on the deck,
 // unless a volume box is open, whose transfer stays singled out until it closes.
 function createTransferRow(plan, id, transfer) {
   const row = createElement("li", "", "transfer-row");
@@ -1450,7 +1453,7 @@ function createTransferRow(plan, id, transfer) {
       showMessage(`Removed ${route} from ${stageLabel(plan, id)}.`, "note");
     }
   });
-  row.append(createElement("span", `${route} ·`, "transfer-text"), volumeButton, remove);
+  row.append(createElement("span", route, "transfer-text"), volumeButton, remove);
   row.addEventListener("pointerenter", () => {
     if (volumeBoxOpen === null) {
       highlightTransfer(transfer.position);
@@ -2389,6 +2392,8 @@ function redrawEditingBox() {
 // The open editing box's element: its fields for its kind, then Remove, Discard and Save.
 function createEditingBox(plan) {
   const box = createElement("div", "", "editing-box");
+  // A stage's box is wider than the others, so its menus show whole mode names (section 15).
+  box.classList.toggle("stage-box", editingBox.kind === "stage");
   box.setAttribute("role", "dialog");
   box.setAttribute("aria-label", `Edit ${editingBox.kind === "tip" ? "new tips" : editingBox.kind}`);
   box.addEventListener("keydown", (event) => {
@@ -2467,22 +2472,11 @@ function colorsOffered(plan, ownName, ownColor, showAll) {
   return [...first.slice(0, FIRST_COLORS_SHOWN - 1), ownColor];
 }
 
-// A stage's box (section 10): Name, the Aspirate and Dispense mode menus, and the Probes buttons.
+// A stage's box (section 10): Name, the settings grid, and the Probes buttons.
 function stageBoxFields(plan) {
   const { draft } = editingBox;
   const nameField = createNameField(draft.name, "Name");
-  const modes = createElement("div");
-  modes.append(createElement("span", "Mode", "field-name"));
-  const columns = createElement("div", "", "mode-columns");
-  columns.append(
-    createModeMenu("source", "Aspirate", draft.aspirate, (name) => {
-      draft.aspirate = name;
-    }),
-    createModeMenu("destination", "Dispense", draft.dispense, (name) => {
-      draft.dispense = name;
-    }),
-  );
-  modes.append(columns);
+  const grid = createSettingsGrid(draft);
   const probes = createElement("div");
   probes.append(createElement("span", "Probes", "field-name"));
   const buttons = createElement("div", "", "probe-buttons");
@@ -2499,17 +2493,36 @@ function stageBoxFields(plan) {
     buttons.append(button);
   }
   probes.append(buttons);
-  return [nameField, modes, probes];
+  return [nameField, grid, probes];
+}
+
+// The stage's settings as a grid (section 10): the stage's ends as columns, headed Aspirate and
+// Dispense, and its settings as rows, each labeled once at the left. For now one row, Mode, with a
+// menu per end. The top left cell is empty: it's above the labels and left of the headings.
+function createSettingsGrid(draft) {
+  const grid = createElement("div", "", "settings-grid");
+  grid.append(
+    createElement("span"),
+    createElement("span", "Aspirate", "field-name"),
+    createElement("span", "Dispense", "field-name"),
+    createElement("span", "Mode", "field-name"),
+    createModeMenu("source", "Aspirate mode", draft.aspirate, (name) => {
+      draft.aspirate = name;
+    }),
+    createModeMenu("destination", "Dispense mode", draft.dispense, (name) => {
+      draft.dispense = name;
+    }),
+  );
+  return grid;
 }
 
 // One end's menu of pipetting modes (modesFor), with "(not one of the modes)" first if the stage's
-// settings there aren't one of them. `onChoose` gets the mode's name, or null for that line.
-function createModeMenu(end, title, chosen, onChoose) {
-  const field = createElement("div");
+// settings there aren't one of them. Its column heading isn't its label, so `accessibleName` (e.g.
+// "Aspirate mode") names it for screen readers. `onChoose` gets the mode's name, or null for that
+// line.
+function createModeMenu(end, accessibleName, chosen, onChoose) {
   const menu = document.createElement("select");
-  menu.id = `mode-${end}`;
-  const label = createElement("label", title);
-  label.htmlFor = menu.id;
+  menu.setAttribute("aria-label", accessibleName);
   if (chosen === null) {
     menu.append(new Option("(not one of the modes)", ""));
   }
@@ -2518,8 +2531,7 @@ function createModeMenu(end, title, chosen, onChoose) {
   }
   menu.value = chosen ?? "";
   menu.addEventListener("change", () => onChoose(menu.value === "" ? null : menu.value));
-  field.append(label, menu);
-  return field;
+  return menu;
 }
 
 // A tip change's box (section 10): a button per tip type, one chosen.
