@@ -182,9 +182,11 @@ Last updated: 2026-10-28
   in three chunks (Andy, 2026-10-30), each leaving `main` working: (1) page layout only, (2) probes
   chosen with the tips, (3) mixing, in layers. **Chunk 1's page specification is written** (Draft,
   2026-10-30; `transfer-designer-page.md`): an open stage's ✎ beside its name, and the stage's
-  editing box as a grid (Aspirate and Dispense columns, a Mode row); merged (#103). Claude Code is
-  building it. The deferred simulation run (step 1 of the order below) can test that build, since
-  its Biomek files are the same as `main`'s at `15e3603`. **Chunk 2's specifications are written**
+  editing box as a grid (Aspirate and Dispense columns, a Mode row); merged (#103). **Built and
+  merged** (#105, 2026-10-30), with two fixes from its review: the Stages column at least 348px
+  wide, and no `Current` on open cards. Tagged **`pre-mixing`** (`e7ac830`, Andy, 2026-10-30): the
+  version for the deferred simulation run (step 1 of the order below), since its Biomek files are
+  the same as before the mixing work. **Chunk 2's specifications are written**
   (Draft, 2026-10-30): each tip change chooses its probes, and every stage until the next tip change
   uses all of them, replacing per-stage probes and look-ahead tip loading (ADR 0007 amended;
   glossary; `stage-list.md`, `tip-groups.md`, `transfer-designer.md`, `plan-file.md` with format
