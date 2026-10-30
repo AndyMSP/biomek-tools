@@ -7,6 +7,11 @@
 > **Draft changes (2026-10-28):** the experiment name as the page's heading, and writing the Biomek
 > files, from the preview Andy shaped on 2026-10-28 (sections 2, 3, 4, 5, 12, 15 and 16). They
 > become Final once built and tested by Andy, including a zip unzipped and run on the Biomek PC.
+>
+> **Draft changes (2026-10-30):** an open stage's ✎ beside its name, and the stage's editing box as
+> a grid, from the mixing preview Andy shaped on 2026-10-29 and 2026-10-30 (sections 7, 10, 15 and
+> 16). Layout only: the plan, plan files and Biomek files don't change. They become Final once
+> built and tested by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -261,7 +266,9 @@ one-line rows. Clicking a row opens it.
 
 **Rows and cards share one look.** A row shows a number in a small round badge, a name, and a count
 at the right. A card shows the same at the top, with `Current` in blue at the right, then its
-contents.
+contents. **An open stage's card has its ✎ just after its name**, which opens the stage's editing
+box (section 10); the count stays at the right (Andy, 2026-10-30: it frees the settings line, and
+keeps the ✎ in one place on every stage).
 
 **Start** (number `0`, name `Start`, count `N wells filled`: the wells holding something at the
 start). Its card holds `Pick what to fill wells with, then click or drag across wells on the deck.`
@@ -271,8 +278,8 @@ and the palette (section 8).
 holds:
 - **its settings in one line**, gray, e.g. `↑ Slow · ↓ Non-Contact · 2 probes`: ↑ is the aspirate
   mode (at the sources), ↓ the dispense mode (at the destinations), from `modeOf`, or `custom` if
-  the settings aren't one of the modes; then a ✎ that opens the stage's editing box (section 10).
-  Its accessible name says "aspirate" and "dispense" in place of the arrows.
+  the settings aren't one of the modes. Its accessible name says "aspirate" and "dispense" in place
+  of the arrows. (Its ✎ is beside the stage's name, above.)
 - with no transfers: `No transfers yet. Add some on the deck.`
 - otherwise, `Show transfers ▸`, which shows its **transfer list** (and becomes `Hide transfers ▾`,
   which folds it away again). Each stage remembers whether its list is shown, while the page is open.
@@ -439,7 +446,8 @@ stage to add transfers into it.`, and dragging does nothing.
 
 ## 10. Editing boxes
 Components, stages and tip changes each have a ✎ that opens an **editing box**, floating just under
-it, over what's below, so nothing moves. One box is open at a time; clicking the open box's ✎ again
+it, over what's below, so nothing moves. (A stage's ✎ is in its card's heading, so its box floats
+just under the heading.) One box is open at a time; clicking the open box's ✎ again
 closes it, as a click outside would (below). Its ✎ is shown pressed while it's open.
 
 **Changes in a box are a draft** until saved:
@@ -454,16 +462,31 @@ closes it, as a click outside would (below). Its ✎ is shown pressed while it's
   says `Save or discard your changes first.`
 - `Remove` acts at once after its own question (Cancel / Remove), not through Save.
 
-**A stage's box**: **Name** (a text box); **Mode**, with `Aspirate` and `Dispense` columns, each a
-menu of the pipetting modes for that end (`modesFor`), choosing one setting that end's technique and
-liquid type (`modeSettings`); if the stage's settings aren't one of the modes, the menu shows `(not
-one of the modes)` first; **Probes**, buttons `1` to `8`, choosing how many (`probesFor`), with every
-probe the stage uses highlighted (picking 4 lights up 1 to 4); and **Remove**, which asks `Remove
-stage 2, “Drugs” and its 4 transfers?` (or `Remove stage 2, “Drugs”?` with none). Remove takes it
-out (`removeStage`; message `Removed stage 2, “Drugs” and its 4 transfers. Undo brings it back.`,
-or without "and its …"); if it was open, the first stage in the stage order opens. When it's the
-only stage, Remove is disabled, with the tooltip `Keep at least one stage.` **Save** renames it (if
-the name changed) and changes its settings as one edit (message `Saved stage 2, “Drugs”.`).
+**A stage's box** is 320px wide (other boxes are 280px), so its menus show their whole names, such
+as `Non-Contact`. From the top:
+- **Name** (a text box).
+- **A grid** with the stage's ends as columns, headed `Aspirate` and `Dispense`, and its settings
+  as rows, each labeled once at the left (Andy, 2026-10-29: simpler and less cluttered, with no
+  information lost). For now it has one row, **Mode**: in each column a menu of the pipetting modes
+  for that end (`modesFor`), choosing one setting that end's technique and liquid type
+  (`modeSettings`); if the stage's settings at that end aren't one of the modes, its menu shows
+  `(not one of the modes)` first. The menus' accessible names are `Aspirate mode` and `Dispense
+  mode`, since their column headings aren't their labels.
+
+  ```
+              ASPIRATE      DISPENSE
+  MODE      [ Medium  ▾ ]  [ Medium  ▾ ]
+  ```
+- **Probes**, under the grid: buttons `1` to `8`, choosing how many (`probesFor`), with every
+  probe the stage uses highlighted (picking 4 lights up 1 to 4).
+- **Remove**, which asks `Remove stage 2, “Drugs” and its 4 transfers?` (or `Remove stage 2,
+  “Drugs”?` with none). Remove takes it out (`removeStage`; message `Removed stage 2, “Drugs” and
+  its 4 transfers. Undo brings it back.`, or without "and its …"); if it was open, the first stage
+  in the stage order opens. When it's the only stage, Remove is disabled, with the tooltip `Keep at
+  least one stage.`
+
+**Save** renames it (if the name changed) and changes its settings as one edit (message `Saved stage
+2, “Drugs”.`).
 
 **A tip change's box**: **Tip type**, a button per tip type (`TIP_TYPES`), one chosen; **Remove**,
 which asks `Remove these new tips?` and removes it (`removeTipChange`; message `Removed the new tips:
@@ -593,6 +616,10 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   Grid headings 12px gray.
 - **Tip group boxes:** 12px corners; light blue (`#EEF3FA`, border `#9DB7DB`), alternating with light
   sand (`#F5F1E8`, border `#D9D2C3`).
+- **Editing boxes:** 280px wide; a stage's 320px (section 10). In a stage's box, the grid's column
+  headings and row labels look like the box's other field names (12px, semibold, gray, capitals);
+  the label column is as wide as its widest label, and the two end columns share the rest equally,
+  8px apart; the menus there have 4px side padding instead of 10px, so whole mode names fit.
 - **Contents card:** dark (`#1C1C1A`) with light text (`#F6F5F1`), problems in `#FFB4AA`.
 - **Motion:** with the system's "reduce motion" setting, no fades, glows or smooth scrolling.
 - **Headings** `Deck` and `Stages` are there for screen readers but not shown.
@@ -610,6 +637,9 @@ page's configuration (ADR 0009):
   brings the plan back; a private window starts empty and works;
 - clicking, dragging, and sending one source into a box of wells, in all four directions;
 - every editing box: Save, Discard, Escape, a click outside with and without changes, Remove;
+- a stage's ✎ beside its name: it opens the stage's box under the card's heading, its menus show
+  `Non-Contact` whole, and a stage whose settings aren't one of the modes shows `(not one of the
+  modes)` in that end's menu;
 - the experiment's name: naming, a name refused as typed, Enter and clicking away, Escape, undo and
   redo, and the name kept after saving and opening, reloading, and in a plan file of version 1
   (none);
