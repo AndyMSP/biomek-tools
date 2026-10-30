@@ -217,7 +217,7 @@ const TOPICS = {
     loaded: { StageList },
     examples: [
       "const noStages = new StageList()",
-      'const settings = { sourceTechnique: "Aspirate_Slow", sourceLiquidType: "Cells", destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells" }',
+      'const settings = { sourceTechnique: "Aspirate_Slow", sourceLiquidType: "Cells", destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells", sourceMix: { share: 90, times: 3, speed: 400 }, destinationMix: null }',
       'const added = noStages.add("Seeding", settings)',
       "added.id",
       "const stages = added.stageList",
@@ -226,6 +226,10 @@ const TOPICS = {
       "noStages.listStages()",
       'stages.add("Treatment", { ...settings, tiptype: "BC50" })',
       'stages.add("Treatment", { ...settings, probes: [1, 2] })',
+      'stages.add("Treatment", { ...settings, destinationMix: { share: 0, times: 3, speed: 400 } })',
+      'stages.add("Treatment", { ...settings, sourceMix: { share: 90, times: 2.5, speed: 400 } })',
+      "const { sourceMix, destinationMix, ...beforeMixing } = settings",
+      'stages.add("Treatment", beforeMixing)',
     ],
   },
   deck: {
@@ -384,6 +388,8 @@ const TOPICS = {
       "tipGroups(plan)",
       'transfersIn(plan, "1")',
       'modeOf("destination", defaultSettings())',
+      "defaultSettings()",
+      'plan.stageList.get("2").settings',
       'plan = setLabels(plan, { Plate: "Cells", Deep: "Drugs" })',
       'plan = setLabels(plan, { Plate: "Drugs", Deep: "Cells" })',
       'labelOf(plan, "Plate")',

@@ -224,13 +224,15 @@ describe("transfer-designer", () => {
 
   // --- Plans and modes ---
 
-  test("defaultSettings() gives the default mode's technique and liquid type at both ends, and nothing else", () => {
+  test("defaultSettings() gives the default mode's technique and liquid type at both ends, sourceMix and destinationMix null, and nothing else", () => {
     const mode = PIPETTING_MODES.find((candidate) => candidate.name === DEFAULT_PIPETTING_MODE);
     assert.deepEqual(defaultSettings(), {
       sourceTechnique: mode.technique,
       sourceLiquidType: mode.liquidType,
       destinationTechnique: mode.technique,
       destinationLiquidType: mode.liquidType,
+      sourceMix: null,
+      destinationMix: null,
     });
   });
 
@@ -380,6 +382,23 @@ describe("transfer-designer", () => {
     assert.deepEqual(middle.plan.stageList.get(middle.id).settings, firstSettings);
     const first = addStage(plan, "1");
     assert.deepEqual(first.plan.stageList.get(first.id).settings, firstSettings);
+  });
+
+  test("addStage copies the mixes too: copying a stage with a sourceMix and a destinationMix gives the same mixes, techniques and liquid types", () => {
+    let plan = planWithStages(2);
+    const mixingSettings = {
+      ...otherSettings(),
+      sourceMix: { share: 90, times: 3, speed: 400 },
+      destinationMix: { share: 50, times: 2, speed: 100 },
+    };
+    plan = changeStageSettings(plan, "1", mixingSettings);
+
+    const middle = addStage(plan, "2");
+    assert.deepEqual(middle.plan.stageList.get(middle.id).settings, mixingSettings);
+    const first = addStage(plan, "1");
+    assert.deepEqual(first.plan.stageList.get(first.id).settings, mixingSettings);
+    const last = addStage(plan, null);
+    assert.deepEqual(last.plan.stageList.get(last.id).settings, defaultSettings());
   });
 
   test("addStage with takeTips before a stage with a tip change moves the tip change to the new stage", () => {

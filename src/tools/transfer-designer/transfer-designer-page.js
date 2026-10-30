@@ -2754,15 +2754,14 @@ function saveComponentDraft(plan, name, draft) {
 }
 
 // A stage's Save: renames it (if the name changed) and changes its settings, as one edit. An end
-// whose menu still shows "(not one of the modes)" keeps its technique and liquid type.
+// whose menu still shows "(not one of the modes)" keeps its technique and liquid type. Every other
+// setting, such as the stage's mixes, is carried over unchanged from the stage: the box doesn't
+// offer them yet, and the stage list refuses settings that leave any out.
 function saveStageDraft(plan, id, draft) {
   const stage = plan.stageList.get(id);
   let saved = draft.name === stage.name ? plan : renameStage(plan, id, draft.name);
   const settings = {
-    sourceTechnique: stage.settings.sourceTechnique,
-    sourceLiquidType: stage.settings.sourceLiquidType,
-    destinationTechnique: stage.settings.destinationTechnique,
-    destinationLiquidType: stage.settings.destinationLiquidType,
+    ...stage.settings,
     ...(draft.aspirate === null ? {} : modeSettings("source", draft.aspirate)),
     ...(draft.dispense === null ? {} : modeSettings("destination", draft.dispense)),
   };

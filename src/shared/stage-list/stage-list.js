@@ -6,7 +6,8 @@
 // operation list, and nowhere else. This list's own order means nothing; stages are looked up by ID.
 // Settings are checked for form only, not against config/. Tips and probes aren't stage settings:
 // tip changes are the plan's own entries, between stages, and each chooses its probes (ADR 0007,
-// "Tip changes").
+// "Tip changes"). Each stage also holds how it mixes at each end, or null if it doesn't (ADR 0007,
+// "Mixing"); this module checks a mix's form only, not whether the technique can mix.
 // Specification: stage-list.md.
 
 import { describeValue } from "../error-messages/error-messages.js";
@@ -18,19 +19,24 @@ import {
   checkName,
 } from "../input-checks/input-checks.js";
 
-// The four settings every stage has, in the order of the settings table (stage-list.md, section 3),
+// The six settings every stage has, in the order of the settings table (stage-list.md, section 3),
 // which is also the order they're checked in.
 const SETTING_NAMES = [
   "sourceTechnique",
   "sourceLiquidType",
   "destinationTechnique",
   "destinationLiquidType",
+  "sourceMix",
+  "destinationMix",
 ];
 
 // The settings as the error messages list them. Kept in one place so the three messages that use it
 // can't drift apart.
 const SETTING_NAMES_TEXT =
-  "sourceTechnique, sourceLiquidType, destinationTechnique and destinationLiquidType";
+  "sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType, sourceMix and destinationMix";
+
+// The three properties every mix has, in the order they're checked in (stage-list.md, section 5).
+const MIX_PROPERTY_NAMES = ["share", "times", "speed"];
 
 export class StageList {
   // Private fields (# name): only code inside this class can read or change them.
@@ -91,7 +97,7 @@ export class StageList {
   }
 
   // Stage `id`, as { id, name, settings }, e.g. get("1").name → "Seeding". It is frozen, and so are
-  // its settings, so changing them throws.
+  // its settings and their mixes, so changing them throws.
   get(id) {
     return this.#stages[this.#positionOf(id)];
   }
@@ -134,9 +140,10 @@ export class StageList {
 
 // --- Helpers used only inside this module ---
 
-// Throws if `settings` isn't an object with exactly the four settings, each a name, e.g.
+// Throws if `settings` isn't an object with exactly the six settings: four names and two mixes, e.g.
 // { sourceTechnique: "Aspirate_Slow", sourceLiquidType: "Cells",
-//   destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells" }.
+//   destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells",
+//   sourceMix: { share: 90, times: 3, speed: 400 }, destinationMix: null }.
 // The checks run in the order of the spec's error table, and the first problem found is reported.
 // Settings still giving `probes`, as every stage did before 2026-10-30, are refused as an extra
 // setting: probes belong to tip changes now (stage-list.md, section 3).
@@ -162,16 +169,76 @@ function checkSettings(settings) {
   checkName(settings.sourceLiquidType, "source liquid type");
   checkName(settings.destinationTechnique, "destination technique");
   checkName(settings.destinationLiquidType, "destination liquid type");
+  checkMix(settings.sourceMix, "source mix");
+  checkMix(settings.destinationMix, "destination mix");
+}
+
+// Throws if `mix` isn't null (no mixing) or an object with exactly share, times and speed, each in
+// range, e.g. { share: 90, times: 3, speed: 400 }. `subject` names the mix for the message, e.g.
+// checkMix({ share: 0, times: 3, speed: 400 }, "source mix") throws
+// "The source mix's share must be a number above 0 and at most 100 (a percentage of the well), but got 0."
+// The checks run in the order of the spec: form, missing, extra, then share, times and speed.
+function checkMix(mix, subject) {
+  if (mix === null) {
+    return;
+  }
+  if (!isObject(mix)) {
+    throw new Error(
+      `The ${subject} must be null (no mixing) or an object with share, times and speed, but got ${describeValue(mix)}.`,
+    );
+  }
+  const missing = findMissingProperties(mix, MIX_PROPERTY_NAMES);
+  if (missing.length > 0) {
+    throw new Error(
+      `The ${subject} needs share, times and speed, but is missing ${listNames(missing)}.`,
+    );
+  }
+  const extras = findExtraProperties(mix, MIX_PROPERTY_NAMES);
+  if (extras.length > 0) {
+    throw new Error(
+      `The ${subject} can only have share, times and speed, but also got ${listNames(extras)}.`,
+    );
+  }
+  // Number.isFinite is false for anything that isn't a number (such as the text "90"), and for NaN
+  // and Infinity, which JavaScript counts as numbers.
+  if (!Number.isFinite(mix.share) || mix.share <= 0 || mix.share > 100) {
+    throw new Error(
+      `The ${subject}'s share must be a number above 0 and at most 100 (a percentage of the well), but got ${describeValue(mix.share)}.`,
+    );
+  }
+  // Number.isInteger is false for 2.5 and for anything that isn't a number.
+  if (!Number.isInteger(mix.times) || mix.times < 1) {
+    throw new Error(
+      `The ${subject}'s times must be a whole number, at least 1, but got ${describeValue(mix.times)}.`,
+    );
+  }
+  if (!Number.isFinite(mix.speed) || mix.speed <= 0) {
+    throw new Error(
+      `The ${subject}'s speed must be a number of µL/s above 0, but got ${describeValue(mix.speed)}.`,
+    );
+  }
 }
 
 // Returns a frozen copy of valid `settings`. Copying means changing the object given to add() later
 // doesn't change the list; freezing (Object.freeze) means changing what get() returns throws a
-// TypeError. Only the four settings are copied, by name.
+// TypeError. Only the six settings are copied, by name, and each mix is copied too.
 function copySettings(settings) {
   return Object.freeze({
     sourceTechnique: settings.sourceTechnique,
     sourceLiquidType: settings.sourceLiquidType,
     destinationTechnique: settings.destinationTechnique,
     destinationLiquidType: settings.destinationLiquidType,
+    sourceMix: copyMix(settings.sourceMix),
+    destinationMix: copyMix(settings.destinationMix),
   });
+}
+
+// Returns a frozen copy of a valid `mix`, or null for no mixing, e.g.
+// copyMix({ speed: 400, share: 90, times: 3 }) → { share: 90, times: 3, speed: 400 }, frozen.
+// Copying by name puts the properties in one order, whatever order they were given in.
+function copyMix(mix) {
+  if (mix === null) {
+    return null;
+  }
+  return Object.freeze({ share: mix.share, times: mix.times, speed: mix.speed });
 }

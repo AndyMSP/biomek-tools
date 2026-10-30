@@ -80,14 +80,16 @@ export function setExperimentName(plan, name) {
   return withParts(plan, { experimentName: trimmed });
 }
 
-// A stage's default settings: DEFAULT_PIPETTING_MODE at both ends, e.g.
+// A stage's default settings: DEFAULT_PIPETTING_MODE at both ends, and no mixing, e.g.
 // { sourceTechnique: "Operation", sourceLiquidType: "Medium", destinationTechnique: …,
-//   destinationLiquidType: … }. A new object each time. Probes aren't a stage's: each tip change
-// chooses them (ADR 0007, "Tip changes").
+//   destinationLiquidType: …, sourceMix: null, destinationMix: null }. A new object each time.
+// Probes aren't a stage's: each tip change chooses them (ADR 0007, "Tip changes").
 export function defaultSettings() {
   return {
     ...modeSettings("source", DEFAULT_PIPETTING_MODE),
     ...modeSettings("destination", DEFAULT_PIPETTING_MODE),
+    sourceMix: null,
+    destinationMix: null,
   };
 }
 
@@ -149,8 +151,9 @@ export function stageOrder(plan) {
 }
 
 // Returns { plan, id }: the plan with a new stage, called NEW_STAGE_NAME, just before stage
-// `beforeId` (or last, for null), and the new stage's ID. Its settings are copied from the stage
-// before it in the stage order, or from the first stage if there's none. With takeTips, a tip change
+// `beforeId` (or last, for null), and the new stage's ID. All its settings, mixes included, are
+// copied from the stage before it in the stage order, or from the first stage if there's none, so
+// it pipettes and mixes as that stage does (Andy, 2026-10-30). With takeTips, a tip change
 // before `beforeId` moves onto the new stage, so the new stage is the first to use those tips;
 // without it, the new stage uses the tips before that tip change.
 // e.g. addStage(plan, "2", { takeTips: true }).
