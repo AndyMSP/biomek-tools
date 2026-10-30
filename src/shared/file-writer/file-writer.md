@@ -33,8 +33,9 @@ transfer row the tip type and probes of the tip change before it, and rounds vol
 Not in version 1:
 - **Checking techniques against tip types** (roadmap, "Technical debt").
 - **Dead volume** (roadmap, "Technical debt").
-- **Mixing.** The general-purpose method supports it (ADR 0007), but plans don't hold it yet
-  (roadmap, "Later"); the mix columns are written empty.
+- **Mixing.** The general-purpose method supports it (ADR 0007), and stages hold their mixes
+  (`stage-list.md`, since 2026-10-30), but this version doesn't write them yet: the mix columns are
+  written empty, and a stage's mixes are ignored.
 - **Replacing only some tips** (ADR 0007, "Consequences").
 - **Well capacities**, to warn about overfilling (roadmap, "Later").
 - **Resuming after an interruption** (roadmap, "Later").

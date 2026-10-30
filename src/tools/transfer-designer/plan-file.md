@@ -1,10 +1,10 @@
 # plan-file — specification
 
-> **Draft (2026-10-26; format version 2, 2026-10-28; format version 3, 2026-10-30).** Written for
-> v0.2.0, from ADR 0010 and the transfer designer preview, where saving and opening plans were tried
-> (2026-10-25), the experiment name added (2026-10-28), and probes moved to the tip changes
-> (2026-10-30). It becomes Final once its code is built and Andy
-> has tested the page.
+> **Draft (2026-10-26; format version 2, 2026-10-28; format versions 3 and 4, 2026-10-30).** Written
+> for v0.2.0, from ADR 0010 and the transfer designer preview, where saving and opening plans were
+> tried (2026-10-25), the experiment name added (2026-10-28), probes moved to the tip changes
+> (2026-10-30, version 3), and stages' mixes added (2026-10-30, version 4). It becomes Final once
+> its code is built and Andy has tested the page.
 
 ## 1. Purpose
 `plan-file.js` turns a **plan** (`docs/glossary.md`) into the text of a **plan file**, and a plan
@@ -24,15 +24,17 @@ never quietly tidied. The tool always writes valid files, so such a file was dam
 hand, and that's better reported than changed.
 
 ## 2. Scope
-Version 1 writes format version 3, and reads versions 3, 2 and 1 (below). Version 2 added the
-experiment name (Andy, 2026-10-28). Version 3 moves probes from the stages to the tip changes
-(Andy, 2026-10-30; ADR 0007, "Tip changes"). Older plans still open (ADR 0010, "Consequences"):
-version 1, with no experiment name; versions 1 and 2, with each tip change loading every probe its
-stages used, which is exactly where look-ahead loading put tips, so the same tips go on.
+Version 1 writes format version 4, and reads versions 4, 3, 2 and 1 (below). Version 2 added the
+experiment name (Andy, 2026-10-28). Version 3 moved probes from the stages to the tip changes
+(Andy, 2026-10-30; ADR 0007, "Tip changes"). Version 4 adds each stage's mixes, `sourceMix` and
+`destinationMix` (Andy, 2026-10-30; ADR 0007, "Mixing"). Older plans still open (ADR 0010,
+"Consequences"): version 1, with no experiment name; versions 1 and 2, with each tip change loading
+every probe its stages used, which is exactly where look-ahead loading put tips, so the same tips
+go on; versions 1 to 3, with no mixing, since plans couldn't mix before version 4.
 
 Not in version 1:
-- **Upgrading files in place.** A version 1 or 2 file stays as it is; saving the plan again writes
-  version 3.
+- **Upgrading files in place.** A version 1, 2 or 3 file stays as it is; saving the plan again
+  writes version 4.
 - **Undo history, and how a plan was being viewed** (such as which stage is open). A plan file holds
   only the plan (ADR 0010; `plan-history.md`).
 
@@ -41,19 +43,19 @@ Not in version 1:
 ### The format name and version
 - **`PLAN_FILE_FORMAT`** is `"biomek-tools transfer plan"`, so a file can be recognized as a plan
   file.
-- **`PLAN_FILE_VERSION`** is `3`, the format version written: it goes up only when what a plan file holds
+- **`PLAN_FILE_VERSION`** is `4`, the format version written: it goes up only when what a plan file holds
   changes, not with every release of the tools (ADR 0010).
 
 They are constants in the module, not in `config/`: changing either one means changing how files are
 read and written, which is a change to the code.
 
-### What a plan file holds (version 3)
+### What a plan file holds (version 4)
 A plan file is written as one JSON object with these properties, in this order:
 
 ```json
 {
   "format": "biomek-tools transfer plan",
-  "version": 3,
+  "version": 4,
   "savedBy": "transfer designer v0.2.0",
   "experimentName": "Exp36",
   "components": [{ "name": "Media", "color": "#4e79a7" }],
@@ -75,11 +77,14 @@ A plan file is written as one JSON object with these properties, in this order:
 - `components`, `startingContents`, `tipChanges`, `labwareLabels`: the plan's parts of the same
   names, as `transfer-designer.md` describes them.
 - `stages`: every stage, **in stage order** (the plan's `stageOrder`), each `{ id, name,
-  settings }`. So the file needs no separate list of the order (ADR 0011).
+  settings }`, its settings as the stage list holds them, mixes included (`stage-list.md`). So the
+  file needs no separate list of the order (ADR 0011).
 - `operations`: every operation, in the operation list's order (`listOperations()`).
 
-**Version 2** files hold the same properties, with `"version": 2`, but a stage's `settings` also
-hold `probes` (a list of probe numbers), and a tip change is `{ tipType }` only. **Version 1** files
+**Version 3** files hold the same properties, with `"version": 3`, but a stage's `settings` have no
+`sourceMix` or `destinationMix`. **Version 2** files are like version 3, with `"version": 2`, but a
+stage's `settings` also hold `probes` (a list of probe numbers), and a tip change is `{ tipType }`
+only. **Version 1** files
 are like version 2 without `experimentName`, with `"version": 1`.
 
 The text is written with an indent of 2 spaces, so it's easy to read. Volumes are written at full
@@ -97,10 +102,10 @@ and are then replaced by the new ones. The plan's `stageOrder` is the stages in 
 Opening a file checks, in this order:
 1. **The text is JSON**, and holds an object.
 2. **The format**: `format` is `PLAN_FILE_FORMAT`.
-3. **The version**: `version` is `3`, `2` or `1`.
+3. **The version**: `version` is `4`, `3`, `2` or `1`.
 4. **The properties**: exactly those listed above for the file's version, none missing (except
-   `savedBy`) and none extra. So version 3 and 2 files need `experimentName`, and a version 1 file
-   can't have it.
+   `savedBy`) and none extra. So version 4, 3 and 2 files need `experimentName`, and a version 1
+   file can't have it.
    `components`, `startingContents`, `stages` and `operations` are lists; `tipChanges` and
    `labwareLabels` are objects.
 5. **Components**, each an object with exactly `name` and `color`, then added as `addComponent`
@@ -111,7 +116,9 @@ Opening a file checks, in this order:
    from every other stage's; `name` and `settings` are checked by the
    stage list. In a version 1 or 2 file, `settings` must also hold `probes`, checked as
    `setTipProbes` checks probes (`transfer-designer.md`), and taken out before the stage list
-   checks the rest.
+   checks the rest. In a version 1, 2 or 3 file, `settings` can't hold `sourceMix` or
+   `destinationMix` (plans couldn't mix then), and both are added as `null` before the stage list
+   checks them, so the stage doesn't mix.
 7. **Operations**, each in turn: checked by the operation list (its form and the stage rule), then
    its source and destination on the deck (`deck.checkWell`), then its `stage` one of the file's
    stages. **Each stage's transfers are together**, as the operation list always keeps them: a file
@@ -146,7 +153,7 @@ The module exports two constants and two functions.
 | Member | Description |
 |---|---|
 | `PLAN_FILE_FORMAT` | `"biomek-tools transfer plan"`. |
-| `PLAN_FILE_VERSION` | `3`, the version written. Versions 3, 2 and 1 are read. |
+| `PLAN_FILE_VERSION` | `4`, the version written. Versions 4, 3, 2 and 1 are read. |
 | `planToText(plan, savedBy)` | Returns the plan file's text for `plan` (section 3). `savedBy` is text naming the tool and its version, e.g. `"transfer designer v0.2.0"`. Throws if `savedBy` isn't a name (`checkName`). |
 | `planFromText(text)` | Returns the plan in `text`, checked (section 3). Throws if anything in it is wrong, saying what and where. |
 
@@ -167,7 +174,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 |---|---|
 | Not JSON, or not an object | `it isn't a plan file: its contents aren't the JSON a plan file holds.` |
 | `format` isn't `PLAN_FILE_FORMAT` | `it isn't a transfer plan saved by this tool.` |
-| `version` is a whole number above `PLAN_FILE_VERSION` | `it was saved by a newer version of the tools (plan format 4). Open it with that version or a later one.` |
+| `version` is a whole number above `PLAN_FILE_VERSION` | `it was saved by a newer version of the tools (plan format 5). Open it with that version or a later one.` |
 | `version` is anything else | `its plan format version, "x", isn't one this tool knows.` |
 | A property is missing | `it's missing "stages".` With several, all are listed (`listNames`), in the order of section 3. |
 | An extra property | `it has "notes", which a plan file doesn't have.` With several, all are listed, in the order they appear. |
@@ -190,6 +197,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | A tip change at a stage that isn't in the file, or at the first stage | `a tip change is before stage "9", which isn't one of the file's stages.` / `a tip change is before stage "1", the first stage, which always starts with the tips at "start".` |
 | A tip type isn't in `TIP_TYPES` | `the tip change at "2" loads "BC50", which isn't one of "BC230", "BC1070".` |
 | A tip change's probes are refused (`setTipProbes`; version 3) | `the tip change at "2": ` and its message, e.g. `Probe numbers must be whole numbers from 1 to 8, but got 9.` |
+| A stage's settings hold a mix (versions 1 to 3) | `stage 2's settings have "sourceMix", which a version 3 file's stages don't have.` (with the file's version, naming the first such setting) |
 | A stage has no `probes` (versions 1 and 2) | `stage 2's settings are missing "probes", which a version 2 file's stages have.` (with the file's version) |
 | A stage's probes are refused (versions 1 and 2) | `stage 2: ` and `setTipProbes`'s message, e.g. `Probe 3 is listed more than once. List each probe once.` |
 
@@ -213,15 +221,20 @@ row of section 5 has at least one test.
   before the first is written first.
 - A plan whose stages have IDs `"2"`, `"5"` and `"7"` opens with IDs `"1"`, `"2"` and `"3"`, its
   transfers and tip changes following them.
-- An `emptyPlan()`, saved and opened, gives a plan with the same contents, and is written as version 3.
+- An `emptyPlan()`, saved and opened, gives a plan with the same contents, and is written as version 4.
+- Stages keep their mixes: a stage with `sourceMix` `{ share: 90, times: 3, speed: 400 }` and
+  `destinationMix` `null`, saved and opened, gives the same mixes.
 - Tip changes keep their probes: `START` on `[1, 2, 3, 4]` and a tip change on `[1]`, saved and
   opened, give the same probes.
 
 **Refusing**
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
-- `version` `4` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
+- `version` `5` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
   message.
-- **Version 2:** a version 2 file (as saved before 2026-10-30) opens: stages with probes `[1, 2]`
+- **Version 3:** a version 3 file (as saved before mixing) opens, each stage with `sourceMix` and
+  `destinationMix` `null`; a version 3 file whose stage has a `sourceMix` gets the stage-mix
+  message; a version 4 stage without `sourceMix` gets the stage list's missing-setting message.
+- **Version 2:** a version 2 file (as saved before 2026-10-30) opens, with no mixing: stages with probes `[1, 2]`
   and `[1, 2, 3, 4]` under `START`, and `[1]` under a tip change before the third stage, give
   `START` on `[1, 2, 3, 4]` and that tip change on `[1]`; the stages' settings have no probes.
   A version 2 stage without `probes` gets the missing-probes message; one with `[3, 1, 3]` gets

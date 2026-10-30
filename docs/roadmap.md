@@ -193,8 +193,14 @@ Last updated: 2026-10-28
   version 3, `file-writer.md`, `transfer-designer-page.md`). Next, Claude Code builds it, in one
   pull request, since the modules change together. **Built** (#104, 2026-10-30): the code, tests
   and REPL of every module above; plan files are written as version 3 and versions 1 and 2 still
-  open; checked in headless Chrome (42 checks). Andy hasn't tested the page yet, so the changed
-  specifications stay Draft.
+  open; checked in headless Chrome (42 checks). Andy tested the page in Chrome and merged it
+  (2026-10-30); the changed specifications stay Draft until the files have run on the Biomek.
+- **Chunk 3, layer (a), is specified** (Draft, 2026-10-30): each stage holds a mix for each end,
+  `sourceMix` and `destinationMix` (share of the well, times, speed, or `null`), stored and saved but
+  not yet offered on the page or written to files (ADR 0007, "Mixing"; glossary "Mix" and "Mix
+  step"; `stage-list.md`; `transfer-designer.md`; `plan-file.md` with format version 4, older files
+  opening with no mixing). Next: layer (b), the file writer's mix columns and techniques, then (c),
+  the page.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
