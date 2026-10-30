@@ -213,6 +213,11 @@ Last updated: 2026-10-28
   such a stage, as ADR 0007 says the stored technique is always the one Biomek gets. (2) A mix's
   `times` and `speed` have no upper limit, because Biomek's limits aren't known (only that 0 times
   is refused); to check at the instrument.
+- **Trying: Claude starts Claude Code's builds itself,** as a background agent with only the
+  specifications and the repository, then reviews them (Andy, 2026-10-30; first used for #106).
+  CLAUDE.md's "Who does what" stays unchanged until Andy decides after a longer trial.
+- **Chrome is enough for testing pages** (Andy, 2026-10-30): Edge is tried only if the lab ever
+  needs it. CLAUDE.md's requirement ("Edge or Chrome") is met by Chrome.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
