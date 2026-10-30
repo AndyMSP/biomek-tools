@@ -199,8 +199,12 @@ Last updated: 2026-10-28
   `sourceMix` and `destinationMix` (share of the well, times, speed, or `null`), stored and saved but
   not yet offered on the page or written to files (ADR 0007, "Mixing"; glossary "Mix" and "Mix
   step"; `stage-list.md`; `transfer-designer.md`; `plan-file.md` with format version 4, older files
-  opening with no mixing). Next: layer (b), the file writer's mix columns and techniques, then (c),
-  the page.
+  opening with no mixing). A new stage copies its neighbor's settings, mixes included (Andy,
+  2026-10-30). Next: layer (b), the file writer's mix columns and techniques, then (c), the page.
+  **For layer (c), when mix steps arrive** (Andy, 2026-10-30): a new stage copies the nearest stage
+  of its own kind, so a transfer stage copies a transfer stage and a mix step a mix step: the
+  nearest before it, else the nearest after it, else the defaults (a transfer stage with no
+  mixing; a mix step with the default mix).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36

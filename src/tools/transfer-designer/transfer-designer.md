@@ -8,8 +8,8 @@
 > probes (ADR 0007, "Tip changes"; sections 3, 4, 5 and 6), from the mixing preview.
 >
 > **Draft change (2026-10-30, mixing settings):** a stage's settings hold its mixes, `sourceMix` and
-> `destinationMix` (ADR 0007, "Mixing"); a new stage doesn't mix (sections 3 and 6). Nothing here
-> switches mixing on yet: that comes with the mixing edits, in a later change.
+> `destinationMix` (ADR 0007, "Mixing"); a new stage copies them with its other settings (sections 3
+> and 6). Nothing here switches mixing on yet: that comes with the mixing edits, in a later change.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -116,13 +116,10 @@ without transfers isn't run.
   stopped matching the stage's place once one was inserted). Stage names needn't be unique
   (`stage-list.md`).
 - A new stage's settings are copied from the stage just before it in the stage order, or, with none
-  before it, from the first stage, **except its mixes: a new stage doesn't mix** (`sourceMix` and
-  `destinationMix` `null`), whatever the stage it copies (Andy, 2026-10-29, from the mixing preview:
-  a stage that quietly mixed because its neighbor did was a surprise). (Its techniques are copied as
-  they are for now, since nothing switches mixing on yet; the change that adds the mixing edits
-  makes a new stage take the techniques that don't mix too, ADR 0007, "Mixing".) The stage of a new
-  plan has the **default settings**: the default pipetting mode, `DEFAULT_PIPETTING_MODE` in
-  `config/` (below), at both ends, and no mixing (Andy, 2026-10-26: named in `config/`, so the menus
+  before it, from the first stage, **mixes included**, so it mixes as that stage does, with the
+  techniques that go with its mixing (Andy, 2026-10-30: one rule, and a new stage is often "another
+  one like the last"). The stage of a new plan has the **default settings**: the default pipetting
+  mode, `DEFAULT_PIPETTING_MODE` in `config/` (below), at both ends, and no mixing (Andy, 2026-10-26: named in `config/`, so the menus
   keep their order and the default can change without changing code).
 - A stage is added **before** a given stage (or last). With **take tips**, a tip change keyed by that
   stage moves onto the new stage, so the new stage is the first to use those tips; without it, the
@@ -379,8 +376,8 @@ order of checks.
   list's blocks (`groupByStage()`) are in the same order as those stages in the stage order.
 - `addStage` before a stage puts it there in `stageOrder`; with `null`, last; it's called
   `NEW_STAGE_NAME` and copies the settings of the stage before it; added before the first stage, it
-  copies the first stage's. It doesn't mix: copying a stage with a `sourceMix` and a
-  `destinationMix` gives a stage with both `null`, and the same techniques and liquid types.
+  copies the first stage's. Its mixes are copied too: copying a stage with a `sourceMix` and a
+  `destinationMix` gives a stage with the same mixes, techniques and liquid types.
 - `addStage` with `takeTips` before a stage with a tip change moves the tip change to the new stage;
   without it, the new stage joins the tip group before.
 - `addStage` before the first stage keeps the `START` tips first.
