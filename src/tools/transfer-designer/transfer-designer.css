@@ -50,7 +50,7 @@
   --panel-padding: 20px;
   --panel-gap: 20px;
   --page-width: 1500px;
-  --stages-min-width: 320px;
+  --stages-min-width: 348px;
   --stages-max-width: 400px;
   /* The widest labware on the deck has 12 columns (GRID_96 and GRID_1X12_NUMBERED, deck.md). The
      deck panel is given room for two of them side by side, when the window allows (section 3). */
@@ -334,8 +334,9 @@ input.experiment-name-box.invalid {
 
 /* The two panels are grid columns, so their widths depend only on the window, never on what's in
    them (section 3). The deck panel is at least wide enough for two labware side by side, or, in a
-   window too narrow for that beside a 320px Stages column, whatever that column leaves; it takes the
-   rest. The Stages column is 320px to 400px wide. */
+   window too narrow for that beside a 348px Stages column, whatever that column leaves; it takes the
+   rest. The Stages column is 348px to 400px wide: at least a stage's 320px editing box plus the
+   column's padding, so the box fits inside it (section 3). */
 .workspace {
   flex: 1;
   display: grid;
@@ -828,8 +829,20 @@ button.entry-row {
   box-shadow: 0 0 0 1px var(--blue-border);
 }
 
+/* An open card's heading: its editing box, if it has one, floats just under it (section 10). */
 .entry.is-open .entry-row {
+  position: relative;
   cursor: default;
+}
+
+/* An open stage's heading holds its ✎ just after the name; the count stays at the right, so the
+   name stops growing and the ✎ takes the spare room instead. */
+.entry-row.with-pencil .entry-name {
+  flex: 0 1 auto;
+}
+
+.entry-row .edit-button {
+  margin-right: auto;
 }
 
 .entry-badge {
@@ -865,13 +878,6 @@ button.entry-row {
   font-size: 13px;
 }
 
-.entry-current {
-  flex: none;
-  color: var(--blue);
-  font-size: 13px;
-  font-weight: 600;
-}
-
 /* The open card's contents, under its heading line. */
 .entry-body {
   position: relative;
@@ -892,9 +898,8 @@ button.entry-row {
   box-shadow: 0 0 0 1px var(--red-border);
 }
 
-/* The stage's settings line and its ✎. */
+/* The stage's settings line. */
 .settings-line {
-  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1238,6 +1243,11 @@ button.entry-row {
   color: var(--text);
 }
 
+/* A stage's box is wider, so its menus show whole mode names, such as Non-Contact (section 15). */
+.editing-box.stage-box {
+  width: 320px;
+}
+
 .editing-box.shake {
   animation: shake 0.3s ease-in-out;
 }
@@ -1271,10 +1281,23 @@ button.entry-row {
   width: 100%;
 }
 
-.mode-columns {
+/* A stage's settings grid (section 10): the label column as wide as its widest label, then the two
+   end columns sharing the rest equally (minmax(0, …) stops a long menu from widening its column),
+   8px apart. Its headings and labels look like the box's field names, without their space below. */
+.settings-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+}
+
+.settings-grid .field-name {
+  margin-bottom: 0;
+}
+
+/* The grid's menus have 4px side padding instead of 10px, so whole mode names fit. */
+.settings-grid select {
+  padding: 0 4px;
 }
 
 /* The probes: buttons 1 to 8, with every probe the stage uses lit. */

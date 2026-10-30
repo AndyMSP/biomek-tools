@@ -557,5 +557,7 @@ overfilling a well or drawing more than it holds.
   320px, to give the deck panel the room, though the labware stack one per row anyway, so the
   narrower column gains nothing and cuts names off sooner. Option: keep it at 400px unless the extra
   room lets two labware sit side by side (`transfer-designer-page.md`, section 3). Not urgent.
+  *2026-10-30 (#105):* the minimum is now 348px, so a stage's 320px editing box fits inside the
+  column; the rest of this question is still open.
 - **Very large plates**: `WellGrid` allows at most 26 rows (A–Z). 1536-well plates (rows A–AF)
   would need a specification change.
