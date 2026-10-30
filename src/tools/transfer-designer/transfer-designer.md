@@ -159,7 +159,9 @@ technique follows its mixing** (ADR 0007, "Mixing"):
   whether its technique mixes.
 - **Switching mixing on or off** (`setStageMix`) sets the end's mix and switches its technique to
   the mode's `mixingTechnique` or `technique` in the same edit, keeping its liquid type. It needs
-  the end to be one of the modes, and a mode that can mix to switch it on.
+  the end to be one of the modes, and a mode that can mix to switch it on. If the end already has
+  that mix (equal `share`, `times` and `speed`, or both `null`), the same plan is returned, as an
+  unchanged experiment name is.
 - **Choosing a mode** keeps the end's mixing: `modeSettings(end, name, mixes)` gives the mode's
   `mixingTechnique` when `mixes` is `true`.
 - **Mix problems:** a stage whose mix works out to 0 µL in any row has a **mix problem**
@@ -456,6 +458,14 @@ order of checks.
   technique and liquid type aren't a mode's.
 - `addStage` after a stage that mixes gives a stage that passes the check (it copies matching
   settings).
+- `setStageMix` giving the mix the end already has (equal values, or `null` on an end that doesn't
+  mix) returns the same plan.
+- In the table of which parts of the plan each edit may change, `setStageMix` changes only
+  `stageList`.
+- **Tests and REPL examples written before mixing layer (b)** that give a stage a mix while its
+  technique is `"Operation"` (e.g. `addStage` copying a stage that mixes; the plan file's mixing
+  plan; the `transfer-designer` REPL topic) now give it with `setStageMix`, or with
+  `"OperationMix"`, since the rule refuses the old way. What each test checks doesn't change.
 - `stagesWithMixProblem` names a stage whose destination mix works out to 0 µL (an empty well given
   0.05 µL, mixed at 90%), and no other; a plan without mixing gives an empty `Set`.
 

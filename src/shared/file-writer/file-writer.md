@@ -68,7 +68,7 @@ Not in version 1:
 
   Stages are split into substages by the `substages` shared module (`substages.md`), and each row's
   mix volumes come from the `mix-volumes` shared module (`mix-volumes.md`), which the transfer
-  designer uses too, so the page and the files always agree.
+  designer uses too, so the tool and the files always agree.
 
   A stage has a **stage ID**, a fixed label the stage list gives it when it's made (`stage-list.md`),
   which says nothing about where the stage comes; and a **place in the stage order**, its position
@@ -132,9 +132,11 @@ A header row with the 17 columns of ADR 0007, then one row per tip change or sub
   - the six mix columns, `SrcMixVolume`, `SrcMixTimes`, `SrcMixSpeed`, `DestMixVolume`,
     `DestMixTimes` and `DestMixSpeed`. At an end whose mix isn't `null`: the row's mix volume at
     that end (`mix-volumes`), and the mix's `times` and `speed`. At an end that doesn't mix, its
-    three columns are empty. A row's technique at that end is already the mixing one, since the
-    transfer designer keeps them matched (`transfer-designer.md`), so Biomek uses the columns
-    (`biomek.md`, "Mixing").
+    three columns are empty. Where the end's technique is one of the pipetting modes', it's already
+    the mixing one when the end mixes, since the transfer designer keeps them matched
+    (`transfer-designer.md`, "Mixing"), so Biomek uses the columns (`biomek.md`, "Mixing"). Where
+    it isn't one of the modes, the columns follow the stage's mix just the same: whether that
+    technique mixes is up to whoever chose it, since the tool can't know.
 
   `LoadProbes` is empty.
 
@@ -203,7 +205,8 @@ This module's tests check it: it's text; it starts with a drive letter, a colon 
 ## 5. Errors
 Each message says what's wrong and how to fix it. Values are shown with `describeValue`
 (`error-messages` module). Stages are named by their place in the stage order and their name, as
-the transfer designer page shows them, never by their stage ID.
+the transfer designer page shows them, never by their stage ID. Volumes in messages are written as
+in the files (section 3, "How values are written").
 
 | Problem | Message |
 |---|---|
@@ -276,6 +279,9 @@ still pass when the deck changes (as `deck.test.js` does).
 - **One mix volume per row:** a mixing stage that splits into two substages writes each row's own
   mix volume.
 - A mix speed of `150.5` is written `150.5`; a mix volume of `89.9` is written `89.9`.
+- The test written before mixing layer (b), that a stage's mixes are ignored and the mix columns
+  written empty, is replaced by these tests: the behavior it checked has changed. Its plan gave a
+  mix with `"Operation"`, which the transfer designer now refuses.
 - **Probes from the tip change:** a tip change on `[1, 2, 3, 4]` gives `LoadProbes` `"1,2,3,4"`,
   and every transfer row in its group `Probes` `"1,2,3,4"`; a second tip change on `[1, 3, 5]`
   gives `"1,3,5"` in its rows.

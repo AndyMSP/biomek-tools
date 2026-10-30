@@ -191,8 +191,8 @@ nothing. Saving a file doesn't touch the copy; Reset leaves it holding the empty
 ## 6. The deck panel
 **First bar.** On the left, the timeline (section 11); on the right, `Undo`, `Redo` (each disabled
 when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the problem count: `No
-problems` in green, or `N problems` in red, counting the overdraws in the whole plan and the
-stages with a mix problem (`stagesWithMixProblem`).
+problems` in green, or `N problems` in red: each overdraw in the whole plan counts as one, and so
+does each stage with a mix problem (`stagesWithMixProblem`).
 
 **Second bar.** On the left, the **labware tray**; on the right, the key and the `Arrows` toggle,
 both about what the deck draws. On a narrow window the right side wraps onto its own line.

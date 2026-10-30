@@ -39,7 +39,7 @@ order their first transfers come.
 ## 4. Interface
 | Export | Takes | Returns |
 |---|---|---|
-| `substagesOf(transfers)` | one stage's transfers, in operation-list order | its substages, in order, as a new list each time, e.g. `[{ sourceLabwareType: "DeepReservoir12", destinationLabwareType: "Plate96", transfers: [ … ] }]`. An empty list gives `[]`. |
+| `substagesOf(transfers)` | one stage's transfers, in operation-list order | its substages, in order, as a new list each time, e.g. `[{ sourceLabwareType: "DeepReservoir12", destinationLabwareType: "BCFlat96", transfers: [ … ] }]`. An empty list gives `[]`. |
 
 It changes nothing it's given; the transfers in the result are the same transfer objects (the
 operation list's are frozen).
@@ -65,3 +65,6 @@ the deck changes (as `deck.test.js` does).
 - Changing the list returned doesn't change the next result.
 
 The file writer's own tests of substages (`file-writer.md`, section 6) keep passing unchanged.
+
+**REPL:** a `substages` topic in `scripts/repl.js` (CLAUDE.md), splitting a stage that mixes labware
+types.

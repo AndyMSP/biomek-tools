@@ -24,8 +24,8 @@ Version 1 works out mix volumes for transfer stages, one per row.
 Not in version 1:
 - **Mix steps** (`docs/glossary.md`): a stage that only mixes. They come with the page's mixing
   (roadmap, mixing layer (c)).
-- **How short a mix is for each well** (a well mixed under 40% of what it holds), which the page
-  will show (roadmap, mixing layer (c)).
+- **How short a mix is for each well** (a well mixed under 40% of what it holds; roadmap, mixing
+  layer (c)).
 - **Splitting a stage into rows by well volume**, so fuller wells mix closer to their share
   (roadmap, "Later").
 
@@ -37,17 +37,27 @@ check the plan: plans are made only through the transfer designer's checks.
 **Rows.** Each stage with transfers runs as one row per substage (`substages.md`), in stage order.
 A stage without transfers isn't run, so it has no rows.
 
-**What a well holds when it's mixed** (ADR 0007, "Mixing"). Biomek chooses the order of a row's
-transfers (B56358AF, 22-25), so the tool takes the least a well can hold at that moment, whatever
-the order:
-- **A source** is mixed before each draw from it. The least it holds then is what it holds **after
-  the stage**, plus its **smallest draw** in the row.
+**What a well holds when it's mixed** (ADR 0007, "Mixing"). A stage's rows run one after another,
+in order (`biomek.md`, "Order between rows is respected by validation"), but within a row Biomek
+chooses the order of the transfers (B56358AF, 22-25). So the tool takes the least a well can hold
+when it's mixed, whatever that order, assuming the row's draws from it come first:
+- **Before the row**, a well holds what it held before the stage (contents tracking with the
+  operations up to the stage's first transfer; `contents-tracking.md`, `replay`), plus what the
+  stage's earlier rows dispensed into it, minus what they drew from it.
+- **A source** is mixed before each draw from it. The least it holds then is what it held before the
+  row, minus **everything the row draws from it**, plus its **smallest draw** in the row.
 - **A destination** is mixed after each dispense into it. The least it holds then is what it held
-  **before the stage**, plus its **smallest dispense** in the row.
+  before the row, minus everything the row draws from it (usually nothing), plus its **smallest
+  dispense** in the row.
+- What a well holds is never taken below 0. Below 0 means the stage has an overdraw, which is its
+  own problem and is fixed first (`contents-tracking.md`; `file-writer.md` checks overdraws before
+  mix problems).
 
-"Before the stage" and "after the stage" are what contents tracking gives with the operations up to
-the stage's first transfer, and up to and including its last (`contents-tracking.md`, `replay`). A
-row's **emptiest well** at an end is the well that holds the least then; with a tie, the first of
+So a well that's both drawn from and dispensed into in one stage is judged by what it holds at its
+own row. For example, Plate1 A1 holds 100 µL; row A draws 95 µL from it, then row B dispenses 10 µL
+into it: as row A's source it holds at least 100 µL when mixed, and as row B's destination 15 µL.
+
+A row's **emptiest well** at an end is the well that holds the least then; with a tie, the first of
 them in the row's transfer order.
 
 **A row's mix volume** at an end whose mix isn't `null`:
@@ -69,7 +79,8 @@ end of any row **has a mix problem**.
 ### Configuration
 `config/tip-types.js` (ADR 0009) also exports `MIX_VOLUME_LIMITS`: the most each tip type can mix,
 in µL, as an object with one entry for each tip type in `TIP_TYPES`, e.g.
-`{ BC230: 200, BC1070: 1000 }`. These are **stand-ins** (roadmap, "Technical debt"): about what a
+`{ BC230: 200, BC1070: 1000 }`. The file's header comment says this module's tests check
+`MIX_VOLUME_LIMITS` (and the transfer designer's tests the rest). These are **stand-ins** (roadmap, "Technical debt"): about what a
 BC230 tip holds in one trip, and what a 1 mL syringe holds in one draw with air gaps (`biomek.md`,
 "Volumes and tips"), not checked as mix volumes on the instrument. This module's tests check the
 file: each tip type has exactly one limit, a number above 0, and there are no others.
@@ -87,7 +98,8 @@ The module exports one function. It changes nothing.
   A volume of `0` is given as `0`, and is also a problem.
 - `problems`: each mix problem, in stage order, then row order, source before destination, as
   `{ stage, end, labware, well, held }`: the stage's ID; `"source"` or `"destination"`; the row's
-  emptiest well at that end; and what it holds when it's mixed, in µL.
+  emptiest well at that end; and what it holds when it's mixed, in µL, rounded to 3 decimal places
+  (so `0.30000000000000004` is `0.3`).
 
 Example, a stage whose destination mix is `{ share: 90, times: 3, speed: 400 }` on BC230 tips,
 dispensing 20 µL into Plate1 A1 (empty before the stage) and 100 µL into Plate1 A2 (holding 50 µL
@@ -120,9 +132,16 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
 - **Source:** a row's only source, holding 1000 µL and drawn from three times, 100, 50 and 200 µL,
   holds 650 after the stage; its least when mixed is `700`, so at 90% on BC1070 tips the row mixes
   `630`.
-- **Before and after the stage, not the whole plan:** a destination filled again by a later stage
-  is judged by what it held before its own stage; a source drawn from by an earlier stage is judged
-  after its own stage.
+- **Its own stage, not the whole plan:** a destination filled again by a later stage is judged by
+  what it held before its own stage; a source drawn from by an earlier stage is judged by what it
+  held after that.
+- **Earlier rows count:** the example in section 3 (Plate1 A1 holding 100 µL, row A drawing 95 µL
+  from it, row B dispensing 10 µL into it) gives row A's source `100` held and row B's destination
+  `15` held, so at 90% row B mixes `13.5`.
+- **Draws and dispenses in one row:** a well holding 50 µL that a row both draws 40 µL from and
+  dispenses 30 µL into holds at least `40` as that row's destination (50 − 40 + 30).
+- **Never below 0:** a stage with an overdraw from a source gives that source `0` held, and a mix
+  problem, besides its overdraw.
 - **Rounding:** 75% of 120 µL gives `90`; 90% of 99.99 µL gives `89.9` (89.991 rounded down); 33%
   of 10 µL gives `3.3`.
 - **The tip limit:** a mix that works out above `MIX_VOLUME_LIMITS` of the stage's tip type gives
@@ -141,5 +160,10 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
 - Problems are listed in stage order, then row order, source before destination.
 - A row whose mix works out to `0.1` has no problem.
 
+- `held` is rounded to 3 decimal places.
+
 **Purity**
 - The plan is unchanged after `mixVolumes`, and two calls give equal results.
+
+**REPL:** a `mix-volumes` topic in `scripts/repl.js` (CLAUDE.md), showing a mixing plan's volumes
+and a mix problem.
