@@ -255,7 +255,7 @@ given; "returns the plan with …" means a new plan.
 | `START` | (a constant) `"start"`. Re-exported from the `tip-groups` shared module (`tip-groups.md`). |
 | `tipChangeAt(plan, key)` | the tip change at `key` (`START` or a stage ID), or `null`. |
 | `canAddTipChange(plan, beforeId)` | `true` if `beforeId` is a stage, not the first in the stage order, without a tip change before it. |
-| `addTipChange(plan, beforeId)` | the plan with a tip change before stage `beforeId`, loading the tip type in use there. Throws if `canAddTipChange` is `false`. |
+| `addTipChange(plan, beforeId)` | the plan with a tip change before stage `beforeId`, loading the tip type and probes in use there. Throws if `canAddTipChange` is `false`. |
 | `setTipType(plan, key, tipType)` | the plan with the tip change at `key` loading `tipType`. Throws if there's none at `key`, or `tipType` isn't in `TIP_TYPES`. |
 | `setTipProbes(plan, key, probes)` | the plan with the tip change at `key` loading tips on `probes` (section 3, "Tip changes and tip groups"), stored smallest first. Throws if there's none at `key`, or `probes` isn't a list of probe numbers (below). |
 | `removeTipChange(plan, key)` | the plan without the tip change at `key`. Throws for `START`, or if there's none at `key`. |

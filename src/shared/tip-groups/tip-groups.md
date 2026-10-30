@@ -1,11 +1,10 @@
 # tip-groups — specification
 
-> **Final (2026-10-29).** Written for v0.2.0, moving the transfer designer's `tipGroups` into a
-> shared module (Andy, 2026-10-28); built in #85, and used by the file writer since #86.
->
-> **Draft change (2026-10-30):** a group's probes are its tip change's, not worked out by looking
-> ahead over its stages, since each tip change now chooses its probes (ADR 0007, "Tip changes";
-> sections 1, 3, 4 and 6). It becomes Final once built.
+> **Final (2026-10-30).** Written for v0.2.0, moving the transfer designer's `tipGroups` into a
+> shared module (Andy, 2026-10-28); built in #85, and used by the file writer since #86. Changed on
+> 2026-10-30 so that a group's probes are its tip change's, not worked out by looking ahead over its
+> stages, since each tip change now chooses its probes (ADR 0007, "Tip changes"); built and
+> reviewed in #104.
 
 ## 1. Purpose
 `tip-groups.js` works out a plan's **tip groups** (`docs/glossary.md`, "Tip group"): the stages
@@ -71,8 +70,8 @@ None of its own. `tipGroups` is given plans the transfer designer made, which al
 
 ## 6. Test cases
 Each becomes at least one unit test in `tip-groups.test.js`, inside `describe("tip-groups", …)`.
-The tests build plans directly, from plain `stageOrder` and `tipChanges` (and a `StageList`,
-`stage-list.md`, where a plan needs one), so this shared module's tests don't depend on a tool.
+The tests build plans directly, from plain `stageOrder` and `tipChanges`, so this shared module's
+tests don't depend on a tool.
 
 - `START` is `"start"`.
 - A plan with one stage and only the `START` tip change gives one group, keyed `START`, with that
