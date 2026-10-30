@@ -4,8 +4,9 @@
 // file writer and the page look up a stage's name and settings (ADR 0008). It holds no transfers
 // and knows nothing about the run order: that is the order of the stages' transfers in the
 // operation list, and nowhere else. This list's own order means nothing; stages are looked up by ID.
-// Settings are checked for form only, not against config/. Tips aren't stage settings: tip changes
-// are the plan's own entries, between stages.
+// Settings are checked for form only, not against config/. Tips and probes aren't stage settings:
+// tip changes are the plan's own entries, between stages, and each chooses its probes (ADR 0007,
+// "Tip changes").
 // Specification: stage-list.md.
 
 import { describeValue } from "../error-messages/error-messages.js";
@@ -17,24 +18,19 @@ import {
   checkName,
 } from "../input-checks/input-checks.js";
 
-// The five settings every stage has, in the order of the settings table (stage-list.md, section 3),
+// The four settings every stage has, in the order of the settings table (stage-list.md, section 3),
 // which is also the order they're checked in.
 const SETTING_NAMES = [
   "sourceTechnique",
   "sourceLiquidType",
   "destinationTechnique",
   "destinationLiquidType",
-  "probes",
 ];
 
 // The settings as the error messages list them. Kept in one place so the three messages that use it
 // can't drift apart.
 const SETTING_NAMES_TEXT =
-  "sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType and probes";
-
-// The Span-8 has probes 1 to 8, numbered as in Biomek Software. It's a fact about the instrument,
-// not a setting that might change, so it lives here rather than in config/.
-const HIGHEST_PROBE = 8;
+  "sourceTechnique, sourceLiquidType, destinationTechnique and destinationLiquidType";
 
 export class StageList {
   // Private fields (# name): only code inside this class can read or change them.
@@ -71,7 +67,7 @@ export class StageList {
   }
 
   // Returns a new list in which a copy of `settings` replaces all of stage `id`'s settings; its ID
-  // and name are unchanged, e.g. stages = stages.changeSettings("1", { …, probes: [1, 2] }).
+  // and name are unchanged, e.g. stages = stages.changeSettings("1", { …, sourceLiquidType: "Medium" }).
   changeSettings(id, settings) {
     const position = this.#positionOf(id);
     checkSettings(settings);
@@ -95,7 +91,7 @@ export class StageList {
   }
 
   // Stage `id`, as { id, name, settings }, e.g. get("1").name → "Seeding". It is frozen, and so are
-  // its settings and probes, so changing them throws.
+  // its settings, so changing them throws.
   get(id) {
     return this.#stages[this.#positionOf(id)];
   }
@@ -138,11 +134,12 @@ export class StageList {
 
 // --- Helpers used only inside this module ---
 
-// Throws if `settings` isn't an object with exactly the five settings, each in the right form, e.g.
+// Throws if `settings` isn't an object with exactly the four settings, each a name, e.g.
 // { sourceTechnique: "Aspirate_Slow", sourceLiquidType: "Cells",
-//   destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells",
-//   probes: [1, 2, 3, 4, 5, 6, 7, 8] }.
+//   destinationTechnique: "Dispense_Clean", destinationLiquidType: "Cells" }.
 // The checks run in the order of the spec's error table, and the first problem found is reported.
+// Settings still giving `probes`, as every stage did before 2026-10-30, are refused as an extra
+// setting: probes belong to tip changes now (stage-list.md, section 3).
 function checkSettings(settings) {
   if (!isObject(settings)) {
     throw new Error(
@@ -165,51 +162,16 @@ function checkSettings(settings) {
   checkName(settings.sourceLiquidType, "source liquid type");
   checkName(settings.destinationTechnique, "destination technique");
   checkName(settings.destinationLiquidType, "destination liquid type");
-  checkProbes(settings.probes);
 }
 
-// Throws if `probes` isn't a list of at least one probe number, 1 to 8, each listed once,
-// e.g. [1, 3] is fine; [], [9] and [3, 1, 3] throw.
-function checkProbes(probes) {
-  if (!Array.isArray(probes) || probes.length === 0) {
-    throw new Error(
-      `The probes must be a list of probe numbers from 1 to ${HIGHEST_PROBE}, like [1, 2, 3, 4], but got ${describeValue(probes)}.`,
-    );
-  }
-  // findIndex, not find: find returns undefined both for "none found" and for a hole in the list,
-  // so a list such as [ , 1] would slip through.
-  const badPosition = probes.findIndex((probe) => !isProbeNumber(probe));
-  if (badPosition !== -1) {
-    throw new Error(
-      `Probe numbers must be whole numbers from 1 to ${HIGHEST_PROBE}, but got ${describeValue(probes[badPosition])}.`,
-    );
-  }
-  // A probe is repeated if it was already seen earlier in the list. Every probe is a number by now,
-  // so undefined can only mean none is repeated.
-  const repeated = probes.find((probe, position) => probes.indexOf(probe) !== position);
-  if (repeated !== undefined) {
-    throw new Error(`Probe ${repeated} is listed more than once. List each probe once.`);
-  }
-}
-
-// True if `probe` is a whole number from 1 to 8, e.g. 3 → true; 0, 9, 2.5 and "1" → false.
-// Number.isInteger is false for anything that isn't a number, so text such as "1" is refused.
-function isProbeNumber(probe) {
-  return Number.isInteger(probe) && probe >= 1 && probe <= HIGHEST_PROBE;
-}
-
-// Returns a frozen copy of valid `settings`, with a frozen copy of its probes, sorted from smallest
-// to largest, e.g. probes [3, 1] → [1, 3]. Copying means changing the object given to add() later
+// Returns a frozen copy of valid `settings`. Copying means changing the object given to add() later
 // doesn't change the list; freezing (Object.freeze) means changing what get() returns throws a
-// TypeError. Only the five settings are copied, by name.
+// TypeError. Only the four settings are copied, by name.
 function copySettings(settings) {
   return Object.freeze({
     sourceTechnique: settings.sourceTechnique,
     sourceLiquidType: settings.sourceLiquidType,
     destinationTechnique: settings.destinationTechnique,
     destinationLiquidType: settings.destinationLiquidType,
-    // sort() changes the list it's called on, so it sorts a copy. Without (a, b) => a - b it would
-    // sort numbers as text, putting 10 before 2.
-    probes: Object.freeze([...settings.probes].sort((a, b) => a - b)),
   });
 }

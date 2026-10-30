@@ -1,15 +1,15 @@
 # stage-list — specification
 
-> **Draft (2026-10-23; revised 2026-10-26).** Written for v0.2.0 (ADR 0008). Decided by Andy: a stage
-> gets all five settings when it is added; tips aren't stage settings (2026-10-26: tip changes are
+> **Draft (2026-10-23; revised 2026-10-26 and 2026-10-30).** Written for v0.2.0 (ADR 0008). Decided
+> by Andy: a stage gets all four settings when it is added; probes aren't stage settings
+> (2026-10-30: each tip change chooses its probes; ADR 0007, "Tip changes"); tips aren't stage settings (2026-10-26: tip changes are
 > the plan's own entries, between stages; ADR 0007, amended 2026-10-26); its sources and its destinations each have their own technique and
 > liquid type; labware types aren't stage settings (each labware's type is in the deck description
 > in `config/`); settings are checked for form only (callers choose names from `config/`;
 > techniques aren't checked against tip types yet); `remove` doesn't know about transfers, and the
 > transfer designer's logic module removes a stage's transfers with it; an ID can come back after
-> undo. Still to review: the wording, including a clearer message for an empty probes list (PR
-> #37), e.g. `The probes list is empty. List at least one probe, like [1, 2, 3, 4].`, which would
-> be a new row in the Errors table.
+> undo. Still to review: the wording. (The review point about an empty probes list, PR #37, moves
+> with probes to the transfer designer.)
 
 ## 1. Purpose
 `stage-list.js` holds the stages of a **plan** (`docs/glossary.md`): each stage's ID, name and
@@ -37,8 +37,9 @@ Not in version 1 (see `docs/roadmap.md`):
   transfer designer's logic module removes its transfers with it (section 3).
 - **Tips.** Tip changes, and the tip type they load, are the plan's own entries between stages
   (`docs/glossary.md`, "Tip change"), held by the transfer designer, not by stages.
-- **Which probes get tips** (`LoadProbes` in ADR 0007). The file writer works that out by looking
-  ahead over the stages in run order; it isn't a setting.
+- **Probes.** Since 2026-10-30 each tip change chooses its probes, and every stage using its tips
+  uses all of them (ADR 0007, "Tip changes"), so probes are held by the transfer designer with the
+  tip changes, not by stages.
 - **Replacing only some tips** (an `UnloadProbes` setting, ADR 0007).
 - **Mixing** settings.
 - **Saving and loading** the list as a file.
@@ -63,8 +64,7 @@ Not in version 1 (see `docs/roadmap.md`):
     sourceTechnique: "Aspirate_Slow",
     sourceLiquidType: "Cells",
     destinationTechnique: "Dispense_Clean",
-    destinationLiquidType: "Cells",
-    probes: [1, 2, 3, 4, 5, 6, 7, 8]
+    destinationLiquidType: "Cells"
   }
 }
 ```
@@ -74,7 +74,7 @@ Not in version 1 (see `docs/roadmap.md`):
 - `id` is made by the list; code never chooses one (below).
 - `name` is chosen by the user: text that isn't blank and has no whitespace at the start or end.
   Two stages may have the same name (for example two "Seeding" stages).
-- `settings` is an object with exactly five properties. Any missing or extra property is rejected,
+- `settings` is an object with exactly four properties. Any missing or extra property is rejected,
   so a typo such as `tiptype` is caught rather than stored. As in the operation list, only properties
   the object holds itself count.
 
@@ -86,7 +86,6 @@ Not in version 1 (see `docs/roadmap.md`):
 | `sourceLiquidType` | the Biomek liquid type at the sources, by name | a name |
 | `destinationTechnique` | the Biomek technique for dispensing into the destinations, by name | a name |
 | `destinationLiquidType` | the Biomek liquid type at the destinations, by name | a name |
-| `probes` | which probes the stage's Transfer From File step uses | a list of probe numbers (below) |
 
 - A **name** is text that isn't blank and has no whitespace at the start or end (`checkName`,
   `input-checks` module). Biomek finds these only by their exact names (`biomek.md`), so stray spaces
@@ -95,10 +94,6 @@ Not in version 1 (see `docs/roadmap.md`):
   File sets them separately, in its source configuration and its destination configuration
   (B56358AF, 22-13 and 22-14). A stage may, for example, aspirate slowly and dispense above the
   liquid so the tip stays clean.
-- **`probes`** is a list of at least one probe number. A probe number is a whole number from 1 to 8
-  (the Span-8's probes, numbered as in Biomek Software). No number may appear twice. The list stores
-  the numbers sorted from smallest to largest, whatever order they were given in, so `[3, 1]` is
-  stored as `[1, 3]`. The file writer turns it into Biomek's text form, `"1,3"`.
 - **Labware types aren't settings.** A labware's type is a fact about the labware, not the stage,
   so it is stated once, in the deck description in `config/`, and looked up from there. That way a
   stage can't disagree with the labware its transfers use. Transfer From File needs all of a step's
@@ -110,6 +105,11 @@ Not in version 1 (see `docs/roadmap.md`):
   until the next one, so stages sharing tips can't disagree about their tip type. Earlier versions
   of this specification had `tipType` and `changeTipsFirst` settings; settings still giving them
   are refused as extra settings (section 5).
+- **Probes aren't settings** (Andy, 2026-10-30). Each tip change chooses which probes get tips, and
+  every stage using those tips uses all of them (ADR 0007, "Tip changes"): there's never a benefit
+  to a stage using fewer probes than have tips. Settings still giving `probes` (as before
+  2026-10-30) are refused as extra settings; reading older plan files is the plan file's job
+  (`plan-file.md`).
 
 **IDs**
 - An ID is text: the number of the stage as it was added, counting from 1: `"1"`, `"2"`, `"3"` … It
@@ -163,8 +163,8 @@ stages = added.stageList;
 added.id;                                   // "1"
 
 stages = stages.rename("1", "Seeding, part 1");
-stages = stages.changeSettings("1", { ...seedingSettings, probes: [1, 2] });
-stages.get("1").settings.probes;            // [1, 2]
+stages = stages.changeSettings("1", { ...seedingSettings, sourceLiquidType: "Medium" });
+stages.get("1").settings.sourceLiquidType;  // "Medium"
 stages = stages.remove("1");
 stages.has("1");                            // false
 ```
@@ -178,13 +178,10 @@ message says what is wrong and how to fix it. Values are shown with `describeVal
 |---|---|
 | `id` isn't in the list (any type of value) | `There's no stage "9" in the stage list.` |
 | `name` not text, blank, or with whitespace at the start or end | `checkName`'s three messages, naming `stage name`: `The stage name must be text, but got 5.` |
-| `settings` isn't an object (including `null` and lists) | `A stage's settings must be an object with sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType and probes, but got null.` |
-| A setting is missing | `A stage's settings need sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType and probes, but are missing "probes".` With several, all are listed in that order. |
-| Extra settings | `A stage's settings can only have sourceTechnique, sourceLiquidType, destinationTechnique, destinationLiquidType and probes, but also got "tipType".` With several, all are listed in the order they appear. |
+| `settings` isn't an object (including `null` and lists) | `A stage's settings must be an object with sourceTechnique, sourceLiquidType, destinationTechnique and destinationLiquidType, but got null.` |
+| A setting is missing | `A stage's settings need sourceTechnique, sourceLiquidType, destinationTechnique and destinationLiquidType, but are missing "destinationLiquidType".` With several, all are listed in that order. |
+| Extra settings | `A stage's settings can only have sourceTechnique, sourceLiquidType, destinationTechnique and destinationLiquidType, but also got "probes".` With several, all are listed in the order they appear. |
 | A name setting not text, blank, or with whitespace at the start or end | `checkName`'s three messages, naming the setting in words: `source technique`, `source liquid type`, `destination technique`, `destination liquid type`. E.g. `The source technique " Aspirate_Slow" has spaces at the start or end. Remove them.` |
-| `probes` isn't a list, or is empty | `The probes must be a list of probe numbers from 1 to 8, like [1, 2, 3, 4], but got "1,2".` |
-| A probe isn't a whole number from 1 to 8 | `Probe numbers must be whole numbers from 1 to 8, but got 9.` The first such value is named. |
-| A probe appears twice | `Probe 3 is listed more than once. List each probe once.` |
 
 The checks run in this order: `id` (for `rename`, `changeSettings`, `remove`, `get`), then `name`
 (for `add` and `rename`), then `settings`: the object check, missing settings, extra settings, then
@@ -206,10 +203,6 @@ Each becomes at least one unit test in `stage-list.test.js`, inside `describe("s
 - A failed `add` doesn't use up an ID: after one, the next good add gets the ID it would have got.
 - An earlier version keeps its own counter: adding to it again gives the ID it would have given.
 
-**Settings**
-- `probes` `[3, 1, 2]` is stored as `[1, 2, 3]`.
-- `probes` `[1]` and `[1, 2, 3, 4, 5, 6, 7, 8]` are accepted.
-
 **Renaming, changing, removing, looking up**
 - `rename` changes only the name; ID and settings are unchanged; the original list is unchanged.
 - `changeSettings` replaces all the settings; ID and name are unchanged; the original list is
@@ -222,29 +215,27 @@ Each becomes at least one unit test in `stage-list.test.js`, inside `describe("s
   settings.
 
 **Immutability and copies**
-- Changing the settings object passed to `add` afterwards, including its `probes` list, doesn't
-  change the list.
+- Changing the settings object passed to `add` afterwards doesn't change the list.
 - Changing what `listStages()` returns doesn't change the list.
-- Changing a stage returned by `get` or `listStages()`, or its settings, or its `probes`, throws, and
-  the list is unchanged.
+- Changing a stage returned by `get` or `listStages()`, or its settings, throws, and the list is
+  unchanged.
 - An earlier list is unchanged after later adds, renames, changes and removals.
 
 **Errors** (each row of section 5 has at least one test, including:)
 - `rename`, `changeSettings`, `remove` and `get` with `"9"`, and with `9`, give the not-in-list error.
 - Names `5`, `""`, `"   "` and `" Seeding"` give their errors, in `add` and in `rename`.
 - Settings `null`, `"x"` and `[]` give the object error; `[]` ends `but got a list.`
-- Settings missing `probes` give the missing error; missing `sourceTechnique` and `probes` name
-  both, in that order.
+- Settings missing `destinationLiquidType` give the missing error; missing `sourceTechnique` and
+  `destinationLiquidType` name both, in that order.
 - Settings with `technique` and `liquidType` (the earlier form) instead of the four source and
   destination settings give the missing error, naming all four.
 - Settings with an extra `tiptype` give the extra-setting error, and so do settings with a
   `sourceLabwareType`.
 - Settings in the earlier form, with `tipType` and `changeTipsFirst`, give the extra-setting error,
   naming both, in the order they appear.
+- Settings in the form before 2026-10-30, with `probes`, give the extra-setting error, naming
+  `probes`.
 - Each name setting given `5`, `""` and `" Aspirate_Slow"` gives its error, naming the setting in
   words.
-- `probes` `"1,2"`, `[]` and `null` give the probes-list error.
-- `probes` `[0]`, `[9]`, `[2.5]` and `["1"]` give the probe-number error; `[1, 9, 10]` names `9`.
-- `probes` `[3, 1, 3]` gives the repeated-probe error, naming 3.
 - Checks run in order: `rename("9", "")` reports the missing stage; settings with a bad source technique
   and a bad destination liquid type report the source technique.

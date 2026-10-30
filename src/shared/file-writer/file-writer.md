@@ -3,6 +3,9 @@
 > **Draft (2026-10-28).** Written for v0.2.0, from ADR 0007 and the general-purpose method as built
 > and tested on 2026-10-27 (`docs/domain/biomek.md`). It becomes Final once its code is built and
 > the files it writes have run on the Biomek.
+>
+> **Draft change (2026-10-30):** probes come from the tip changes, not the stages (ADR 0007, "Tip
+> changes"; section 3, `Stages.csv`, and section 6).
 
 ## 1. Purpose
 `file-writer.js` turns a **plan** (`docs/glossary.md`) into the files the general-purpose method
@@ -24,8 +27,8 @@ It can refuse a plan. A refused plan gets no files (section 5).
 ## 2. Scope
 Version 1 writes the setup worklist; the stage worklist, with a tip-change row before each tip group
 and a transfer row for each substage, in stage order; and the Transfer From File files. It splits
-stages into substages, loads tips by looking ahead (ADR 0007), gives each transfer row the tip type
-of the tip change before it, and rounds volumes to 3 decimal places.
+stages into substages, loads tips on each tip change's probes (ADR 0007, "Tip changes"), gives each
+transfer row the tip type and probes of the tip change before it, and rounds volumes to 3 decimal places.
 
 Not in version 1:
 - **Checking techniques against tip types** (roadmap, "Technical debt").
@@ -103,17 +106,18 @@ A header row and one data row.
 #### `Stages.csv`, the stage worklist
 A header row with the 17 columns of ADR 0007, then one row per tip change or substage, in run order.
 - **A tip-change row** (`NewTip` 1) comes before each tip group (`docs/glossary.md`) that has stages
-  with transfers. It gives `TipType`, the tip change's tip type, and `LoadProbes`, every probe that
-  any stage in the group uses, in ascending order, e.g. `1,2,3,4` (look-ahead loading, ADR 0007).
-  Tip groups and their probes are worked out by the `tip-groups` shared module, which the transfer
-  designer uses too (Andy, 2026-10-28), so both always agree.
+  with transfers. It gives `TipType`, the tip change's tip type, and `LoadProbes`, the tip change's
+  probes, in ascending order, e.g. `1,2,3,4` (ADR 0007, "Tip changes"). Tip groups and their tip
+  types and probes come from the `tip-groups` shared module, which the transfer designer uses too
+  (Andy, 2026-10-28), so both always agree.
   Its other columns are empty. A tip group whose stages have no transfers gets no row, so no tips
   are loaded for nothing.
 - **Then one transfer row per substage** (`NewTip` 0), for each stage with transfers, in stage order
   (a stage without transfers isn't run; `transfer-designer.md`, "Stage order"). Each row gives:
   - `TipType`: its tip group's tip type;
   - `TransferFile`: the absolute path of its Transfer From File file;
-  - `Probes`: the stage's probes, in ascending order;
+  - `Probes`: its tip group's probes, in ascending order: the same as the tip-change row's
+    `LoadProbes`, since every stage uses all the probes its tips are on;
   - `SrcTechnique`, `SrcLiquidType`, `DestTechnique` and `DestLiquidType`: the stage's settings;
   - `SrcLabwareType` and `DestLabwareType`: the substage's labware types, from the deck description;
   - the six mix columns, empty (section 2).
@@ -244,12 +248,13 @@ still pass when the deck changes (as `deck.test.js` does).
 **`Stages.csv`**
 - The header is ADR 0007's 17 columns, in order.
 - A plan with one stage, one substage and the start tip change gives two rows: a tip-change row
-  (`1`, the tip type, the stage's probes, then 14 empty fields) and a transfer row (`0`, the tip
-  type, an empty `LoadProbes`, the file's absolute path, the probes, the four settings from the
-  stage, the two labware types from `DECK`, then 6 empty mix fields).
+  (`1`, the tip type, the tip change's probes, then 14 empty fields) and a transfer row (`0`, the
+  tip type, an empty `LoadProbes`, the file's absolute path, the same probes, the four settings
+  from the stage, the two labware types from `DECK`, then 6 empty mix fields).
 - Probes `[1, 2]` are written `"1,2"` (quoted); probes `[1]` are written `1` (not quoted).
-- **Look-ahead loading:** a tip group whose stages use `[1, 2]` and `[1, 2, 3, 4]` gives
-  `LoadProbes` `"1,2,3,4"`; one whose stages use `[1]` and `[3, 5]` gives `"1,3,5"`.
+- **Probes from the tip change:** a tip change on `[1, 2, 3, 4]` gives `LoadProbes` `"1,2,3,4"`,
+  and every transfer row in its group `Probes` `"1,2,3,4"`; a second tip change on `[1, 3, 5]`
+  gives `"1,3,5"` in its rows.
 - **Two tip groups:** a tip change before the third stage gives a second tip-change row just
   before that stage's transfer rows, and those rows carry its tip type.
 - **Stages without transfers:** a stage without transfers gets no row and no file; a tip group

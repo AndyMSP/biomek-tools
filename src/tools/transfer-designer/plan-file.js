@@ -6,8 +6,9 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 2, which holds the experiment name, and still reads version 1 files
-// (saved before plans had one), which open with no name.
+// It writes format version 3, in which each tip change holds its probes, and still reads version 2
+// files (probes in each stage's settings) and version 1 files (also without an experiment name):
+// their tip changes get every probe their stages used, which is where look-ahead loading put tips.
 // Specification: plan-file.md.
 
 import { TIP_TYPES } from "../../../config/tip-types.js";
@@ -35,6 +36,7 @@ import {
   addToWells,
   addTipChange,
   setTipType,
+  setTipProbes,
   setLabels,
   setExperimentName,
 } from "./transfer-designer.js";
@@ -44,14 +46,19 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 
 // The format version written. It goes up only when what a plan file holds changes, not with every
 // release of the tools (ADR 0010). Changing it means changing how files are read, so it isn't in
-// config/. Version 2 (2026-10-28) added the experiment name.
-export const PLAN_FILE_VERSION = 2;
+// config/. Version 2 (2026-10-28) added the experiment name; version 3 (2026-10-30) moved probes
+// from the stages to the tip changes (ADR 0007, "Tip changes").
+export const PLAN_FILE_VERSION = 3;
 
-// The versions this module can read: the one it writes, and version 1, which every plan saved
-// before 2026-10-28 is.
-const VERSIONS_READ = [PLAN_FILE_VERSION, 1];
+// The versions this module can read: the one it writes, version 2 (plans saved from 2026-10-28 to
+// 2026-10-30) and version 1 (plans saved before 2026-10-28).
+const VERSIONS_READ = [PLAN_FILE_VERSION, 2, 1];
 
-// A version 2 plan file's properties, in the order they are written (plan-file.md, section 3).
+// The versions in which each stage's settings hold its probes, and a tip change is { tipType } only.
+const VERSIONS_WITH_STAGE_PROBES = [1, 2];
+
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 2 and
+// 3 have all of them.
 const FILE_PROPERTIES = [
   "format",
   "version",
@@ -115,13 +122,19 @@ export function planFromText(text) {
   checkProperties(file);
 
   let plan = addComponents(emptyPlan().plan, file.components);
-  const added = addStages(plan, file.stages);
+  const added = addStages(plan, file.stages, file.version);
   plan = addOperations(added.plan, file.operations, file.stages, added.newIds);
   const componentNames = file.components.map((component) => component.name);
   plan = addStartingContents(plan, file.startingContents, componentNames);
-  plan = addTipChanges(plan, file.tipChanges, file.stages, added.newIds);
+  plan = addTipChanges(plan, file, added.newIds, added.stageProbes);
   plan = withPlace("labels", () => setLabels(plan, file.labwareLabels));
   return withExperimentName(plan, file);
+}
+
+// True if a file of `version` (one of VERSIONS_READ) keeps each stage's probes in its settings, and
+// its tip changes without probes, as every file did before 2026-10-30.
+function hasStageProbes(version) {
+  return VERSIONS_WITH_STAGE_PROBES.includes(version);
 }
 
 // --- Helpers used only inside this module ---
@@ -163,7 +176,8 @@ function checkFormatAndVersion(file) {
 
 // The properties a plan file of `version` (one of VERSIONS_READ) holds, in the order they are
 // written: a version 1 file has all but the ones version 2 added, e.g. propertiesOfVersion(1) has
-// no "experimentName".
+// no "experimentName". Version 3 added no property: it moved probes from the stages to the tip
+// changes.
 function propertiesOfVersion(version) {
   if (version === 1) {
     return FILE_PROPERTIES.filter((property) => !VERSION_2_PROPERTIES.includes(property));
@@ -217,29 +231,54 @@ function addComponents(plan, components) {
   return planSoFar;
 }
 
-// Check 6: returns { plan, newIds }: the plan with `stages` in the file's order, each with its name
-// and settings, and a Map from each stage's ID in the file to its new ID, e.g. "5" → "2". The empty
-// plan's own stage becomes the first. Throws if there are no stages, or a stage's form or ID is
-// wrong, or the stage list refuses its name or settings.
-function addStages(plan, stages) {
+// Check 6: returns { plan, newIds, stageProbes }: the plan with `stages` in the file's order, each
+// with its name and settings; a Map from each stage's ID in the file to its new ID, e.g. "5" → "2";
+// and, for a file of `version` whose stages hold probes (hasStageProbes), a Map from each stage's ID
+// in the file to its probes, for its tip change (addTipChanges). The empty plan's own stage becomes
+// the first. Throws if there are no stages, or a stage's form or ID is wrong, or the stage list
+// refuses its name or settings, or (in an older file) its settings have no probes or bad ones.
+function addStages(plan, stages, version) {
   if (stages.length === 0) {
     refuse("it has no stages; a plan always has at least one.");
   }
   let planSoFar = plan;
   const newIds = new Map();
+  const stageProbes = new Map();
   for (const [index, stage] of stages.entries()) {
     checkStageEntry(stages, index);
+    const place = `stage ${index + 1}`;
     let id = stageOrder(planSoFar)[0];
     if (index > 0) {
       ({ plan: planSoFar, id } = addStage(planSoFar, null));
     }
-    // The stage list checks the name, then the settings.
-    planSoFar = withPlace(`stage ${index + 1}`, () =>
-      changeStageSettings(renameStage(planSoFar, id, stage.name), id, stage.settings),
-    );
+    // The stage list checks the name first, then the settings.
+    planSoFar = withPlace(place, () => renameStage(planSoFar, id, stage.name));
+    let settings = stage.settings;
+    if (hasStageProbes(version) && isObject(settings)) {
+      stageProbes.set(stage.id, checkStageProbes(planSoFar, settings, index, version));
+      // The stage list refuses probes as an extra setting, so they're taken out first.
+      const { probes, ...rest } = settings;
+      settings = rest;
+    }
+    planSoFar = withPlace(place, () => changeStageSettings(planSoFar, id, settings));
     newIds.set(stage.id, id);
   }
-  return { plan: planSoFar, newIds };
+  return { plan: planSoFar, newIds, stageProbes };
+}
+
+// Returns the probes in `settings`, the settings of the stage at `index` in an older file (of
+// `version`), smallest first. Throws if there are none, or they aren't probes as setTipProbes
+// checks them: it's used only to check them, on the START tips of `plan` (which the file's own
+// tip changes replace later), so a file's probes are checked by the same rule as the plan's.
+function checkStageProbes(plan, settings, index, version) {
+  const place = `stage ${index + 1}`;
+  if (!Object.hasOwn(settings, "probes")) {
+    refuse(
+      `${place}'s settings are missing "probes", which a version ${version} file's stages have.`,
+    );
+  }
+  const checked = withPlace(place, () => setTipProbes(plan, START, settings.probes));
+  return checked.tipChanges[START].probes;
 }
 
 // Throws if the stage at `index` in `stages` isn't an object with exactly an ID, a name and
@@ -358,38 +397,56 @@ function addStartingContents(plan, startingContents, componentNames) {
   return planSoFar;
 }
 
-// Check 9: returns the plan with `tipChanges`, each keyed by START or a stage's ID in the file,
-// which `newIds` turns into its new ID. Throws if there's none at START; then, for each tip change
-// in turn, if its key isn't one of `stages` or is the first, it isn't an object with exactly a tip
-// type, or its tip type isn't in TIP_TYPES.
-function addTipChanges(plan, tipChanges, stages, newIds) {
+// Check 9: returns the plan with the file's tip changes, each keyed by START or a stage's ID in the
+// file, which `newIds` turns into its new ID. In a version 3 file each holds its tip type and
+// probes; in an older file each holds only its tip type, and gets every probe its stages used
+// (`stageProbes`, from addStages), which is where look-ahead loading put tips. Throws if there's
+// none at START; then, for each tip change in turn, if its key isn't one of the file's stages or is
+// the first, it isn't an object with exactly its version's properties, its tip type isn't in
+// TIP_TYPES, or its probes are refused by setTipProbes.
+function addTipChanges(plan, file, newIds, stageProbes) {
+  const { tipChanges, stages } = file;
   if (!Object.hasOwn(tipChanges, START)) {
     refuse("it has no tips at the start of the run.");
   }
+  const olderFile = hasStageProbes(file.version);
+  const properties = olderFile ? ["tipType"] : ["tipType", "probes"];
+  const propertiesText = olderFile ? '"tipType"' : '"tipType" and "probes"';
   let planSoFar = plan;
   for (const [key, tipChange] of Object.entries(tipChanges)) {
+    const place = `the tip change at ${describeValue(key)}`;
     if (key !== START) {
       checkTipChangeKey(key, stages, newIds);
     }
-    if (!hasExactly(tipChange, ["tipType"])) {
-      refuse(`the tip change at ${describeValue(key)} must be an object with exactly "tipType".`);
+    if (!hasExactly(tipChange, properties)) {
+      refuse(`${place} must be an object with exactly ${propertiesText}.`);
     }
     const tipType = tipChange.tipType;
     if (!TIP_TYPES.includes(tipType)) {
-      refuse(
-        `the tip change at ${describeValue(key)} loads ${describeValue(tipType)}, ` +
-          `which isn't one of ${listNames(TIP_TYPES)}.`,
-      );
+      refuse(`${place} loads ${describeValue(tipType)}, which isn't one of ${listNames(TIP_TYPES)}.`);
     }
-    planSoFar = withPlace(`the tip change at ${describeValue(key)}`, () => {
-      if (key === START) {
-        return setTipType(planSoFar, START, tipType);
-      }
-      const id = newIds.get(key);
-      return setTipType(addTipChange(planSoFar, id), id, tipType);
+    const probes = olderFile ? probesUsedAfter(key, stages, tipChanges, stageProbes) : tipChange.probes;
+    planSoFar = withPlace(place, () => {
+      const id = key === START ? START : newIds.get(key);
+      const added = key === START ? planSoFar : addTipChange(planSoFar, id);
+      return setTipProbes(setTipType(added, id, tipType), id, probes);
     });
   }
   return planSoFar;
+}
+
+// Every probe used by the stages of the tip change at `key` in an older file: from that tip
+// change's stage (the first of `stages` for START) up to the stage with the next tip change, in the
+// file's stage order, each once, smallest first, e.g. stages using [1, 2] and [1, 2, 3, 4] →
+// [1, 2, 3, 4]. `stageProbes` holds each stage's probes by its ID in the file.
+function probesUsedAfter(key, stages, tipChanges, stageProbes) {
+  const ids = stages.map((stage) => stage.id);
+  const from = key === START ? 0 : ids.indexOf(key);
+  const nextChange = ids.findIndex((id, index) => index > from && Object.hasOwn(tipChanges, id));
+  const groupIds = ids.slice(from, nextChange === -1 ? ids.length : nextChange);
+  const probes = new Set(groupIds.flatMap((id) => stageProbes.get(id)));
+  // sort() on its own compares as text; this compares numbers.
+  return [...probes].sort((a, b) => a - b);
 }
 
 // Throws if `key`, a tip change's key other than START, isn't one of `stages` (whose IDs are the

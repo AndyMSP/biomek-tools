@@ -8,7 +8,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
-import { TIP_TYPES } from "../../../config/tip-types.js";
+import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
 import { checkName } from "../../shared/input-checks/input-checks.js";
 import { tipGroups as sharedTipGroups } from "../../shared/tip-groups/tip-groups.js";
@@ -39,6 +39,7 @@ import {
   canAddTipChange,
   addTipChange,
   setTipType,
+  setTipProbes,
   removeTipChange,
   tipGroups,
   addComponent,
@@ -71,6 +72,21 @@ const PLAN_PARTS = [
   "labwareLabels",
   "experimentName",
 ];
+
+// A new plan's START tip change: the first tip type, on the first DEFAULT_PROBE_COUNT probes.
+// A new object each time.
+function startTips() {
+  return { tipType: TIP_TYPES[0], probes: probesFor(DEFAULT_PROBE_COUNT) };
+}
+
+// A stage's settings that differ from the default at the source: the last source mode that isn't
+// the default one, with the default at the destination. Lets a test tell two stages' settings apart.
+function otherSettings() {
+  const otherMode = modesFor("source")
+    .filter((mode) => mode.name !== DEFAULT_PIPETTING_MODE)
+    .at(-1);
+  return { ...defaultSettings(), ...modeSettings("source", otherMode.name) };
+}
 
 // A transfer in `stage` from the reservoir's trough 1 into `well` on PLATE. The reservoir is never
 // a destination in these tests, so such transfers never break the stage rule,
@@ -201,27 +217,33 @@ describe("transfer-designer", () => {
     assert.equal(new Set(TIP_TYPES).size, TIP_TYPES.length);
   });
 
+  test("DEFAULT_PROBE_COUNT is a whole number from 1 to 8", () => {
+    assert.ok(Number.isInteger(DEFAULT_PROBE_COUNT));
+    assert.ok(DEFAULT_PROBE_COUNT >= 1 && DEFAULT_PROBE_COUNT <= 8);
+  });
+
   // --- Plans and modes ---
 
-  test("defaultSettings() gives the default mode's technique and liquid type at both ends, and probes 1 to 8", () => {
+  test("defaultSettings() gives the default mode's technique and liquid type at both ends, and nothing else", () => {
     const mode = PIPETTING_MODES.find((candidate) => candidate.name === DEFAULT_PIPETTING_MODE);
     assert.deepEqual(defaultSettings(), {
       sourceTechnique: mode.technique,
       sourceLiquidType: mode.liquidType,
       destinationTechnique: mode.technique,
       destinationLiquidType: mode.liquidType,
-      probes: [1, 2, 3, 4, 5, 6, 7, 8],
     });
   });
 
-  test("emptyPlan() gives one stage with default settings, START tips of the first tip type, no experiment name, and nothing else", () => {
+  test("emptyPlan() gives one stage with default settings, START tips of the first tip type on the first DEFAULT_PROBE_COUNT probes, no experiment name, and nothing else", () => {
     const { plan, stageId } = emptyPlan();
     assert.deepEqual(Object.keys(plan).sort(), [...PLAN_PARTS].sort());
     assert.deepEqual(plan.stageList.listStages(), [
       { id: stageId, name: NEW_STAGE_NAME, settings: defaultSettings() },
     ]);
     assert.equal(NEW_STAGE_NAME, "New stage");
-    assert.deepEqual(plan.tipChanges, { [START]: { tipType: TIP_TYPES[0] } });
+    assert.deepEqual(plan.tipChanges, { [START]: startTips() });
+    assert.equal(plan.tipChanges[START].probes.length, DEFAULT_PROBE_COUNT);
+    assert.equal(plan.tipChanges[START].probes[0], 1);
     assert.deepEqual(plan.components, []);
     assert.deepEqual(plan.startingContents, []);
     assert.deepEqual(plan.operationList.listOperations(), []);
@@ -346,8 +368,9 @@ describe("transfer-designer", () => {
 
   test("addStage copies the settings of the stage before it, or the first stage's when added first", () => {
     let plan = planWithStages(2);
-    const firstSettings = { ...defaultSettings(), probes: [1] };
-    const secondSettings = { ...defaultSettings(), probes: [1, 2, 3] };
+    const firstSettings = otherSettings();
+    const secondSettings = defaultSettings();
+    assert.notDeepEqual(firstSettings, secondSettings);
     plan = changeStageSettings(plan, "1", firstSettings);
     plan = changeStageSettings(plan, "2", secondSettings);
 
@@ -362,7 +385,7 @@ describe("transfer-designer", () => {
   test("addStage with takeTips before a stage with a tip change moves the tip change to the new stage", () => {
     const plan = addTipChange(planWithStages(3), "3");
     const { plan: added, id } = addStage(plan, "3", { takeTips: true });
-    assert.deepEqual(tipChangeAt(added, id), { tipType: TIP_TYPES[0] });
+    assert.deepEqual(tipChangeAt(added, id), startTips());
     assert.equal(tipChangeAt(added, "3"), null);
     assert.deepEqual(
       tipGroups(added).map((group) => group.stages),
@@ -376,7 +399,7 @@ describe("transfer-designer", () => {
   test("addStage without takeTips before a stage with a tip change joins the tip group before", () => {
     const plan = addTipChange(planWithStages(3), "3");
     const { plan: added, id } = addStage(plan, "3");
-    assert.deepEqual(tipChangeAt(added, "3"), { tipType: TIP_TYPES[0] });
+    assert.deepEqual(tipChangeAt(added, "3"), startTips());
     assert.deepEqual(
       tipGroups(added).map((group) => group.stages),
       [
@@ -391,7 +414,7 @@ describe("transfer-designer", () => {
     for (const takeTips of [false, true]) {
       const { plan: added, id } = addStage(plan, "1", { takeTips });
       assert.deepEqual(stageOrder(added), [id, "1"]);
-      assert.deepEqual(added.tipChanges, { [START]: { tipType: TIP_TYPES.at(-1) } });
+      assert.deepEqual(added.tipChanges, { [START]: { ...startTips(), tipType: TIP_TYPES.at(-1) } });
       assert.equal(tipGroups(added)[0].key, START);
     }
   });
@@ -430,11 +453,12 @@ describe("transfer-designer", () => {
     });
   });
 
-  test("removing the first stage, when the second has its own tip change, makes that the START one", () => {
+  test("removing the first stage, when the second has its own tip change, makes that the START one, with its tip type and probes", () => {
     let plan = addTipChange(planWithStages(2), "2");
     plan = setTipType(plan, "2", TIP_TYPES.at(-1));
+    plan = setTipProbes(plan, "2", [1]);
     const removed = removeStage(plan, "1");
-    assert.deepEqual(removed.tipChanges, { [START]: { tipType: TIP_TYPES.at(-1) } });
+    assert.deepEqual(removed.tipChanges, { [START]: { tipType: TIP_TYPES.at(-1), probes: [1] } });
   });
 
   test("renameStage and changeStageSettings change only that stage", () => {
@@ -443,7 +467,7 @@ describe("transfer-designer", () => {
     assert.equal(renamed.stageList.get("2").name, "Drugs");
     assert.deepEqual(renamed.stageList.get("1"), plan.stageList.get("1"));
 
-    const settings = { ...defaultSettings(), probes: [1, 2] };
+    const settings = otherSettings();
     const changed = changeStageSettings(plan, "2", settings);
     assert.deepEqual(changed.stageList.get("2").settings, settings);
     assert.deepEqual(changed.stageList.get("1"), plan.stageList.get("1"));
@@ -649,19 +673,28 @@ describe("transfer-designer", () => {
   test("tipGroups re-exported from this module gives the same groups as the shared module's", () => {
     // tipGroups and START themselves are tested in tip-groups.test.js (tip-groups.md).
     let plan = planWithStages(4);
-    plan = changeStageSettings(plan, "2", { ...defaultSettings(), probes: [1, 2, 3, 4] });
+    plan = setTipProbes(plan, START, [1, 2, 3, 4]);
     plan = addTipChange(plan, "3");
     plan = setTipType(plan, "3", TIP_TYPES.at(-1));
+    plan = setTipProbes(plan, "3", [1]);
     assert.deepEqual(tipGroups(plan), sharedTipGroups(plan));
     assert.equal(tipGroups(plan).length, 2);
+    assert.deepEqual(
+      tipGroups(plan).map((group) => group.probes),
+      [[1, 2, 3, 4], [1]],
+    );
   });
 
-  test("addTipChange takes the tip type in use", () => {
+  test("addTipChange takes the tip type and probes in use", () => {
     let plan = addTipChange(planWithStages(3), "2");
     plan = setTipType(plan, "2", TIP_TYPES.at(-1));
+    plan = setTipProbes(plan, "2", [1, 2]);
     plan = addTipChange(plan, "3");
-    assert.deepEqual(tipChangeAt(plan, "3"), { tipType: TIP_TYPES.at(-1) });
+    assert.deepEqual(tipChangeAt(plan, "3"), { tipType: TIP_TYPES.at(-1), probes: [1, 2] });
     assert.equal(canAddTipChange(planWithStages(3), "2"), true);
+    // With START on [1, 2], a tip change added before stage 2 has [1, 2].
+    const startOnTwo = setTipProbes(planWithStages(2), START, [1, 2]);
+    assert.deepEqual(tipChangeAt(addTipChange(startOnTwo, "2"), "2").probes, [1, 2]);
   });
 
   test("addTipChange before the first stage throws, and canAddTipChange is false", () => {
@@ -689,19 +722,21 @@ describe("transfer-designer", () => {
     });
   });
 
-  test("setTipType with a known type works; an unknown one throws", () => {
-    const plan = setTipType(planWithStages(1), START, TIP_TYPES.at(-1));
-    assert.deepEqual(tipChangeAt(plan, START), { tipType: TIP_TYPES.at(-1) });
+  test("setTipType with a known type works, leaving the probes as they were; an unknown one throws", () => {
+    const onOne = setTipProbes(planWithStages(1), START, [1]);
+    const plan = setTipType(onOne, START, TIP_TYPES.at(-1));
+    assert.deepEqual(tipChangeAt(plan, START), { tipType: TIP_TYPES.at(-1), probes: [1] });
     const tipTypeNames = TIP_TYPES.map((tipType) => `"${tipType}"`).join(", ");
     assert.throws(() => setTipType(plan, START, "BC50"), {
       message: `"BC50" isn't a tip type. Choose one of ${tipTypeNames}.`,
     });
   });
 
-  test("setTipType and removeTipChange throw where there's no tip change", () => {
+  test("setTipType, setTipProbes and removeTipChange throw where there's no tip change", () => {
     const plan = planWithStages(2);
     const message = `There are no new tips before stage "2".`;
     assert.throws(() => setTipType(plan, "2", TIP_TYPES[0]), { message });
+    assert.throws(() => setTipProbes(plan, "2", [1]), { message });
     assert.throws(() => removeTipChange(plan, "2"), { message });
   });
 
@@ -709,6 +744,75 @@ describe("transfer-designer", () => {
     assert.throws(() => setTipType(planWithStages(2), "2", "BC50"), {
       message: `There are no new tips before stage "2".`,
     });
+  });
+
+  test("setTipProbes sets the probes, stored smallest first, leaving the tip type as it was", () => {
+    const plan = setTipType(planWithStages(1), START, TIP_TYPES.at(-1));
+    assert.deepEqual(tipChangeAt(setTipProbes(plan, START, [1, 2, 3, 4]), START), {
+      tipType: TIP_TYPES.at(-1),
+      probes: [1, 2, 3, 4],
+    });
+    assert.deepEqual(tipChangeAt(setTipProbes(plan, START, [3, 1, 2]), START).probes, [1, 2, 3]);
+    assert.deepEqual(tipChangeAt(setTipProbes(plan, START, [1]), START).probes, [1]);
+    assert.deepEqual(
+      tipChangeAt(setTipProbes(plan, START, [1, 2, 3, 4, 5, 6, 7, 8]), START).probes,
+      [1, 2, 3, 4, 5, 6, 7, 8],
+    );
+  });
+
+  test("setTipProbes on a tip change before a stage changes only that tip change", () => {
+    const plan = addTipChange(planWithStages(2), "2");
+    const changed = setTipProbes(plan, "2", [5, 6]);
+    assert.deepEqual(tipChangeAt(changed, "2"), { tipType: TIP_TYPES[0], probes: [5, 6] });
+    assert.deepEqual(tipChangeAt(changed, START), startTips());
+  });
+
+  test('setTipProbes refuses "1,2", [] and null with the probes-list error', () => {
+    const plan = planWithStages(1);
+    const start = "The probes must be a list of probe numbers from 1 to 8, like [1, 2, 3, 4], but got";
+    for (const [probes, shown] of [["1,2", '"1,2"'], [[], "a list"], [null, "null"]]) {
+      assert.throws(() => setTipProbes(plan, START, probes), { message: `${start} ${shown}.` });
+    }
+  });
+
+  test('setTipProbes refuses [0], [9], [2.5] and ["1"] with the probe-number error; [1, 9, 10] names 9', () => {
+    const plan = planWithStages(1);
+    const cases = [
+      [[0], "0"],
+      [[9], "9"],
+      [[2.5], "2.5"],
+      [["1"], '"1"'],
+      [[1, 9, 10], "9"],
+    ];
+    for (const [probes, shown] of cases) {
+      assert.throws(() => setTipProbes(plan, START, probes), {
+        message: `Probe numbers must be whole numbers from 1 to 8, but got ${shown}.`,
+      });
+    }
+  });
+
+  test("setTipProbes refuses [3, 1, 3] with the repeated-probe error, naming 3", () => {
+    assert.throws(() => setTipProbes(planWithStages(1), START, [3, 1, 3]), {
+      message: "Probe 3 is listed more than once. List each probe once.",
+    });
+  });
+
+  test("setTipProbes checks for a tip change, then the list, then each probe, then repeats", () => {
+    const plan = planWithStages(2);
+    assert.throws(() => setTipProbes(plan, "2", [9, 9]), {
+      message: `There are no new tips before stage "2".`,
+    });
+    assert.throws(() => setTipProbes(plan, START, [9, 9]), {
+      message: "Probe numbers must be whole numbers from 1 to 8, but got 9.",
+    });
+  });
+
+  test("changing the probes list given to setTipProbes afterwards doesn't change the plan", () => {
+    const probes = [2, 1];
+    const plan = setTipProbes(planWithStages(1), START, probes);
+    probes.push(9);
+    probes[0] = 7;
+    assert.deepEqual(tipChangeAt(plan, START).probes, [1, 2]);
   });
 
   test("removeTipChange merges the two tip groups; for START it throws", () => {
@@ -1040,17 +1144,14 @@ describe("transfer-designer", () => {
   const EDITS = [
     ["addStage", (plan) => addStage(plan, "2").plan, ["stageList", "stageOrder"]],
     ["renameStage", (plan) => renameStage(plan, "1", "Seeding"), ["stageList"]],
-    [
-      "changeStageSettings",
-      (plan) => changeStageSettings(plan, "1", { ...defaultSettings(), probes: [1] }),
-      ["stageList"],
-    ],
+    ["changeStageSettings", (plan) => changeStageSettings(plan, "1", otherSettings()), ["stageList"]],
     ["removeStage", (plan) => removeStage(plan, "3"), ["operationList", "stageList", "stageOrder", "tipChanges"]],
     ["addTransfer", (plan) => addTransfer(plan, transferTo("1", "C1")), ["operationList"]],
     ["changeVolume", (plan) => changeVolume(plan, 0, 25), ["operationList"]],
     ["removeTransfer", (plan) => removeTransfer(plan, 0), ["operationList"]],
     ["addTipChange", (plan) => addTipChange(plan, "3"), ["tipChanges"]],
     ["setTipType", (plan) => setTipType(plan, "2", TIP_TYPES.at(-1)), ["tipChanges"]],
+    ["setTipProbes", (plan) => setTipProbes(plan, "2", [1]), ["tipChanges"]],
     ["removeTipChange", (plan) => removeTipChange(plan, "2"), ["tipChanges"]],
     ["addComponent", (plan) => addComponent(plan, "Water", "#76b7b2"), ["components"]],
     ["renameComponent", (plan) => renameComponent(plan, "Dye", "Drug"), ["components", "startingContents"]],

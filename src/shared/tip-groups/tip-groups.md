@@ -1,12 +1,15 @@
 # tip-groups — specification
 
-> **Final (2026-10-29).** Written for v0.2.0, moving the transfer designer's `tipGroups` into a
-> shared module (Andy, 2026-10-28); built in #85, and used by the file writer since #86.
+> **Final (2026-10-30).** Written for v0.2.0, moving the transfer designer's `tipGroups` into a
+> shared module (Andy, 2026-10-28); built in #85, and used by the file writer since #86. Changed on
+> 2026-10-30 so that a group's probes are its tip change's, not worked out by looking ahead over its
+> stages, since each tip change now chooses its probes (ADR 0007, "Tip changes"); built and
+> reviewed in #104.
 
 ## 1. Purpose
 `tip-groups.js` works out a plan's **tip groups** (`docs/glossary.md`, "Tip group"): the stages
-that run on the same tips, from one tip change to the next, and which probes get tips for each
-group, by looking ahead (ADR 0007, "Tip changes").
+that run on the same tips, from one tip change to the next, with that tip change's tip type and
+probes (ADR 0007, "Tip changes").
 
 It's shared because more than one module needs exactly the same answer: the transfer designer, to
 show tip groups on the page, and the file writer, to write a tip-change row before each group
@@ -28,9 +31,11 @@ Not in version 1:
 ## 3. Data model
 From a plan (`transfer-designer.md`, section 3), the module reads only:
 - `stageOrder`: the stage IDs in stage order;
-- `tipChanges`: the tip changes, each `{ tipType }`, keyed by `START` or by the stage ID they come
-  just before;
-- `stageList`: each stage's settings, for its `probes`.
+- `tipChanges`: the tip changes, each `{ tipType, probes }`, keyed by `START` or by the stage ID
+  they come just before (`transfer-designer.md`, section 3).
+
+(Until 2026-10-30 it also read each stage's `probes` from the stage list, to work out a group's
+probes by looking ahead; stages no longer have probes.)
 
 **`START`** is the text `"start"`, the key of the tip change before the first stage. Stage IDs are
 numbers written as text, so no stage is ever called `"start"`.
@@ -39,8 +44,8 @@ numbers written as text, so no stage is ever called `"start"`.
 - `key`: the key of the tip change that starts it, `START` or a stage ID;
 - `tipType`: that tip change's tip type;
 - `stages`: the group's stage IDs, in stage order;
-- `probes`: every probe any of the group's stages uses, each once, smallest first: the probes that
-  get tips.
+- `probes`: that tip change's probes, smallest first: the probes that get tips, and that every
+  stage in the group uses.
 
 The first stage in the stage order always starts the `START` group. Any later stage with a tip
 change keyed by its ID starts a new group. Every other stage joins the group before it. Stages are
@@ -65,22 +70,21 @@ None of its own. `tipGroups` is given plans the transfer designer made, which al
 
 ## 6. Test cases
 Each becomes at least one unit test in `tip-groups.test.js`, inside `describe("tip-groups", …)`.
-The tests build plans directly, from a `StageList` (`stage-list.md`) and plain `stageOrder` and
-`tipChanges`, so this shared module's tests don't depend on a tool.
+The tests build plans directly, from plain `stageOrder` and `tipChanges`, so this shared module's
+tests don't depend on a tool.
 
 - `START` is `"start"`.
 - A plan with one stage and only the `START` tip change gives one group, keyed `START`, with that
-  stage and its probes.
+  stage and the `START` tip change's probes.
 - A plan with a tip change before its third stage gives two groups: the first two stages, then the
   rest, each with its tip change's key and tip type.
-- **Probes:** a group whose stages use `[1, 2]` and `[1, 2, 3, 4]` gives `[1, 2, 3, 4]`; one whose
-  stages use `[1]` and `[3, 5]` gives `[1, 3, 5]`; and a stage listing `[8, 1]` gives `[1, 8]`
-  (smallest first).
+- **Probes:** each group's probes are its tip change's: tip changes with `[1, 2, 3, 4]` and `[1]`
+  give groups with `[1, 2, 3, 4]` and `[1]`, whatever their stages are.
+- Changing the `probes` list a group returned doesn't change the plan's tip change.
 - **Stage order, not stage IDs:** with a stage order of `["1", "3", "2"]` and a tip change keyed
   `"2"`, the groups are `["1", "3"]` and `["2"]`.
 - A stage without transfers is still in its group.
 - Calling `tipGroups` twice gives equal results, and changing the list it returned doesn't change
   the next one.
 
-The transfer designer's own tests that use `tipGroups` keep working through the re-export; its
-test of probes in tip groups (`transfer-designer.md`, section 6) moves here.
+The transfer designer's own tests that use `tipGroups` keep working through the re-export.

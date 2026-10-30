@@ -12,7 +12,7 @@
 // Specification: transfer-designer.md.
 
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
-import { TIP_TYPES } from "../../../config/tip-types.js";
+import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { describeValue } from "../../shared/error-messages/error-messages.js";
 import { isObject, listNames, checkName } from "../../shared/input-checks/input-checks.js";
 import { OperationList } from "../../shared/operation-list/operation-list.js";
@@ -31,15 +31,16 @@ export { START, tipGroups };
 // stage was inserted before it (Andy, 2026-10-25).
 export const NEW_STAGE_NAME = "New stage";
 
-// The Span-8 has probes 1 to 8. It's a fact about the instrument, not a setting that might change,
-// so it lives here rather than in config/ (stage-list.js has the same number, privately).
+// The Span-8 has probes 1 to 8, numbered as in Biomek Software. It's a fact about the instrument,
+// not a setting that might change, so it lives here rather than in config/.
 const PROBE_COUNT = 8;
 
 // --- Plans ---
 
 // A new plan, and the ID of its one stage: { plan, stageId }. The plan has no components, starting
 // contents, transfers or labels, and no experiment name (""); its stage is called NEW_STAGE_NAME
-// and has the default settings; and its first tips are the first tip type in config/tip-types.js.
+// and has the default settings; and its first tips are the first tip type in config/tip-types.js,
+// on the first DEFAULT_PROBE_COUNT probes (Andy, 2026-10-30).
 export function emptyPlan() {
   const { stageList, id } = new StageList().add(NEW_STAGE_NAME, defaultSettings());
   const plan = deepFreeze({
@@ -48,7 +49,7 @@ export function emptyPlan() {
     operationList: new OperationList(),
     stageList,
     stageOrder: [id],
-    tipChanges: { [START]: { tipType: TIP_TYPES[0] } },
+    tipChanges: { [START]: { tipType: TIP_TYPES[0], probes: probesFor(DEFAULT_PROBE_COUNT) } },
     labwareLabels: {},
     experimentName: "",
   });
@@ -79,19 +80,19 @@ export function setExperimentName(plan, name) {
   return withParts(plan, { experimentName: trimmed });
 }
 
-// A stage's default settings: DEFAULT_PIPETTING_MODE at both ends, and all eight probes, e.g.
+// A stage's default settings: DEFAULT_PIPETTING_MODE at both ends, e.g.
 // { sourceTechnique: "Operation", sourceLiquidType: "Medium", destinationTechnique: …,
-//   destinationLiquidType: …, probes: [1, 2, 3, 4, 5, 6, 7, 8] }. A new object each time.
+//   destinationLiquidType: … }. A new object each time. Probes aren't a stage's: each tip change
+// chooses them (ADR 0007, "Tip changes").
 export function defaultSettings() {
   return {
     ...modeSettings("source", DEFAULT_PIPETTING_MODE),
     ...modeSettings("destination", DEFAULT_PIPETTING_MODE),
-    probes: probesFor(PROBE_COUNT),
   };
 }
 
-// The first `count` probes, e.g. probesFor(4) → [1, 2, 3, 4]. A stage chooses how many probes it
-// uses, not which (Andy, 2026-10-24). Throws unless `count` is a whole number from 1 to 8.
+// The first `count` probes, e.g. probesFor(4) → [1, 2, 3, 4]. A tip change chooses how many probes
+// get tips, not which (Andy, 2026-10-24). Throws unless `count` is a whole number from 1 to 8.
 export function probesFor(count) {
   // Number.isInteger is false for anything that isn't a number (such as "4") and for 2.5.
   if (!Number.isInteger(count) || count < 1 || count > PROBE_COUNT) {
@@ -293,7 +294,8 @@ export function transfersIn(plan, id) {
 
 // --- Tip changes ---
 
-// The tip change at `key` (START or a stage ID), e.g. { tipType: "BC230" }, or null if there's none.
+// The tip change at `key` (START or a stage ID), e.g. { tipType: "BC230", probes: [1, 2, 3, 4] },
+// or null if there's none.
 export function tipChangeAt(plan, key) {
   return Object.hasOwn(plan.tipChanges, key) ? plan.tipChanges[key] : null;
 }
@@ -308,8 +310,8 @@ export function canAddTipChange(plan, beforeId) {
   );
 }
 
-// Returns the plan with a tip change before stage `beforeId`, loading the tip type already in use
-// there. Throws if canAddTipChange is false, saying why.
+// Returns the plan with a tip change before stage `beforeId`, loading the tip type and probes
+// already in use there. Throws if canAddTipChange is false, saying why.
 export function addTipChange(plan, beforeId) {
   if (!plan.stageList.has(beforeId)) {
     throw new Error(`There's no stage ${describeValue(beforeId)} to add new tips before.`);
@@ -323,13 +325,13 @@ export function addTipChange(plan, beforeId) {
     throw new Error(`There are already new tips before stage ${describeValue(beforeId)}.`);
   }
   const groupInUse = tipGroups(plan).find((group) => group.stages.includes(beforeId));
-  return withParts(plan, {
-    tipChanges: withKey(plan.tipChanges, beforeId, { tipType: groupInUse.tipType }),
-  });
+  const tipChange = { tipType: groupInUse.tipType, probes: groupInUse.probes };
+  return withParts(plan, { tipChanges: withKey(plan.tipChanges, beforeId, tipChange) });
 }
 
-// Returns the plan with the tip change at `key` loading `tipType`, e.g. setTipType(plan, START,
-// "BC1070"). Throws if there's no tip change at `key`, then if `tipType` isn't in TIP_TYPES.
+// Returns the plan with the tip change at `key` loading `tipType`, keeping its probes,
+// e.g. setTipType(plan, START, "BC1070"). Throws if there's no tip change at `key`, then if
+// `tipType` isn't in TIP_TYPES.
 export function setTipType(plan, key, tipType) {
   checkTipChangeAt(plan, key);
   if (!TIP_TYPES.includes(tipType)) {
@@ -337,7 +339,22 @@ export function setTipType(plan, key, tipType) {
       `${describeValue(tipType)} isn't a tip type. Choose one of ${listNames(TIP_TYPES)}.`,
     );
   }
-  return withParts(plan, { tipChanges: withKey(plan.tipChanges, key, { tipType }) });
+  const tipChange = { ...plan.tipChanges[key], tipType };
+  return withParts(plan, { tipChanges: withKey(plan.tipChanges, key, tipChange) });
+}
+
+// Returns the plan with the tip change at `key` loading tips on `probes`, stored smallest first,
+// keeping its tip type, e.g. setTipProbes(plan, START, [3, 1]) stores [1, 3]. Every stage using
+// those tips uses all of them (ADR 0007, "Tip changes"). Throws if there's no tip change at `key`,
+// then if `probes` isn't a list of at least one probe number, 1 to 8, each listed once
+// (checkProbes).
+export function setTipProbes(plan, key, probes) {
+  checkTipChangeAt(plan, key);
+  checkProbes(probes);
+  // sort() changes the list it's called on, so it sorts a copy. Without (a, b) => a - b it would
+  // sort numbers as text, putting 10 before 2.
+  const tipChange = { ...plan.tipChanges[key], probes: [...probes].sort((a, b) => a - b) };
+  return withParts(plan, { tipChanges: withKey(plan.tipChanges, key, tipChange) });
 }
 
 // Returns the plan without the tip change at `key`, so the stages after it use the tips before it.
@@ -571,8 +588,8 @@ function withFirstTransfer(plan, transfer) {
 }
 
 // Returns the plan with a tip change before the first stage in the stage order, if there is one,
-// made the START one (its tip type replaces START's), so there's never a tip change before the
-// first stage but START. Otherwise returns the plan as it is.
+// made the START one (its tip type and probes replace START's), so there's never a tip change
+// before the first stage but START. Otherwise returns the plan as it is.
 function withStartTipsFirst(plan) {
   const first = stageOrder(plan)[0];
   if (!Object.hasOwn(plan.tipChanges, first)) {
@@ -587,6 +604,37 @@ function checkTipChangeAt(plan, key) {
   if (!Object.hasOwn(plan.tipChanges, key)) {
     throw new Error(`There are no new tips before stage ${describeValue(key)}.`);
   }
+}
+
+// Throws if `probes` isn't a list of at least one probe number, 1 to 8, each listed once,
+// e.g. [1, 3] is fine; [], [9] and [3, 1, 3] throw. (These checks and their messages moved here
+// from the stage list, unchanged, with probes, on 2026-10-30.)
+function checkProbes(probes) {
+  if (!Array.isArray(probes) || probes.length === 0) {
+    throw new Error(
+      `The probes must be a list of probe numbers from 1 to ${PROBE_COUNT}, like [1, 2, 3, 4], but got ${describeValue(probes)}.`,
+    );
+  }
+  // findIndex, not find: find returns undefined both for "none found" and for a hole in the list,
+  // so a list such as [ , 1] would slip through.
+  const badPosition = probes.findIndex((probe) => !isProbeNumber(probe));
+  if (badPosition !== -1) {
+    throw new Error(
+      `Probe numbers must be whole numbers from 1 to ${PROBE_COUNT}, but got ${describeValue(probes[badPosition])}.`,
+    );
+  }
+  // A probe is repeated if it was already seen earlier in the list. Every probe is a number by now,
+  // so undefined can only mean none is repeated.
+  const repeated = probes.find((probe, position) => probes.indexOf(probe) !== position);
+  if (repeated !== undefined) {
+    throw new Error(`Probe ${repeated} is listed more than once. List each probe once.`);
+  }
+}
+
+// True if `probe` is a whole number from 1 to 8, e.g. 3 → true; 0, 9, 2.5 and "1" → false.
+// Number.isInteger is false for anything that isn't a number, so text such as "1" is refused.
+function isProbeNumber(probe) {
+  return Number.isInteger(probe) && probe >= 1 && probe <= PROBE_COUNT;
 }
 
 // Throws if the plan has no component called `name`.

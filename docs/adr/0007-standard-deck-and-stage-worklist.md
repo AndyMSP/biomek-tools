@@ -44,7 +44,7 @@ type; `src/shared/deck/deck.md`). Today's deck: Res1 and Res2 (DeepReservoir12),
   labware names to positions on the Biomek screen. Labware is identified by name only, so positions
   can change without changing the tool.
 - **Every position used must be reachable by any set of probes,** since the tool chooses probes per
-  stage. Probes 1 and 2 can't reach the front row (P14; `biomek.md`).
+  tip change. Probes 1 and 2 can't reach the front row (P14; `biomek.md`).
 - **Every well has a starting-volume variable** named `Vol_<labware>_<well>`, e.g. `Vol_Plate1_A1`,
   or `Vol_Res1_5` for a reservoir trough (reservoir wells are numbered). They are set once, in
   Instrument Setup's Show Well Properties: 792 for today's deck.
@@ -90,9 +90,9 @@ Finish                          report on all labware data
    - A **tip-change row** (`NewTip` 1) gives the tip type and the probes to load, and leaves the
      other columns empty.
    - A **transfer row** (`NewTip` 0) gives one substage's Transfer From File file and settings. Its
-     tip type is that of the latest tip change before it. Its labware types are looked up in the deck
-     description from the labware its transfers use, not set by the user. Its mix columns are empty
-     when it doesn't mix.
+     tip type and probes are those of the latest tip change before it. Its labware types are looked
+     up in the deck description from the labware its transfers use, not set by the user. Its mix
+     columns are empty when it doesn't mix.
 3. **One Transfer From File file per substage,** with a header row and the columns `SourceLabware,
    SourceWell, DestLabware, DestWell, Volume`.
 
@@ -101,17 +101,20 @@ specification.
 
 ### Stages and substages
 A **stage** (`docs/glossary.md`) is a group of operations that can run in any order and share one
-set of settings: the technique and liquid type at the sources and at the destinations, and the
-probes to use. The file writer splits each stage into **substages**: the stage's transfers
-that share one source labware type and one destination labware type. Each substage is one transfer
+set of settings: the technique and liquid type at the sources and at the destinations. (Its probes
+are its tip change's, below.) The file writer splits each stage into **substages**: the stage's
+transfers that share one source labware type and one destination labware type. Each substage is one transfer
 row, with the stage's settings. A stage's substages are consecutive rows, in any order among
 themselves, since order within a stage isn't fixed anyway.
 
 ### Tip changes
 A **tip change** (`docs/glossary.md`) is its own row, between stages: it unloads all tips and loads
-tips of one type. The run always starts with one. **Tips are loaded by looking ahead:** a tip change
-loads tips on the largest set of probes any stage needs until the next tip change, so no stage ever
-needs a probe without a tip, and tips are never loaded partway.
+tips of one type. The run always starts with one. **A tip change chooses its probes** (Andy,
+2026-10-30): it loads tips on those probes (`LoadProbes`), and every transfer row until the next
+tip change uses all of them (`Probes`). There's never a benefit to a stage using fewer probes than
+have tips, so choosing probes for every stage was wasted effort; a stage that must use fewer probes
+gets a tip change of its own. (Until 2026-10-30 each stage chose its probes, and a tip change loaded
+the largest set any stage before the next tip change needed, "by looking ahead".)
 
 ### Mixing
 The method supports mixing now; the tool will offer it later (`docs/roadmap.md`). A stage can then
@@ -151,12 +154,13 @@ columns:
 - Liquid types in Instrument Setup can't come from variables (the field takes the text literally;
   `biomek.md`), so the tool sets liquid types only per stage, in Transfer From File.
 - A stage is the unit for settings: transfers that differ in technique or liquid type, at either
-  end, or in probes go in different stages (and, once the tool offers mixing, in how they mix). Labware types don't separate stages, since
+  end, go in different stages (and, once the tool offers mixing, in how they mix). Labware types don't separate stages, since
   the file writer splits a stage into substages; tip type doesn't either, since it belongs to tip
   changes. One stage can take several stage-worklist rows, one per substage.
 - Within a stage, Transfer From File chooses the order, so a well that is filled and then drawn from
   must have those transfers in different stages.
-- The user decides where tips change, between any two stages, and with what tip type.
+- The user decides where tips change, between any two stages, with what tip type and on which
+  probes. Using fewer probes for one stage costs a tip change, and so new tips.
 - Replacing only some tips (e.g. one contaminated probe) isn't possible; tips are always all
   unloaded. An `UnloadProbes` column could add this later.
 - Speed was measured on the real instrument (test 22, `biomek.md`). Whether a real run, unlike
@@ -173,3 +177,5 @@ columns:
   nested worklists; one If step for tip changes and one per pair of labware types, in place of Then
   and Else; all nine pairs built; the stage worklist's columns, including mixing; `Vol_` variable
   names; the tool never knows deck positions; every position reachable by any probes.
+- **2026-10-30 (Andy):** a tip change chooses its probes, and every stage until the next tip change
+  uses all of them, replacing per-stage probes and look-ahead tip loading.

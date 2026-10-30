@@ -340,7 +340,7 @@ function stagesFile(plan, stages, folderPath) {
       rows.push(tipChangeRow(group));
       for (const stage of groupStages) {
         for (const substage of stage.substages) {
-          rows.push(transferRow(stage, substage, group.tipType, folderPath));
+          rows.push(transferRow(stage, substage, group, folderPath));
         }
       }
     }
@@ -350,22 +350,24 @@ function stagesFile(plan, stages, folderPath) {
 }
 
 // A tip-change row for tip group `group`, as an object of the columns it fills: NewTip 1, its tip
-// type and the probes to load, every probe any stage in the group uses (look-ahead loading,
-// ADR 0007), e.g. { NewTip: 1, TipType: "BC230", LoadProbes: "1,2,3,4" }.
+// change's tip type and the probes to load, the tip change's probes (ADR 0007, "Tip changes"),
+// e.g. { NewTip: 1, TipType: "BC230", LoadProbes: "1,2,3,4" }.
 function tipChangeRow(group) {
   return { NewTip: 1, TipType: group.tipType, LoadProbes: probesText(group.probes) };
 }
 
-// A transfer row for `substage` of `stage`, which runs on `tipType` tips, as an object of the
-// columns it fills: NewTip 0, the tip type, the file's absolute path, the stage's probes and four
-// settings, and the substage's labware types. LoadProbes and the mix columns stay empty.
-function transferRow(stage, substage, tipType, folderPath) {
+// A transfer row for `substage` of `stage`, which runs in tip group `group`, as an object of the
+// columns it fills: NewTip 0, the group's tip type, the file's absolute path, the group's probes
+// (the same as its tip-change row's LoadProbes, since every stage uses all the probes its tips are
+// on), the stage's four settings, and the substage's labware types. LoadProbes and the mix columns
+// stay empty.
+function transferRow(stage, substage, group, folderPath) {
   const { settings } = stage;
   return {
     NewTip: 0,
-    TipType: tipType,
+    TipType: group.tipType,
     TransferFile: `${folderPath}${substage.fileName}`,
-    Probes: probesText(settings.probes),
+    Probes: probesText(group.probes),
     SrcTechnique: settings.sourceTechnique,
     SrcLiquidType: settings.sourceLiquidType,
     DestTechnique: settings.destinationTechnique,
@@ -391,8 +393,8 @@ function transferFile(substage) {
 // --- How values are written ---
 
 // Probes as a worklist field, in ascending order, e.g. [1, 2, 3, 4] → "1,2,3,4", [1] → "1".
-// The stage list stores probes sorted already, and tip-groups sorts the ones it works out, so the
-// order is kept as given.
+// The transfer designer stores a tip change's probes smallest first, and tip-groups passes them on
+// as they are, so the order is kept as given.
 function probesText(probes) {
   return probes.join(",");
 }

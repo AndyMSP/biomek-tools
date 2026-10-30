@@ -14,6 +14,9 @@
 > change. From reviewing their build (#105): the Stages column is at least 348px wide, so a stage's
 > box fits in it, and open cards no longer say `Current` (sections 3 and 7). They become Final once
 > built and tested by Andy.
+>
+> **Draft changes (2026-10-30, later):** probes are chosen in the tip change's box, not the stage's
+> (ADR 0007, "Tip changes"; sections 7 and 10). They become Final once built and tested by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -282,9 +285,10 @@ and the palette (section 8).
 
 **A stage** (number: its place in the stage order, from 1; its name; count `N transfers`). Its card
 holds:
-- **its settings in one line**, gray, e.g. `↑ Slow · ↓ Non-Contact · 2 probes`: ↑ is the aspirate
-  mode (at the sources), ↓ the dispense mode (at the destinations), from `modeOf`, or `custom` if
-  the settings aren't one of the modes. Its accessible name says "aspirate" and "dispense" in place
+- **its settings in one line**, gray, e.g. `↑ Slow · ↓ Non-Contact`: ↑ is the aspirate mode (at the
+  sources), ↓ the dispense mode (at the destinations), from `modeOf`, or `custom` if the settings
+  aren't one of the modes. (No probe count: a stage uses all its tips' probes, and the tip group's
+  heading counts them.) Its accessible name says "aspirate" and "dispense" in place
   of the arrows. (Its ✎ is beside the stage's name, above.)
 - with no transfers: `No transfers yet. Add some on the deck.`
 - otherwise, `Show transfers ▸`, which shows its **transfer list** (and becomes `Hide transfers ▾`,
@@ -328,11 +332,10 @@ transfers.`
 **Tip group boxes.** Each is a rounded box around its stages, light blue, alternating with light
 sand, so each tip change stands out. Its heading, at the top left, is the tip change: a small tip
 icon, `New tips · BC230 · 2 tips`, and a ✎ that opens its editing box (section 10). The count is how
-many tips the tip change loads: one per probe that any stage in the group uses (`tipGroups`'
-`probes`), so a user can keep it down to save tips (Andy, 2026-10-26). Pointing at the heading
-shows the tooltip `Loads 2 tips: one for each probe that any stage using these tips uses. Fewer
-probes in a stage can mean fewer tips.` (The preview showed `2 probes` here until 2026-10-25, when
-it was removed as confusing; it's back, counted as tips, for a new reason: saving tips.)
+many tips the tip change loads: one per probe it loads (`tipGroups`' `probes`), chosen in its box
+(Andy, 2026-10-30). Pointing at the heading shows the tooltip `Loads 2 tips. Every stage until the
+next new tips uses all of them.` (The preview showed `2 probes` here until 2026-10-25, when it was
+removed as confusing; it came back, counted as tips, on 2026-10-26, so a user could save tips.)
 
 **Adding stages and tip changes: the seams.** Stages in a box sit 10px apart. The space between two
 cards, above a box's first stage, and below a box's last stage, is a **seam**. Pointing at a seam,
@@ -485,8 +488,6 @@ as `Non-Contact`. From the top:
               ASPIRATE      DISPENSE
   MODE      [ Medium  ▾ ]  [ Medium  ▾ ]
   ```
-- **Probes**, under the grid: buttons `1` to `8`, choosing how many (`probesFor`), with every
-  probe the stage uses highlighted (picking 4 lights up 1 to 4).
 - **Remove**, which asks `Remove stage 2, “Drugs” and its 4 transfers?` (or `Remove stage 2,
   “Drugs”?` with none). Remove takes it out (`removeStage`; message `Removed stage 2, “Drugs” and
   its 4 transfers. Undo brings it back.`, or without "and its …"); if it was open, the first stage
@@ -496,11 +497,14 @@ as `Non-Contact`. From the top:
 **Save** renames it (if the name changed) and changes its settings as one edit (message `Saved stage
 2, “Drugs”.`).
 
-**A tip change's box**: **Tip type**, a button per tip type (`TIP_TYPES`), one chosen; **Remove**,
-which asks `Remove these new tips?` and removes it (`removeTipChange`; message `Removed the new tips:
-the stages after them keep the tips before.`). The first tip change has no Remove, and says `The run
-always starts by loading tips, so these can't be removed.` **Save** sets the tip type (`setTipType`;
-message `New tips are now BC230.`).
+**A tip change's box**: **Tip type**, a button per tip type (`TIP_TYPES`), one chosen; **Probes**,
+buttons `1` to `8`, choosing how many probes get tips (`probesFor`), with every probe the tip change
+loads highlighted (picking 4 lights up 1 to 4; Andy, 2026-10-30: moved here from the stage's box,
+since every stage uses all its tips' probes); **Remove**, which asks `Remove these new tips?` and
+removes it (`removeTipChange`; message `Removed the new tips: the stages after them keep the tips
+before.`). The first tip change has no Remove, and says `The run always starts by loading tips, so
+these can't be removed.` **Save** sets the tip type and probes as one edit (`setTipType`,
+`setTipProbes`; message `New tips: BC230 on 4 probes.`).
 
 **A component's box**: section 8.
 

@@ -11,18 +11,17 @@ import { DECK } from "../../../config/deck.js";
 import {
   START,
   emptyPlan,
-  defaultSettings,
   probesFor,
   stageOrder,
   addStage,
   renameStage,
-  changeStageSettings,
   removeStage,
   addTransfer,
   addComponent,
   addToWells,
   addTipChange,
   setTipType,
+  setTipProbes,
   setLabel,
   setExperimentName,
 } from "./transfer-designer.js";
@@ -57,9 +56,9 @@ function transferTo(stage, well, volume = 50, from = "1") {
 }
 
 // A plan with something in every part: the experiment name "Exp36"; components Media and Dye in
-// troughs 1 and 2; stages "1" (Seeding), "2" (Wait, without transfers) and "3" (Treatment, 4
-// probes), in that order; transfers of 2.5 and 50 µL in stage 1 and 0.1 µL in stage 3; a tip change
-// before stage 3 with the last tip type; and a label on PLATE.
+// troughs 1 and 2; stages "1" (Seeding), "2" (Wait, without transfers) and "3" (Treatment), in
+// that order; transfers of 2.5 and 50 µL in stage 1 and 0.1 µL in stage 3; START tips on probes 1
+// to 4; a tip change before stage 3 with the last tip type, on probe 1; and a label on PLATE.
 function fullPlan() {
   let { plan } = emptyPlan();
   plan = setExperimentName(plan, "Exp36");
@@ -70,11 +69,12 @@ function fullPlan() {
   plan = renameStage(plan, "1", "Seeding");
   plan = renameStage(addStage(plan, null).plan, "2", "Wait");
   plan = renameStage(addStage(plan, null).plan, "3", "Treatment");
-  plan = changeStageSettings(plan, "3", { ...defaultSettings(), probes: probesFor(4) });
   plan = addTransfer(plan, transferTo("1", "A1", 2.5));
   plan = addTransfer(plan, transferTo("1", "A2", 50));
   plan = addTransfer(plan, transferTo("3", "A1", 0.1, "2"));
+  plan = setTipProbes(plan, START, probesFor(4));
   plan = setTipType(addTipChange(plan, "3"), "3", TIP_TYPES.at(-1));
+  plan = setTipProbes(plan, "3", [1]);
   return setLabel(plan, PLATE, "Assay plate");
 }
 
@@ -82,6 +82,31 @@ function fullPlan() {
 // each time.
 function fullFile() {
   return JSON.parse(planToText(fullPlan(), SAVED_BY));
+}
+
+// fullFile() as a version 2 file, as saved from 2026-10-28 to 2026-10-30: each stage's settings
+// hold its probes (stages 1 and 2, under START, use [1, 2] and [1, 2, 3, 4]; stage 3, under its own
+// tip change, uses [1]), and each tip change is { tipType } only. Opened, it gives fullPlan():
+// START on [1, 2, 3, 4] and the tip change on [1].
+function version2File() {
+  const file = { ...fullFile(), version: 2 };
+  const probesOfStages = [[1, 2], [1, 2, 3, 4], [1]];
+  file.stages = file.stages.map((stage, index) => ({
+    ...stage,
+    settings: { ...stage.settings, probes: probesOfStages[index] },
+  }));
+  file.tipChanges = Object.fromEntries(
+    Object.entries(file.tipChanges).map(([key, tipChange]) => [key, { tipType: tipChange.tipType }]),
+  );
+  return file;
+}
+
+// fullFile() as a version 1 file, as saved before 2026-10-28: like version 2, without
+// experimentName.
+function version1File() {
+  const file = { ...version2File(), version: 1 };
+  delete file.experimentName;
+  return file;
 }
 
 // Opens `file`, an object, as a plan file's text.
@@ -145,7 +170,18 @@ describe("plan-file", () => {
 
   test("the format and version are the specification's", () => {
     assert.equal(PLAN_FILE_FORMAT, "biomek-tools transfer plan");
-    assert.equal(PLAN_FILE_VERSION, 2);
+    assert.equal(PLAN_FILE_VERSION, 3);
+  });
+
+  test("planToText writes each tip change with its probes, and each stage's settings without any", () => {
+    const file = fullFile();
+    assert.deepEqual(file.tipChanges, {
+      [START]: { tipType: TIP_TYPES[0], probes: [1, 2, 3, 4] },
+      3: { tipType: TIP_TYPES.at(-1), probes: [1] },
+    });
+    for (const stage of file.stages) {
+      assert.equal(Object.hasOwn(stage.settings, "probes"), false, stage.id);
+    }
   });
 
   test("planToText refuses a savedBy that isn't a name", () => {
@@ -171,6 +207,12 @@ describe("plan-file", () => {
     assert.deepEqual(stageOrder(opened), ["1", "2", "3"]);
     const volumes = opened.operationList.listOperations().map((operation) => operation.volume);
     assert.deepEqual(volumes, [2.5, 50, 0.1]);
+  });
+
+  test("tip changes keep their probes: START on [1, 2, 3, 4] and a tip change on [1]", () => {
+    const opened = planFromText(planToText(fullPlan(), SAVED_BY));
+    assert.deepEqual(opened.tipChanges[START].probes, [1, 2, 3, 4]);
+    assert.deepEqual(opened.tipChanges["3"].probes, [1]);
   });
 
   test('a plan with no name saves "experimentName": "" and opens with none', () => {
@@ -214,29 +256,86 @@ describe("plan-file", () => {
     assert.deepEqual(Object.keys(opened.tipChanges).sort(), ["3", START].sort());
   });
 
-  test("an empty plan, saved and opened, has the same contents, and is written as version 2", () => {
+  test("an empty plan, saved and opened, has the same contents, and is written as version 3", () => {
     const plan = emptyPlan().plan;
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 2);
+    assert.equal(JSON.parse(text).version, 3);
     const opened = planFromText(text);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
   });
 
+  // --- Version 2 files ---
+
+  test("a version 2 file opens: each tip change gets every probe its stages used, and the stages' settings have no probes", () => {
+    const opened = open(version2File());
+    assert.deepEqual(opened.tipChanges, {
+      [START]: { tipType: TIP_TYPES[0], probes: [1, 2, 3, 4] },
+      3: { tipType: TIP_TYPES.at(-1), probes: [1] },
+    });
+    for (const stage of opened.stageList.listStages()) {
+      assert.equal(Object.hasOwn(stage.settings, "probes"), false, stage.id);
+    }
+    assert.deepEqual(contentsOf(opened), contentsOf(fullPlan()));
+  });
+
+  test("a version 2 file's tip change gets the probes of its stages only, in stage order", () => {
+    // Stage 1 uses [5], stage 2 uses [2, 3], stage 3 (with its own tip change) uses [8, 1].
+    const file = version2File();
+    file.stages[0].settings.probes = [5];
+    file.stages[1].settings.probes = [2, 3];
+    file.stages[2].settings.probes = [8, 1];
+    const opened = open(file);
+    assert.deepEqual(opened.tipChanges[START].probes, [2, 3, 5]);
+    assert.deepEqual(opened.tipChanges["3"].probes, [1, 8]);
+  });
+
+  test("a version 2 stage without probes is refused as missing them", () => {
+    const file = version2File();
+    delete file.stages[1].settings.probes;
+    assertRefused(file, 'stage 2\'s settings are missing "probes", which a version 2 file\'s stages have.');
+  });
+
+  test("a version 2 stage with bad probes is refused with setTipProbes's message", () => {
+    const file = version2File();
+    file.stages[1].settings.probes = [3, 1, 3];
+    assertRefused(file, "stage 2: Probe 3 is listed more than once. List each probe once.");
+    file.stages[1].settings.probes = [9];
+    assertRefused(file, "stage 2: Probe numbers must be whole numbers from 1 to 8, but got 9.");
+  });
+
+  test("a version 2 tip change with probes is refused as not having exactly its properties", () => {
+    const file = version2File();
+    file.tipChanges.start = { tipType: TIP_TYPES[0], probes: [1] };
+    assertRefused(file, 'the tip change at "start" must be an object with exactly "tipType".');
+  });
+
+  test("a version 3 tip change without probes is refused as not having exactly its properties", () => {
+    const file = fullFile();
+    file.tipChanges.start = { tipType: TIP_TYPES[0] };
+    assertRefused(file, 'the tip change at "start" must be an object with exactly "tipType" and "probes".');
+  });
+
+  test("a version 3 stage with probes is refused by the stage list as an extra setting", () => {
+    const file = fullFile();
+    file.stages[0].settings.probes = [1, 2];
+    assertRefused(file, /stage 1: A stage's settings can only have .+, but also got "probes"\./);
+  });
+
   // --- Version 1 files ---
 
-  // fullFile() as a version 1 file: saved before 2026-10-28, without experimentName.
-  function version1File() {
-    const file = { ...fullFile(), version: 1 };
-    delete file.experimentName;
-    return file;
-  }
-
-  test("a version 1 file opens, with an experiment name of \"\"", () => {
+  test('a version 1 file opens, with an experiment name of "" and probes as for version 2', () => {
     const opened = open(version1File());
     assert.equal(opened.experimentName, "");
     const { experimentName, ...rest } = contentsOf(opened);
     const { experimentName: ignored, ...expected } = contentsOf(fullPlan());
     assert.deepEqual(rest, expected);
+    assert.deepEqual(opened.tipChanges[START].probes, [1, 2, 3, 4]);
+  });
+
+  test("a version 1 stage without probes is refused, naming version 1", () => {
+    const file = version1File();
+    delete file.stages[0].settings.probes;
+    assertRefused(file, 'stage 1\'s settings are missing "probes", which a version 1 file\'s stages have.');
   });
 
   test("a version 1 file with experimentName is refused as having an extra property", () => {
@@ -247,7 +346,7 @@ describe("plan-file", () => {
   });
 
   test("a version 2 file without experimentName is refused as missing it", () => {
-    const file = fullFile();
+    const file = version2File();
     delete file.experimentName;
     assertRefused(file, 'it\'s missing "experimentName".');
   });
@@ -290,8 +389,8 @@ describe("plan-file", () => {
 
   test("a version above this one was saved by a newer version of the tools", () => {
     assertRefused(
-      { ...fullFile(), version: 3 },
-      "it was saved by a newer version of the tools (plan format 3). Open it with that version or a later one.",
+      { ...fullFile(), version: 4 },
+      "it was saved by a newer version of the tools (plan format 4). Open it with that version or a later one.",
     );
   });
 
@@ -398,8 +497,18 @@ describe("plan-file", () => {
     named.stages[1].name = "";
     assertRefused(named, /stage 2: The stage name is blank\./);
     const set = fullFile();
-    set.stages[2].settings.probes = [];
-    assertRefused(set, /stage 3: /);
+    set.stages[2].settings.sourceTechnique = "";
+    assertRefused(set, /stage 3: The source technique is blank\./);
+    const notAnObject = fullFile();
+    notAnObject.stages[2].settings = null;
+    assertRefused(notAnObject, /stage 3: A stage's settings must be an object with /);
+  });
+
+  test("a version 2 stage's name is checked before its probes", () => {
+    const file = version2File();
+    file.stages[1].name = "";
+    delete file.stages[1].settings.probes;
+    assertRefused(file, /stage 2: The stage name is blank\./);
   });
 
   // --- Refusing: transfers ---
@@ -500,23 +609,25 @@ describe("plan-file", () => {
 
   test("a tip change before a stage that isn't in the file is refused", () => {
     const file = fullFile();
-    file.tipChanges["9"] = { tipType: TIP_TYPES[0] };
+    file.tipChanges["9"] = { tipType: TIP_TYPES[0], probes: [1] };
     assertRefused(file, 'a tip change is before stage "9", which isn\'t one of the file\'s stages.');
   });
 
   test("a tip change keyed by the first stage is refused", () => {
     const file = fullFile();
-    file.tipChanges["1"] = { tipType: TIP_TYPES[0] };
+    file.tipChanges["1"] = { tipType: TIP_TYPES[0], probes: [1] };
     assertRefused(
       file,
       'a tip change is before stage "1", the first stage, which always starts with the tips at "start".',
     );
   });
 
-  test("a tip change that isn't an object with exactly a tip type is refused", () => {
-    const file = fullFile();
-    file.tipChanges.start = { tipType: TIP_TYPES[0], probes: [1] };
-    assertRefused(file, 'the tip change at "start" must be an object with exactly "tipType".');
+  test("a tip change that isn't an object with exactly a tip type and probes is refused", () => {
+    for (const tipChange of [null, { tipType: TIP_TYPES[0], probes: [1], notes: "" }]) {
+      const file = fullFile();
+      file.tipChanges.start = tipChange;
+      assertRefused(file, 'the tip change at "start" must be an object with exactly "tipType" and "probes".');
+    }
   });
 
   test("a tip type not in TIP_TYPES is refused", () => {
@@ -524,6 +635,23 @@ describe("plan-file", () => {
     file.tipChanges["3"].tipType = "BC50";
     const known = TIP_TYPES.map((tipType) => `"${tipType}"`).join(", ");
     assertRefused(file, `the tip change at "3" loads "BC50", which isn't one of ${known}.`);
+  });
+
+  test("a tip change's probes setTipProbes refuses give its message, after the tip change's place", () => {
+    const file = fullFile();
+    file.tipChanges["3"].probes = [9];
+    assertRefused(file, 'the tip change at "3": Probe numbers must be whole numbers from 1 to 8, but got 9.');
+    file.tipChanges["3"].probes = [];
+    assertRefused(
+      file,
+      'the tip change at "3": The probes must be a list of probe numbers from 1 to 8, like [1, 2, 3, 4], but got a list.',
+    );
+  });
+
+  test("a tip change's probes are stored smallest first", () => {
+    const file = fullFile();
+    file.tipChanges["3"].probes = [4, 2];
+    assert.deepEqual(open(file).tipChanges["3"].probes, [2, 4]);
   });
 
   // --- Labels ---

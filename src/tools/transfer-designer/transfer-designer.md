@@ -3,6 +3,9 @@
 > **Draft (2026-10-26).** Written for v0.2.0, from the transfer designer preview, where these rules
 > were tried with Andy (2026-10-24 to 2026-10-26). It becomes Final once its code is built and Andy
 > has tested the page.
+>
+> **Draft change (2026-10-30):** each tip change chooses its probes, and stages no longer have
+> probes (ADR 0007, "Tip changes"; sections 3, 4, 5 and 6), from the mixing preview.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -54,7 +57,8 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   operationList:    /* an OperationList */,
   stageList:        /* a StageList */,
   stageOrder:       ["1", "3", "2"],
-  tipChanges:       { start: { tipType: "BC1070" }, "2": { tipType: "BC230" } },
+  tipChanges:       { start: { tipType: "BC1070", probes: [1, 2, 3, 4, 5, 6, 7, 8] },
+                      "2": { tipType: "BC230", probes: [1, 2, 3, 4] } },
   labwareLabels:    { Plate: "Assay plate" },
   experimentName:   "Exp36",
 }
@@ -70,14 +74,17 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   microliters (µL) of each. Every well is on the deck, and every component named is in `components`.
 - **`operationList`**: the transfers. Every transfer's `stage` is a stage in `stageList`, and its
   wells are on the deck.
-- **`stageList`**: the stages, with their five settings (`stage-list.md`).
+- **`stageList`**: the stages, with their four settings (`stage-list.md`).
 - **`stageOrder`**: the stage order (below), as a list of stage IDs holding every stage in
   `stageList` exactly once (ADR 0011).
-- **`tipChanges`**: the plan's tip changes (`docs/glossary.md`, "Tip change"), each `{ tipType }`,
-  by where they happen: **`START`** (the text `"start"`), before the first stage, always there; or a
-  stage's ID, just before that stage. (Stage IDs are numbers written as text, so none is
+- **`tipChanges`**: the plan's tip changes (`docs/glossary.md`, "Tip change"), each `{ tipType,
+  probes }`, by where they happen: **`START`** (the text `"start"`), before the first stage, always
+  there; or a stage's ID, just before that stage. (Stage IDs are numbers written as text, so none is
   `"start"`.) There is never one keyed by the first stage in the stage order: that stage's tips
-  are the `START` ones.
+  are the `START` ones. A tip change's **`probes`** are the probes that get its tips, and every
+  stage using those tips uses all of them (Andy, 2026-10-30; ADR 0007, "Tip changes"): a list of at
+  least one probe number, each a whole number from 1 to 8 (the Span-8's probes, numbered as in
+  Biomek Software), none twice, stored smallest first (`[3, 1]` is stored as `[1, 3]`).
 - **`labwareLabels`**: the label the user gave each labware (`docs/glossary.md`, "Labware label"),
   by the labware's name in the deck description. A labware without one is labelled by that name.
   No two labware have the same label.
@@ -106,9 +113,9 @@ without transfers isn't run.
   (`stage-list.md`).
 - A new stage's settings are copied from the stage just before it in the stage order, or, with none
   before it, from the first stage. The stage of a new plan has the **default settings**: the default
-  pipetting mode, `DEFAULT_PIPETTING_MODE` in `config/` (below), at both ends, and all eight probes
-  (Andy, 2026-10-26: named in `config/`, so the menus keep their order and the default can change
-  without changing code).
+  pipetting mode, `DEFAULT_PIPETTING_MODE` in `config/` (below), at both ends (Andy, 2026-10-26:
+  named in `config/`, so the menus keep their order and the default can change without changing
+  code).
 - A stage is added **before** a given stage (or last). With **take tips**, a tip change keyed by that
   stage moves onto the new stage, so the new stage is the first to use those tips; without it, the
   new stage uses the tips before that tip change (Andy, 2026-10-25: so a stage can be added at the
@@ -117,10 +124,7 @@ without transfers isn't run.
   2026-10-26). A tip change keyed by it goes too.
 - **A stage may mix labware types.** The file writer splits it into substages (ADR 0007, amended
   2026-10-26), so nothing here refuses it.
-- How many probes a stage uses is chosen as a number: the stage gets the first that many probes
-  (`probesFor(4)` → `[1, 2, 3, 4]`; Andy, 2026-10-24: choosing which probes would be too much). The
-  stage list accepts any probes, though, so the rules here don't assume a stage's probes are the
-  first ones.
+
 
 ### Pipetting modes
 A stage's techniques and liquid types are chosen as **pipetting modes** (`docs/glossary.md`), listed
@@ -140,17 +144,19 @@ aren't one of the modes (for example, after the modes in `config/` change).
 - Positions are positions in the operation list, counting from 0, as in `listOperations()`.
 
 ### Tip changes and tip groups
-- The run starts with the `START` tip change, which can't be removed. Another can be added just
-  before any stage except the first in the stage order, at most one per place. It loads the tip type
-  already in use there, until changed. Removing one leaves the stages after it on the tips before it.
+- The run starts with the `START` tip change, which can't be removed. A new plan's `START` tips go
+  on the first `DEFAULT_PROBE_COUNT` probes, from `config/` (below): 4 (Andy, 2026-10-30). Another tip change can be added just before any stage except the first in
+  the stage order, at most one per place. It loads the tip type and probes already in use there,
+  until changed. Removing one leaves the stages after it on the tips before it.
+- How many probes a tip change loads is chosen as a number: it gets the first that many probes
+  (`probesFor(4)` → `[1, 2, 3, 4]`; Andy, 2026-10-24: choosing which probes would be too much).
+  `setTipProbes` accepts any probes, though, so the rules here don't assume they're the first ones.
 - A **tip group** (`docs/glossary.md`) is a group of stages that run on the same tips: the stages
-  after one tip change, up to the next, in stage order. Tips go on every probe that any of those
-  stages uses (ADR 0007, "Tips are loaded
-  by looking ahead"), e.g. stages using `[1, 2]` and `[1, 2, 3, 4]` → `[1, 2, 3, 4]`, and stages
-  using `[1]` and `[3, 5]` → `[1, 3, 5]`.
+  after one tip change, up to the next, in stage order, all using that tip change's tip type and
+  probes (`tip-groups.md`).
 - After stages are added or removed, a tip change keyed by the stage that's now first in the stage
-  order becomes the `START` one (its tip type replaces the `START` one's), so there's never one
-  before the first stage but `START`.
+  order becomes the `START` one (its tip type and probes replace the `START` one's), so there's
+  never one before the first stage but `START`.
 
 ### Components and starting contents
 - Components are added by name and color, renamed, recolored and removed. Renaming changes the name
@@ -198,6 +204,9 @@ Two files in `config/` (ADR 0009), which this module's tests check:
   ends, e.g. `"Medium"`; it must be a mode usable at both ends.
 - **`config/tip-types.js`** exports `TIP_TYPES`: a non-empty list of tip type names, e.g.
   `["BC230", "BC1070"]`, each a name, none repeated.
+- **`config/tip-types.js`** also exports `DEFAULT_PROBE_COUNT`: how many probes a new plan's first
+  tips go on, the first that many (`probesFor`). A whole number from 1 to 8; `4` (Andy, 2026-10-30).
+  It's in `config/` because it may change (CLAUDE.md, "No hard-coded configuration").
 
 ## 4. Interface
 The module exports the functions and constants below. None changes the plan or the values it's
@@ -246,8 +255,9 @@ given; "returns the plan with …" means a new plan.
 | `START` | (a constant) `"start"`. Re-exported from the `tip-groups` shared module (`tip-groups.md`). |
 | `tipChangeAt(plan, key)` | the tip change at `key` (`START` or a stage ID), or `null`. |
 | `canAddTipChange(plan, beforeId)` | `true` if `beforeId` is a stage, not the first in the stage order, without a tip change before it. |
-| `addTipChange(plan, beforeId)` | the plan with a tip change before stage `beforeId`, loading the tip type in use there. Throws if `canAddTipChange` is `false`. |
+| `addTipChange(plan, beforeId)` | the plan with a tip change before stage `beforeId`, loading the tip type and probes in use there. Throws if `canAddTipChange` is `false`. |
 | `setTipType(plan, key, tipType)` | the plan with the tip change at `key` loading `tipType`. Throws if there's none at `key`, or `tipType` isn't in `TIP_TYPES`. |
+| `setTipProbes(plan, key, probes)` | the plan with the tip change at `key` loading tips on `probes` (section 3, "Tip changes and tip groups"), stored smallest first. Throws if there's none at `key`, or `probes` isn't a list of probe numbers (below). |
 | `removeTipChange(plan, key)` | the plan without the tip change at `key`. Throws for `START`, or if there's none at `key`. |
 | `tipGroups(plan)` | the tip groups, in stage order, each with the tip change that starts it: `{ key, tipType, stages, probes }` each, `stages` being stage IDs in stage order and `probes` the probes that get tips, smallest first. Re-exported from the `tip-groups` shared module, which the file writer uses too (`tip-groups.md`; Andy, 2026-10-28). |
 
@@ -289,9 +299,12 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `addTipChange`: `beforeId` isn't a stage | `There's no stage "9" to add new tips before.` |
 | `addTipChange`: it's the first stage | `The first stage always starts with new tips, so there can't be another tip change before it.` |
 | `addTipChange`: there's one there already | `There are already new tips before stage "2".` |
-| `setTipType`, `removeTipChange`: none at `key` | `There are no new tips before stage "2".` |
+| `setTipType`, `setTipProbes`, `removeTipChange`: none at `key` | `There are no new tips before stage "2".` |
 | `setTipType`: not a known tip type | `"BC50" isn't a tip type. Choose one of "BC230", "BC1070".` |
 | `removeTipChange`: `START` | `The run always starts by loading tips, so the first tips can't be removed.` |
+| `setTipProbes`: `probes` isn't a list, or is empty | `The probes must be a list of probe numbers from 1 to 8, like [1, 2, 3, 4], but got "1,2".` |
+| `setTipProbes`: a probe isn't a whole number from 1 to 8 | `Probe numbers must be whole numbers from 1 to 8, but got 9.` The first such value is named. |
+| `setTipProbes`: a probe appears twice | `Probe 3 is listed more than once. List each probe once.` |
 | No component with that name | `There's no component called "Dye" in this plan. Add it to the plan's components first.` |
 | A component name isn't a name | `checkName`'s messages, naming `component name`. |
 | A component name is used | `There's already a component called "Media". Choose a different name.` |
@@ -315,6 +328,8 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
   later check.
 - `addTipChange`: in the table's order.
 - `setTipType`: none at `key`, then the tip type.
+- `setTipProbes`: none at `key`, then the list, then each probe in order, then repeats. (These three
+  messages moved here from the stage list, unchanged, with probes, on 2026-10-30.)
 - `addComponent`: the name (`checkName`, then used), then the color (text, then used).
 - `renameComponent`: the component exists, then the new name.
 - `setComponentColor`: the component exists, then the color.
@@ -335,13 +350,15 @@ order of checks.
   `liquidType`, `ends`; names valid and unique; liquid types follow Biomek's rule; `ends` valid;
   no two modes for one end share both technique and liquid type; each end has at least one mode;
   `DEFAULT_PIPETTING_MODE` names a mode usable at both ends.
-- `config/tip-types.js`: a non-empty list of valid names, none repeated.
+- `config/tip-types.js`: a non-empty list of valid names, none repeated; `DEFAULT_PROBE_COUNT` a
+  whole number from 1 to 8.
 
 **Plans and modes**
 - `defaultSettings()` gives `DEFAULT_PIPETTING_MODE`'s technique and liquid type at both ends,
-  and probes 1 to 8.
+  and nothing else (no probes).
 - `emptyPlan()` gives one stage named `NEW_STAGE_NAME` with default settings, `START` tips of the
-  first tip type, an experiment name of `""`, and nothing else; its `stageId` is that stage.
+  first tip type on the first `DEFAULT_PROBE_COUNT` probes (`[1, 2, 3, 4]`), an experiment name of `""`, and nothing else; its `stageId` is
+  that stage.
 - `setExperimentName` sets `"Exp36"`; trims `" Exp36 "` to `"Exp36"`; `""` and `"  "` remove the
   name; giving the name it already has returns the same plan; `5`, `"Exp 36"` and a name of 41
   characters throw with `checkExperimentName`'s messages, leaving the plan unchanged.
@@ -363,7 +380,7 @@ order of checks.
   order, leaving the others in their order; a tip change keyed by it goes; removing the only stage
   throws.
 - Removing the first stage, when the second has its own tip change, makes that tip change the
-  `START` one, with its tip type.
+  `START` one, with its tip type and probes.
 - `renameStage` and `changeStageSettings` change only that stage; the stage list's errors pass
   through.
 - `stageEnds` counts transfers cumulatively in run order, leaving out stages without transfers.
@@ -397,9 +414,16 @@ order of checks.
 **Tip changes**
 - `tipGroups` and `START` are tested in `tip-groups.test.js` (`tip-groups.md`); here, `tipGroups`
   re-exported from this module gives the same groups as the shared module's.
-- `addTipChange` takes the tip type in use; adding before the first stage, twice in one place, or
-  before a stage that isn't in the plan throws; `canAddTipChange` is `false` for each.
-- `setTipType` with a known type works; an unknown one throws.
+- `addTipChange` takes the tip type and probes in use (with `START` on `[1, 2]`, a tip change added
+  before stage 2 has `[1, 2]`); adding before the first stage, twice in one place, or before a stage
+  that isn't in the plan throws; `canAddTipChange` is `false` for each.
+- `setTipType` with a known type works; an unknown one throws; it leaves the probes as they were.
+- `setTipProbes` sets `[1, 2, 3, 4]`; stores `[3, 1, 2]` as `[1, 2, 3]`; accepts `[1]` and all
+  eight; leaves the tip type as it was; with none at `key` throws.
+- `setTipProbes` errors: `"1,2"`, `[]` and `null` give the probes-list error; `[0]`, `[9]`,
+  `[2.5]` and `["1"]` give the probe-number error, and `[1, 9, 10]` names `9`; `[3, 1, 3]` gives
+  the repeated-probe error, naming 3.
+- Changing the `probes` list given to `setTipProbes` afterwards doesn't change the plan.
 - `removeTipChange` merges the two tip groups; for `START` it throws.
 
 **Components and starting contents**
