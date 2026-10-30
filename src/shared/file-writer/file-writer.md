@@ -6,6 +6,11 @@
 >
 > **Draft change (2026-10-30):** probes come from the tip changes, not the stages (ADR 0007, "Tip
 > changes"; section 3, `Stages.csv`, and section 6).
+>
+> **Draft change (2026-10-30, mixing layer (b)):** the mix columns are written from each stage's
+> mixes, with volumes from the `mix-volumes` module, and a plan with a mix that works out to 0 µL is
+> refused (ADR 0007, "Mixing"; sections 2, 3, 5 and 6). Substages come from the `substages` shared
+> module, unchanged.
 
 ## 1. Purpose
 `file-writer.js` turns a **plan** (`docs/glossary.md`) into the files the general-purpose method
@@ -28,14 +33,13 @@ It can refuse a plan. A refused plan gets no files (section 5).
 Version 1 writes the setup worklist; the stage worklist, with a tip-change row before each tip group
 and a transfer row for each substage, in stage order; and the Transfer From File files. It splits
 stages into substages, loads tips on each tip change's probes (ADR 0007, "Tip changes"), gives each
-transfer row the tip type and probes of the tip change before it, and rounds volumes to 3 decimal places.
+transfer row the tip type and probes of the tip change before it, writes each row's mixing (ADR
+0007, "Mixing"), and rounds volumes to 3 decimal places.
 
 Not in version 1:
 - **Checking techniques against tip types** (roadmap, "Technical debt").
 - **Dead volume** (roadmap, "Technical debt").
-- **Mixing.** The general-purpose method supports it (ADR 0007), and stages hold their mixes
-  (`stage-list.md`, since 2026-10-30), but this version doesn't write them yet: the mix columns are
-  written empty, and a stage's mixes are ignored.
+- **Mix steps** (`docs/glossary.md`), which come with the page's mixing (roadmap, mixing layer (c)).
 - **Replacing only some tips** (ADR 0007, "Consequences").
 - **Well capacities**, to warn about overfilling (roadmap, "Later").
 - **Resuming after an interruption** (roadmap, "Later").
@@ -52,7 +56,7 @@ Not in version 1:
   uses:
   - its starting contents, for each well's starting volume: the sum of the well's components;
   - its operation list, for the transfers;
-  - its stage list, for each stage's settings;
+  - its stage list, for each stage's settings, mixes included;
   - its stage order;
   - its tip changes;
   - its **experiment name** (`docs/glossary.md`; `transfer-designer.md`), for the folder's name. A
@@ -61,6 +65,10 @@ Not in version 1:
     other than the plan they hold (Andy, 2026-10-28).
 
   It doesn't use the components' names or colors, or the labware labels.
+
+  Stages are split into substages by the `substages` shared module (`substages.md`), and each row's
+  mix volumes come from the `mix-volumes` shared module (`mix-volumes.md`), which the transfer
+  designer uses too, so the page and the files always agree.
 
   A stage has a **stage ID**, a fixed label the stage list gives it when it's made (`stage-list.md`),
   which says nothing about where the stage comes; and a **place in the stage order**, its position
@@ -121,7 +129,12 @@ A header row with the 17 columns of ADR 0007, then one row per tip change or sub
     `LoadProbes`, since every stage uses all the probes its tips are on;
   - `SrcTechnique`, `SrcLiquidType`, `DestTechnique` and `DestLiquidType`: the stage's settings;
   - `SrcLabwareType` and `DestLabwareType`: the substage's labware types, from the deck description;
-  - the six mix columns, empty (section 2).
+  - the six mix columns, `SrcMixVolume`, `SrcMixTimes`, `SrcMixSpeed`, `DestMixVolume`,
+    `DestMixTimes` and `DestMixSpeed`. At an end whose mix isn't `null`: the row's mix volume at
+    that end (`mix-volumes`), and the mix's `times` and `speed`. At an end that doesn't mix, its
+    three columns are empty. A row's technique at that end is already the mixing one, since the
+    transfer designer keeps them matched (`transfer-designer.md`), so Biomek uses the columns
+    (`biomek.md`, "Mixing").
 
   `LoadProbes` is empty.
 
@@ -145,7 +158,8 @@ The files are **CSV** (comma-separated values): each row is one line, and each v
   such as `Stages.csv` on its own, would be read relative to some other folder; the manual always
   asks for full paths, B56358AF 22-9 and chapter 27.)
 - **Volumes** are rounded to 3 decimal places (ADR 0007) and written without trailing zeros: `10`,
-  `10.5`, `0.125`.
+  `10.5`, `0.125`. Mix volumes and mix speeds are written the same way (a mix volume is already a
+  whole number of tenths: `108`, `89.9`); mix times are whole numbers: `3`.
 - **Quoting:** a field that contains a comma is put in double quotes, e.g. `"1,2"`, as **RFC 4180**
   (the standard that defines the CSV format) describes. No other field is quoted.
 - **Line endings:** every line ends with **CRLF**, the two characters Windows ends a line with
@@ -203,13 +217,14 @@ the transfer designer page shows them, never by their stage ID.
 | The plan has no transfers | `There's nothing to write: the plan has no transfers. Add transfers to a stage first.` |
 | A stage with transfers comes later than 99th in the stage order, so its file name has no room for its place (section 3) | `Stage 104, "Wash", is too far down the list: file names have room for 99 stages. Remove some stages before it.` |
 | A stage has an **overdraw**: a transfer asks a well for more than it holds (`contents-tracking`) (Andy, 2026-10-28) | `Stage 3, "Seeding", has an overdraw: a transfer asks a well for more than it holds. Fix it before writing the files.` |
+| A stage has a **mix problem**: a mix works out to 0 µL, because its emptiest well holds too little when it's mixed (`mix-volumes`) (Andy, 2026-10-30) | `Stage 3, "Seeding", mixes Plate1 A2 after dispensing when it holds only 0.05 µL, and 90% of that is 0 µL. Turn that mixing off, or put more in the well first.` For a source, "before aspirating". It names the stage's first mix problem (`mix-volumes`, `problems`), and the well by its labware's name, as the files do. |
 | A transfer's volume is 0 once rounded to 3 decimal places, so Biomek would skip it ("Skip zero volume transfers", ADR 0007) | `Stage 2, "Media", has a transfer of 0.0004 µL, which is 0 µL to 3 decimal places, so the Biomek would skip it. Use at least 0.001 µL.` |
 
 **Order of checks.** For `writeRunFiles`: the timestamp, then the plan: its form (including that it
 holds `experimentName`), then its experiment name (none, then `checkExperimentName`), then whether
 it has transfers, then the stages in stage order, each checked for its place,
-then its overdraws, then its volumes. The first problem found is reported, and no files are
-returned.
+then its overdraws, then its mix problems, then its volumes. The first problem found is reported,
+and no files are returned.
 
 Problems the plan's own modules already prevent (a well not on the deck, a stage's settings that
 aren't valid) aren't checked again: the plan is made only through their checks
@@ -253,6 +268,14 @@ still pass when the deck changes (as `deck.test.js` does).
   tip type, an empty `LoadProbes`, the file's absolute path, the same probes, the stage's four
   technique and liquid-type settings, the two labware types from `DECK`, then 6 empty mix fields).
 - Probes `[1, 2]` are written `"1,2"` (quoted); probes `[1]` are written `1` (not quoted).
+- **Mixing:** a stage mixing at the source `{ share: 90, times: 3, speed: 400 }` and not at the
+  destination writes its row's source mix volume (as `mix-volumes` gives it), `3` and `400` in the
+  `SrcMix…` columns, and leaves the `DestMix…` columns empty; the reverse for a stage mixing only at
+  the destination; a stage mixing at both ends fills all six. Its row's `SrcTechnique` (or
+  `DestTechnique`) is the mixing technique stored in the stage.
+- **One mix volume per row:** a mixing stage that splits into two substages writes each row's own
+  mix volume.
+- A mix speed of `150.5` is written `150.5`; a mix volume of `89.9` is written `89.9`.
 - **Probes from the tip change:** a tip change on `[1, 2, 3, 4]` gives `LoadProbes` `"1,2,3,4"`,
   and every transfer row in its group `Probes` `"1,2,3,4"`; a second tip change on `[1, 3, 5]`
   gives `"1,3,5"` in its rows.
@@ -287,13 +310,16 @@ still pass when the deck changes (as `deck.test.js` does).
 **Refusing** (section 5)
 - Each row of section 5 gives its message, with no files: a plan that isn't an object; an empty
   plan; a stage at place 100 with transfers; a stage with an overdraw (named by place and name); a
-  transfer of `0.0004` µL.
+  stage with a mix problem at the destination (the message above) and one at the source ("before
+  aspirating"); a transfer of `0.0004` µL.
 - A stage at place 100 *without* transfers is accepted (it isn't written).
 - A plan with no experiment name gives its message, with no files.
 - Order of checks: a bad timestamp with a plan with no name reports the timestamp; a plan with no
   name and no transfers reports the name; a plan with no transfers and a bad timestamp reports the
   timestamp; a plan with an overdraw in stage 4 and a
-  zero-rounding volume in stage 2 reports stage 2's.
+  zero-rounding volume in stage 2 reports stage 2's; a stage with both an overdraw and a mix problem
+  reports the overdraw; a stage with a mix problem and a zero-rounding volume reports the mix
+  problem.
 
 **Purity**
 - The plan is unchanged after `writeRunFiles`, and two calls with the same inputs give identical

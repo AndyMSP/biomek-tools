@@ -9,7 +9,12 @@
 >
 > **Draft change (2026-10-30, mixing settings):** a stage's settings hold its mixes, `sourceMix` and
 > `destinationMix` (ADR 0007, "Mixing"); a new stage copies them with its other settings (sections 3
-> and 6). Nothing here switches mixing on yet: that comes with the mixing edits, in a later change.
+> and 6).
+>
+> **Draft change (2026-10-30, mixing layer (b)):** each pipetting mode names its mixing technique;
+> `setStageMix` switches an end's mixing on or off, and its technique with it; settings whose
+> technique doesn't match their mixing are refused; and stages with a mix problem are reported, as
+> overdraws are (sections 2 to 6).
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -21,6 +26,7 @@ It builds on the shared modules, and doesn't repeat what they do:
 - `operation-list`: the transfers, in run order, by stage (ADR 0008);
 - `stage-list`: each stage's ID, name and settings;
 - `contents-tracking`: what every well holds at any point, and overdraws;
+- `mix-volumes`: how much each row mixes, and mix problems;
 - `deck`: the labware on the deck, their grids, and which wells exist.
 
 Beside it in this tool are two other logic modules, `plan-history` (undo and redo of plans) and
@@ -29,13 +35,13 @@ Beside it in this tool are two other logic modules, `plan-history` (undo and red
 ## 2. Scope
 Version 1 creates an empty plan; adds, removes and changes stages, transfers, tip changes,
 components, starting contents, labware labels and the experiment name; and answers questions about a plan: its stage
-order, its tip groups, the stages with an overdraw, where each stage ends, and
+order, its tip groups, the stages with an overdraw or a mix problem, where each stage ends, and
 the labware it uses.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Moving** a stage, or a transfer within its stage. A transfer can be removed and added again.
-- **Switching mixing on or off** (stages hold their mixes, but nothing here changes them yet; ADR
-  0007, "Mixing"), final concentrations, smarter staging (the tool forming stages itself).
+- **Mix steps** (`docs/glossary.md`; roadmap, mixing layer (c)), final concentrations, smarter
+  staging (the tool forming stages itself).
 - **Checking techniques against tip types** (roadmap, "Technical debt").
 - **Dead volume** (roadmap, "Technical debt").
 - **Which transfer runs short when a stage draws from an overdrawn well more than once** (roadmap,
@@ -138,6 +144,28 @@ in `config/pipetting-modes.js` (below). A mode at one end sets that end's techni
 together. Reading back, a stage's technique and liquid type at an end give its mode, or none if they
 aren't one of the modes (for example, after the modes in `config/` change).
 
+### Mixing
+A stage holds a mix for each end, or `null` (`stage-list.md`). Biomek mixes only with a technique
+that mixes, and such a technique refuses 0 mix times (`biomek.md`, "Mixing"), so **an end's
+technique follows its mixing** (ADR 0007, "Mixing"):
+- Each pipetting mode names two techniques: `technique`, used when that end doesn't mix, and
+  `mixingTechnique`, used when it does, or `null` if the mode can't mix (Non-Contact can't;
+  `biomek.md`). Its liquid type is the same either way.
+- **The rule:** at an end whose technique and liquid type are one of a mode's, the stage mixes
+  exactly when the technique is that mode's `mixingTechnique`. So a mix with the mode's `technique`,
+  or no mix with its `mixingTechnique`, is refused. Every change of a stage's settings is checked
+  (`changeStageSettings`), so a plan file can't bring in a stage that breaks it (`plan-file.md`).
+  An end whose technique and liquid type aren't one of the modes isn't checked: the tool can't know
+  whether its technique mixes.
+- **Switching mixing on or off** (`setStageMix`) sets the end's mix and switches its technique to
+  the mode's `mixingTechnique` or `technique` in the same edit, keeping its liquid type. It needs
+  the end to be one of the modes, and a mode that can mix to switch it on.
+- **Choosing a mode** keeps the end's mixing: `modeSettings(end, name, mixes)` gives the mode's
+  `mixingTechnique` when `mixes` is `true`.
+- **Mix problems:** a stage whose mix works out to 0 µL in any row has a **mix problem**
+  (`mix-volumes.md`). It's reported as soon as it appears, as an overdraw is (Andy, 2026-10-30), and
+  the file writer refuses the plan until it's fixed (`file-writer.md`).
+
 ### Transfers
 - A transfer is added to a stage. If that stage already has transfers, it goes after them (the
   operation list's `add`). If it's the stage's first, it goes just before the next stage in
@@ -197,13 +225,17 @@ overdraw** if any of its transfers is one (but see "Not in version 1").
 ### Configuration
 Two files in `config/` (ADR 0009), which this module's tests check:
 - **`config/pipetting-modes.js`** exports `PIPETTING_MODES`: a list of
-  `{ name, technique, liquidType, ends }`, e.g.
-  `{ name: "Slow", technique: "Operation", liquidType: "Slow", ends: ["source", "destination"] }`.
-  `name`, `technique` and `liquidType` are names; `liquidType` also follows Biomek's rule for liquid
+  `{ name, technique, mixingTechnique, liquidType, ends }`, e.g.
+  `{ name: "Slow", technique: "Operation", mixingTechnique: "OperationMix", liquidType: "Slow", ends: ["source", "destination"] }`.
+  `name`, `technique` and `liquidType` are names; `mixingTechnique` is a name different from
+  `technique`, or `null` if the mode can't mix; `liquidType` also follows Biomek's rule for liquid
   type names (letters, digits and underscores, starting with a letter; B56358AF, 9-4); `ends` is a
   non-empty list of `"source"` and `"destination"`, each at most once. No two modes share a name;
-  no two modes for one end share both technique and liquid type (or reading a stage's mode back
-  would be ambiguous); and each end has at least one mode. It replaces `config/techniques.js` and
+  for each end, no technique-and-liquid-type pair appears twice among its modes' `technique`s and
+  `mixingTechnique`s together (or reading a stage's mode back, or whether it mixes, would be
+  ambiguous); and each end has at least one mode. The lab's modes: Slow, Medium and Fast mix with
+  `OperationMix` (Andy's technique, which works with any liquid type; `biomek.md`), and Non-Contact
+  can't mix (`null`). It replaces `config/techniques.js` and
   `config/liquid-types.js`, which are removed (Andy, 2026-10-26: each name is then written once).
   The names are the ones used in the general-purpose method (`biomek.md`, 2026-10-27).
   It also exports `DEFAULT_PIPETTING_MODE`, the name of the mode a new plan's stage uses at both
@@ -230,8 +262,8 @@ given; "returns the plan with …" means a new plan.
 | Function | Returns |
 |---|---|
 | `modesFor(end)` | the pipetting modes usable at `end` (`"source"` or `"destination"`), in `config/` order. |
-| `modeSettings(end, name)` | the settings for that mode at that end, e.g. `("source", "Slow")` → `{ sourceTechnique: "Operation", sourceLiquidType: "Slow" }`. Throws if there's no such mode for that end. |
-| `modeOf(end, settings)` | the name of the mode that a stage's `settings` use at `end`, or `null` if none matches. |
+| `modeSettings(end, name, mixes)` | the settings for that mode at that end, e.g. `("source", "Slow")` → `{ sourceTechnique: "Operation", sourceLiquidType: "Slow" }`; with `mixes` `true`, the mode's mixing technique: `("source", "Slow", true)` → `{ sourceTechnique: "OperationMix", sourceLiquidType: "Slow" }`. `mixes` defaults to `false`. Throws if there's no such mode for that end, or `mixes` is `true` and the mode can't mix. |
+| `modeOf(end, settings)` | the name of the mode that a stage's `settings` use at `end`, matching either of its techniques, or `null` if none matches. |
 
 **Stages**
 | Function | Returns |
@@ -240,11 +272,13 @@ given; "returns the plan with …" means a new plan.
 | `stageOrder(plan)` | the stage IDs in stage order (the plan's `stageOrder`). |
 | `addStage(plan, beforeId, { takeTips })` | `{ plan, id }`: the plan with a new stage before stage `beforeId` (or last, for `null`), and its ID. `takeTips` defaults to `false`. Throws if `beforeId` isn't a stage or `null`. |
 | `renameStage(plan, id, name)` | the plan with stage `id` named `name` (the stage list checks it). |
-| `changeStageSettings(plan, id, settings)` | the plan with stage `id`'s settings replaced (the stage list checks them). |
+| `changeStageSettings(plan, id, settings)` | the plan with stage `id`'s settings replaced (the stage list checks them, then this module checks that each end's technique matches its mixing; section 3, "Mixing"). |
+| `setStageMix(plan, id, end, mix)` | the plan with stage `id` mixing at `end` (`"source"` or `"destination"`) as `mix`, a mix or `null` (`stage-list.md`), and that end's technique switched to match (section 3, "Mixing"). Throws if `id` isn't a stage, `end` isn't an end, the end's technique and liquid type aren't one of the modes, the stage list refuses the mix, or `mix` isn't `null` and the mode can't mix. |
 | `canRemoveStage(plan, id)` | `true` if `id` is a stage and not the only one. |
 | `removeStage(plan, id)` | the plan without stage `id`, its transfers or a tip change keyed by it. Throws if `canRemoveStage` is `false`. |
 | `stageEnds(plan)` | for each stage with transfers, in run order, `{ stage, transfersDone }`: how many transfers have run when it ends, e.g. `[{ stage: "1", transfersDone: 4 }, { stage: "2", transfersDone: 8 }]`. |
 | `stagesWithOverdraw(plan)` | a `Set` of the IDs of stages with an overdraw. |
+| `stagesWithMixProblem(plan)` | a `Set` of the IDs of stages with a mix problem (`mix-volumes.md`). |
 
 **Transfers**
 | Function | Returns |
@@ -299,6 +333,14 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 |---|---|
 | `probesFor`: not a whole number from 1 to 8 | `The number of probes must be a whole number from 1 to 8, but got 9.` |
 | `modeSettings`: no such mode for that end | `"Non-Contact" isn't a pipetting mode for the source. The modes for the source are "Fast", "Medium", "Slow".` |
+| `modeSettings`: `mixes` is `true` and the mode can't mix | `Non-Contact can't mix, so it can't be used at the destination while the destination mixes. Turn the destination's mixing off first.` |
+| `changeStageSettings`: an end mixes, but its technique is its mode's non-mixing one | `The source mixes, so its technique must be "OperationMix" (Medium's technique for mixing), but it's "Operation".` |
+| `changeStageSettings`: an end doesn't mix, but its technique is its mode's mixing one | `The destination doesn't mix, so its technique must be "Operation" (Medium's technique without mixing), but it's "OperationMix".` |
+| `changeStageSettings`: an end mixes with a mode that can't mix | `The destination mixes, but Non-Contact can't mix. Turn the destination's mixing off, or choose another mode.` |
+| `setStageMix`: `id` isn't a stage | `There's no stage "9" in the plan.` |
+| `setStageMix`: `end` isn't `"source"` or `"destination"` | `The end must be "source" or "destination", but got "middle".` |
+| `setStageMix`: the end isn't one of the modes | `The source's technique and liquid type aren't one of the pipetting modes, so its mixing can't be switched. Choose a mode for it first.` |
+| `setStageMix`: switching mixing on with a mode that can't mix | `Non-Contact can't mix. Choose another mode for the destination first.` |
 | `addStage`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a stage before.` |
 | `removeStage`: the only stage | `A plan needs at least one stage, so its only stage can't be removed.` |
 | `addTransfer`: the stage isn't in the plan | `There's no stage "9" in the plan to add this transfer to.` |
@@ -334,6 +376,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
   later check.
 - `addTipChange`: in the table's order.
 - `setTipType`: none at `key`, then the tip type.
+- `changeStageSettings`: the stage list's checks, then the source's mixing, then the
+  destination's.
+- `setStageMix`: the stage, then the end, then the end's mode, then the stage list's checks of the
+  mix, then whether the mode can mix.
 - `setTipProbes`: none at `key`, then the list, then each probe in order, then repeats. (These three
   messages moved here from the stage list, unchanged, with probes, on 2026-10-30.)
 - `addComponent`: the name (`checkName`, then used), then the color (text, then used).
@@ -353,9 +399,10 @@ order of checks.
 
 **Configuration**
 - `config/pipetting-modes.js`: each mode's properties are exactly `name`, `technique`,
-  `liquidType`, `ends`; names valid and unique; liquid types follow Biomek's rule; `ends` valid;
-  no two modes for one end share both technique and liquid type; each end has at least one mode;
-  `DEFAULT_PIPETTING_MODE` names a mode usable at both ends.
+  `mixingTechnique`, `liquidType`, `ends`; names valid and unique; `mixingTechnique` a valid name
+  other than `technique`, or `null`; liquid types follow Biomek's rule; `ends` valid; for each end,
+  no technique-and-liquid-type pair repeated among its modes' techniques and mixing techniques; each
+  end has at least one mode; `DEFAULT_PIPETTING_MODE` names a mode usable at both ends.
 - `config/tip-types.js`: a non-empty list of valid names, none repeated; `DEFAULT_PROBE_COUNT` a
   whole number from 1 to 8.
 
@@ -369,8 +416,9 @@ order of checks.
   name; giving the name it already has returns the same plan; `5`, `"Exp 36"` and a name of 41
   characters throw with `checkExperimentName`'s messages, leaving the plan unchanged.
 - `probesFor` gives `[1]` for 1 and all eight for 8; 0, 9, 2.5 and `"4"` throw.
-- `modeSettings` and `modeOf` round-trip every mode at every end it allows; a mode not allowed at an
-  end throws; settings matching no mode give `null`.
+- `modeSettings` and `modeOf` round-trip every mode at every end it allows, with `mixes` `false`
+  and, for a mode that can mix, `true`; a mode not allowed at an end throws; `mixes` `true` with
+  Non-Contact throws; settings matching no mode give `null`.
 
 **Stages and stage order**
 - After every kind of edit, the stage order holds every stage exactly once, and the operation
@@ -392,6 +440,24 @@ order of checks.
   through.
 - `stageEnds` counts transfers cumulatively in run order, leaving out stages without transfers.
 - `stagesWithOverdraw` names the stage whose transfer draws more than a well holds, and no other.
+
+**Mixing**
+- `setStageMix` on a Medium source with `{ share: 90, times: 3, speed: 400 }` gives `sourceMix`
+  that mix and `sourceTechnique` `"OperationMix"`, keeping `sourceLiquidType` and the destination's
+  settings; `setStageMix` with `null` gives `sourceMix` `null` and `sourceTechnique` `"Operation"`.
+  The same at the destination.
+- `setStageMix` with a different mix on an end that already mixes changes the mix and keeps
+  `"OperationMix"`.
+- `setStageMix` refuses: a stage that isn't in the plan; an end `"middle"`; an end whose technique
+  and liquid type aren't a mode's; switching on at a Non-Contact destination; a mix the stage list
+  refuses (its message, e.g. a share of `0`). Each leaves the plan unchanged.
+- `changeStageSettings` refuses a mix with `"Operation"`, no mix with `"OperationMix"`, and a mix
+  at a Non-Contact destination, each with its message; it accepts any mixing at an end whose
+  technique and liquid type aren't a mode's.
+- `addStage` after a stage that mixes gives a stage that passes the check (it copies matching
+  settings).
+- `stagesWithMixProblem` names a stage whose destination mix works out to 0 µL (an empty well given
+  0.05 µL, mixed at 90%), and no other; a plan without mixing gives an empty `Set`.
 
 **Transfers**
 - A stage's first transfer goes before the next stage in the stage order with transfers (or last);

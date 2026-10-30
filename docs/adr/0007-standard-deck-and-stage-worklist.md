@@ -149,6 +149,10 @@ How the tool decides the mix columns:
   it held before the stage plus its smallest dispense; a mix step's well, what it holds as the
   stage starts. Wells holding much more than the stage's emptiest are mixed less than their share;
   the page shows how much (`transfer-designer-page.md`).
+- **A mix that works out to 0 µL is a problem** (Andy, 2026-10-30), a **mix problem**
+  (`docs/glossary.md`): its emptiest well holds too little when it's mixed, and what Biomek does
+  with a 0 µL mix isn't known. It's shown as soon as it appears, as an overdraw is, and the files
+  can't be written until it's fixed.
 - **The technique follows the mixing.** Each pipetting mode in `config/` names the technique used
   when that end doesn't mix and the one used when it does (Operation and OperationMix), or none if
   the mode can't mix there (Non-Contact). Switching mixing on or off at an end switches that end's

@@ -26,6 +26,11 @@ destinations. A mix is a share of the well's volume (a percentage), a number of 
 The tool turns the share into one volume for each stage-worklist row, from what the wells hold
 (ADR 0007, "Mixing"). An end of a stage either has a mix or doesn't mix.
 
+**Mix problem**
+A mix that works out to 0 µL: the well a row's mix volume is worked out from holds too little when
+it's mixed (ADR 0007, "Mixing"). Like an overdraw, it's shown as a problem, and the Biomek files
+can't be written until it's fixed.
+
 **Mix step**
 A stage that only mixes: it moves no liquid, and each of its wells is mixed in place (a transfer
 from the well to itself, run with a technique that only mixes; ADR 0007, "Mixing"). On the page it's

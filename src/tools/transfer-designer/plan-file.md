@@ -231,6 +231,9 @@ row of section 5 has at least one test.
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
 - `version` `5` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
   message.
+- **Mixing must match the technique:** a version 4 file whose stage 2 has a `sourceMix` with
+  `sourceTechnique` `"Operation"` (Medium) is refused with `stage 2: ` and the transfer designer's
+  message (`transfer-designer.md`, section 3, "Mixing"); with `"OperationMix"` it opens.
 - **Version 3:** a version 3 file (as saved before mixing) opens, each stage with `sourceMix` and
   `destinationMix` `null`; a version 3 file whose stage has a `sourceMix` gets the stage-mix
   message; a version 4 stage without `sourceMix` gets the stage list's missing-setting message.
