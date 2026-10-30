@@ -37,6 +37,7 @@ import {
   removeStage,
   stageEnds,
   stagesWithOverdraw,
+  stagesWithMixProblem,
   addTransfers,
   changeVolume,
   removeTransfer,
@@ -892,9 +893,12 @@ function timelineCaption(plan, open) {
   return `As stage ${place}, “${name}”, will start (no transfers yet)`;
 }
 
-// Shows "No problems" in green or "N problems" in red: the overdraws in the whole plan (section 6).
+// Shows "No problems" in green or "N problems" in red (section 6): each overdraw in the whole plan
+// counts as one, and so does each stage with a mix problem.
 function refreshProblemCount(plan) {
-  const count = replay(plan.startingContents, plan.operationList).listProblems().length;
+  const count =
+    replay(plan.startingContents, plan.operationList).listProblems().length +
+    stagesWithMixProblem(plan).size;
   elements.problemCount.textContent = count === 0 ? "No problems" : countOf(count, "problem");
   elements.problemCount.classList.toggle("ok", count === 0);
   elements.problemCount.classList.toggle("problems", count > 0);
@@ -1297,14 +1301,14 @@ function createArrow(from, to, color, { insetEnd, dashed }) {
 function refreshStages() {
   const plan = currentPlan();
   const open = currentOpen();
-  const overdrawn = stagesWithOverdraw(plan);
+  const problems = stageProblems(plan);
   const groups = tipGroups(plan);
   const drawnKeys = new Set();
-  const items = [createEntry(plan, START, open, overdrawn)];
+  const items = [createEntry(plan, START, open, problems)];
   groups.forEach((group, index) => {
-    items.push(createTipGroupBox(plan, group, index, groups[index + 1], open, overdrawn, drawnKeys));
+    items.push(createTipGroupBox(plan, group, index, groups[index + 1], open, problems, drawnKeys));
   });
-  items.push(createEntry(plan, END, open, overdrawn));
+  items.push(createEntry(plan, END, open, problems));
   elements.stagesList.replaceChildren(...items);
   lastDrawnKeys = drawnKeys;
   placeEditingBox();
@@ -1312,17 +1316,29 @@ function refreshStages() {
   elements.stagesList.querySelector(".new-component-box")?.focus();
 }
 
+// The stages with a problem (section 7), as { overdrawn, mixProblem }: two Sets of stage IDs, from
+// stagesWithOverdraw and stagesWithMixProblem.
+function stageProblems(plan) {
+  return { overdrawn: stagesWithOverdraw(plan), mixProblem: stagesWithMixProblem(plan) };
+}
+
 // Start, a stage or End as a row (closed) or a card (open), sharing one look: a number in a badge, a
-// name and a count; a card adds its contents, and a stage's card its ✎ after the name.
-function createEntry(plan, key, open, overdrawn) {
+// name and a count; a card adds its contents, and a stage's card its ✎ after the name. A stage with
+// a problem (`problems`, from stageProblems) is marked, with a tooltip saying which; one with both an
+// overdraw and a mix problem has the overdraw's tooltip.
+function createEntry(plan, key, open, problems) {
   const isOpen = key === open;
   const entry = createElement("div", "", "entry");
   entry.dataset.entry = key;
   entry.classList.toggle("is-open", isOpen);
   const { badge, name, count } = entryHeading(plan, key);
-  if (isStage(plan, key) && overdrawn.has(key)) {
+  if (isStage(plan, key) && problems.overdrawn.has(key)) {
     entry.classList.add("has-overdraw");
     entry.title = "This stage has an overdraw: a transfer asks a well for more than it holds.";
+  } else if (isStage(plan, key) && problems.mixProblem.has(key)) {
+    // A mix problem looks the same as an overdraw (Andy, 2026-10-30), with its own tooltip.
+    entry.classList.add("has-overdraw");
+    entry.title = "This stage mixes a well that holds too little: the mix works out to 0 µL.";
   }
   const row = createElement(isOpen ? "div" : "button", "", "entry-row");
   if (!isOpen) {
@@ -1562,7 +1578,7 @@ function highlightTransfer(position) {
 
 // A tip group's box: its heading (the tip change) and its stages, each between two seams. Boxes
 // alternate light blue and light sand. `nextGroup` is the box after it, if any.
-function createTipGroupBox(plan, group, index, nextGroup, open, overdrawn, drawnKeys) {
+function createTipGroupBox(plan, group, index, nextGroup, open, problems, drawnKeys) {
   const box = createElement("div", "", "tip-group");
   box.classList.toggle("sand", index % 2 === 1);
   box.dataset.group = group.key;
@@ -1578,7 +1594,7 @@ function createTipGroupBox(plan, group, index, nextGroup, open, overdrawn, drawn
     }),
   );
   group.stages.forEach((id, place) => {
-    const entry = createEntry(plan, id, open, overdrawn);
+    const entry = createEntry(plan, id, open, problems);
     applyGlow(entry, `stage:${id}`, drawnKeys);
     stages.append(entry);
     const lower = group.stages[place + 1];
@@ -2754,16 +2770,20 @@ function saveComponentDraft(plan, name, draft) {
 }
 
 // A stage's Save: renames it (if the name changed) and changes its settings, as one edit. An end
-// whose menu still shows "(not one of the modes)" keeps its technique and liquid type. Every other
-// setting, such as the stage's mixes, is carried over unchanged from the stage: the box doesn't
-// offer them yet, and the stage list refuses settings that leave any out.
+// whose menu still shows "(not one of the modes)" keeps its technique and liquid type. A mode chosen
+// for an end that mixes gets the mode's mixing technique, so the end keeps mixing; a mode that can't
+// mix throws modeSettings' message there, and nothing is saved (section 10). Every other setting,
+// such as the stage's mixes, is carried over unchanged from the stage: the box doesn't offer them
+// yet, and the stage list refuses settings that leave any out.
 function saveStageDraft(plan, id, draft) {
   const stage = plan.stageList.get(id);
   let saved = draft.name === stage.name ? plan : renameStage(plan, id, draft.name);
+  const sourceMixes = stage.settings.sourceMix !== null;
+  const destinationMixes = stage.settings.destinationMix !== null;
   const settings = {
     ...stage.settings,
-    ...(draft.aspirate === null ? {} : modeSettings("source", draft.aspirate)),
-    ...(draft.dispense === null ? {} : modeSettings("destination", draft.dispense)),
+    ...(draft.aspirate === null ? {} : modeSettings("source", draft.aspirate, sourceMixes)),
+    ...(draft.dispense === null ? {} : modeSettings("destination", draft.dispense, destinationMixes)),
   };
   return changeStageSettings(saved, id, settings);
 }

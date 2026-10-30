@@ -15,7 +15,7 @@ import {
   stageOrder,
   addStage,
   renameStage,
-  changeStageSettings,
+  setStageMix,
   removeStage,
   addTransfer,
   addComponent,
@@ -92,13 +92,11 @@ function exampleMix() {
 }
 
 // fullPlan() with stage "1" mixing its sources with exampleMix() and stage "3" mixing its
-// destinations with { share: 50, times: 2, speed: 100 }; stage "2" doesn't mix.
+// destinations with { share: 50, times: 2, speed: 100 }, each switched on with setStageMix, so its
+// technique is the mixing one; stage "2" doesn't mix.
 function mixingPlan() {
-  let plan = fullPlan();
-  const settingsOf = (id) => plan.stageList.get(id).settings;
-  plan = changeStageSettings(plan, "1", { ...settingsOf("1"), sourceMix: exampleMix() });
-  const destinationMix = { share: 50, times: 2, speed: 100 };
-  return changeStageSettings(plan, "3", { ...settingsOf("3"), destinationMix });
+  const plan = setStageMix(fullPlan(), "1", "source", exampleMix());
+  return setStageMix(plan, "3", "destination", { share: 50, times: 2, speed: 100 });
 }
 
 // fullFile() as a version 3 file, as saved on 2026-10-30 before mixing: each stage's settings have
@@ -323,6 +321,23 @@ describe("plan-file", () => {
     const file = fullFile();
     file.stages[2].settings.destinationMix = { share: 0, times: 3, speed: 400 };
     assertRefused(file, /stage 3: The destination mix's share must be a number above 0 and at most 100/);
+  });
+
+  test('mixing must match the technique: a version 4 stage 2 with a sourceMix and sourceTechnique "Operation" is refused; with "OperationMix" it opens', () => {
+    const file = fullFile();
+    // Stage 2 uses the default mode, Medium, at its source.
+    assert.equal(file.stages[1].settings.sourceTechnique, "Operation");
+    assert.equal(file.stages[1].settings.sourceLiquidType, "Medium");
+    file.stages[1].settings.sourceMix = exampleMix();
+    assertRefused(
+      file,
+      'stage 2: The source mixes, so its technique must be "OperationMix" ' +
+        `(Medium's technique for mixing), but it's "Operation".`,
+    );
+    file.stages[1].settings.sourceTechnique = "OperationMix";
+    const opened = open(file);
+    assert.deepEqual(opened.stageList.get("2").settings.sourceMix, exampleMix());
+    assert.equal(opened.stageList.get("2").settings.sourceTechnique, "OperationMix");
   });
 
   // --- Version 3 files ---

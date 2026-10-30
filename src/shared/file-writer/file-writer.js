@@ -8,16 +8,19 @@
 // It's shared because each tool builds its own plan: the transfer designer now, the randomizer's
 // link to the Biomek later. It never reads the clock (the caller gives the timestamp), saves
 // nothing and changes nothing it's given, so the same inputs always give the same files and tests
-// can check them exactly. It decides nothing about the plan: stages, settings and tip changes are
-// the plan's. It can refuse a plan (section 5 of its specification); a refused plan gets no files.
+// can check them exactly. It decides nothing about the plan: stages, settings, mixes and tip changes
+// are the plan's. Substages come from the substages shared module and each row's mix volumes from
+// the mix-volumes shared module, which the transfer designer uses too, so the tool and the files
+// always agree. It can refuse a plan (section 5 of its specification); a refused plan gets no files.
 // Specification: file-writer.md.
 
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { describeValue } from "../error-messages/error-messages.js";
 import { isObject, findMissingProperties } from "../input-checks/input-checks.js";
 import { replay } from "../contents-tracking/contents-tracking.js";
-import { labwareNames, gridOf, labwareTypeOf } from "../deck/deck.js";
+import { labwareNames, gridOf } from "../deck/deck.js";
 import { tipGroups } from "../tip-groups/tip-groups.js";
+import { mixVolumes } from "../mix-volumes/mix-volumes.js";
 
 // The two files every run has; the Transfer From File files are named after their stages.
 const SETUP_FILE_NAME = "Setup.csv";
@@ -90,19 +93,24 @@ const LINE_ENDING = "\r\n";
 // Setup.csv, Stages.csv, then the Transfer From File files in the order Stages.csv names them. The
 // caller saves them in that folder inside BASE_FOLDER. Checks, in this order, the timestamp, then
 // the plan (its form, its experiment name, whether it has transfers, then each stage with transfers
-// in stage order: its place, its overdraws, its volumes), and throws at the first problem,
-// returning nothing, so a refused plan gets no files.
+// in stage order: its place, its overdraws, its mix problems, its volumes), and throws at the first
+// problem, returning nothing, so a refused plan gets no files.
 // e.g. with plan.experimentName "Exp36",
 //      writeRunFiles(plan, new Date(2026, 9, 28, 1, 57, 32)).folderName → "2026-10-28_015732_Exp36"
 export function writeRunFiles(plan, timestamp) {
   checkTimestamp(timestamp);
   checkPlan(plan);
   const stages = stagesWithTransfers(plan);
-  checkStages(plan, stages);
+  const mixing = mixVolumes(plan);
+  checkStages(plan, stages, mixing.problems);
 
   const folderName = folderNameFor(timestamp, plan.experimentName);
   const folderPath = `${BASE_FOLDER}${folderName}\\`;
-  const stagesWithSubstages = stages.map((stage) => ({ ...stage, substages: substagesOf(stage) }));
+  const rowsByStage = new Map(mixing.stages.map((entry) => [entry.stage, entry.rows]));
+  const stagesWithSubstages = stages.map((stage) => ({
+    ...stage,
+    substages: namedSubstages(stage, rowsByStage.get(stage.id)),
+  }));
   // Tip groups follow the stage order and each holds consecutive stages, so the Transfer From File
   // files in stage order come in the same order as Stages.csv's rows name them.
   const transferFiles = stagesWithSubstages
@@ -207,9 +215,10 @@ function checkPlanHasTransfers(plan) {
 }
 
 // Throws at the first problem among `stages` (the stages with transfers, in stage order), checking
-// each stage in turn for its place (at most HIGHEST_PLACE), then an overdraw, then a transfer whose
-// volume rounds to 0. Stages are named by place and name, as the page shows them.
-function checkStages(plan, stages) {
+// each stage in turn for its place (at most HIGHEST_PLACE), then an overdraw, then a mix problem
+// (among `mixProblems`, from mix-volumes), then a transfer whose volume rounds to 0. Stages are
+// named by place and name, as the page shows them.
+function checkStages(plan, stages, mixProblems) {
   const overdrawn = stagesWithOverdraw(plan);
   for (const stage of stages) {
     const shown = `Stage ${stage.place}, ${describeValue(stage.name)},`;
@@ -225,6 +234,10 @@ function checkStages(plan, stages) {
           "Fix it before writing the files.",
       );
     }
+    const mixProblem = mixProblems.find((problem) => problem.stage === stage.id);
+    if (mixProblem !== undefined) {
+      throw new Error(mixProblemMessage(shown, stage, mixProblem));
+    }
     const skipped = stage.transfers.find((transfer) => roundVolume(transfer.volume) === 0);
     if (skipped !== undefined) {
       throw new Error(
@@ -233,6 +246,20 @@ function checkStages(plan, stages) {
       );
     }
   }
+}
+
+// The message for `problem`, a mix problem (mix-volumes) of `stage`, shown as `shown` (its place and
+// name), e.g. 'Stage 3, "Seeding", mixes Plate1 A2 after dispensing when it holds only 0.05 µL, and
+// 90% of that is 0 µL. Turn that mixing off, or put more in the well first.' The well is named by its
+// labware's name, as the files name it.
+function mixProblemMessage(shown, stage, problem) {
+  const when = problem.end === "source" ? "before aspirating" : "after dispensing";
+  const { share } = stage.settings[`${problem.end}Mix`];
+  return (
+    `${shown} mixes ${problem.labware} ${problem.well} ${when} when it holds only ` +
+    `${formatVolume(problem.held)} µL, and ${share}% of that is 0 µL. ` +
+    "Turn that mixing off, or put more in the well first."
+  );
 }
 
 // The IDs of the stages with an overdraw: a transfer that asks a well for more than it holds, as
@@ -264,32 +291,12 @@ function stagesWithTransfers(plan) {
   return stages;
 }
 
-// A stage's substages (docs/glossary.md): its transfers grouped by source and destination labware
-// type, in the order their first transfers come in the operation list, each as
-// { fileName, sourceLabwareType, destinationLabwareType, transfers },
-// e.g. the first → { fileName: "Stage03_A.csv", sourceLabwareType: "DeepReservoir12", … }.
-function substagesOf(stage) {
-  const substages = [];
-  for (const transfer of stage.transfers) {
-    const sourceLabwareType = labwareTypeOf(transfer.source.labware);
-    const destinationLabwareType = labwareTypeOf(transfer.destination.labware);
-    let substage = substages.find(
-      (candidate) =>
-        candidate.sourceLabwareType === sourceLabwareType &&
-        candidate.destinationLabwareType === destinationLabwareType,
-    );
-    if (substage === undefined) {
-      substage = {
-        fileName: transferFileName(stage.place, substages.length),
-        sourceLabwareType,
-        destinationLabwareType,
-        transfers: [],
-      };
-      substages.push(substage);
-    }
-    substage.transfers.push(transfer);
-  }
-  return substages;
+// A stage's substages (docs/glossary.md), each one of `rows`: the stage's rows from mix-volumes,
+// which are its substages (the substages shared module's split) with their mix volumes, each given
+// the name of its Transfer From File file, e.g. the first →
+// { fileName: "Stage03_A.csv", sourceLabwareType: "DeepReservoir12", …, sourceMixVolume: null, … }.
+function namedSubstages(stage, rows) {
+  return rows.map((row, index) => ({ ...row, fileName: transferFileName(stage.place, index) }));
 }
 
 // The name of the Transfer From File file for the substage at `index` (counting from 0) of the
@@ -359,9 +366,8 @@ function tipChangeRow(group) {
 // A transfer row for `substage` of `stage`, which runs in tip group `group`, as an object of the
 // columns it fills: NewTip 0, the group's tip type, the file's absolute path, the group's probes
 // (the same as its tip-change row's LoadProbes, since every stage uses all the probes its tips are
-// on), the stage's technique and liquid type at each end, and the substage's labware types.
-// LoadProbes and the mix columns stay empty: this version ignores a stage's mixes (file-writer.md,
-// section 2), so they're written in a later version.
+// on), the stage's technique and liquid type at each end, the substage's labware types, and the
+// mix columns of each end that mixes (mixColumns). LoadProbes stays empty.
 function transferRow(stage, substage, group, folderPath) {
   const { settings } = stage;
   return {
@@ -375,6 +381,26 @@ function transferRow(stage, substage, group, folderPath) {
     DestLiquidType: settings.destinationLiquidType,
     SrcLabwareType: substage.sourceLabwareType,
     DestLabwareType: substage.destinationLabwareType,
+    ...mixColumns("Src", settings.sourceMix, substage.sourceMixVolume),
+    ...mixColumns("Dest", settings.destinationMix, substage.destinationMixVolume),
+  };
+}
+
+// The three mix columns of one end, whose columns start with `prefix` ("Src" or "Dest"), as an
+// object of the columns it fills: the row's mix `volume` at that end, and `mix`'s times and speed;
+// none, so they stay empty, for an end that doesn't mix (`mix` null). Whether the end's technique
+// mixes isn't checked here: the transfer designer keeps a mode's technique matched to its mixing,
+// and a technique that isn't a mode's is up to whoever chose it (file-writer.md, section 3),
+// e.g. ("Src", { share: 90, times: 3, speed: 400 }, 108) →
+// { SrcMixVolume: "108", SrcMixTimes: "3", SrcMixSpeed: "400" }.
+function mixColumns(prefix, mix, volume) {
+  if (mix === null) {
+    return {};
+  }
+  return {
+    [`${prefix}MixVolume`]: formatVolume(volume),
+    [`${prefix}MixTimes`]: String(mix.times),
+    [`${prefix}MixSpeed`]: formatVolume(mix.speed),
   };
 }
 

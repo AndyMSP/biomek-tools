@@ -17,6 +17,12 @@
 >
 > **Draft changes (2026-10-30, later):** probes are chosen in the tip change's box, not the stage's
 > (ADR 0007, "Tip changes"; sections 7 and 10). They become Final once built and tested by Andy.
+>
+> **Draft changes (2026-10-30, mixing layer (b)):** a stage with a mix problem is shown as a
+> problem, as an overdraw is (Andy, 2026-10-30), and choosing a mode for an end that mixes keeps it
+> mixing (sections 3, 7 and 10). Nothing on the page switches mixing on yet (roadmap, mixing layer
+> (c)), so only a plan file can bring in a stage that mixes. They become Final once built and tested
+> by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -185,7 +191,8 @@ nothing. Saving a file doesn't touch the copy; Reset leaves it holding the empty
 ## 6. The deck panel
 **First bar.** On the left, the timeline (section 11); on the right, `Undo`, `Redo` (each disabled
 when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the problem count: `No
-problems` in green, or `N problems` in red, counting the overdraws in the whole plan.
+problems` in green, or `N problems` in red: each overdraw in the whole plan counts as one, and so
+does each stage with a mix problem (`stagesWithMixProblem`).
 
 **Second bar.** On the left, the **labware tray**; on the right, the key and the `Arrows` toggle,
 both about what the deck draws. On a narrow window the right side wraps onto its own line.
@@ -324,6 +331,9 @@ holds:
 
 A stage **with an overdraw** (`stagesWithOverdraw`), row or card, has a light red background and
 border, and the tooltip `This stage has an overdraw: a transfer asks a well for more than it holds.`
+A stage **with a mix problem** (`stagesWithMixProblem`) looks the same, with the tooltip `This stage
+mixes a well that holds too little: the mix works out to 0 µL.`; one with both has the overdraw's
+tooltip.
 
 **End** (number `✓`, name `End`, count `N transfers done`: every transfer in the plan). Its card
 holds `The deck shows the plates after every stage has run. Open a stage to add or change
@@ -480,7 +490,8 @@ as `Non-Contact`. From the top:
   as rows, each labeled once at the left (Andy, 2026-10-29: simpler and less cluttered, with no
   information lost). For now it has one row, **Mode**: in each column a menu of the pipetting modes
   for that end (`modesFor`), choosing one setting that end's technique and liquid type
-  (`modeSettings`); if the stage's settings at that end aren't one of the modes, its menu shows
+  (`modeSettings`, with `mixes` `true` when that end of the stage mixes, so it keeps mixing; if the
+  chosen mode can't mix, Save shows the logic's message and saves nothing); if the stage's settings at that end aren't one of the modes, its menu shows
   `(not one of the modes)` first. The menus' accessible names are `Aspirate mode` and `Dispense
   mode`, since their column headings aren't their labels.
 

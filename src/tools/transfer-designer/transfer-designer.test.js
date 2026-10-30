@@ -26,10 +26,12 @@ import {
   addStage,
   renameStage,
   changeStageSettings,
+  setStageMix,
   canRemoveStage,
   removeStage,
   stageEnds,
   stagesWithOverdraw,
+  stagesWithMixProblem,
   addTransfer,
   addTransfers,
   changeVolume,
@@ -151,6 +153,18 @@ function planWithContents() {
   return plan;
 }
 
+// The mix the specification's examples use. A new object each time.
+function exampleMix() {
+  return { share: 90, times: 3, speed: 400 };
+}
+
+// A pipetting mode that can mix, usable at both ends, and one that can't (Non-Contact, at the
+// destination only), found in PIPETTING_MODES.
+const MIXING_MODE = PIPETTING_MODES.find(
+  (mode) => mode.mixingTechnique !== null && mode.name === DEFAULT_PIPETTING_MODE,
+);
+const NON_MIXING_MODE = PIPETTING_MODES.find((mode) => mode.mixingTechnique === null);
+
 // The message checkName gives for a component name that isn't text, e.g. for 5.
 function componentNameNotTextMessage(got) {
   return `The component name must be text, but got ${got}.`;
@@ -159,10 +173,34 @@ function componentNameNotTextMessage(got) {
 describe("transfer-designer", () => {
   // --- Configuration: config/pipetting-modes.js ---
 
-  test("each pipetting mode has exactly name, technique, liquidType and ends", () => {
+  test("each pipetting mode has exactly name, technique, mixingTechnique, liquidType and ends", () => {
     for (const mode of PIPETTING_MODES) {
-      assert.deepEqual(Object.keys(mode).sort(), ["ends", "liquidType", "name", "technique"]);
+      assert.deepEqual(Object.keys(mode).sort(), [
+        "ends",
+        "liquidType",
+        "mixingTechnique",
+        "name",
+        "technique",
+      ]);
     }
+  });
+
+  test("each mode's mixingTechnique is a valid name other than its technique, or null", () => {
+    for (const mode of PIPETTING_MODES) {
+      if (mode.mixingTechnique !== null) {
+        assert.doesNotThrow(() => checkName(mode.mixingTechnique, "technique"), mode.name);
+        assert.notEqual(mode.mixingTechnique, mode.technique, mode.name);
+      }
+    }
+  });
+
+  test("the lab's modes: Slow, Medium and Fast mix with OperationMix; Non-Contact can't mix", () => {
+    // The mixing technique of the mode called `name`, e.g. "Medium" → "OperationMix".
+    const mixingOf = (name) => PIPETTING_MODES.find((mode) => mode.name === name).mixingTechnique;
+    for (const name of ["Slow", "Medium", "Fast"]) {
+      assert.equal(mixingOf(name), "OperationMix", name);
+    }
+    assert.equal(mixingOf("Non-Contact"), null);
   });
 
   test("each mode's name, technique and liquid type pass checkName, and no two names repeat", () => {
@@ -192,11 +230,15 @@ describe("transfer-designer", () => {
     }
   });
 
-  test("no two modes for one end share both technique and liquid type, and each end has a mode", () => {
+  test("for each end, no technique-and-liquid-type pair repeats among its modes' techniques and mixing techniques, and each end has a mode", () => {
     for (const end of ["source", "destination"]) {
       const modes = PIPETTING_MODES.filter((mode) => mode.ends.includes(end));
       assert.ok(modes.length > 0, end);
-      const pairs = modes.map((mode) => JSON.stringify([mode.technique, mode.liquidType]));
+      const pairs = modes.flatMap((mode) =>
+        [mode.technique, mode.mixingTechnique]
+          .filter((technique) => technique !== null)
+          .map((technique) => JSON.stringify([technique, mode.liquidType])),
+      );
       assert.equal(new Set(pairs).size, pairs.length, end);
     }
   });
@@ -320,7 +362,7 @@ describe("transfer-designer", () => {
     }
   });
 
-  test("modeSettings and modeOf round-trip every mode at every end it allows", () => {
+  test("modeSettings and modeOf round-trip every mode at every end it allows, with mixes false and, for a mode that can mix, true", () => {
     for (const mode of PIPETTING_MODES) {
       for (const end of mode.ends) {
         const settings = { ...defaultSettings(), ...modeSettings(end, mode.name) };
@@ -328,9 +370,39 @@ describe("transfer-designer", () => {
           [`${end}Technique`]: mode.technique,
           [`${end}LiquidType`]: mode.liquidType,
         });
+        assert.deepEqual(modeSettings(end, mode.name, false), modeSettings(end, mode.name));
         assert.equal(modeOf(end, settings), mode.name, `${mode.name} at the ${end}`);
+        if (mode.mixingTechnique !== null) {
+          const mixing = { ...defaultSettings(), ...modeSettings(end, mode.name, true) };
+          assert.deepEqual(modeSettings(end, mode.name, true), {
+            [`${end}Technique`]: mode.mixingTechnique,
+            [`${end}LiquidType`]: mode.liquidType,
+          });
+          assert.equal(modeOf(end, mixing), mode.name, `${mode.name} mixing at the ${end}`);
+        }
       }
     }
+  });
+
+  test('modeSettings("source", "Slow", true) gives OperationMix with Slow\'s liquid type', () => {
+    assert.deepEqual(modeSettings("source", "Slow", true), {
+      sourceTechnique: "OperationMix",
+      sourceLiquidType: "Slow",
+    });
+  });
+
+  test("modeSettings with mixes true refuses a mode that can't mix", () => {
+    assert.throws(() => modeSettings("destination", NON_MIXING_MODE.name, true), {
+      message:
+        `${NON_MIXING_MODE.name} can't mix, so it can't be used at the destination while the ` +
+        "destination mixes. Turn the destination's mixing off first.",
+    });
+  });
+
+  test("modeSettings checks the mode for the end before whether it can mix", () => {
+    assert.throws(() => modeSettings("source", NON_MIXING_MODE.name, true), {
+      message: new RegExp(`^"${NON_MIXING_MODE.name}" isn't a pipetting mode for the source\\.`),
+    });
   });
 
   test("modeSettings refuses a mode not allowed at an end, naming the modes there are", () => {
@@ -386,12 +458,10 @@ describe("transfer-designer", () => {
 
   test("addStage copies the mixes too: copying a stage with a sourceMix and a destinationMix gives the same mixes, techniques and liquid types", () => {
     let plan = planWithStages(2);
-    const mixingSettings = {
-      ...otherSettings(),
-      sourceMix: { share: 90, times: 3, speed: 400 },
-      destinationMix: { share: 50, times: 2, speed: 100 },
-    };
-    plan = changeStageSettings(plan, "1", mixingSettings);
+    plan = changeStageSettings(plan, "1", otherSettings());
+    plan = setStageMix(plan, "1", "source", { share: 90, times: 3, speed: 400 });
+    plan = setStageMix(plan, "1", "destination", { share: 50, times: 2, speed: 100 });
+    const mixingSettings = plan.stageList.get("1").settings;
 
     const middle = addStage(plan, "2");
     assert.deepEqual(middle.plan.stageList.get(middle.id).settings, mixingSettings);
@@ -518,6 +588,185 @@ describe("transfer-designer", () => {
     // From trough 2, which stage 2's overdraw didn't empty.
     plan = addTransfer(plan, { ...transferTo("3", "A3", 10), source: trough("2") });
     assert.deepEqual(stagesWithOverdraw(plan), new Set(["2"]));
+  });
+
+  // --- Mixing ---
+
+  test("setStageMix on a Medium source switches on mixing and OperationMix, keeping the liquid type and the destination's settings; null switches back", () => {
+    for (const end of ["source", "destination"]) {
+      const other = end === "source" ? "destination" : "source";
+      const plan = planWithStages(1);
+      const before = plan.stageList.get("1").settings;
+      const mixing = setStageMix(plan, "1", end, exampleMix());
+      const settings = mixing.stageList.get("1").settings;
+      assert.deepEqual(settings[`${end}Mix`], exampleMix(), end);
+      assert.equal(settings[`${end}Technique`], "OperationMix", end);
+      assert.equal(settings[`${end}LiquidType`], before[`${end}LiquidType`], end);
+      for (const setting of ["Technique", "LiquidType", "Mix"]) {
+        assert.deepEqual(settings[`${other}${setting}`], before[`${other}${setting}`], end);
+      }
+      const off = setStageMix(mixing, "1", end, null).stageList.get("1").settings;
+      assert.equal(off[`${end}Mix`], null, end);
+      assert.equal(off[`${end}Technique`], "Operation", end);
+      assert.deepEqual(off, before, end);
+    }
+  });
+
+  test("setStageMix with a different mix on an end that mixes changes the mix and keeps OperationMix", () => {
+    const plan = setStageMix(planWithStages(1), "1", "source", exampleMix());
+    const changed = setStageMix(plan, "1", "source", { share: 50, times: 2, speed: 100 });
+    const settings = changed.stageList.get("1").settings;
+    assert.deepEqual(settings.sourceMix, { share: 50, times: 2, speed: 100 });
+    assert.equal(settings.sourceTechnique, "OperationMix");
+  });
+
+  test("setStageMix giving the mix the end already has returns the same plan", () => {
+    const plan = setStageMix(planWithStages(1), "1", "source", exampleMix());
+    assert.equal(setStageMix(plan, "1", "source", exampleMix()), plan);
+    assert.equal(setStageMix(plan, "1", "destination", null), plan);
+  });
+
+  test("setStageMix refuses a stage that isn't in the plan, an end that isn't one, an end that isn't a mode, a mode that can't mix and a mix the stage list refuses, each leaving the plan unchanged", () => {
+    let plan = planWithStages(1);
+    plan = changeStageSettings(plan, "1", {
+      ...defaultSettings(),
+      ...modeSettings("destination", NON_MIXING_MODE.name),
+    });
+    const custom = changeStageSettings(plan, "1", {
+      ...defaultSettings(),
+      sourceTechnique: "Custom_Technique",
+    });
+    const before = snapshot(plan);
+    assert.throws(() => setStageMix(plan, "9", "source", exampleMix()), {
+      message: `There's no stage "9" in the plan.`,
+    });
+    assert.throws(() => setStageMix(plan, "1", "middle", exampleMix()), {
+      message: 'The end must be "source" or "destination", but got "middle".',
+    });
+    assert.throws(() => setStageMix(custom, "1", "source", exampleMix()), {
+      message:
+        "The source's technique and liquid type aren't one of the pipetting modes, so its mixing " +
+        "can't be switched. Choose a mode for it first.",
+    });
+    assert.throws(() => setStageMix(plan, "1", "destination", exampleMix()), {
+      message: `${NON_MIXING_MODE.name} can't mix. Choose another mode for the destination first.`,
+    });
+    assert.throws(() => setStageMix(plan, "1", "source", { share: 0, times: 3, speed: 400 }), {
+      message:
+        "The source mix's share must be a number above 0 and at most 100 (a percentage of the well), but got 0.",
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("setStageMix checks the stage, then the end, then the end's mode, then the mix, then whether the mode can mix", () => {
+    let plan = planWithStages(1);
+    plan = changeStageSettings(plan, "1", {
+      ...defaultSettings(),
+      ...modeSettings("destination", NON_MIXING_MODE.name),
+    });
+    const custom = changeStageSettings(plan, "1", {
+      ...plan.stageList.get("1").settings,
+      sourceTechnique: "Custom_Technique",
+    });
+    const badMix = { share: 0, times: 3, speed: 400 };
+    assert.throws(() => setStageMix(plan, "9", "middle", badMix), { message: /^There's no stage/ });
+    assert.throws(() => setStageMix(custom, "1", "middle", badMix), { message: /^The end must be/ });
+    assert.throws(() => setStageMix(custom, "1", "source", badMix), {
+      message: /^The source's technique and liquid type aren't one of the pipetting modes/,
+    });
+    assert.throws(() => setStageMix(plan, "1", "destination", badMix), {
+      message: /^The destination mix's share must be/,
+    });
+  });
+
+  test("changeStageSettings refuses a mix with the mode's technique, no mix with its mixing technique, and a mix with a mode that can't mix", () => {
+    const plan = planWithStages(1);
+    const before = snapshot(plan);
+    assert.throws(
+      () => changeStageSettings(plan, "1", { ...defaultSettings(), sourceMix: exampleMix() }),
+      {
+        message: `The source mixes, so its technique must be "${MIXING_MODE.mixingTechnique}" (${MIXING_MODE.name}'s technique for mixing), but it's "${MIXING_MODE.technique}".`,
+      },
+    );
+    assert.throws(
+      () =>
+        changeStageSettings(plan, "1", {
+          ...defaultSettings(),
+          ...modeSettings("destination", MIXING_MODE.name, true),
+        }),
+      {
+        message: `The destination doesn't mix, so its technique must be "${MIXING_MODE.technique}" (${MIXING_MODE.name}'s technique without mixing), but it's "${MIXING_MODE.mixingTechnique}".`,
+      },
+    );
+    assert.throws(
+      () =>
+        changeStageSettings(plan, "1", {
+          ...defaultSettings(),
+          ...modeSettings("destination", NON_MIXING_MODE.name),
+          destinationMix: exampleMix(),
+        }),
+      {
+        message: `The destination mixes, but ${NON_MIXING_MODE.name} can't mix. Turn the destination's mixing off, or choose another mode.`,
+      },
+    );
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("changeStageSettings accepts matching mixing, and any mixing at an end that isn't one of the modes", () => {
+    const plan = planWithStages(1);
+    const matching = {
+      ...defaultSettings(),
+      ...modeSettings("source", MIXING_MODE.name, true),
+      sourceMix: exampleMix(),
+    };
+    assert.deepEqual(changeStageSettings(plan, "1", matching).stageList.get("1").settings, matching);
+    const customMixing = { ...defaultSettings(), sourceTechnique: "Custom", sourceMix: exampleMix() };
+    assert.doesNotThrow(() => changeStageSettings(plan, "1", customMixing));
+    const customNotMixing = { ...defaultSettings(), sourceTechnique: "OperationMix", sourceLiquidType: "Custom" };
+    assert.doesNotThrow(() => changeStageSettings(plan, "1", customNotMixing));
+  });
+
+  test("changeStageSettings checks the stage list's checks, then the source's mixing, then the destination's", () => {
+    const plan = planWithStages(1);
+    const bothWrong = {
+      ...defaultSettings(),
+      sourceMix: exampleMix(),
+      destinationMix: exampleMix(),
+    };
+    assert.throws(() => changeStageSettings(plan, "1", { ...bothWrong, sourceTechnique: "" }), {
+      message: /source technique/,
+    });
+    assert.throws(() => changeStageSettings(plan, "1", bothWrong), {
+      message: /^The source mixes/,
+    });
+    assert.throws(
+      () =>
+        changeStageSettings(plan, "1", {
+          ...bothWrong,
+          ...modeSettings("source", MIXING_MODE.name, true),
+        }),
+      { message: /^The destination mixes/ },
+    );
+  });
+
+  test("addStage after a stage that mixes gives a stage that passes the check", () => {
+    const plan = setStageMix(planWithStages(1), "1", "source", exampleMix());
+    const { plan: added, id } = addStage(plan, null);
+    const settings = added.stageList.get(id).settings;
+    assert.deepEqual(settings.sourceMix, exampleMix());
+    assert.doesNotThrow(() => changeStageSettings(added, id, settings));
+  });
+
+  test("stagesWithMixProblem names a stage whose destination mix works out to 0 µL, and no other; a plan without mixing gives an empty Set", () => {
+    let plan = addComponent(planWithStages(2), "Media", "#4e79a7");
+    plan = addToWells(plan, [trough("1")], "Media", 1000);
+    plan = addTransfer(plan, transferTo("1", "A1", 50));
+    plan = addTransfer(plan, transferTo("2", "A2", 0.05));
+    assert.deepEqual(stagesWithMixProblem(plan), new Set());
+    plan = setStageMix(plan, "1", "destination", exampleMix());
+    assert.deepEqual(stagesWithMixProblem(plan), new Set());
+    plan = setStageMix(plan, "2", "destination", exampleMix());
+    assert.deepEqual(stagesWithMixProblem(plan), new Set(["2"]));
   });
 
   // --- Transfers ---
@@ -1164,6 +1413,7 @@ describe("transfer-designer", () => {
     ["addStage", (plan) => addStage(plan, "2").plan, ["stageList", "stageOrder"]],
     ["renameStage", (plan) => renameStage(plan, "1", "Seeding"), ["stageList"]],
     ["changeStageSettings", (plan) => changeStageSettings(plan, "1", otherSettings()), ["stageList"]],
+    ["setStageMix", (plan) => setStageMix(plan, "1", "source", exampleMix()), ["stageList"]],
     ["removeStage", (plan) => removeStage(plan, "3"), ["operationList", "stageList", "stageOrder", "tipChanges"]],
     ["addTransfer", (plan) => addTransfer(plan, transferTo("1", "C1")), ["operationList"]],
     ["changeVolume", (plan) => changeVolume(plan, 0, 25), ["operationList"]],

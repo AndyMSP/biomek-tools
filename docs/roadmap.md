@@ -213,6 +213,16 @@ Last updated: 2026-10-28
   such a stage, as ADR 0007 says the stored technique is always the one Biomek gets. (2) A mix's
   `times` and `speed` have no upper limit, because Biomek's limits aren't known (only that 0 times
   is refused); to check at the instrument.
+- **Mixing layer (b) is specified** (Draft, 2026-10-30): the Biomek files' mix columns, with one mix
+  volume per row from the new `mix-volumes` shared module (substages move into a `substages` shared
+  module); each mode's mixing technique in `config/`, `setStageMix` switching an end's mixing and
+  technique together, and settings whose technique doesn't match their mixing refused (item (1)
+  above); a mix that works out to 0 µL is a **mix problem**, shown on the page as an overdraw is,
+  and refused by the file writer (Andy, 2026-10-30). Item (2) above stays open. **For layer (c):**
+  switching mixing on and off on the page, the default mix in `config/` (90% × 3 at 400 µL/s), mix
+  steps, and the short-mix warning (40%). **At the Biomek:** a simulation run with files from a
+  mixing plan, checking each row mixes the volume written.
+  **Built** (#109, 2026-10-30): code, tests and REPL of `substages`, `mix-volumes`, the transfer designer, the file writer and the page; checked in headless Chrome.
 - **Trying: Claude starts Claude Code's builds itself,** as a background agent with only the
   specifications and the repository, then reviews them (Andy, 2026-10-30; first used for #106).
   CLAUDE.md's "Who does what" stays unchanged until Andy decides after a longer trial.
@@ -343,6 +353,11 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **Mix volume limits are stand-ins** (2026-10-30, mixing layer (b)): `MIX_VOLUME_LIMITS` in
+  `config/tip-types.js` (BC230 200 µL, BC1070 1000 µL) is about what each tip holds in one trip
+  (`biomek.md`, "Volumes and tips"), not checked as a mix volume on the instrument. Doing it
+  properly: find the largest mix each tip type does cleanly (no air drawn, no splashing) and record
+  it in `biomek.md` with the run that showed it.
 - **The method's setup worklist is pointed at each run's folder by hand** (v0.2.0, Andy,
   2026-10-28; `file-writer.md`). Each run's files go in a folder of their own, and before each run
   the method's first Worklist step is pointed at that folder's `Setup.csv` and the method saved.
