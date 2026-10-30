@@ -1300,7 +1300,7 @@ button.entry-row {
   padding: 0 4px;
 }
 
-/* The probes: buttons 1 to 8, with every probe the stage uses lit. */
+/* The probes, in a tip change's box: buttons 1 to 8, with every probe the tip change loads lit. */
 .probe-buttons {
   display: flex;
   gap: 4px;

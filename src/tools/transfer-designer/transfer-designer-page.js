@@ -44,6 +44,7 @@ import {
   tipChangeAt,
   addTipChange,
   setTipType,
+  setTipProbes,
   removeTipChange,
   tipGroups,
   addComponent,
@@ -86,7 +87,7 @@ const ARROWHEAD_WIDTH = 12;
 // The Stages column ends this far above the bottom of the window (section 3).
 const STAGES_BOTTOM_MARGIN = 12;
 
-// The Span-8 has probes 1 to 8 (the stage's box offers each; section 10).
+// The Span-8 has probes 1 to 8 (a tip change's box offers each; section 10).
 const PROBE_COUNT = 8;
 
 // How many color swatches a component's box shows at first (section 8).
@@ -1384,16 +1385,16 @@ function createEntryBody(plan, key) {
   return body;
 }
 
-// A stage card's settings in one line, e.g. "↑ Slow · ↓ Non-Contact · 2 probes". (The ✎ that opens
-// the stage's editing box is in the card's heading, beside its name.)
+// A stage card's settings in one line, e.g. "↑ Slow · ↓ Non-Contact". No probe count: a stage uses
+// all its tips' probes, and the tip group's heading counts them (section 7). (The ✎ that opens the
+// stage's editing box is in the card's heading, beside its name.)
 function createSettingsLine(plan, id) {
   const settings = plan.stageList.get(id).settings;
   const aspirate = modeOf("source", settings) ?? "custom";
   const dispense = modeOf("destination", settings) ?? "custom";
-  const probes = countOf(settings.probes.length, "probe");
   const line = createElement("div", "", "settings-line");
-  const text = createElement("span", `↑ ${aspirate} · ↓ ${dispense} · ${probes}`);
-  text.setAttribute("aria-label", `aspirate ${aspirate}, dispense ${dispense}, ${probes}`);
+  const text = createElement("span", `↑ ${aspirate} · ↓ ${dispense}`);
+  text.setAttribute("aria-label", `aspirate ${aspirate}, dispense ${dispense}`);
   line.append(text);
   return line;
 }
@@ -1612,14 +1613,12 @@ function createTipGroupBox(plan, group, index, nextGroup, open, overdrawn, drawn
 }
 
 // A tip group's heading: a tip icon, "New tips · BC230 · 2 tips" and the ✎ that opens the tip
-// change's box. The count is how many tips the tip change loads: one per probe that any stage in
-// the group uses, so a user can keep it down to save tips (section 7).
+// change's box. The count is how many tips the tip change loads: one per probe it loads, chosen in
+// its box, and every stage in the group uses all of them (section 7).
 function createTipGroupHeading(plan, group) {
   const tips = countOf(group.probes.length, "tip");
   const heading = createElement("div", "", "tip-group-heading");
-  heading.title =
-    `Loads ${tips}: one for each probe that any stage using these tips uses. ` +
-    "Fewer probes in a stage can mean fewer tips.";
+  heading.title = `Loads ${tips}. Every stage until the next new tips uses all of them.`;
   heading.append(
     createElement("span", "", "tip-icon"),
     createElement("span", `New tips · ${group.tipType} · ${tips}`),
@@ -2279,8 +2278,8 @@ function openEditingBox(kind, key) {
   focusEditingBox();
 }
 
-// What a box edits, before any changes: a component's name and color; a stage's name, modes and
-// probes; a tip change's tip type.
+// What a box edits, before any changes: a component's name and color; a stage's name and modes; a
+// tip change's tip type and probes.
 function originalFor(plan, kind, key) {
   if (kind === "component") {
     const component = plan.components.find((candidate) => candidate.name === key);
@@ -2292,10 +2291,10 @@ function originalFor(plan, kind, key) {
       name,
       aspirate: modeOf("source", settings),
       dispense: modeOf("destination", settings),
-      probes: [...settings.probes],
     };
   }
-  return { tipType: tipChangeAt(plan, key).tipType };
+  const tipChange = tipChangeAt(plan, key);
+  return { tipType: tipChange.tipType, probes: [...tipChange.probes] };
 }
 
 // Closes the editing box without saving, taking it off the page without redrawing anything else,
@@ -2319,11 +2318,13 @@ function isBoxDirty() {
     return (
       draft.name !== original.name ||
       draft.aspirate !== original.aspirate ||
-      draft.dispense !== original.dispense ||
-      JSON.stringify(draft.probes) !== JSON.stringify(original.probes)
+      draft.dispense !== original.dispense
     );
   }
-  return draft.tipType !== original.tipType;
+  return (
+    draft.tipType !== original.tipType ||
+    JSON.stringify(draft.probes) !== JSON.stringify(original.probes)
+  );
 }
 
 // Draws the open editing box under its ✎ (floating over what's below), presses the ✎, keeps the box
@@ -2469,28 +2470,13 @@ function colorsOffered(plan, ownName, ownColor, showAll) {
   return [...first.slice(0, FIRST_COLORS_SHOWN - 1), ownColor];
 }
 
-// A stage's box (section 10): Name, the settings grid, and the Probes buttons.
+// A stage's box (section 10): Name and the settings grid. (Probes are chosen in the tip change's
+// box, since every stage uses all its tips' probes.)
 function stageBoxFields(plan) {
   const { draft } = editingBox;
   const nameField = createNameField(draft.name, "Name");
   const grid = createSettingsGrid(draft);
-  const probes = createElement("div");
-  probes.append(createElement("span", "Probes", "field-name"));
-  const buttons = createElement("div", "", "probe-buttons");
-  for (let probe = 1; probe <= PROBE_COUNT; probe++) {
-    const button = createElement("button", String(probe), "probe-button");
-    button.type = "button";
-    button.classList.toggle("lit", draft.probes.includes(probe));
-    button.setAttribute("aria-label", `${countOf(probe, "probe")}`);
-    button.setAttribute("aria-pressed", String(draft.probes.length === probe && draft.probes.includes(probe)));
-    button.addEventListener("click", () => {
-      draft.probes = probesFor(probe);
-      redrawEditingBox();
-    });
-    buttons.append(button);
-  }
-  probes.append(buttons);
-  return [nameField, grid, probes];
+  return [nameField, grid];
 }
 
 // The stage's settings as a grid (section 10): the stage's ends as columns, headed Aspirate and
@@ -2531,7 +2517,8 @@ function createModeMenu(end, accessibleName, chosen, onChoose) {
   return menu;
 }
 
-// A tip change's box (section 10): a button per tip type, one chosen.
+// A tip change's box (section 10): Tip type, a button per tip type, one chosen; then Probes, the
+// buttons 1 to 8 that choose how many probes get tips.
 function tipBoxFields() {
   const { draft } = editingBox;
   const field = createElement("div");
@@ -2548,7 +2535,30 @@ function tipBoxFields() {
     buttons.append(button);
   }
   field.append(buttons);
-  return [field];
+  return [field, createProbesField(draft)];
+}
+
+// The Probes field of a tip change's box (section 10): buttons 1 to 8, choosing how many probes get
+// tips (probesFor), with every probe the tip change loads lit, so picking 4 lights up 1 to 4. The
+// chosen count's button is the pressed one.
+function createProbesField(draft) {
+  const field = createElement("div");
+  field.append(createElement("span", "Probes", "field-name"));
+  const buttons = createElement("div", "", "probe-buttons");
+  for (let probe = 1; probe <= PROBE_COUNT; probe++) {
+    const button = createElement("button", String(probe), "probe-button");
+    button.type = "button";
+    button.classList.toggle("lit", draft.probes.includes(probe));
+    button.setAttribute("aria-label", `${countOf(probe, "probe")}`);
+    button.setAttribute("aria-pressed", String(draft.probes.length === probe && draft.probes.includes(probe)));
+    button.addEventListener("click", () => {
+      draft.probes = probesFor(probe);
+      redrawEditingBox();
+    });
+    buttons.append(button);
+  }
+  field.append(buttons);
+  return field;
 }
 
 // A box's Name text box, which updates the draft as it's typed in.
@@ -2718,7 +2728,7 @@ function saveEditingBox() {
       const savedPlan = saveStageDraft(plan, key, draft);
       return { plan: savedPlan, message: `Saved ${stageLabel(savedPlan, key)}.` };
     }
-    return { plan: setTipType(plan, key, draft.tipType), message: `New tips are now ${draft.tipType}.` };
+    return saveTipDraft(plan, key, draft);
   });
   if (saved === false) {
     return;
@@ -2755,9 +2765,18 @@ function saveStageDraft(plan, id, draft) {
     destinationLiquidType: stage.settings.destinationLiquidType,
     ...(draft.aspirate === null ? {} : modeSettings("source", draft.aspirate)),
     ...(draft.dispense === null ? {} : modeSettings("destination", draft.dispense)),
-    probes: draft.probes,
   };
   return changeStageSettings(saved, id, settings);
+}
+
+// A tip change's Save: sets its tip type and probes as one edit, returning { plan, message },
+// e.g. the message "New tips: BC230 on 4 probes." Throws as setTipType and setTipProbes do.
+function saveTipDraft(plan, key, draft) {
+  const saved = setTipProbes(setTipType(plan, key, draft.tipType), key, draft.probes);
+  return {
+    plan: saved,
+    message: `New tips: ${draft.tipType} on ${countOf(draft.probes.length, "probe")}.`,
+  };
 }
 
 // Watches every press on the page: while an editing box is open, a press outside it closes the box

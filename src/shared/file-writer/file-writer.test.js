@@ -13,14 +13,15 @@ import { DECK } from "../../../config/deck.js";
 import { TIP_TYPES } from "../../../config/tip-types.js";
 import { labwareNames, gridOf } from "../deck/deck.js";
 import {
+  START,
   emptyPlan,
   setExperimentName,
   addStage,
   renameStage,
-  changeStageSettings,
   addTransfer,
   addTipChange,
   setTipType,
+  setTipProbes,
   addComponent,
   addToWells,
 } from "../../tools/transfer-designer/transfer-designer.js";
@@ -104,9 +105,10 @@ function withTransfersIn(plan, stages) {
   );
 }
 
-// The plan with stage `id` using `probes`, keeping its other settings.
-function withProbes(plan, id, probes) {
-  return changeStageSettings(plan, id, { ...plan.stageList.get(id).settings, probes });
+// The plan with a tip change before stage `beforeId` loading `tipType` tips on `probes`,
+// e.g. withTipChange(plan, "3", TIP_TYPES[1], [1, 3, 5]).
+function withTipChange(plan, beforeId, tipType, probes) {
+  return setTipProbes(setTipType(addTipChange(plan, beforeId), beforeId, tipType), beforeId, probes);
 }
 
 // writeRunFiles with the usual timestamp.
@@ -296,7 +298,7 @@ describe("file-writer", () => {
   });
 
   test("one stage with one substage gives a tip-change row and a transfer row", () => {
-    const plan = withProbes(withTransfersIn(planWithStages(1), ["1"]), "1", [1, 2, 3, 4]);
+    const plan = setTipProbes(withTransfersIn(planWithStages(1), ["1"]), START, [1, 2, 3, 4]);
     const { settings } = plan.stageList.get("1");
     const stages = fileNamed(write(plan), "Stages.csv");
     const lines = linesOf(stages);
@@ -321,20 +323,30 @@ describe("file-writer", () => {
 
   test("probes with a comma are quoted; a single probe isn't", () => {
     const base = withTransfersIn(planWithStages(1), ["1"]);
-    const twoProbes = linesOf(fileNamed(write(withProbes(base, "1", [1, 2])), "Stages.csv"));
+    const twoProbes = linesOf(fileNamed(write(setTipProbes(base, START, [1, 2])), "Stages.csv"));
     assert.equal(twoProbes[1], `1,${TIP_TYPES[0]},"1,2"${",".repeat(14)}`);
     assert.ok(twoProbes[2].includes('.csv,"1,2",'), twoProbes[2]);
-    const oneProbe = linesOf(fileNamed(write(withProbes(base, "1", [1])), "Stages.csv"));
+    const oneProbe = linesOf(fileNamed(write(setTipProbes(base, START, [1])), "Stages.csv"));
     assert.equal(oneProbe[1], `1,${TIP_TYPES[0]},1${",".repeat(14)}`);
     assert.ok(oneProbe[2].includes(".csv,1,"), oneProbe[2]);
   });
 
-  test("look-ahead loading: LoadProbes holds every probe any stage in the tip group uses", () => {
-    let plan = withTransfersIn(planWithStages(2), ["1", "2"]);
-    plan = withProbes(withProbes(plan, "1", [1, 2]), "2", [1, 2, 3, 4]);
-    assert.equal(rowsOf(fileNamed(write(plan), "Stages.csv"))[0].LoadProbes, "1,2,3,4");
-    plan = withProbes(withProbes(plan, "1", [1]), "2", [3, 5]);
-    assert.equal(rowsOf(fileNamed(write(plan), "Stages.csv"))[0].LoadProbes, "1,3,5");
+  test("probes from the tip change: LoadProbes and every transfer row's Probes in its group are the tip change's", () => {
+    let plan = withTransfersIn(planWithStages(4), ["1", "2", "3", "4"]);
+    plan = setTipProbes(plan, START, [1, 2, 3, 4]);
+    plan = withTipChange(plan, "3", TIP_TYPES[1], [1, 3, 5]);
+    const rows = rowsOf(fileNamed(write(plan), "Stages.csv"));
+    assert.deepEqual(
+      rows.map((row) => [row.NewTip, row.LoadProbes, row.Probes]),
+      [
+        ["1", "1,2,3,4", ""],
+        ["0", "", "1,2,3,4"],
+        ["0", "", "1,2,3,4"],
+        ["1", "1,3,5", ""],
+        ["0", "", "1,3,5"],
+        ["0", "", "1,3,5"],
+      ],
+    );
   });
 
   test("a tip change before the third stage gives a second tip-change row before its rows, carrying its tip type", () => {
@@ -464,8 +476,9 @@ describe("file-writer", () => {
   });
 
   test("every line ends with CRLF, no file starts with a byte order mark, and only fields with a comma are quoted", () => {
+    // START's probes (1 to 4) are quoted; the tip change before stage 2 loads one probe, unquoted.
     let plan = withTransfersIn(planWithStages(2), ["1", "2"]);
-    plan = withProbes(plan, "2", [1]);
+    plan = withTipChange(plan, "2", TIP_TYPES[0], [1]);
     for (const file of write(plan).files) {
       assert.ok(file.text.endsWith("\r\n"), `${file.name} ends with CRLF`);
       // A line feed not preceded by a carriage return would be a bare LF.

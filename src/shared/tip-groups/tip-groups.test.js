@@ -1,12 +1,11 @@
 // Unit tests for tip-groups.js. Each test comes from the "Test cases" section of tip-groups.md.
 //
-// They build plans directly, from a StageList and plain stageOrder and tipChanges, so these tests
-// don't depend on a tool. tipGroups reads only those three parts of a plan, so the plans here hold
-// nothing else unless a test needs it.
+// They build plans directly, from a plain stageOrder and tipChanges, so these tests don't depend on
+// a tool. tipGroups reads only those two parts of a plan, so the plans here hold nothing else unless
+// a test needs it.
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { StageList } from "../stage-list/stage-list.js";
 import { OperationList } from "../operation-list/operation-list.js";
 import { START, tipGroups } from "./tip-groups.js";
 
@@ -14,34 +13,14 @@ import { START, tipGroups } from "./tip-groups.js";
 const FIRST_TIPS = "BC230";
 const OTHER_TIPS = "BC1070";
 
-// Valid stage settings using `probes`, e.g. settingsWith([1, 2]). The technique and liquid type
-// names are only examples: stage-list checks a name's form, not whether it's in config/.
-function settingsWith(probes) {
+// A plan whose stages are "1", "2", … up to `stageCount`, in that order unless `stageOrder` is
+// given, with the START tip change on `startProbes` and any other tip changes in `tipChanges`,
+// e.g. makePlan(3, { tipChanges: { 3: { tipType: "BC1070", probes: [1] } } }).
+function makePlan(stageCount, { startProbes = [1, 2, 3, 4], tipChanges = {}, stageOrder = null } = {}) {
+  const ids = Array.from({ length: stageCount }, (_, index) => String(index + 1));
   return {
-    sourceTechnique: "Aspirate_Slow",
-    sourceLiquidType: "Cells",
-    destinationTechnique: "Dispense_Clean",
-    destinationLiquidType: "Cells",
-    probes,
-  };
-}
-
-// A plan whose stages are "1", "2", … in the order given, each using the probes in `probesOfStages`
-// (one list per stage), in that stage order, with the START tip change and any in `tipChanges`,
-// e.g. makePlan([[1, 2], [3]], { tipChanges: { 2: { tipType: "BC1070" } } }).
-// `stageOrder` can be given to put the stages in another order than they were added.
-function makePlan(probesOfStages, { tipChanges = {}, stageOrder = null } = {}) {
-  const ids = [];
-  let stageList = new StageList();
-  for (const probes of probesOfStages) {
-    const added = stageList.add("Stage", settingsWith(probes));
-    stageList = added.stageList;
-    ids.push(added.id);
-  }
-  return {
-    stageList,
     stageOrder: stageOrder ?? ids,
-    tipChanges: { [START]: { tipType: FIRST_TIPS }, ...tipChanges },
+    tipChanges: { [START]: { tipType: FIRST_TIPS, probes: startProbes }, ...tipChanges },
   };
 }
 
@@ -51,34 +30,44 @@ describe("tip-groups", () => {
   });
 
   test("one stage with only the START tip change gives one group, keyed START, with its probes", () => {
-    const plan = makePlan([[1, 2, 3, 4]]);
+    const plan = makePlan(1, { startProbes: [1, 2, 3, 4] });
     assert.deepEqual(tipGroups(plan), [
       { key: START, tipType: FIRST_TIPS, stages: ["1"], probes: [1, 2, 3, 4] },
     ]);
   });
 
   test("a tip change before the third stage gives two groups, each with its key and tip type", () => {
-    const plan = makePlan([[1], [1], [1], [1]], { tipChanges: { 3: { tipType: OTHER_TIPS } } });
+    const plan = makePlan(4, {
+      startProbes: [1],
+      tipChanges: { 3: { tipType: OTHER_TIPS, probes: [1] } },
+    });
     assert.deepEqual(tipGroups(plan), [
       { key: START, tipType: FIRST_TIPS, stages: ["1", "2"], probes: [1] },
       { key: "3", tipType: OTHER_TIPS, stages: ["3", "4"], probes: [1] },
     ]);
   });
 
-  test("probes: every probe any stage in the group uses, each once, smallest first", () => {
-    const plan = makePlan([[1, 2], [1, 2, 3, 4], [1], [3, 5], [8, 1]], {
-      tipChanges: { 3: { tipType: OTHER_TIPS }, 5: { tipType: OTHER_TIPS } },
+  test("probes: each group's probes are its tip change's, whatever its stages are", () => {
+    const plan = makePlan(5, {
+      startProbes: [1, 2, 3, 4],
+      tipChanges: { 3: { tipType: OTHER_TIPS, probes: [1] }, 5: { tipType: OTHER_TIPS, probes: [1, 8] } },
     });
     assert.deepEqual(
       tipGroups(plan).map((group) => group.probes),
-      [[1, 2, 3, 4], [1, 3, 5], [1, 8]],
+      [[1, 2, 3, 4], [1], [1, 8]],
     );
   });
 
+  test("changing the probes list a group returned doesn't change the plan's tip change", () => {
+    const plan = makePlan(1, { startProbes: [1, 2] });
+    tipGroups(plan)[0].probes.push(9);
+    assert.deepEqual(plan.tipChanges[START].probes, [1, 2]);
+  });
+
   test("groups follow the stage order, not the stage IDs", () => {
-    const plan = makePlan([[1], [1], [1]], {
+    const plan = makePlan(3, {
       stageOrder: ["1", "3", "2"],
-      tipChanges: { 2: { tipType: OTHER_TIPS } },
+      tipChanges: { 2: { tipType: OTHER_TIPS, probes: [1] } },
     });
     assert.deepEqual(
       tipGroups(plan).map((group) => group.stages),
@@ -95,14 +84,17 @@ describe("tip-groups", () => {
       volume: 50,
       stage: "1",
     });
-    const plan = { ...makePlan([[1], [2]]), operationList };
+    const plan = { ...makePlan(2, { startProbes: [1, 2] }), operationList };
     assert.deepEqual(tipGroups(plan), [
       { key: START, tipType: FIRST_TIPS, stages: ["1", "2"], probes: [1, 2] },
     ]);
   });
 
   test("calling tipGroups twice gives equal results, and changing one result doesn't change the next", () => {
-    const plan = makePlan([[1], [2]], { tipChanges: { 2: { tipType: OTHER_TIPS } } });
+    const plan = makePlan(2, {
+      startProbes: [1],
+      tipChanges: { 2: { tipType: OTHER_TIPS, probes: [2] } },
+    });
     const first = tipGroups(plan);
     assert.deepEqual(first, tipGroups(plan));
     first.pop();
