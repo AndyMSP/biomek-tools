@@ -286,6 +286,15 @@ simulated wasn't recorded.** "Worked" means it validated and ran as the files sa
   Aspirate and Dispense sections (Andy's MixOnly2, on template PureMix2: an aspirate air gap and a
   mix, then a mix and a dispense air gap), run on a well-to-itself transfer of 10 µL, mixed and left
   the well's volume unchanged (Method31).
+- **No way is shown to mix a share of each well's own volume** (from the manual, 2026-10-29; not
+  tested on the instrument). The Technique Editor's mix takes an amount in µL and a number of
+  times, with no percentage option (B56358AF 7-13 to 7-15). A pipetting template sees the mix
+  volume as the context variable `C__MixVolume` (B56358AF 8-31), and context variables only
+  "retrieve values from the appropriate technique or liquid type" (B56358AF 8-7); the only volume
+  among them, `C__Volume`, is the transfer's volume, not the well's contents (Table 8.1, 8-12).
+  Expressions can read a labware's `Volume` data set by well (B56358AF 23-43), but no context
+  variable gives the well a probe is at. So each row gets one mix volume for all its wells. A
+  template script might still find a way; that is to be checked at the instrument.
 
 **The Details log and the report**
 - **Plunger (D) positions in the Details log are in µL, from an absolute zero;** at rest they are
