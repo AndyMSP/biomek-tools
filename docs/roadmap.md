@@ -182,7 +182,14 @@ Last updated: 2026-10-28
   in three chunks (Andy, 2026-10-30), each leaving `main` working: (1) page layout only, (2) probes
   chosen with the tips, (3) mixing, in layers. **Chunk 1's page specification is written** (Draft,
   2026-10-30; `transfer-designer-page.md`): an open stage's ✎ beside its name, and the stage's
-  editing box as a grid (Aspirate and Dispense columns, a Mode row). Next, Claude Code builds it.
+  editing box as a grid (Aspirate and Dispense columns, a Mode row); merged (#103). Claude Code is
+  building it. The deferred simulation run (step 1 of the order below) can test that build, since
+  its Biomek files are the same as `main`'s at `15e3603`. **Chunk 2's specifications are written**
+  (Draft, 2026-10-30): each tip change chooses its probes, and every stage until the next tip change
+  uses all of them, replacing per-stage probes and look-ahead tip loading (ADR 0007 amended;
+  glossary; `stage-list.md`, `tip-groups.md`, `transfer-designer.md`, `plan-file.md` with format
+  version 3, `file-writer.md`, `transfer-designer-page.md`). Next, Claude Code builds it, in one
+  pull request, since the modules change together.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -227,8 +234,9 @@ added on 2026-10-28 (Andy).
    specification says so. It comes before the file writer so that
    building stages on the page can shape the file writer's specification.
 7. **The file writer** (`src/shared/file-writer/`): a plan becomes a setup worklist, a stage
-   worklist and one Transfer From File file per substage (ADR 0007), with look-ahead tip loading and
-   volumes rounded to 3 decimal places. It splits each stage into substages, one row each (each
+   worklist and one Transfer From File file per substage (ADR 0007), with look-ahead tip loading
+   (replaced on 2026-10-30 by probes chosen with each tip change) and volumes rounded to 3 decimal
+   places. It splits each stage into substages, one row each (each
    Transfer From File file has one source and one destination labware type: Biomek requires it,
    B56358AF 22-13), looking up each labware's type in the deck description, and writes tip changes
    as rows of their own (ADR 0007). It adds the page's button for writing the files.

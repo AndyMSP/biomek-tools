@@ -41,10 +41,10 @@ of the tools can still open it, or say why it can't.
 
 **Stage**
 A group of operations that can run in any order and share one set of settings: the technique and
-liquid type at the sources and at the destinations (chosen as pipetting modes), and how many probes
-are used. Stages run one after another; within a stage, the order isn't fixed. Tips aren't part of a
-stage: tip changes come between stages. A stage may use several labware types; the file writer
-splits it into substages. The term says what a stage *is*, not who makes it: for now the user builds
+liquid type at the sources and at the destinations (chosen as pipetting modes). Stages run one after
+another; within a stage, the order isn't fixed. Tips aren't part of a stage: tip changes come
+between stages, and choose the tips and the probes the stages after them use. A stage may use
+several labware types; the file writer splits it into substages. The term says what a stage *is*, not who makes it: for now the user builds
 stages, and a later version may form them automatically.
 
 **Stage order**
@@ -63,10 +63,10 @@ file writer forms them.
 **Tip change**
 Unloading all tips and loading new ones, all of one tip type, between two stages. A tip change is
 its own entry in a plan, not a stage setting, and the stages after it use its tips until the next
-tip change. The run always starts with one, before the first stage. Tips go on as many probes as
-the stages using them need.
+tip change. The run always starts with one, before the first stage. A tip change chooses its tip
+type and how many probes get tips, and every stage using its tips uses all those probes.
 
 **Tip group**
 A group of stages that run on the same tips: the stages after one tip change, up to the next. For
 example, with tip changes at the start and before stage 4, stages 1 to 3 are one tip group and
-stages 4 and 5 another. Tips go on every probe any stage in the group uses.
+stages 4 and 5 another. Every stage in the group uses all the probes its tip change loads.
