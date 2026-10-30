@@ -191,7 +191,10 @@ Last updated: 2026-10-28
   uses all of them, replacing per-stage probes and look-ahead tip loading (ADR 0007 amended;
   glossary; `stage-list.md`, `tip-groups.md`, `transfer-designer.md`, `plan-file.md` with format
   version 3, `file-writer.md`, `transfer-designer-page.md`). Next, Claude Code builds it, in one
-  pull request, since the modules change together.
+  pull request, since the modules change together. **Built** (#104, 2026-10-30): the code, tests
+  and REPL of every module above; plan files are written as version 3 and versions 1 and 2 still
+  open; checked in headless Chrome (42 checks). Andy hasn't tested the page yet, so the changed
+  specifications stay Draft.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
