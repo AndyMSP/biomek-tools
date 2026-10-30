@@ -8,9 +8,11 @@
 > files, from the preview Andy shaped on 2026-10-28 (sections 2, 3, 4, 5, 12, 15 and 16). They
 > become Final once built and tested by Andy, including a zip unzipped and run on the Biomek PC.
 >
-> **Draft changes (2026-10-30):** an open stage's ✎ beside its name, no dot after a transfer's
-> route, and the stage's editing box as a grid, from the mixing preview Andy shaped on 2026-10-29 and 2026-10-30 (sections 7, 10, 15 and
-> 16). Layout only: the plan, plan files and Biomek files don't change. They become Final once
+> **Draft changes (2026-10-30):** an open stage's ✎ beside its name, no dot after a transfer's route,
+> and the stage's editing box as a grid, from the mixing preview Andy shaped on 2026-10-29 and
+> 2026-10-30 (sections 7, 10, 15 and 16). Layout only: the plan, plan files and Biomek files don't
+> change. From reviewing their build (#105): the Stages column is at least 348px wide, so a stage's
+> box fits in it, and open cards no longer say `Current` (sections 3 and 7). They become Final once
 > built and tested by Andy.
 
 ## 1. Purpose
@@ -57,7 +59,10 @@ From the top:
 | Message bar | Floating at the bottom of the window, centered (section 12). |
 
 When the window is wider than 1000px, the deck panel and the Stages column sit side by side, the
-Stages column 320px to 400px wide and the deck panel taking the rest. The deck panel's width
+Stages column 348px to 400px wide and the deck panel taking the rest. (The minimum was 320px until
+2026-10-30, when it rose so a stage's 320px editing box, section 10, fits inside the column with
+its padding. At the widths where the column is at its minimum, the deck's labware sit one per row
+either way, so the deck panel loses nothing it was using; Andy, 2026-10-30, from reviewing #105.) The deck panel's width
 doesn't depend on what's in it, so bringing out or putting away labware never changes the width of
 either panel. The Stages column is then
 pinned beside the deck while the page scrolls, scrolls on its own, and is fitted to end 12px above
@@ -265,8 +270,9 @@ stages in stage order, then **End**. Exactly one of them is **open**, as a card;
 one-line rows. Clicking a row opens it.
 
 **Rows and cards share one look.** A row shows a number in a small round badge, a name, and a count
-at the right. A card shows the same at the top, with `Current` in blue at the right, then its
-contents. **An open stage's card has its ✎ just after its name**, which opens the stage's editing
+at the right. A card shows the same at the top, then its contents. (Until 2026-10-30 a card also
+said `Current` in blue at the right. It went to leave room for a stage's name beside its ✎: an open
+card already stands out, with a blue badge and border and its contents shown; Andy, 2026-10-30.) **An open stage's card has its ✎ just after its name**, which opens the stage's editing
 box (section 10); the count stays at the right (Andy, 2026-10-30: it frees the settings line, and
 keeps the ✎ in one place on every stage).
 
@@ -641,7 +647,8 @@ page's configuration (ADR 0009):
 - every editing box: Save, Discard, Escape, a click outside with and without changes, Remove;
 - a stage's ✎ beside its name: it opens the stage's box under the card's heading, its menus show
   `Non-Contact` whole, and a stage whose settings aren't one of the modes shows `(not one of the
-  modes)` in that end's menu;
+  modes)` in that end's menu; in a window about 1400px wide, where the Stages column is at its
+  minimum, the box fits inside the column and the heading shows `New stage` whole;
 - the experiment's name: naming, a name refused as typed, Enter and clicking away, Escape, undo and
   redo, and the name kept after saving and opening, reloading, and in a plan file of version 1
   (none);

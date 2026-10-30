@@ -50,7 +50,7 @@
   --panel-padding: 20px;
   --panel-gap: 20px;
   --page-width: 1500px;
-  --stages-min-width: 320px;
+  --stages-min-width: 348px;
   --stages-max-width: 400px;
   /* The widest labware on the deck has 12 columns (GRID_96 and GRID_1X12_NUMBERED, deck.md). The
      deck panel is given room for two of them side by side, when the window allows (section 3). */
@@ -334,8 +334,9 @@ input.experiment-name-box.invalid {
 
 /* The two panels are grid columns, so their widths depend only on the window, never on what's in
    them (section 3). The deck panel is at least wide enough for two labware side by side, or, in a
-   window too narrow for that beside a 320px Stages column, whatever that column leaves; it takes the
-   rest. The Stages column is 320px to 400px wide. */
+   window too narrow for that beside a 348px Stages column, whatever that column leaves; it takes the
+   rest. The Stages column is 348px to 400px wide: at least a stage's 320px editing box plus the
+   column's padding, so the box fits inside it (section 3). */
 .workspace {
   flex: 1;
   display: grid;
@@ -875,13 +876,6 @@ button.entry-row {
   flex: none;
   color: var(--muted-text);
   font-size: 13px;
-}
-
-.entry-current {
-  flex: none;
-  color: var(--blue);
-  font-size: 13px;
-  font-weight: 600;
 }
 
 /* The open card's contents, under its heading line. */

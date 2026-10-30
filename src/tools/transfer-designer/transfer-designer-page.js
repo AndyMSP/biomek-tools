@@ -1312,7 +1312,7 @@ function refreshStages() {
 }
 
 // Start, a stage or End as a row (closed) or a card (open), sharing one look: a number in a badge, a
-// name and a count; a card adds "Current" and its contents, and a stage's card its ✎ after the name.
+// name and a count; a card adds its contents, and a stage's card its ✎ after the name.
 function createEntry(plan, key, open, overdrawn) {
   const isOpen = key === open;
   const entry = createElement("div", "", "entry");
@@ -1336,9 +1336,6 @@ function createEntry(plan, key, open, overdrawn) {
     row.append(createPencil("stage", key, `Edit stage ${stageOrder(plan).indexOf(key) + 1}`));
   }
   row.append(createElement("span", count, "entry-count"));
-  if (isOpen) {
-    row.append(createElement("span", "Current", "entry-current"));
-  }
   entry.append(row);
   if (isOpen) {
     entry.append(createEntryBody(plan, key));
