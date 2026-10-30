@@ -2,15 +2,25 @@
 
 ## About this project
 Tools that make our Biomek i5 liquid handler (Span-8) easier to use. The project owner (Andy) is
-learning to program and must be able to understand every part of the code.
+learning to program. He decides what the tools do and checks what they produce; he doesn't need to
+understand every line of code (Andy, 2026-10-30).
 
 Requirement: each tool handed out to the lab must open in Edge or Chrome on a lab PC with nothing
 installed.
 
 ## Working together
 Andy is learning, so explanations matter as much as the code.
-- **Go slowly when explaining.** Explain one piece at a time and wait before moving on. When
-  reviewing code, go line by line if asked. Don't cover several topics in one reply.
+- **Andy owns what affects the lab:** behavior (what a page does, what goes into the Biomek files),
+  domain facts, and anything hard to undo (merges, releases, real runs). He checks results rather
+  than reading code: his own test of the page, golden files, and a simulation run before any real
+  run.
+- **Claude handles the details:** error messages, test lists and code structure in specifications,
+  and reviewing Claude Code's work. Bring Andy only what needs his decision or his test.
+- **Learning is Andy's choice.** When he asks to understand something, explain it slowly, one piece
+  at a time, as below.
+- **Go slowly when explaining.** When Andy asks to understand something, explain one piece at a
+  time and wait before moving on. When reviewing code, go line by line if asked. Don't cover several
+  topics in one reply.
 - **Use standard industry terms.** Explain each term the first time it comes up. Don't invent
   terms; if there's no standard one, say so.
 - **Use American spelling** (color, center), in code, documents and replies.
@@ -36,6 +46,9 @@ Andy is learning, so explanations matter as much as the code.
 - **Claude, in a chat,** writes specifications, ADRs and other documents, tries page changes in
   previews, and reviews Claude Code's pull requests: starting from the description, then checking
   the changes against it and against the specifications, and checking pages in a real browser.
+  For larger changes, Claude also has a separate agent review the work, given only the changes and
+  the specifications, not Claude's conclusions; Claude checks what it finds and passes on what
+  matters.
 - **Claude Code** writes the code and tests, from the specifications only, in a new session each
   time, so the specifications must say everything it needs.
 - **Exception:** a very small code fix (a few lines, found in a review) can be made in the chat,
@@ -129,8 +142,9 @@ biomek-tools/
   specification commits come first, and Andy reviews them; then Claude Code builds on the same
   branch and pushes there, adding a "Build" section to the PR's description instead of opening a new
   PR. Anything the build or its review shows about the specification is fixed in the same PR.
-- A pull request's description summarizes what changed and lists any choices made where a
-  specification left room, so whoever reviews it can read them there. A review starts from the
+- A pull request's description starts with **For Andy**: three to five plain-language points that
+  need his decision or his test, and nothing else. Below it, it summarizes what changed and lists
+  any choices made where a specification left room, for whoever reviews it. A review starts from the
   description, then checks the changes against it and against the specifications.
 - Start the next task's branch only after the previous one is merged, unless Andy says otherwise.
 - Never commit secrets (passwords, keys) or personal data.
