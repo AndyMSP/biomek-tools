@@ -34,7 +34,8 @@ the labware it uses.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Moving** a stage, or a transfer within its stage. A transfer can be removed and added again.
-- **Mixing**, final concentrations, smarter staging (the tool forming stages itself).
+- **Switching mixing on or off** (stages hold their mixes, but nothing here changes them yet; ADR
+  0007, "Mixing"), final concentrations, smarter staging (the tool forming stages itself).
 - **Checking techniques against tip types** (roadmap, "Technical debt").
 - **Dead volume** (roadmap, "Technical debt").
 - **Which transfer runs short when a stage draws from an overdrawn well more than once** (roadmap,

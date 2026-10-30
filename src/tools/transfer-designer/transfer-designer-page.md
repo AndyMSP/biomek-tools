@@ -495,7 +495,7 @@ as `Non-Contact`. From the top:
   least one stage.`
 
 **Save** renames it (if the name changed) and changes its settings as one edit (message `Saved stage
-2, “Drugs”.`).
+2, “Drugs”.`). Settings the box doesn't offer, such as the stage's mixes, are kept as they are.
 
 **A tip change's box**: **Tip type**, a button per tip type (`TIP_TYPES`), one chosen; **Probes**,
 buttons `1` to `8`, choosing how many probes get tips (`probesFor`), with every probe the tip change

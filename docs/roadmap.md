@@ -207,6 +207,12 @@ Last updated: 2026-10-28
   of its own kind, so a transfer stage copies a transfer stage and a mix step a mix step: the
   nearest before it, else the nearest after it, else the defaults (a transfer stage with no
   mixing; a mix step with the default mix).
+  **For layer (b), from #106's review** (2026-10-30): (1) the stage list checks a mix's form only,
+  so a plan file can hold a stage that mixes with a technique that doesn't (e.g. `Operation`), or
+  the reverse; once `config/` names each mode's mixing technique, opening a file should refuse
+  such a stage, as ADR 0007 says the stored technique is always the one Biomek gets. (2) A mix's
+  `times` and `speed` have no upper limit, because Biomek's limits aren't known (only that 0 times
+  is refused); to check at the instrument.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36

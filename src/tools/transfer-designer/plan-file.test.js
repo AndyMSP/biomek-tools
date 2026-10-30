@@ -470,6 +470,15 @@ describe("plan-file", () => {
     assertRefused(file, 'stage 1\'s settings are missing "probes", which a version 1 file\'s stages have.');
   });
 
+  test("a version 1 stage holding a mix is refused, naming version 1", () => {
+    const file = version1File();
+    file.stages[0].settings.destinationMix = null;
+    assertRefused(
+      file,
+      'stage 1\'s settings have "destinationMix", which a version 1 file\'s stages don\'t have.',
+    );
+  });
+
   test("a version 1 file with experimentName is refused as having an extra property", () => {
     assertRefused(
       { ...version1File(), experimentName: "Exp36" },
