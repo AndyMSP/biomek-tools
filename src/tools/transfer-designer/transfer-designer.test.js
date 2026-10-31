@@ -2,7 +2,7 @@
 // transfer-designer.md, and each row of its error table and each order of checks has one.
 //
 // They use the real config/pipetting-modes.js, config/tip-types.js and config/deck.js, and also check
-// the first two (ADR 0009). Tests find what they need in the config files rather than naming it, so
+// the first two, and DEFAULT_MIX in config/mixing.js (ADR 0009). Tests find what they need in the config files rather than naming it, so
 // they still pass when the configuration changes.
 
 import { describe, test } from "node:test";
@@ -10,11 +10,13 @@ import assert from "node:assert/strict";
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
+import { DEFAULT_MIX as CONFIGURED_DEFAULT_MIX } from "../../../config/mixing.js";
 import { checkName } from "../../shared/input-checks/input-checks.js";
 import { tipGroups as sharedTipGroups } from "../../shared/tip-groups/tip-groups.js";
 import {
   NEW_STAGE_NAME,
   START,
+  DEFAULT_MIX,
   emptyPlan,
   setExperimentName,
   defaultSettings,
@@ -262,6 +264,30 @@ describe("transfer-designer", () => {
   test("DEFAULT_PROBE_COUNT is a whole number from 1 to 8", () => {
     assert.ok(Number.isInteger(DEFAULT_PROBE_COUNT));
     assert.ok(DEFAULT_PROBE_COUNT >= 1 && DEFAULT_PROBE_COUNT <= 8);
+  });
+
+  // --- Configuration: config/mixing.js ---
+
+  test("DEFAULT_MIX is accepted by the stage list as a mix, at either end, with the mixing technique", () => {
+    const plan = planWithStages(1);
+    for (const end of ["source", "destination"]) {
+      const settings = {
+        ...defaultSettings(),
+        ...modeSettings(end, MIXING_MODE.name, true),
+        [`${end}Mix`]: DEFAULT_MIX,
+      };
+      const changed = changeStageSettings(plan, "1", settings);
+      assert.deepEqual(changed.stageList.get("1").settings[`${end}Mix`], DEFAULT_MIX, end);
+    }
+  });
+
+  test("DEFAULT_MIX is config/mixing.js's default mix, and as exported here can't be changed", () => {
+    assert.deepEqual(DEFAULT_MIX, CONFIGURED_DEFAULT_MIX);
+    assert.ok(Object.isFrozen(DEFAULT_MIX));
+    assert.throws(() => {
+      DEFAULT_MIX.share = 50;
+    }, TypeError);
+    assert.equal(DEFAULT_MIX.share, CONFIGURED_DEFAULT_MIX.share);
   });
 
   // --- Plans and modes ---

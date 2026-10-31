@@ -2,12 +2,14 @@
 //
 // They build plans through the transfer designer's edits, so every plan is one the page could make,
 // and find labware in DECK by grid and labware type rather than naming it, so they still pass when
-// the deck changes. They also check MIX_VOLUME_LIMITS in config/tip-types.js (ADR 0009).
+// the deck changes. They also check MIX_VOLUME_LIMITS in config/tip-types.js and SHORT_MIX_SHARE in
+// config/mixing.js (ADR 0009).
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { DECK } from "../../../config/deck.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
+import { SHORT_MIX_SHARE } from "../../../config/mixing.js";
 import {
   START,
   emptyPlan,
@@ -142,6 +144,7 @@ describe("mix-volumes", () => {
     assert.deepEqual(Object.keys(rows[0]).sort(), [
       "destinationLabwareType",
       "destinationMixVolume",
+      "mixedWells",
       "sourceLabwareType",
       "sourceMixVolume",
       "transfers",
@@ -300,6 +303,101 @@ describe("mix-volumes", () => {
         [30, 100],
       ],
     );
+  });
+
+  // --- Mixed shares ---
+
+  test("mixed shares: the section 4 example gives A1 holding 20 at 90%, not short, and A2 holding 150 at 12%, short", () => {
+    let plan = withMedia(planWithTroughs(), [well(PLATE, "A2")], 50);
+    plan = onTips(plan, "BC230");
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 20);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "2"), well(PLATE, "A2"), 100);
+    plan = setStageMix(plan, "1", "destination", mixAt(90));
+    assert.deepEqual(mixVolumes(plan).stages[0].rows[0].mixedWells, [
+      { end: "destination", labware: PLATE.name, well: "A1", held: 20, share: 90, short: false },
+      { end: "destination", labware: PLATE.name, well: "A2", held: 150, share: 12, short: true },
+    ]);
+  });
+
+  test("a mix capped at the tips' limit is short when its share is under 40%: 200 µL of a source holding 1000 µL on BC230 tips", () => {
+    let plan = onTips(planWithTroughs(), "BC230");
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 10);
+    plan = setStageMix(plan, "1", "source", mixAt(90));
+    const [row] = rowsOf(mixVolumes(plan), "1");
+    assert.equal(row.sourceMixVolume, 200);
+    assert.deepEqual(row.mixedWells, [
+      { end: "source", labware: RESERVOIR.name, well: "1", held: 1000, share: 20, short: true },
+    ]);
+  });
+
+  test("a well holding nothing when mixed gives share 0, short", () => {
+    // 20 µL drawn twice, 30 µL each: it holds 0 when mixed (as in "never below 0").
+    let plan = withMedia(planWithStages(1), [well(RESERVOIR, "3")], 20);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "3"), well(PLATE, "A1"), 30);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "3"), well(PLATE, "A2"), 30);
+    plan = setStageMix(plan, "1", "source", mixAt(90));
+    assert.deepEqual(rowsOf(mixVolumes(plan), "1")[0].mixedWells, [
+      { end: "source", labware: RESERVOIR.name, well: "3", held: 0, share: 0, short: true },
+    ]);
+  });
+
+  test(`a share of exactly SHORT_MIX_SHARE (${SHORT_MIX_SHARE}) isn't short; just under it (39.99) is`, () => {
+    // A1 holds 100 µL when mixed, the emptiest, so at 40% the row mixes 40 µL: 40% of A1. A2 holds
+    // 100.025 µL, so the same 40 µL is 39.99% of it.
+    let plan = onTips(planWithTroughs(), tipTypeHolding(40));
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 100);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "2"), well(PLATE, "A2"), 100.025);
+    plan = setStageMix(plan, "1", "destination", mixAt(40));
+    const [atLimit, under] = rowsOf(mixVolumes(plan), "1")[0].mixedWells;
+    assert.equal(SHORT_MIX_SHARE, 40);
+    assert.equal(atLimit.share, 40);
+    assert.equal(atLimit.short, false);
+    assert.ok(under.share > 39.98 && under.share < 40, String(under.share));
+    assert.equal(under.short, true);
+  });
+
+  test("a well a row draws from twice is listed once, with what it holds by the emptiest-well rule", () => {
+    // Trough 1 holds 1000 µL, drawn 100 and 50 µL: it holds 900 at least when mixed (1000 − 150 + 50).
+    let plan = onTips(planWithTroughs(), tipTypeHolding(450));
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 100);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A2"), 50);
+    plan = setStageMix(plan, "1", "source", mixAt(50));
+    assert.deepEqual(rowsOf(mixVolumes(plan), "1")[0].mixedWells, [
+      { end: "source", labware: RESERVOIR.name, well: "1", held: 900, share: 50, short: false },
+    ]);
+  });
+
+  test("an end that doesn't mix lists no wells; a row that doesn't mix has mixedWells []; sources come before destinations", () => {
+    let plan = onTips(planWithTroughs(), tipTypeHolding(900));
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 100);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "2"), well(PLATE, "A2"), 100);
+    assert.deepEqual(rowsOf(mixVolumes(plan), "1")[0].mixedWells, []);
+
+    const sourceOnly = setStageMix(plan, "1", "source", mixAt(90));
+    assert.deepEqual(
+      rowsOf(mixVolumes(sourceOnly), "1")[0].mixedWells.map((entry) => [entry.end, entry.well]),
+      [
+        ["source", "1"],
+        ["source", "2"],
+      ],
+    );
+
+    const both = setStageMix(sourceOnly, "1", "destination", mixAt(90));
+    assert.deepEqual(
+      rowsOf(mixVolumes(both), "1")[0].mixedWells.map((entry) => [entry.end, entry.labware, entry.well]),
+      [
+        ["source", RESERVOIR.name, "1"],
+        ["source", RESERVOIR.name, "2"],
+        ["destination", PLATE.name, "A1"],
+        ["destination", PLATE.name, "A2"],
+      ],
+    );
+  });
+
+  test("config/mixing.js: SHORT_MIX_SHARE is a number above 0 and at most 100", () => {
+    assert.equal(typeof SHORT_MIX_SHARE, "number");
+    assert.ok(Number.isFinite(SHORT_MIX_SHARE));
+    assert.ok(SHORT_MIX_SHARE > 0 && SHORT_MIX_SHARE <= 100);
   });
 
   // --- Problems ---

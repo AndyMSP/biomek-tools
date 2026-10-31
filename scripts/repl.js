@@ -53,6 +53,7 @@ import {
 import { PlanHistory } from "../src/tools/transfer-designer/plan-history.js";
 import {
   NEW_STAGE_NAME,
+  DEFAULT_MIX,
   emptyPlan,
   setExperimentName,
   defaultSettings,
@@ -279,6 +280,7 @@ const TOPICS = {
       'mixPlan = setStageMix(mixPlan, "1", "destination", { share: 90, times: 3, speed: 400 })',
       'mixPlan = setStageMix(mixPlan, "1", "source", { share: 90, times: 3, speed: 400 })',
       "mixVolumes(mixPlan).stages[0].rows[0]",
+      "mixVolumes(mixPlan).stages[0].rows[0].mixedWells",
       "mixVolumes(mixPlan).problems",
       'mixPlan = addTransfer(mixPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "B1" }, volume: 0.05, stage: "1" })',
       "mixVolumes(mixPlan).stages[0].rows[0].destinationMixVolume",
@@ -364,6 +366,7 @@ const TOPICS = {
   "transfer-designer": {
     loaded: {
       NEW_STAGE_NAME,
+      DEFAULT_MIX,
       emptyPlan,
       setExperimentName,
       defaultSettings,
@@ -425,8 +428,10 @@ const TOPICS = {
       "defaultSettings()",
       'modeSettings("source", "Slow", true)',
       'modeSettings("destination", "Non-Contact", true)',
-      'plan = setStageMix(plan, "1", "source", { share: 90, times: 3, speed: 400 })',
+      "DEFAULT_MIX",
+      'plan = setStageMix(plan, "1", "source", DEFAULT_MIX)',
       'plan.stageList.get("1").settings',
+      "Object.isFrozen(DEFAULT_MIX)",
       'changeStageSettings(plan, "1", { ...plan.stageList.get("1").settings, sourceTechnique: "Operation" })',
       "stagesWithMixProblem(plan)",
       'plan.stageList.get("2").settings',
