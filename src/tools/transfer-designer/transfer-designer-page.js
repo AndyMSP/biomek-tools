@@ -23,8 +23,6 @@ import {
   labwareNames,
   gridOf,
   labwareTypeOf,
-  capacityOf,
-  deadVolumeOf,
   wellsInBox,
 } from "../../shared/deck/deck.js";
 import { writeRunFiles, checkExperimentName } from "../../shared/file-writer/file-writer.js";
@@ -2770,24 +2768,15 @@ function hideContentsCard() {
   elements.contentsCard.hidden = true;
 }
 
-// The contents card's lines for a well (section 6): its name and total, its usable volume, each
-// component's swatch, name, volume and share, the labware's limits, each contents problem of the
-// well by its kind, whether it's off plan, and how much of it the open stage mixes.
+// The contents card's lines for a well (section 6): its name ("Empty" under it if it holds nothing),
+// each component's swatch, name, volume and share, then only problems and warnings: each contents
+// problem of the well by its kind, whether it's off plan, and how much of it the open stage mixes.
+// No total, usable-volume or capacity lines (Andy, 2026-10-31): the components add up to the total,
+// the labware's limits are the same for every well of it, and the problem lines carry the numbers.
 function contentsCardLines(plan, end) {
-  const total = shownSnapshot.totalVolumeOf(end.labware, end.well);
-  const lines = [
-    createElement("div", wellName(plan, end), "card-title"),
-    createElement("div", total === 0 ? "Empty" : `${formatVolume(total)} µL total`, "card-total"),
-  ];
-  if (total > 0) {
-    const usable = shownSnapshot.usableVolumeOf(end.labware, end.well);
-    lines.push(
-      createElement(
-        "div",
-        usable === 0 ? "0 µL usable: all of it is dead volume" : `${formatVolume(usable)} µL usable`,
-        "card-usable",
-      ),
-    );
+  const lines = [createElement("div", wellName(plan, end), "card-title")];
+  if (shownSnapshot.totalVolumeOf(end.labware, end.well) === 0) {
+    lines.push(createElement("div", "Empty", "card-empty"));
   }
   const fractions = shownSnapshot.volumeFractionsOf(end.labware, end.well);
   const list = document.createElement("ul");
@@ -2801,13 +2790,6 @@ function contentsCardLines(plan, end) {
     list.append(item);
   }
   lines.push(list);
-  lines.push(
-    createElement(
-      "div",
-      `Capacity ${formatVolume(capacityOf(end.labware))} µL · dead volume ${formatVolume(deadVolumeOf(end.labware))} µL`,
-      "card-limits",
-    ),
-  );
   for (const problem of shownSnapshot.listProblems()) {
     if (problem.labware === end.labware && problem.well === end.well) {
       lines.push(createElement("div", describeCardProblem(problem), "card-problem"));

@@ -1646,26 +1646,15 @@ button.entry-row {
   box-shadow: 0 6px 20px rgba(28, 28, 26, 0.25);
 }
 
+/* The well's name heads the card, with a gap before the components (section 6). */
 .contents-card .card-title {
+  margin-bottom: 6px;
   font-weight: 600;
 }
 
-.contents-card .card-total,
-.contents-card .card-usable {
+/* "Empty", under the well's name, for a well holding nothing (section 6). */
+.contents-card .card-empty {
   opacity: 0.8;
-}
-
-/* The total, or the usable volume under it (section 6), ends the heading. */
-.contents-card .card-total:not(:has(+ .card-usable)),
-.contents-card .card-usable {
-  margin-bottom: 6px;
-}
-
-/* The labware's capacity and dead volume (section 6), small and gray, under the components. */
-.contents-card .card-limits {
-  margin-top: 6px;
-  font-size: 11px;
-  opacity: 0.6;
 }
 
 .contents-card ul {
