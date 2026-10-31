@@ -286,6 +286,8 @@ simulated wasn't recorded.** "Worked" means it validated and ran as the files sa
   Aspirate and Dispense sections (Andy's MixOnly2, on template PureMix2: an aspirate air gap and a
   mix, then a mix and a dispense air gap), run on a well-to-itself transfer of 10 µL, mixed and left
   the well's volume unchanged (Method31).
+- **A mix-only technique's liquid type doesn't matter to its mix,** since every mix speed comes from
+  the worklist (`=SrcMixSpeed`, `=DestMixSpeed`) (Andy, 2026-10-29). The tools use Medium.
 - **NonContact can't mix:** it dispenses without touching the liquid (the lab's own technique,
   defined by Andy in Biomek Software; Andy, 2026-10-29).
 - **OperationMix works with any liquid type** (the lab's own technique, defined by Andy in Biomek
@@ -372,6 +374,14 @@ simulated wasn't recorded.** "Worked" means it validated and ran as the files sa
 - A liquid type sets how liquid is drawn and pushed: aspirate and dispense speeds (µL/s), delays,
   trailing air gap and blowout volumes, and prewet overage. A technique sets heights and
   movements, and can override the liquid type's values. *(B56358AF, 7-8 to 7-12 and 9-3.)*
+
+- **Editing a liquid type or technique changes every plan that uses it** (Andy, 2026-10-29). Plans
+  and the tools' files name techniques and liquid types only by name, and their settings live in
+  Biomek Software, so changing, say, liquid type Medium in the Liquid Type Editor silently changes
+  every plan that uses Medium. Biomek keeps a history of changes to project items (B54473AD,
+  glossary, "Project"), but nothing warns beforehand. **Lab rule:** don't edit a technique or liquid
+  type the tools use; make a new one with a new name. (Mix values are numbers in the worklist, so
+  they're safe from this.)
 
 ## Volumes and tips
 *(Project training log, 2026-10-06, unless noted.)*
