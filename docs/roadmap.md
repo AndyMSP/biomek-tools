@@ -344,7 +344,11 @@ added on 2026-10-28 (Andy).
     its component's color, its label still the total, the same on plates and troughs (Andy,
     2026-10-30); the contents card shows the usable volume and the labware's capacity and dead
     volume. **Mixing stays as it is** (Andy, 2026-10-30): a mix takes its share of what the well
-    holds, dead volume included ("Technical debt"). Next: the specifications.
+    holds, dead volume included ("Technical debt"). *Decided 2026-10-30 (Andy):* the values live
+    in a new `config/labware-types.js`, which defines each labware type the deck uses: its grid,
+    capacity and dead volume; `config/deck.js` keeps only each labware's name and type, its `grid`
+    moving to the type (a `BCFlat96` is always 96 wells). The `deck` module reads the grid through
+    the type. Next: the specifications.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
