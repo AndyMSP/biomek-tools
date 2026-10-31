@@ -4,13 +4,16 @@
 // They build plans through the transfer designer's own edits, so every plan is one the page could
 // make. They use the real config/ files, and also check config/paths.js (ADR 0009). Where a test
 // needs a labware, it finds one in DECK by grid and labware type rather than naming it, so the
-// tests still pass when the deck changes.
+// tests still pass when the deck changes. The mix problem tests work out their volumes and messages
+// from MIN_MIX_VOLUME in config/mixing.js, so they still pass when it changes (file-writer.md,
+// section 5).
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { DECK } from "../../../config/deck.js";
 import { TIP_TYPES } from "../../../config/tip-types.js";
+import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { labwareNames, gridOf } from "../deck/deck.js";
 import {
   START,
@@ -116,6 +119,29 @@ function withTipChange(plan, beforeId, tipType, probes) {
 // The mix the specification's examples use. A new object each time.
 function exampleMix() {
   return { share: 90, times: 3, speed: 400 };
+}
+
+// `value` rounded to `places` decimal places, to undo floating-point error,
+// e.g. roundTo(0.30000000000000004, 3) → 0.3.
+function roundTo(value, places) {
+  return Number(value.toFixed(places));
+}
+
+// A volume as the files and messages write it: rounded to 3 decimal places, without trailing
+// zeros (section 3), e.g. volumeText(0.9) → "0.9"; volumeText(1) → "1".
+function volumeText(volume) {
+  return String(roundTo(volume, 3));
+}
+
+// The largest mix volume that is a mix problem: one tenth of a µL under MIN_MIX_VOLUME, taken as a
+// whole number of tenths of a µL, since mix volumes are rounded down to tenths (mix-volumes.md),
+// e.g. 0.9 when MIN_MIX_VOLUME is 1.
+const HIGHEST_PROBLEM_MIX = roundTo(Math.ceil(roundTo(MIN_MIX_VOLUME * 10, 6)) / 10 - 0.1, 1);
+
+// The least volume, in thousandths of a µL, a well must hold for a mix at `share` percent to work
+// out to `mixVolume` (a whole number of tenths of a µL), e.g. heldForMix(0.9, 90) → 1.
+function heldForMix(mixVolume, share) {
+  return Math.ceil(roundTo((mixVolume * 100 * 1000) / share, 6)) / 1000;
 }
 
 // The three mix columns of one end ("Src" or "Dest") of a Stages.csv row, as a list,
@@ -623,12 +649,16 @@ describe("file-writer", () => {
   test("a stage with a mix problem at the destination is refused, naming the well and its volumes", () => {
     let plan = renameStage(planWithStages(3), "3", "Seeding");
     plan = withTransfersIn(plan, ["1", "2"]);
-    plan = addTransfer(plan, transferTo("3", "A3", 0.9));
+    // A3 holds just enough that 90% of it is a tenth of a µL under MIN_MIX_VOLUME (with today's
+    // 1 µL: it holds 1 µL, and mixes 0.9).
+    const held = heldForMix(HIGHEST_PROBLEM_MIX, 90);
+    plan = addTransfer(plan, transferTo("3", "A3", held));
     plan = setStageMix(plan, "3", "destination", exampleMix());
     assert.throws(() => write(plan), {
       message:
-        `Stage 3, "Seeding", mixes ${PLATE.name} A3 after dispensing when it holds only 0.9 µL: ` +
-        "90% of that is 0.8 µL, and a mix needs at least 1 µL. " +
+        `Stage 3, "Seeding", mixes ${PLATE.name} A3 after dispensing when it holds only ${volumeText(held)} µL: ` +
+        `90% of that is ${volumeText(HIGHEST_PROBLEM_MIX)} µL, ` +
+        `and a mix needs at least ${volumeText(MIN_MIX_VOLUME)} µL. ` +
         "Turn that mixing off, or put more in the well first.",
     });
   });
@@ -641,7 +671,7 @@ describe("file-writer", () => {
     assert.throws(() => write(plan), {
       message:
         `Stage 1, "Wash", mixes ${PLATE.name} H1 before aspirating when it holds only 0.1 µL: ` +
-        "50% of that is 0 µL, and a mix needs at least 1 µL. " +
+        `50% of that is 0 µL, and a mix needs at least ${volumeText(MIN_MIX_VOLUME)} µL. ` +
         "Turn that mixing off, or put more in the well first.",
     });
   });

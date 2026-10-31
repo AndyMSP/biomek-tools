@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
-import { DEFAULT_MIX as CONFIGURED_DEFAULT_MIX } from "../../../config/mixing.js";
+import { DEFAULT_MIX as CONFIGURED_DEFAULT_MIX, MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { checkName } from "../../shared/input-checks/input-checks.js";
 import { tipGroups as sharedTipGroups } from "../../shared/tip-groups/tip-groups.js";
 import {
@@ -786,7 +786,9 @@ describe("transfer-designer", () => {
   test("stagesWithMixProblem names a stage whose destination mix is under the minimum, and no other; a plan without mixing gives an empty Set", () => {
     let plan = addComponent(planWithStages(2), "Media", "#4e79a7");
     plan = addToWells(plan, [trough("1")], "Media", 1000);
-    plan = addTransfer(plan, transferTo("1", "A1", 50));
+    // Stage 1 fills A1 with ten times MIN_MIX_VOLUME, so at 90% it mixes well over the minimum;
+    // stage 2 fills A2 with 0.05 µL, so at 90% it mixes 0 (rounded down to tenths), under it.
+    plan = addTransfer(plan, transferTo("1", "A1", 10 * MIN_MIX_VOLUME));
     plan = addTransfer(plan, transferTo("2", "A2", 0.05));
     assert.deepEqual(stagesWithMixProblem(plan), new Set());
     plan = setStageMix(plan, "1", "destination", exampleMix());
