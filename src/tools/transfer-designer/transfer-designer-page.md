@@ -28,8 +28,9 @@
 > preview Andy shaped on 2026-10-29 and 2026-10-30 (its changes 8, 10, 12 to 14 and 24 to 28): a
 > Mix checkbox for each end in a stage's box; ⟳ after an end's mode on the stage's card; a ⟳ badge
 > on each well the open stage mixes, yellow when the mix is short; and `Mixed N% of well` in the
-> contents card (sections 6, 7, 10, 15 and 16). Mix steps come in layer (c2). They become Final once
-> built and tested by Andy.
+> contents card (sections 6, 7, 10, 15 and 16). Also the seam's tip button just right of its `+`,
+> each in a fixed spot (section 7; preview change 30). Mix steps come in layer (c2). They become
+> Final once built and tested by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -374,7 +375,12 @@ or moving keyboard focus to its buttons, shows a blue line across it with a `+` 
 the middle (tooltip `Add a stage here`), floating over the cards; the `+` is two white bars, 2px
 thick and 12px long, crossing at the circle's center, so it's exactly centered (a "+" character
 sits wherever the font puts it; Andy, 2026-10-26). Between two stages of a box, also a
-tip button at the right (tooltip `New tips here`). A seam never takes room of its own, and never
+tip button (tooltip `New tips here`), the same size, **just right of the `+`**, 6px from it. Each
+seam button has a **fixed spot**: the `+` always in the exact middle of the line, the tip button
+always just right of it; a seam without a tip button leaves its spot empty, so nothing moves from
+one seam to the next (Andy, 2026-10-30, from the mixing preview: buttons spread along the line
+looked scattered, and buttons that shift when one is missing jump around). The spot just left of
+the `+` is kept for the mix step button (mixing layer (c2)). A seam never takes room of its own, and never
 takes a click meant for a card. Each `+` adds a stage into the box it's in, and opens it (message
 `Added a stage. New transfers go into it.`):
 
