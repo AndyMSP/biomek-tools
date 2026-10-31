@@ -244,9 +244,9 @@ Last updated: 2026-10-28
   **(c1) is built** (#110, 2026-10-30): `config/mixing.js`, each row's `mixedWells` in
   `mix-volumes`, `DEFAULT_MIX` in the transfer designer, and the page's Mix row, ⟳ and badges;
   checked in headless Chrome.
-- **Trying: Claude starts Claude Code's builds itself,** as a background agent with only the
-  specifications and the repository, then reviews them (Andy, 2026-10-30; first used for #106).
-  CLAUDE.md's "Who does what" stays unchanged until Andy decides after a longer trial.
+- **Decided: Claude starts Claude Code's builds itself** (Andy, 2026-10-30, after trying it on
+  #106 to #112), as a background agent, then reviews them and notifies Andy (CLAUDE.md, "Who does
+  what").
 - **Chrome is enough for testing pages** (Andy, 2026-10-30): Edge is tried only if the lab ever
   needs it. CLAUDE.md's requirement ("Edge or Chrome") is met by Chrome.
 - **Mixing is done** (2026-10-30, #106, #109, #110, #112): stages store their mixes, the Biomek
