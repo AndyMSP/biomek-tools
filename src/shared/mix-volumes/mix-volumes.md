@@ -6,10 +6,14 @@
 >
 > **Draft change (2026-10-30, mixing layer (c1)):** each row also gives, for each well it mixes,
 > what share of the well that is, and whether it's short (sections 2, 3, 4 and 6).
+>
+> **Draft change (2026-10-30, mixing layer (c1), later):** a mix problem is a mix volume under the
+> minimum mix volume, `MIN_MIX_VOLUME` (1.1 µL), not only 0 µL (Andy, 2026-10-30; sections 1, 3
+> and 6).
 
 ## 1. Purpose
 `mix-volumes.js` works out how many µL each stage-worklist row mixes, at each end that mixes, and
-finds the mixes that work out to nothing.
+finds the mixes that work out to too little to run.
 
 A stage stores each mix as a **share** of the well (`stage-list.md`), but each row of the stage
 worklist takes one mix volume in µL for each end, and Biomek can't work out a volume per well
@@ -17,7 +21,7 @@ itself (`biomek.md`, "Mixing"). So the tool works it out from what the wells hol
 "Mixing").
 
 It's shared because more than one module needs the same answer: the file writer, to write the mix
-columns and to refuse a plan with a mix that works out to nothing (`file-writer.md`), and the
+columns and to refuse a plan with a mix that works out to too little (`file-writer.md`), and the
 transfer designer, to report those stages as problems as soon as they appear, as it does overdraws
 (`transfer-designer.md`; Andy, 2026-10-30).
 
@@ -83,10 +87,11 @@ mix is **short** if its mixed share is under `SHORT_MIX_SHARE` (Andy, 2026-10-29
 cause, whether the emptiest well or the tips' limit). A short mix isn't a problem: the plan can
 still be written, and a tool shows it as a warning.
 
-**A mix problem** is a row whose mix volume at an end works out to `0`: its emptiest well holds
-nothing, or too little, when it's mixed. We don't know what Biomek does with a 0 µL mix, so the plan
-can't be written to files until it's fixed (Andy, 2026-10-30). A stage with a mix problem at either
-end of any row **has a mix problem**.
+**A mix problem** is a row whose mix volume at an end is **under `MIN_MIX_VOLUME`**, the minimum
+mix volume (1.1 µL): its emptiest well holds too little when it's mixed. Such a mix wouldn't run on
+the Biomek: a mix runs on a transfer of 1 µL (Andy, 2026-10-30), and mix volumes needn't be
+accurate, only possible. So the plan can't be written to files until it's fixed (Andy,
+2026-10-30). A stage with a mix problem at either end of any row **has a mix problem**.
 
 ### Configuration
 `config/tip-types.js` (ADR 0009) also exports `MIX_VOLUME_LIMITS`: the most each tip type can mix,
@@ -97,7 +102,9 @@ BC230 tip holds in one trip, and what a 1 mL syringe holds in one draw with air 
 "Volumes and tips"), not checked as mix volumes on the instrument. This module's tests check the
 file: each tip type has exactly one limit, a number above 0, and there are no others.
 
-`config/mixing.js` (ADR 0009, new) exports `SHORT_MIX_SHARE`: the mixed share, in percent, below
+`config/mixing.js` (ADR 0009, new) exports `MIN_MIX_VOLUME`: the smallest mix volume that runs, in
+µL: `1.1` (Andy, 2026-10-30: a mix runs on a transfer of 1 µL, so it needs more than that). A
+number above 0, checked by this module's tests. It also exports `SHORT_MIX_SHARE`: the mixed share, in percent, below
 which a mix is short: `40` (Andy, 2026-10-29). A number above 0 and at most 100, checked by this
 module's tests. (The file also holds `DEFAULT_MIX`, which the transfer designer's tests check;
 `transfer-designer.md`.) Its header comment says which tests check which value.
@@ -116,7 +123,7 @@ The module exports one function. It changes nothing.
   end; the well; what it holds when it's mixed (µL, rounded to 3 decimal places); its mixed share
   (percent, not rounded); and whether it's short. Source wells come first, then destination wells,
   each well once per end, in the order of the row's transfers. An end that doesn't mix has none.
-  A volume of `0` is given as `0`, and is also a problem.
+  A volume under `MIN_MIX_VOLUME` is given as it is (e.g. `0.8` or `0`), and is also a problem.
 - `problems`: each mix problem, in stage order, then row order, source before destination, as
   `{ stage, end, labware, well, held }`: the stage's ID; `"source"` or `"destination"`; the row's
   emptiest well at that end; and what it holds when it's mixed, in µL, rounded to 3 decimal places
@@ -187,11 +194,14 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
 **Problems**
 - A destination that's empty before the stage and gets 0.05 µL, mixed at 90%, gives `0` and one
   problem: `{ stage, end: "destination", labware, well, held: 0.05 }`.
+- A destination holding 0.9 µL when mixed, at 90%, gives `0.8` and a problem; holding 1.2 µL gives
+  `1` (1.08 rounded down) and a problem; holding 1.25 µL gives `1.1` (1.125 rounded down) and no
+  problem.
 - A source drawn empty by the stage, with a smallest draw of 0.1 µL, mixed at 50%, gives `0` and a
   problem naming it.
 - With two wells holding equally little, the problem names the first in the row's transfer order.
 - Problems are listed in stage order, then row order, source before destination.
-- A row whose mix works out to `0.1` has no problem.
+- `config/mixing.js`: `MIN_MIX_VOLUME` is a number above 0.
 
 - `held` is rounded to 3 decimal places.
 

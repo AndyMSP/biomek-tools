@@ -170,7 +170,7 @@ technique follows its mixing** (ADR 0007, "Mixing"):
   that already mixes keeps its own mix, so a plan made with another default still runs as made.
 - **Choosing a mode** keeps the end's mixing: `modeSettings(end, name, mixes)` gives the mode's
   `mixingTechnique` when `mixes` is `true`.
-- **Mix problems:** a stage whose mix works out to 0 µL in any row has a **mix problem**
+- **Mix problems:** a stage whose mix volume in any row is under the minimum (1.1 µL) has a **mix problem**
   (`mix-volumes.md`). It's reported as soon as it appears, as an overdraw is (Andy, 2026-10-30), and
   the file writer refuses the plan until it's fixed (`file-writer.md`).
 
@@ -480,7 +480,7 @@ order of checks.
   technique is `"Operation"` (e.g. `addStage` copying a stage that mixes; the plan file's mixing
   plan; the `transfer-designer` REPL topic) now give it with `setStageMix`, or with
   `"OperationMix"`, since the rule refuses the old way. What each test checks doesn't change.
-- `stagesWithMixProblem` names a stage whose destination mix works out to 0 µL (an empty well given
+- `stagesWithMixProblem` names a stage whose destination mix is under the minimum (an empty well given
   0.05 µL, mixed at 90%), and no other; a plan without mixing gives an empty `Set`.
 
 **Transfers**

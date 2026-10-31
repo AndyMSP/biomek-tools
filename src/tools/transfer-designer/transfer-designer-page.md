@@ -28,7 +28,8 @@
 > preview Andy shaped on 2026-10-29 and 2026-10-30 (its changes 8, 10, 12 to 14 and 24 to 28): a
 > Mix checkbox for each end in a stage's box; ⟳ after an end's mode on the stage's card; a ⟳ badge
 > on each well the open stage mixes, yellow when the mix is short; and `Mixed N% of well` in the
-> contents card (sections 6, 7, 10, 15 and 16). Also the seam's tip button just right of its `+`,
+> contents card (sections 6, 7, 10, 15 and 16); the well causing a mix problem has a red badge, and
+> a mix under 1.1 µL is a problem (Andy, 2026-10-30, from the preview). Also the seam's tip button just right of its `+`,
 > each in a fixed spot (section 7; preview change 30). Mix steps come in layer (c2). They become
 > Final once built and tested by Andy.
 
@@ -259,7 +260,9 @@ card (dark, light text) shows:
 - if the open stage mixes the well: `Mixed 17% of well`: its mixed share (`mixVolumes`,
   `mixedWells`; `mix-volumes.md`), rounded **down** to a whole percent, so a short mix never reads
   as 40%; if the stage mixes it in more than one row, the smallest. In yellow (`#FFD45C`) when the
-  mix is short.
+  mix is short. For the well causing a mix problem instead: `Holds too little to mix: the mix is
+  0.8 µL, under 1.1 µL.`, in the card's problem color; for the other wells of that row: `Not mixed
+  until the well in red is fixed.`
 
 Transfer numbers are positions in the operation list counting from 1. The card hides when the
 pointer leaves the well, the page scrolls, or a drag starts.
@@ -273,9 +276,12 @@ pointer leaves the well, the page scrolls, or a drag starts.
 - **The open stage's wells:** while a stage with transfers is open, every well its transfers don't
   touch fades (to 30% opacity; 70% while pointed at).
 - **Mixing:** while a stage with transfers is open, each well it mixes, at either end, has a **⟳
-  badge** at its top right (section 15), in blue, or in yellow when the mix is **short** (under
-  `SHORT_MIX_SHARE` of what the well holds; `mix-volumes.md`). A well mixed in more than one row is
-  yellow if any of them is short. Only the open stage's badges show, as with its arrows; Start and
+  badge** at its top right (section 15), in blue; in yellow when the mix is **short** (under
+  `SHORT_MIX_SHARE` of what the well holds; `mix-volumes.md`); in **red** for the well that causes
+  a **mix problem** (`mix-volumes`, `problems`): red for problems, yellow for warnings (Andy,
+  2026-10-30). In a row with a mix problem, its other wells stay blue, not yellow: only the well to
+  fix is marked, since the row's volume means nothing until it's fixed. A well mixed in more than
+  one row is red if it causes a problem in any, otherwise yellow if any of its mixes is short. Only the open stage's badges show, as with its arrows; Start and
   End show none. A short mix is a warning, not a problem: it doesn't count in the problem count,
   and the files can still be written (Andy, 2026-10-30: the warning shows only on the deck; a
   warning in the Stages column was tried and left for later).
@@ -354,7 +360,7 @@ holds:
 A stage **with an overdraw** (`stagesWithOverdraw`), row or card, has a light red background and
 border, and the tooltip `This stage has an overdraw: a transfer asks a well for more than it holds.`
 A stage **with a mix problem** (`stagesWithMixProblem`) looks the same, with the tooltip `This stage
-mixes a well that holds too little: the mix works out to 0 µL.`; one with both has the overdraw's
+mixes a well that holds too little: the mix is under 1.1 µL.` (the minimum from `config/`); one with both has the overdraw's
 tooltip.
 
 **End** (number `✓`, name `End`, count `N transfers done`: every transfer in the plan). Its card
@@ -692,7 +698,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   mix's line in `#FFD45C`.
 - **⟳ badges** (section 6): a 14px circle centered on the well's top-right edge (at 45° from its
   center; a reservoir trough's top-right corner), with a ⟳ in it, 10px, and a 1px white border so it
-  stands out on any fill. Blue: fill `#2F5DA8`, ⟳ white. Short: fill `#FFD45C`, ⟳ `#8A6400`. Drawn
+  stands out on any fill. Blue: fill `#2F5DA8`, ⟳ white. Short: fill `#FFD45C`, ⟳ `#8A6400`. Mix
+  problem: fill red (`#C4362A`), ⟳ white. Drawn
   above the well and its label, below arrows; they don't fade with the open stage's other wells
   (they're on the stage's own wells).
 - **The Mix row** in a stage's box: the checkboxes centered in their columns; `Can't mix` 13px gray.
