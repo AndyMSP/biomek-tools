@@ -47,7 +47,7 @@ the labware it uses.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Moving** a stage, or a transfer within its stage. A transfer can be removed and added again.
-- **Mix steps** (`docs/glossary.md`; roadmap, mixing layer (c)), final concentrations, smarter
+- **Final concentrations**, smarter
   staging (the tool forming stages itself).
 - **Checking techniques against tip types** (roadmap, "Technical debt").
 - **Dead volume** (roadmap, "Technical debt").
@@ -431,8 +431,8 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 **Order of checks.** The first problem found is reported:
 - `addTransfer`: the operation list's checks of the transfer (its form, then the stage rule), then
   its source well on the deck, then its destination well (`deck`'s messages), then its stage in the
-  plan. So a badly formed transfer gets the operation list's message, never a confusing one from a
-  later check.
+  plan, then, for a mix step, that it's a mixed well. So a badly formed transfer gets the operation
+  list's message, never a confusing one from a later check.
 - `addTipChange`: in the table's order.
 - `setTipType`: none at `key`, then the tip type.
 - `changeStageSettings`: the stage list's checks, then the source's mixing, then the
