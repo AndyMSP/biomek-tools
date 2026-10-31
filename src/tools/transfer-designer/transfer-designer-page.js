@@ -23,8 +23,6 @@ import {
   labwareNames,
   gridOf,
   labwareTypeOf,
-  capacityOf,
-  deadVolumeOf,
   wellsInBox,
 } from "../../shared/deck/deck.js";
 import { writeRunFiles, checkExperimentName } from "../../shared/file-writer/file-writer.js";
@@ -1761,15 +1759,31 @@ function mixedShareText(mixed) {
 
 // The open stage's transfer list: one row per transfer.
 function createTransferList(plan, id, transfers) {
+  const problems = transferProblems(plan);
   const list = createElement("ul", "", "transfer-list");
-  list.append(...transfers.map((transfer) => createTransferRow(plan, id, transfer)));
+  list.append(...transfers.map((transfer) => createTransferRow(plan, id, transfer, problems.get(transfer.position))));
   return list;
+}
+
+// Each transfer's own contents problem over the whole run (`contents-tracking.md`), keyed by its
+// position in the operation list: the first problem if it has two (section 7). Problems of the
+// starting contents name no transfer, so they're left out.
+function transferProblems(plan) {
+  const problems = new Map();
+  for (const problem of replay(plan.startingContents, plan.operationList).listProblems()) {
+    if (problem.operationIndex !== null && !problems.has(problem.operationIndex)) {
+      problems.set(problem.operationIndex, problem);
+    }
+  }
+  return problems;
 }
 
 // One transfer's row, e.g. "Assay plate A1 → Drug plate B2", then "20 µL" and × at the right. Its
 // volume is a button that becomes a text box; pointing at the row singles its transfer out on the deck,
-// unless a volume box is open, whose transfer stays singled out until it closes.
-function createTransferRow(plan, id, transfer) {
+// unless a volume box is open, whose transfer stays singled out until it closes. `problem` is the
+// transfer's contents problem, if it has one: its volume is then red and semibold, with a tooltip
+// saying what's reachable or by how much it overfills (section 7).
+function createTransferRow(plan, id, transfer, problem) {
   const row = createElement("li", "", "transfer-row");
   row.dataset.position = String(transfer.position);
   const route = `${wellName(plan, transfer.source)} → ${wellName(plan, transfer.destination)}`;
@@ -1777,6 +1791,10 @@ function createTransferRow(plan, id, transfer) {
   volumeButton.type = "button";
   volumeButton.setAttribute("aria-label", `Volume of ${route}, ${formatVolume(transfer.volume)} µL. Click to change`);
   volumeButton.addEventListener("click", () => startEditingVolume(volumeButton, id, transfer));
+  if (problem !== undefined) {
+    volumeButton.classList.add("problem");
+    volumeButton.title = describeRowProblem(problem);
+  }
   const remove = createElement("button", "×", "remove-transfer");
   remove.type = "button";
   remove.setAttribute("aria-label", `Remove ${route}`);
@@ -1798,6 +1816,16 @@ function createTransferRow(plan, id, transfer) {
     }
   });
   return row;
+}
+
+// The tooltip of a problem transfer's volume (section 7): "Only 450 µL is reachable." for a draw
+// into the dead volume or an overdraw (the problem's `available`), or "Overfills the well by 20 µL."
+// for an overfill (`held` minus `capacity`).
+function describeRowProblem(problem) {
+  if (isDrawProblem(problem)) {
+    return `Only ${formatVolume(problem.available)} µL is reachable.`;
+  }
+  return `Overfills the well by ${formatVolume(problem.held - problem.capacity)} µL.`;
 }
 
 // Turns a transfer's volume into a text box holding the volume, selected, and singles the transfer
@@ -1933,6 +1961,7 @@ function createTipGroupBox(plan, group, index, nextGroup, open, problems, drawnK
       addBefore: nextGroup === undefined ? null : nextGroup.stages[0],
       takeTips: false,
       accessibleName: "Add a stage at the end of these tips",
+      tipsWithStage: true,
     }),
   );
   box.append(stages);
@@ -1963,11 +1992,12 @@ function createTipGroupHeading(plan, group) {
 }
 
 // A seam (section 7): the space between two cards, which shows a line, a + for adding a stage, the
-// mix step button just left of it (and, between two stages, a tip button just right of it) while
-// pointed at or focused. `addBefore` is the stage the new stage goes before (null for last);
-// `accessibleName` the +'s, which says "a stage"; `tipsBefore` the stage a tip change goes before,
-// if any.
-function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore }) {
+// mix step button just left of it and, on all but a box's first seam, a tip button just right of it,
+// while pointed at or focused. `addBefore` is the stage the new stage goes before (null for last);
+// `accessibleName` the +'s, which says "a stage"; `tipsBefore` the stage a tip change goes before
+// (a seam between two stages); `tipsWithStage` true on a box's last seam, whose tip button adds a
+// stage with new tips instead. A seam above a box's first stage has neither.
+function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore, tipsWithStage = false }) {
   const seam = createElement("div", "", "seam");
   seam.append(createElement("span", "", "seam-line"));
   // The mix step button adds a mix step where the + would add a stage, with the same tips.
@@ -1985,43 +2015,73 @@ function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore }) {
   add.addEventListener("click", () => addStageAt(addBefore, takeTips));
   seam.append(add);
   if (tipsBefore !== undefined) {
-    const tips = createElement("button", "", "seam-button add-tips");
-    tips.type = "button";
-    tips.title = "New tips here";
-    tips.setAttribute("aria-label", `New tips before ${stageLabel(plan, tipsBefore)}`);
-    tips.append(createElement("span", "", "tip-icon"));
-    tips.addEventListener("click", () => addTipChangeBefore(tipsBefore));
-    seam.append(tips);
+    seam.append(
+      createSeamTipButton("New tips here", `New tips before ${stageLabel(plan, tipsBefore)}`, () =>
+        addTipChangeBefore(tipsBefore),
+      ),
+    );
+  } else if (tipsWithStage) {
+    seam.append(
+      createSeamTipButton(
+        "New tips, with a new stage",
+        "Add a stage with new tips at the end of these tips",
+        () => addStageWithNewTipsAt(addBefore),
+      ),
+    );
   }
   return seam;
+}
+
+// A seam's tip button (section 7): a circle with the tip icon, in the tip button's fixed spot just
+// right of the +, with `tooltip`, `accessibleName` and `onClick`.
+function createSeamTipButton(tooltip, accessibleName, onClick) {
+  const tips = createElement("button", "", "seam-button add-tips");
+  tips.type = "button";
+  tips.title = tooltip;
+  tips.setAttribute("aria-label", accessibleName);
+  tips.append(createElement("span", "", "tip-icon"));
+  tips.addEventListener("click", onClick);
+  return tips;
 }
 
 // Adds a stage before `beforeId` (or last, for null) and opens it (section 7).
 function addStageAt(beforeId, takeTips) {
   const added = tryLogic(() => addStage(currentPlan(), beforeId, { takeTips }));
-  if (added === false) {
-    return;
+  if (added !== false) {
+    openAddedStage(added, "Added a stage. New transfers go into it.");
   }
-  // The new stage opens, as openEntry would open it, but as part of the same undoable edit.
-  closeEditingBox();
-  source = null;
-  recordEdit(added.plan, added.id);
-  showMessage("Added a stage. New transfers go into it.", "ok");
-  scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(added.id)}"]`));
 }
 
 // Adds a mix step before `beforeId` (or last, for null) and opens it, as one undoable edit
 // (section 7).
 function addMixStepAt(beforeId, takeTips) {
   const added = tryLogic(() => addMixStep(currentPlan(), beforeId, { takeTips }));
-  if (added === false) {
-    return;
+  if (added !== false) {
+    openAddedStage(added, "Added a mix step. Click or drag across wells on the deck to mix them.");
   }
-  // As for a new stage: it opens as part of the same undoable edit.
+}
+
+// Adds a stage where a box's last seam would (before `beforeId`, or last, for null), then a tip
+// change on it, as one undoable edit, and opens it (section 7): a new tip group started at the end
+// of a box in one press (Andy, 2026-10-31).
+function addStageWithNewTipsAt(beforeId) {
+  const added = tryLogic(() => {
+    const { plan, id } = addStage(currentPlan(), beforeId);
+    return { plan: addTipChange(plan, id), id };
+  });
+  if (added !== false) {
+    openAddedStage(added, "Added a stage with new tips. New transfers go into it.");
+  }
+}
+
+// Records `added` ({ plan, id }, from addStage or addMixStep) with the new stage open, as openEntry
+// would open it but as part of the same undoable edit, shows `message` (ok) and scrolls the column
+// to show the new card.
+function openAddedStage(added, message) {
   closeEditingBox();
   source = null;
   recordEdit(added.plan, added.id);
-  showMessage("Added a mix step. Click or drag across wells on the deck to mix them.", "ok");
+  showMessage(message, "ok");
   scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(added.id)}"]`));
 }
 
@@ -2708,24 +2768,15 @@ function hideContentsCard() {
   elements.contentsCard.hidden = true;
 }
 
-// The contents card's lines for a well (section 6): its name and total, its usable volume, each
-// component's swatch, name, volume and share, the labware's limits, each contents problem of the
-// well by its kind, whether it's off plan, and how much of it the open stage mixes.
+// The contents card's lines for a well (section 6): its name ("Empty" under it if it holds nothing),
+// each component's swatch, name, volume and share, then only problems and warnings: each contents
+// problem of the well by its kind, whether it's off plan, and how much of it the open stage mixes.
+// No total, usable-volume or capacity lines (Andy, 2026-10-31): the components add up to the total,
+// the labware's limits are the same for every well of it, and the problem lines carry the numbers.
 function contentsCardLines(plan, end) {
-  const total = shownSnapshot.totalVolumeOf(end.labware, end.well);
-  const lines = [
-    createElement("div", wellName(plan, end), "card-title"),
-    createElement("div", total === 0 ? "Empty" : `${formatVolume(total)} µL total`, "card-total"),
-  ];
-  if (total > 0) {
-    const usable = shownSnapshot.usableVolumeOf(end.labware, end.well);
-    lines.push(
-      createElement(
-        "div",
-        usable === 0 ? "0 µL usable: all of it is dead volume" : `${formatVolume(usable)} µL usable`,
-        "card-usable",
-      ),
-    );
+  const lines = [createElement("div", wellName(plan, end), "card-title")];
+  if (shownSnapshot.totalVolumeOf(end.labware, end.well) === 0) {
+    lines.push(createElement("div", "Empty", "card-empty"));
   }
   const fractions = shownSnapshot.volumeFractionsOf(end.labware, end.well);
   const list = document.createElement("ul");
@@ -2739,13 +2790,6 @@ function contentsCardLines(plan, end) {
     list.append(item);
   }
   lines.push(list);
-  lines.push(
-    createElement(
-      "div",
-      `Capacity ${formatVolume(capacityOf(end.labware))} µL · dead volume ${formatVolume(deadVolumeOf(end.labware))} µL`,
-      "card-limits",
-    ),
-  );
   for (const problem of shownSnapshot.listProblems()) {
     if (problem.labware === end.labware && problem.well === end.well) {
       lines.push(createElement("div", describeCardProblem(problem), "card-problem"));
@@ -2854,7 +2898,7 @@ function createPencil(kind, key, accessibleName) {
 function openEditingBox(kind, key) {
   const plan = currentPlan();
   const original = originalFor(plan, kind, key);
-  editingBox = { kind, key, original, draft: { ...original, showAllColors: false, confirmingRemove: false } };
+  editingBox = { kind, key, original, draft: { ...original, showAllColors: false } };
   refreshStages();
   focusEditingBox();
 }
@@ -2972,7 +3016,7 @@ function redrawEditingBox() {
   if (focusedAt !== -1) {
     focusables(box)[focusedAt]?.focus({ preventScroll: true });
   }
-  // A box that grew (e.g. Remove's question appeared) is shown in full, as when it opened.
+  // A box that grew (e.g. More colors was pressed) is shown in full, as when it opened.
   scrollIntoColumnView(box);
 }
 
@@ -3267,13 +3311,10 @@ function createNameField(value, title) {
   return field;
 }
 
-// The box's bottom: Remove at the left (or its question, or why there's none), Discard and Save at
-// the right.
+// The box's bottom: Remove at the left (or why there's none), Discard and Save at the right. Remove
+// acts at once, with no question: Undo brings back what it removed (section 10; Andy, 2026-10-31).
 function createBoxButtons(plan) {
   const holder = createElement("div");
-  if (editingBox.draft.confirmingRemove) {
-    holder.append(createRemoveQuestion(plan));
-  }
   const buttons = createElement("div", "", "box-buttons");
   const removal = removalFor(plan);
   if (removal.kind === "button") {
@@ -3283,10 +3324,7 @@ function createBoxButtons(plan) {
     if (removal.disabled) {
       remove.title = removal.reason;
     }
-    remove.addEventListener("click", () => {
-      editingBox.draft.confirmingRemove = true;
-      redrawEditingBox();
-    });
+    remove.addEventListener("click", removeFromEditingBox);
     buttons.append(remove);
   } else {
     // Why there's no Remove, on a line of its own above the buttons.
@@ -3316,42 +3354,7 @@ function removalFor(plan) {
   return { kind: "button", disabled: false };
 }
 
-// Remove's question inside the box, with Cancel and Remove (solid red).
-function createRemoveQuestion(plan) {
-  const question = createElement("div", "", "remove-question");
-  question.append(createElement("p", removeQuestionText(plan)));
-  const buttons = createElement("div", "", "confirm-buttons");
-  const cancel = createElement("button", "Cancel", "action");
-  cancel.type = "button";
-  cancel.addEventListener("click", () => {
-    editingBox.draft.confirmingRemove = false;
-    redrawEditingBox();
-  });
-  const remove = createElement("button", "Remove", "danger");
-  remove.type = "button";
-  remove.addEventListener("click", removeFromEditingBox);
-  buttons.append(cancel, remove);
-  question.append(buttons);
-  return question;
-}
-
-// The question Remove asks, e.g. "Remove Media from 4 wells?" or "Remove stage 2, “Drugs” and its
-// 4 transfers?" ("4 mixed wells" for a mix step) or "Remove these new tips?".
-function removeQuestionText(plan) {
-  const { kind, key } = editingBox;
-  if (kind === "component") {
-    const wells = countWellsWith(plan, key);
-    return wells === 0 ? `Remove ${key}?` : `Remove ${key} from ${countOf(wells, "well")}?`;
-  }
-  if (kind === "stage") {
-    const transfers = transfersIn(plan, key).length;
-    const label = stageLabel(plan, key);
-    return transfers === 0 ? `Remove ${label}?` : `Remove ${label} and its ${transfersWord(plan, key, transfers)}?`;
-  }
-  return "Remove these new tips?";
-}
-
-// Removes what the open box edits, after its question, and closes the box.
+// Removes what the open box edits, at once, and closes the box (section 10).
 function removeFromEditingBox() {
   const plan = currentPlan();
   const { kind, key } = editingBox;
@@ -3385,8 +3388,8 @@ function removeComponentFromBox(plan, name) {
   showMessage(`Removed ${name}${from}. Undo can bring it back.`, "note");
 }
 
-// A stage's transfers counted for Remove's question and message (section 10): "4 transfers", or for
-// a mix step "4 mixed wells".
+// A stage's transfers counted for Remove's message (section 10): "4 transfers", or for a mix step
+// "4 mixed wells".
 function transfersWord(plan, id, count) {
   return isMixStep(plan, id) ? countOf(count, "mixed well") : countOf(count, "transfer");
 }

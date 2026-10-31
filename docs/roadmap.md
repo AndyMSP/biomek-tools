@@ -253,6 +253,23 @@ Last updated: 2026-10-28
   files write them, and the page has Mix checkboxes, mix steps, ⟳ badges (yellow for a short mix,
   red for a mix problem) and the 1 µL minimum. Its specifications stay Draft until the files have
   run on the Biomek (see each layer's "At the Biomek" above).
+- **Well capacities and dead volume are built** (#118, 2026-10-31; item 11): `config/labware-types.js`
+  (grid, capacity and dead volume per labware type; stand-ins, "Technical debt"), contents
+  tracking's three problem kinds and `usableVolumeOf`, the file writer's refusals, and the page's
+  stripes, overfill bar and card lines. Andy tested the page and merged. The specifications stay
+  Draft until the files have run on the Biomek.
+- **Six page tweaks** (Andy, 2026-10-31, from using the #118 build; the next topic, branch
+  `page-tweaks`): (1) a picked color swatch in a component's box keeps its color (it turned pale
+  blue: a bug); (2) Remove in a stage's box removes at once, without the question, since Undo
+  brings it back, and every other Remove works the same way; (3) the tip button on a tip group's
+  last seam adds a new stage there with a tip change on it, the stage copying the one before it;
+  (4) previews published to the preview artifact say `Preview: …` in the tab and route downloads
+  through the artifact's save prompt (a preview habit, in CLAUDE.md); (5) a transfer row with a
+  contents problem shows its volume in red, with a tooltip `Only 450 µL is reachable.` or
+  `Overfills the well by 20 µL.`; (6) the contents card drops its total, usable and capacity
+  lines altogether: the well, its components, then only problem and warning lines (holding only
+  dead volume is neither; the problem lines carry the numbers). Tried in one preview (2026-10-31;
+  Andy liked it), then specified and built.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36

@@ -186,7 +186,7 @@ button.danger-outline {
   color: var(--red);
 }
 
-/* The confirming button of a danger question: solid red. */
+/* The confirming button of Reset's question (Reset everything): solid red. */
 button.danger {
   border-color: var(--red);
   background: var(--red);
@@ -194,8 +194,9 @@ button.danger {
   font-weight: 600;
 }
 
-/* A button shown pressed while what it controls is on or open (aria-pressed). */
-button[aria-pressed="true"] {
+/* A button shown pressed while what it controls is on or open (aria-pressed). Not a color swatch:
+   its color is what it shows, and the blue tint hid it (section 8; Andy, 2026-10-31). */
+button[aria-pressed="true"]:not(.color-swatch) {
   border-color: var(--blue);
   background: var(--blue-tint);
   color: var(--blue);
@@ -1114,6 +1115,12 @@ button.entry-row {
   border-color: var(--input-border);
 }
 
+/* A transfer with a contents problem shows its volume in red and semibold (section 7). */
+.volume-button.problem {
+  color: var(--red);
+  font-weight: 600;
+}
+
 .volume-box {
   width: 80px;
   min-height: 26px;
@@ -1570,18 +1577,6 @@ button.entry-row {
   }
 }
 
-/* Remove's question inside the box. */
-.remove-question {
-  padding: 10px 12px;
-  border: 1px solid var(--red-border);
-  border-radius: 8px;
-  background: var(--red-tint);
-}
-
-.remove-question p {
-  margin-bottom: 8px;
-}
-
 /* --- Floating elements: the message bar, the cursor's label and the contents card --- */
 .message-bar {
   position: fixed;
@@ -1651,26 +1646,15 @@ button.entry-row {
   box-shadow: 0 6px 20px rgba(28, 28, 26, 0.25);
 }
 
+/* The well's name heads the card, with a gap before the components (section 6). */
 .contents-card .card-title {
+  margin-bottom: 6px;
   font-weight: 600;
 }
 
-.contents-card .card-total,
-.contents-card .card-usable {
+/* "Empty", under the well's name, for a well holding nothing (section 6). */
+.contents-card .card-empty {
   opacity: 0.8;
-}
-
-/* The total, or the usable volume under it (section 6), ends the heading. */
-.contents-card .card-total:not(:has(+ .card-usable)),
-.contents-card .card-usable {
-  margin-bottom: 6px;
-}
-
-/* The labware's capacity and dead volume (section 6), small and gray, under the components. */
-.contents-card .card-limits {
-  margin-top: 6px;
-  font-size: 11px;
-  opacity: 0.6;
 }
 
 .contents-card ul {

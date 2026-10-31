@@ -41,7 +41,11 @@ Andy is learning, so explanations matter as much as the code.
 - After each change, summarize what changed in a few sentences.
 - **Try first, then make it properly.** Changes to how a page looks or behaves are tried first in a
   preview: a scratch copy outside the repository that Andy can open and use. Only once he likes it
-  does the change go in properly: specification first, then code and tests.
+  does the change go in properly: specification first, then code and tests. A preview published
+  to Andy's preview artifact says `Preview: ` before the tool's name in its `<title>`, and routes
+  its downloads through the artifact's save prompt (the `downloads` capability), since the
+  artifact viewer blocks ordinary downloads; both are preview-only patches to the built file,
+  never committed (Andy, 2026-10-31: he built a plan in a preview thinking it was the real tool).
 - **Wrap up.** When Andy says "wrap up", or a piece of work ends, list what was decided or learned
   and suggest where each item belongs (see "Where knowledge lives"). Save only what Andy approves.
 
