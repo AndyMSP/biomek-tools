@@ -11,11 +11,13 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { DECK } from "../../../config/deck.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
-import { SHORT_MIX_SHARE, MIN_MIX_VOLUME } from "../../../config/mixing.js";
+import { SHORT_MIX_SHARE, MIN_MIX_VOLUME, DEFAULT_MIX } from "../../../config/mixing.js";
 import {
   START,
   emptyPlan,
   addStage,
+  addMixStep,
+  mixWells,
   setStageMix,
   addTransfer,
   addTipChange,
@@ -331,6 +333,27 @@ describe("mix-volumes", () => {
         [30, 100],
       ],
     );
+  });
+
+  test("a mix step mixing two wells holding 100 and 200 µL, with DEFAULT_MIX's share: one row, no source mix, DEFAULT_MIX's share of 100 µL at the destination, and the 200 µL well's mixed share half the 100 µL well's", () => {
+    let plan = withMedia(planWithStages(1), [well(PLATE, "A1")], 100);
+    plan = withMedia(plan, [well(PLATE, "A2")], 200);
+    // DEFAULT_MIX's share of 100 µL, rounded to thousandths, then down to tenths (section 3).
+    const expected = Math.floor(roundTo(roundTo((DEFAULT_MIX.share / 100) * 100, 3) * 10, 6)) / 10;
+    plan = onTips(plan, tipTypeHolding(expected));
+    const { plan: withMixStep, id } = addMixStep(plan, null);
+    plan = mixWells(withMixStep, id, [well(PLATE, "A1"), well(PLATE, "A2")]);
+    const rows = rowsOf(mixVolumes(plan), id);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].sourceMixVolume, null);
+    assert.equal(rows[0].destinationMixVolume, expected);
+    const [first, second] = rows[0].mixedWells;
+    assert.deepEqual(
+      [first.end, first.well, first.held, second.end, second.well, second.held],
+      ["destination", "A1", 100, "destination", "A2", 200],
+    );
+    assert.equal(roundTo(second.share, 6), roundTo(first.share / 2, 6));
+    assert.deepEqual(mixVolumes(plan).problems, []);
   });
 
   // --- Mixed shares ---

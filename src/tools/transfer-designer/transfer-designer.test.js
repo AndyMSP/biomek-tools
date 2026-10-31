@@ -2,7 +2,7 @@
 // transfer-designer.md, and each row of its error table and each order of checks has one.
 //
 // They use the real config/pipetting-modes.js, config/tip-types.js and config/deck.js, and also check
-// the first two, and DEFAULT_MIX in config/mixing.js (ADR 0009). Tests find what they need in the config files rather than naming it, so
+// the first two, and DEFAULT_MIX, MIX_STEP_MODE and MIX_STEP_VOLUME in config/mixing.js (ADR 0009). Tests find what they need in the config files rather than naming it, so
 // they still pass when the configuration changes.
 
 import { describe, test } from "node:test";
@@ -10,11 +10,18 @@ import assert from "node:assert/strict";
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
-import { DEFAULT_MIX as CONFIGURED_DEFAULT_MIX, MIN_MIX_VOLUME } from "../../../config/mixing.js";
+import {
+  DEFAULT_MIX as CONFIGURED_DEFAULT_MIX,
+  MIN_MIX_VOLUME,
+  MIX_STEP_MODE,
+  MIX_STEP_VOLUME,
+} from "../../../config/mixing.js";
 import { checkName } from "../../shared/input-checks/input-checks.js";
 import { tipGroups as sharedTipGroups } from "../../shared/tip-groups/tip-groups.js";
+import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import {
   NEW_STAGE_NAME,
+  NEW_MIX_STEP_NAME,
   START,
   DEFAULT_MIX,
   emptyPlan,
@@ -26,6 +33,10 @@ import {
   modeOf,
   stageOrder,
   addStage,
+  addMixStep,
+  isMixStep,
+  mixWells,
+  unmixWell,
   renameStage,
   changeStageSettings,
   setStageMix,
@@ -167,6 +178,37 @@ const MIXING_MODE = PIPETTING_MODES.find(
 );
 const NON_MIXING_MODE = PIPETTING_MODES.find((mode) => mode.mixingTechnique === null);
 
+// The default mix step settings, built from config/mixing.js: MIX_STEP_MODE at both ends, no source
+// mix, and DEFAULT_MIX at the destination (transfer-designer.md, "Mix steps"). A new object each
+// time.
+function mixStepDefaults() {
+  return {
+    sourceTechnique: MIX_STEP_MODE.technique,
+    sourceLiquidType: MIX_STEP_MODE.liquidType,
+    destinationTechnique: MIX_STEP_MODE.technique,
+    destinationLiquidType: MIX_STEP_MODE.liquidType,
+    sourceMix: null,
+    destinationMix: { ...CONFIGURED_DEFAULT_MIX },
+  };
+}
+
+// A well on PLATE, e.g. plateWell("A1") → { labware: "Plate1", well: "A1" }.
+function plateWell(well) {
+  return { labware: PLATE, well };
+}
+
+// The transfer that mixes `well` in mix step `stage`: from the well into itself, of
+// MIX_STEP_VOLUME.
+function mixedWell(stage, well) {
+  return { type: "transfer", source: well, destination: well, volume: MIX_STEP_VOLUME, stage };
+}
+
+// The plan with mix step `id`'s destination mix changed to `mix` (accepted, since a mix step's
+// technique isn't one of the modes', so the mixing rule doesn't check it).
+function withMixStepMix(plan, id, mix) {
+  return changeStageSettings(plan, id, { ...plan.stageList.get(id).settings, destinationMix: mix });
+}
+
 // The message checkName gives for a component name that isn't text, e.g. for 5.
 function componentNameNotTextMessage(got) {
   return `The component name must be text, but got ${got}.`;
@@ -288,6 +330,21 @@ describe("transfer-designer", () => {
       DEFAULT_MIX.share = 50;
     }, TypeError);
     assert.equal(DEFAULT_MIX.share, CONFIGURED_DEFAULT_MIX.share);
+  });
+
+  test("config/mixing.js: MIX_STEP_MODE's technique and liquid type are names, the liquid type follows Biomek's rule, and the technique is no mode's technique or mixing technique", () => {
+    assert.deepEqual(Object.keys(MIX_STEP_MODE).sort(), ["liquidType", "technique"]);
+    assert.doesNotThrow(() => checkName(MIX_STEP_MODE.technique, "technique"));
+    assert.doesNotThrow(() => checkName(MIX_STEP_MODE.liquidType, "liquid type"));
+    assert.match(MIX_STEP_MODE.liquidType, /^[A-Za-z][A-Za-z0-9_]*$/);
+    for (const mode of PIPETTING_MODES) {
+      assert.notEqual(MIX_STEP_MODE.technique, mode.technique, mode.name);
+      assert.notEqual(MIX_STEP_MODE.technique, mode.mixingTechnique, mode.name);
+    }
+  });
+
+  test("config/mixing.js: MIX_STEP_VOLUME is a number above 0", () => {
+    assert.ok(Number.isFinite(MIX_STEP_VOLUME) && MIX_STEP_VOLUME > 0);
   });
 
   // --- Plans and modes ---
@@ -466,7 +523,7 @@ describe("transfer-designer", () => {
     assert.deepEqual(stageOrder(last.plan), ["1", "2", last.id]);
   });
 
-  test("addStage copies the settings of the stage before it, or the first stage's when added first", () => {
+  test("addStage copies the settings of the nearest transfer stage before it; added before the first stage, the nearest after it", () => {
     let plan = planWithStages(2);
     const firstSettings = otherSettings();
     const secondSettings = defaultSettings();
@@ -614,6 +671,227 @@ describe("transfer-designer", () => {
     // From trough 2, which stage 2's overdraw didn't empty.
     plan = addTransfer(plan, { ...transferTo("3", "A3", 10), source: trough("2") });
     assert.deepEqual(stagesWithOverdraw(plan), new Set(["2"]));
+  });
+
+  // --- Mix steps ---
+
+  test("NEW_MIX_STEP_NAME is \"New mix step\"", () => {
+    assert.equal(NEW_MIX_STEP_NAME, "New mix step");
+  });
+
+  test("addMixStep with no other mix step gives a stage called NEW_MIX_STEP_NAME, a mix step, with the default mix step settings, placed as addStage places a stage", () => {
+    const plan = withTransfersIn(planWithStages(2), ["1", "2"]);
+    const before = addMixStep(plan, "2");
+    assert.deepEqual(stageOrder(before.plan), ["1", before.id, "2"]);
+    const { name, settings } = before.plan.stageList.get(before.id);
+    assert.equal(name, NEW_MIX_STEP_NAME);
+    assert.equal(isMixStep(before.plan, before.id), true);
+    assert.deepEqual(settings, mixStepDefaults());
+    const last = addMixStep(plan, null);
+    assert.deepEqual(stageOrder(last.plan), ["1", "2", last.id]);
+    assert.deepEqual(last.plan.stageList.get(last.id).settings, mixStepDefaults());
+  });
+
+  test("addMixStep copies the nearest mix step before it, with its own destinationMix", () => {
+    const otherMix = { share: 50, times: 2, speed: 100 };
+    assert.notDeepEqual(otherMix, CONFIGURED_DEFAULT_MIX);
+    let { plan, id: mixStep } = addMixStep(planWithStages(2), "2");
+    plan = withMixStepMix(plan, mixStep, otherMix);
+    const { plan: added, id } = addMixStep(plan, null);
+    assert.deepEqual(added.stageList.get(id).settings, { ...mixStepDefaults(), destinationMix: otherMix });
+  });
+
+  test("addMixStep with no mix step before it but one after copies that one", () => {
+    const otherMix = { share: 50, times: 2, speed: 100 };
+    let { plan, id: mixStep } = addMixStep(planWithStages(2), null);
+    plan = withMixStepMix(plan, mixStep, otherMix);
+    const { plan: added, id } = addMixStep(plan, "1");
+    assert.deepEqual(stageOrder(added), [id, "1", "2", mixStep]);
+    assert.deepEqual(added.stageList.get(id).settings.destinationMix, otherMix);
+  });
+
+  test("own kind: addStage right after a mix step copies the transfer stage before the mix step, not the mix step", () => {
+    let plan = changeStageSettings(planWithStages(2), "1", otherSettings());
+    const { plan: withMixStep, id: mixStep } = addMixStep(plan, "2");
+    // Stage order 1, mix step, 2: a stage right after the mix step copies stage 1.
+    const { plan: added, id } = addStage(withMixStep, "2");
+    assert.deepEqual(stageOrder(added), ["1", mixStep, id, "2"]);
+    assert.deepEqual(added.stageList.get(id).settings, otherSettings());
+    assert.equal(isMixStep(added, id), false);
+  });
+
+  test("own kind: addMixStep right after a transfer stage copies the nearest mix step, or gives the defaults", () => {
+    const otherMix = { share: 50, times: 2, speed: 100 };
+    const plan = planWithStages(2);
+    const defaults = addMixStep(plan, "2");
+    assert.deepEqual(defaults.plan.stageList.get(defaults.id).settings, mixStepDefaults());
+
+    let { plan: withMixStep, id: mixStep } = addMixStep(plan, "1");
+    withMixStep = withMixStepMix(withMixStep, mixStep, otherMix);
+    // Stage order: mix step, 1, 2. A mix step right after stage 2 copies the mix step, not stage 2.
+    const { plan: added, id } = addMixStep(withMixStep, null);
+    assert.deepEqual(added.stageList.get(id).settings, { ...mixStepDefaults(), destinationMix: otherMix });
+  });
+
+  test("own kind: with only mix steps, addStage gives the default settings", () => {
+    let { plan, id: mixStep } = addMixStep(planWithStages(1), null);
+    plan = changeStageSettings(plan, "1", otherSettings());
+    plan = removeStage(plan, "1");
+    assert.deepEqual(stageOrder(plan), [mixStep]);
+    const { plan: added, id } = addStage(plan, null);
+    assert.deepEqual(added.stageList.get(id).settings, defaultSettings());
+    assert.equal(added.stageList.get(id).name, NEW_STAGE_NAME);
+  });
+
+  test("addMixStep with takeTips before a stage with a tip change moves the tip change to the mix step; it refuses a stage that isn't in the plan", () => {
+    const plan = addTipChange(planWithStages(3), "3");
+    const { plan: added, id } = addMixStep(plan, "3", { takeTips: true });
+    assert.deepEqual(tipChangeAt(added, id), startTips());
+    assert.equal(tipChangeAt(added, "3"), null);
+    assert.throws(() => addMixStep(plan, "9"), {
+      message: `There's no stage "9" to add a stage before.`,
+    });
+  });
+
+  test("isMixStep is false for a transfer stage and for an ID that isn't a stage", () => {
+    const plan = planWithStages(1);
+    assert.equal(isMixStep(plan, "1"), false);
+    assert.equal(isMixStep(plan, "9"), false);
+  });
+
+  test("mixWells with three wells adds three transfers, each from the well into itself of MIX_STEP_VOLUME, in the mix step", () => {
+    const { plan, id } = addMixStep(planWithStages(1), null);
+    const wells = [plateWell("A1"), plateWell("A2"), { labware: RESERVOIR, well: "3" }];
+    const mixed = mixWells(plan, id, wells);
+    assert.deepEqual(
+      transfersIn(mixed, id).map(({ position, ...transfer }) => transfer),
+      wells.map((well) => mixedWell(id, well)),
+    );
+    assert.equal(mixed.operationList.listOperations().length, 3);
+  });
+
+  test("mixWells given one well it mixes already and one it doesn't adds one; given only wells it mixes, it returns the same plan", () => {
+    let { plan, id } = addMixStep(planWithStages(1), null);
+    plan = mixWells(plan, id, [plateWell("A1")]);
+    const more = mixWells(plan, id, [plateWell("A1"), plateWell("A2")]);
+    assert.deepEqual(
+      transfersIn(more, id).map((transfer) => transfer.source.well),
+      ["A1", "A2"],
+    );
+    assert.equal(mixWells(more, id, [plateWell("A2"), plateWell("A1")]), more);
+  });
+
+  test("mixWells given a well twice mixes it once", () => {
+    const { plan, id } = addMixStep(planWithStages(1), null);
+    const mixed = mixWells(plan, id, [plateWell("B2"), plateWell("B2")]);
+    assert.equal(transfersIn(mixed, id).length, 1);
+  });
+
+  test("mixWells refuses a transfer stage, a stage that isn't in the plan, and a well not on the deck, each leaving the plan unchanged", () => {
+    let { plan, id } = addMixStep(planWithStages(1), null);
+    plan = renameStage(plan, "1", "Drugs");
+    const before = snapshot(plan);
+    assert.throws(() => mixWells(plan, "1", [plateWell("A1")]), {
+      message: "Stage 1, “Drugs”, isn't a mix step, so it can't mix wells.",
+    });
+    assert.throws(() => mixWells(plan, "9", [plateWell("A1")]), {
+      message: `There's no stage "9" in the plan.`,
+    });
+    assert.throws(() => mixWells(plan, id, [plateWell("A1"), plateWell("Z99")]), {
+      message: /Z99/,
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("mixWells checks the stage before the wells", () => {
+    const plan = planWithStages(1);
+    assert.throws(() => mixWells(plan, "1", [plateWell("Z99")]), {
+      message: /isn't a mix step/,
+    });
+  });
+
+  test("unmixWell removes that well's transfer only", () => {
+    let { plan, id } = addMixStep(withTransfersIn(planWithStages(1), ["1"]), null);
+    plan = mixWells(plan, id, [plateWell("A1"), plateWell("A2"), plateWell("A3")]);
+    const unmixed = unmixWell(plan, id, plateWell("A2"));
+    assert.deepEqual(
+      transfersIn(unmixed, id).map((transfer) => transfer.source.well),
+      ["A1", "A3"],
+    );
+    assert.equal(transfersIn(unmixed, "1").length, 1);
+  });
+
+  test("unmixWell refuses a well the mix step doesn't mix, and a stage that isn't a mix step", () => {
+    let { plan, id } = addMixStep(planWithStages(1), null);
+    plan = renameStage(plan, id, "Mix plate");
+    plan = mixWells(plan, id, [plateWell("A1")]);
+    assert.throws(() => unmixWell(plan, id, plateWell("A2")), {
+      message: `Stage 2, “Mix plate”, doesn't mix ${PLATE} A2.`,
+    });
+    assert.throws(() => unmixWell(plan, "1", plateWell("A1")), {
+      message: "Stage 1, “New stage”, isn't a mix step, so it can't mix wells.",
+    });
+    assert.throws(() => unmixWell(plan, "9", plateWell("A1")), {
+      message: `There's no stage "9" in the plan.`,
+    });
+  });
+
+  test("addTransfer into a mix step refuses a transfer between two wells and a well into itself of any other volume; accepts a well into itself of MIX_STEP_VOLUME", () => {
+    let { plan, id } = addMixStep(planWithStages(1), null);
+    plan = renameStage(plan, id, "Mix plate");
+    const message =
+      "Stage 2, “Mix plate”, is a mix step: it only mixes wells. Add this transfer to a transfer stage.";
+    assert.throws(() => addTransfer(plan, { ...transferTo(id, "A1"), volume: MIX_STEP_VOLUME }), {
+      message,
+    });
+    assert.throws(
+      () => addTransfer(plan, { ...mixedWell(id, plateWell("A1")), volume: MIX_STEP_VOLUME + 1 }),
+      { message },
+    );
+    assert.throws(() => addTransfers(plan, [mixedWell(id, plateWell("A1")), transferTo(id, "A2")]), {
+      message,
+    });
+    const added = addTransfer(plan, mixedWell(id, plateWell("A1")));
+    assert.equal(transfersIn(added, id).length, 1);
+  });
+
+  test("addTransfer checks the stage is in the plan before whether it's a mix step", () => {
+    const { plan } = addMixStep(planWithStages(1), null);
+    assert.throws(() => addTransfer(plan, transferTo("9", "A1")), {
+      message: `There's no stage "9" in the plan to add this transfer to.`,
+    });
+  });
+
+  test("a well is mixed at most once in a mix step: the stage rule refuses it twice", () => {
+    let { plan, id } = addMixStep(planWithStages(1), null);
+    plan = mixWells(plan, id, [plateWell("A1")]);
+    assert.throws(() => addTransfer(plan, mixedWell(id, plateWell("A1"))), {
+      message: /Within a stage, no well can be both a source and a destination/,
+    });
+  });
+
+  test("changeVolume refuses a mix step's transfer", () => {
+    let { plan, id } = addMixStep(withTransfersIn(planWithStages(1), ["1"]), null);
+    plan = mixWells(plan, id, [plateWell("A1")]);
+    const position = transfersIn(plan, id)[0].position;
+    assert.throws(() => changeVolume(plan, position, 5), {
+      message: "A mix step's wells are mixed with its own settings, so their volume can't be changed.",
+    });
+    // A transfer stage's volume still changes.
+    assert.doesNotThrow(() => changeVolume(plan, 0, 25));
+  });
+
+  test("a mixed well holding at least MIX_STEP_VOLUME changes no well's contents; a well holding less is an overdraw", () => {
+    let plan = addComponent(planWithStages(1), "Media", "#4e79a7");
+    plan = addToWells(plan, [plateWell("A1")], "Media", MIX_STEP_VOLUME);
+    plan = addToWells(plan, [plateWell("A2")], "Media", MIX_STEP_VOLUME / 2);
+    let { plan: withMixStep, id } = addMixStep(plan, null);
+    const full = mixWells(withMixStep, id, [plateWell("A1")]);
+    const contents = (candidate) => replay(candidate.startingContents, candidate.operationList).listContents();
+    assert.deepEqual(contents(full), contents(withMixStep));
+    assert.deepEqual(stagesWithOverdraw(full), new Set());
+    const short = mixWells(full, id, [plateWell("A2")]);
+    assert.deepEqual(stagesWithOverdraw(short), new Set([id]));
   });
 
   // --- Mixing ---
@@ -1439,6 +1717,14 @@ describe("transfer-designer", () => {
   // Each edit, made on a plan with something in every part, and the parts it may change.
   const EDITS = [
     ["addStage", (plan) => addStage(plan, "2").plan, ["stageList", "stageOrder"]],
+    ["addMixStep", (plan) => addMixStep(plan, "2").plan, ["stageList", "stageOrder"]],
+    [
+      "addMixStep, taking tips",
+      (plan) => addMixStep(plan, "2", { takeTips: true }).plan,
+      ["stageList", "stageOrder", "tipChanges"],
+    ],
+    ["mixWells", (plan) => mixWells(plan, mixStepOf(plan), [plateWell("H1")]), ["operationList"]],
+    ["unmixWell", (plan) => unmixWell(plan, mixStepOf(plan), plateWell("A1")), ["operationList"]],
     ["renameStage", (plan) => renameStage(plan, "1", "Seeding"), ["stageList"]],
     ["changeStageSettings", (plan) => changeStageSettings(plan, "1", otherSettings()), ["stageList"]],
     ["setStageMix", (plan) => setStageMix(plan, "1", "source", exampleMix()), ["stageList"]],
@@ -1462,15 +1748,23 @@ describe("transfer-designer", () => {
   ];
 
   // A plan with something in every part: components and starting contents, stages 1 and 2 with
-  // transfers, stage 3 without, a tip change before stage 2, a label and an experiment name.
+  // transfers, stage 3 without, a mix step last mixing PLATE A1, a tip change before stage 2, a
+  // label and an experiment name.
   function fullPlan() {
     let plan = withTransfersIn(planWithContents(), ["1"]);
     plan = addStage(plan, null).plan;
     plan = addStage(plan, null).plan;
     plan = addTransfer(plan, transferTo("2", "B1"));
+    const { plan: withMixStep, id: mixStep } = addMixStep(plan, null);
+    plan = mixWells(withMixStep, mixStep, [plateWell("A1")]);
     plan = addTipChange(plan, "2");
     plan = setLabel(plan, OTHER_PLATE, "Drug plate");
     return setExperimentName(plan, "Exp36");
+  }
+
+  // The ID of the mix step in a plan made by fullPlan().
+  function mixStepOf(plan) {
+    return stageOrder(plan).find((id) => isMixStep(plan, id));
   }
 
   test("every edit leaves the plan it was given unchanged", () => {
@@ -1507,6 +1801,15 @@ describe("transfer-designer", () => {
     ],
     ["addTransfers", (plan) => addTransfers(plan, [transferTo("3", "C4"), transferTo("1", "C5")])],
     ["removeStage, with transfers", (plan) => removeStage(plan, "2")],
+    ["addMixStep before the first, taking tips", (plan) => addMixStep(plan, "1", { takeTips: true }).plan],
+    [
+      "mixWells, the first of a mix step added in the middle",
+      (plan) => {
+        const { plan: added, id } = addMixStep(plan, "2");
+        return mixWells(added, id, [plateWell("C6"), plateWell("C7")]);
+      },
+    ],
+    ["removeStage, a mix step", (plan) => removeStage(plan, mixStepOf(plan))],
   ];
 
   test("after every kind of edit, the stage order holds every stage once, and the operation list's blocks follow it", () => {

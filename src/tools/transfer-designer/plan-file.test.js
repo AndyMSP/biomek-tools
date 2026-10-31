@@ -14,6 +14,10 @@ import {
   probesFor,
   stageOrder,
   addStage,
+  addMixStep,
+  isMixStep,
+  mixWells,
+  transfersIn,
   renameStage,
   setStageMix,
   removeStage,
@@ -307,6 +311,26 @@ describe("plan-file", () => {
     assert.deepEqual(opened.stageList.get("1").settings.sourceMix, exampleMix());
     assert.equal(opened.stageList.get("1").settings.destinationMix, null);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
+  });
+
+  test("a mix step, saved and opened, is still a mix step, with its settings and mixed wells (transfer-designer.md, \"Mix steps\": the plan file needs nothing new)", () => {
+    const { plan: withMixStep, id } = addMixStep(fullPlan(), "3");
+    const plan = mixWells(withMixStep, id, [
+      { labware: PLATE, well: "H1" },
+      { labware: PLATE, well: "H2" },
+    ]);
+    const opened = planFromText(planToText(plan, SAVED_BY));
+    // Stages are renumbered on opening: the mix step is third in the stage order.
+    const openedId = stageOrder(opened)[2];
+    assert.equal(isMixStep(opened, openedId), true);
+    assert.deepEqual(opened.stageList.get(openedId), {
+      ...plan.stageList.get(id),
+      id: openedId,
+    });
+    assert.deepEqual(
+      transfersIn(opened, openedId).map((transfer) => [transfer.source.well, transfer.volume]),
+      transfersIn(plan, id).map((transfer) => [transfer.source.well, transfer.volume]),
+    );
   });
 
   // --- Version 4 files ---
