@@ -16,6 +16,11 @@
 > technique doesn't match their mixing are refused; and stages with a mix problem are reported, as
 > overdraws are (sections 2 to 6).
 >
+> **Draft change (2026-10-30, well capacities and dead volume, item 11 of v0.2.0):** contents
+> tracking now reports three kinds of problem (a draw into the dead volume, an overdraw and an
+> overfill; `contents-tracking.md`), so `stagesWithOverdraw` becomes `stagesWithContentsProblem`
+> (sections 3, 4 and 6).
+>
 > **Draft change (2026-10-30, mixing layer (c1)):** the default mix, `DEFAULT_MIX`, from
 > `config/mixing.js`, for a tool switching mixing on (sections 3, 4 and 6).
 >
@@ -32,7 +37,8 @@ tested in Node (CLAUDE.md, "Separate logic from the UI").
 It builds on the shared modules, and doesn't repeat what they do:
 - `operation-list`: the transfers, in run order, by stage (ADR 0008);
 - `stage-list`: each stage's ID, name and settings;
-- `contents-tracking`: what every well holds at any point, and overdraws;
+- `contents-tracking`: what every well holds at any point, and its problems (a draw into the
+  dead volume, an overdraw, an overfill);
 - `mix-volumes`: how much each row mixes, and mix problems;
 - `deck`: the labware on the deck, their grids, and which wells exist.
 
@@ -42,7 +48,7 @@ Beside it in this tool are two other logic modules, `plan-history` (undo and red
 ## 2. Scope
 Version 1 creates an empty plan; adds, removes and changes stages, transfers, tip changes,
 components, starting contents, labware labels and the experiment name; and answers questions about a plan: its stage
-order, its tip groups, the stages with an overdraw or a mix problem, where each stage ends, and
+order, its tip groups, the stages with a contents problem or a mix problem, where each stage ends, and
 the labware it uses.
 
 Not in version 1 (see `docs/roadmap.md`):
@@ -248,9 +254,14 @@ new for it (`plan-file.md`).
 - Emptying wells removes everything they hold at the start. The components stay in the list. A well
   that's already empty is left as it is.
 
-### Overdraws
-`contents-tracking` reports each transfer that asks a well for more than it holds. A stage **has an
-overdraw** if any of its transfers is one (but see "Not in version 1").
+### Contents problems
+`contents-tracking` reports each transfer that asks a well for more than its usable volume (a
+`"dead-volume"` or `"overdraw"` problem) and each transfer that fills a well over its capacity (an
+`"overfill"`; `contents-tracking.md`). A stage **has a contents problem** if any of its transfers
+has one of any kind (but see "Not in version 1"). A well that starts over its capacity is a problem
+of the starting contents, not of any stage. The glossary's "overdraw" keeps its everyday meaning,
+a transfer asking for more than it can get; in contents tracking's terms that is a
+`"dead-volume"` or `"overdraw"` problem.
 
 ### Labware
 - The labware a plan **uses** are those in its starting contents or in any transfer, in the deck's
@@ -337,7 +348,7 @@ given; "returns the plan with …" means a new plan.
 | `canRemoveStage(plan, id)` | `true` if `id` is a stage and not the only one. |
 | `removeStage(plan, id)` | the plan without stage `id`, its transfers or a tip change keyed by it. Throws if `canRemoveStage` is `false`. |
 | `stageEnds(plan)` | for each stage with transfers, in run order, `{ stage, transfersDone }`: how many transfers have run when it ends, e.g. `[{ stage: "1", transfersDone: 4 }, { stage: "2", transfersDone: 8 }]`. |
-| `stagesWithOverdraw(plan)` | a `Set` of the IDs of stages with an overdraw. |
+| `stagesWithContentsProblem(plan)` | a `Set` of the IDs of stages with a contents problem of any kind (section 3). A problem of the starting contents (`operationIndex` `null`) names no stage. |
 | `stagesWithMixProblem(plan)` | a `Set` of the IDs of stages with a mix problem (`mix-volumes.md`). |
 | `DEFAULT_MIX` | (a constant) the default mix from `config/mixing.js`, e.g. `{ share: 90, times: 3, speed: 400 }`, frozen, re-exported so a tool takes all the transfer designer's configuration from one place. |
 
@@ -532,7 +543,7 @@ order of checks.
   any volume but `MIX_STEP_VOLUME`; accepts a well into itself of `MIX_STEP_VOLUME`. `changeVolume`
   refuses a mix step's transfer.
 - A mix step's mixed well holding at least `MIX_STEP_VOLUME` changes no well's contents; a well
-  holding less is an overdraw (`stagesWithOverdraw`).
+  holding less above its dead volume is a contents problem (`stagesWithContentsProblem`).
 - In the table of which parts of the plan each edit may change: `addMixStep` changes `stageList`
   and `stageOrder` (and `tipChanges` with `takeTips`, as `addStage`); `mixWells` and `unmixWell`
   only `operationList`.
@@ -551,7 +562,10 @@ order of checks.
 - `renameStage` and `changeStageSettings` change only that stage; the stage list's errors pass
   through.
 - `stageEnds` counts transfers cumulatively in run order, leaving out stages without transfers.
-- `stagesWithOverdraw` names the stage whose transfer draws more than a well holds, and no other.
+- `stagesWithContentsProblem` names the stage whose transfer draws more than a well's usable
+  volume, and the stage whose transfer fills a well over its capacity, and no other; with only a
+  well that starts over its capacity, it's empty. (On the real deck, with `D` and `C` taken from
+  `config/labware-types.js` for the labware chosen, as `contents-tracking.md` does.)
 
 **Mixing**
 - `setStageMix` on a Medium source with `{ share: 90, times: 3, speed: 400 }` gives `sourceMix`
