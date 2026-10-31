@@ -238,6 +238,9 @@ Last updated: 2026-10-28
   `config/mixing.js`; the page's ⟳ seam button, mix step cards and box, and mixing wells on the
   deck. Still open: an overdraw caused by a mix step's 1 µL draw is described as a transfer
   ("Transfer #5 asked for 1 µL…"); saying it's a mix would be clearer.
+  **(c2) is built** (#112, 2026-10-30): code, tests and REPL of the transfer designer and
+  `config/mixing.js`, tests for `mix-volumes`, the file writer and plan files, and the page's mix
+  steps; checked in headless Chrome.
   **(c1) is built** (#110, 2026-10-30): `config/mixing.js`, each row's `mixedWells` in
   `mix-volumes`, `DEFAULT_MIX` in the transfer designer, and the page's Mix row, ⟳ and badges;
   checked in headless Chrome.
