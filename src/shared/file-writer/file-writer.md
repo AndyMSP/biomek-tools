@@ -39,7 +39,6 @@ transfer row the tip type and probes of the tip change before it, writes each ro
 Not in version 1:
 - **Checking techniques against tip types** (roadmap, "Technical debt").
 - **Dead volume** (roadmap, "Technical debt").
-- **Mix steps** (`docs/glossary.md`), which come with the page's mixing (roadmap, mixing layer (c)).
 - **Replacing only some tips** (ADR 0007, "Consequences").
 - **Well capacities**, to warn about overfilling (roadmap, "Later").
 - **Resuming after an interruption** (roadmap, "Later").
@@ -278,6 +277,11 @@ still pass when the deck changes (as `deck.test.js` does).
   `DestTechnique`) is the mixing technique stored in the stage.
 - **One mix volume per row:** a mixing stage that splits into two substages writes each row's own
   mix volume.
+- **A mix step** (`transfer-designer.md`, "Mix steps") is written like any stage: its row has
+  `MIX_STEP_MODE`'s technique and liquid type at both ends, empty `SrcMix…` columns, and the row's
+  destination mix volume with `DEFAULT_MIX`'s times and speed in the `DestMix…` columns; its
+  Transfer From File file lists each mixed well from itself into itself, with `MIX_STEP_VOLUME` as
+  its volume. (Nothing in this module changes for mix steps; the test shows they come out right.)
 - A mix speed of `150.5` is written `150.5`; a mix volume of `89.9` is written `89.9`.
 - The test written before mixing layer (b), that a stage's mixes are ignored and the mix columns
   written empty, is replaced by these tests: the behavior it checked has changed. Its plan gave a

@@ -233,6 +233,11 @@ Last updated: 2026-10-28
   its own kind (above); each mixed well stored as a transfer into itself with a **1 µL placeholder**
   volume (whether the volume matters is to check at the Biomek); End's count leaves mix steps' wells
   out; a mix step's card has ⟳ after its name and no separate `⟳ Mixes` line.
+  **(c2) is specified** (Draft, 2026-10-30): `addMixStep`, `isMixStep`, `mixWells`, `unmixWell`
+  and the copying rule in the transfer designer; `MIX_STEP_MODE` and `MIX_STEP_VOLUME` in
+  `config/mixing.js`; the page's ⟳ seam button, mix step cards and box, and mixing wells on the
+  deck. Still open: an overdraw caused by a mix step's 1 µL draw is described as a transfer
+  ("Transfer #5 asked for 1 µL…"); saying it's a mix would be clearer.
   **(c1) is built** (#110, 2026-10-30): `config/mixing.js`, each row's `mixedWells` in
   `mix-volumes`, `DEFAULT_MIX` in the transfer designer, and the page's Mix row, ⟳ and badges;
   checked in headless Chrome.
