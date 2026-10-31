@@ -217,12 +217,25 @@ Last updated: 2026-10-28
   volume per row from the new `mix-volumes` shared module (substages move into a `substages` shared
   module); each mode's mixing technique in `config/`, `setStageMix` switching an end's mixing and
   technique together, and settings whose technique doesn't match their mixing refused (item (1)
-  above); a mix that works out to 0 µL is a **mix problem**, shown on the page as an overdraw is,
+  above); a mix that works out to 0 µL is a **mix problem** (since #110: under 1 µL), shown on the page as an overdraw is,
   and refused by the file writer (Andy, 2026-10-30). Item (2) above stays open. **For layer (c):**
   switching mixing on and off on the page, the default mix in `config/` (90% × 3 at 400 µL/s), mix
   steps, and the short-mix warning (40%). **At the Biomek:** a simulation run with files from a
-  mixing plan, checking each row mixes the volume written.
+  mixing plan, checking each row mixes the volume written, and how a 1 µL mix and a 1 µL transfer
+  run (the minimum mix volume is 1 µL; Andy, 2026-10-30).
   **Built** (#109, 2026-10-30): code, tests and REPL of `substages`, `mix-volumes`, the transfer designer, the file writer and the page; checked in headless Chrome.
+- **Mixing layer (c), the page, goes in two parts** (Andy, 2026-10-30): **(c1) mixing in transfer
+  stages is specified** (Draft, 2026-10-30): a Mix checkbox for each end in a stage's box, giving
+  `DEFAULT_MIX` (`config/mixing.js`); ⟳ after a mode on the stage's card; a ⟳ badge on each well
+  the open stage mixes, yellow under `SHORT_MIX_SHARE` (40%); `Mixed N% of well` in the contents
+  card; each well's mixed share from `mix-volumes`. **(c2) mix steps**, next, decided so far (Andy,
+  2026-10-30): added with a ⟳ button beside each seam's `+`; a new stage copies the nearest stage of
+  its own kind (above); each mixed well stored as a transfer into itself with a **1 µL placeholder**
+  volume (whether the volume matters is to check at the Biomek); End's count leaves mix steps' wells
+  out; a mix step's card has ⟳ after its name and no separate `⟳ Mixes` line.
+  **(c1) is built** (#110, 2026-10-30): `config/mixing.js`, each row's `mixedWells` in
+  `mix-volumes`, `DEFAULT_MIX` in the transfer designer, and the page's Mix row, ⟳ and badges;
+  checked in headless Chrome.
 - **Trying: Claude starts Claude Code's builds itself,** as a background agent with only the
   specifications and the repository, then reviews them (Andy, 2026-10-30; first used for #106).
   CLAUDE.md's "Who does what" stays unchanged until Andy decides after a longer trial.

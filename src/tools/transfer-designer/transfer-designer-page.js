@@ -4,7 +4,8 @@
 // The page has no rules of its own about plans (transfer-designer-page.md, section 1). Every edit
 // goes through transfer-designer.js, undo and redo through plan-history.js, saving and opening
 // through plan-file.js, the labware through deck.js, what each well holds through
-// contents-tracking.js, and the Biomek files through file-writer.js and zip.js. When one of them
+// contents-tracking.js, how much each mixed well is mixed through mix-volumes.js, and the Biomek
+// files through file-writer.js and zip.js. When one of them
 // refuses an edit, the page shows its message and changes nothing. What this file decides is only
 // how things look and how the user does them: how typing a volume works, how numbers are shown,
 // where boxes float, and what each message says.
@@ -14,8 +15,10 @@ import packageJson from "../../../package.json" with { type: "json" };
 import { COMPONENT_COLORS } from "../../../config/component-colors.js";
 import { DEFAULT_TRANSFER_VOLUME, DEFAULT_FILL_VOLUME } from "../../../config/default-volumes.js";
 import { TIP_TYPES } from "../../../config/tip-types.js";
+import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
+import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
 import { labwareNames, gridOf, labwareTypeOf, wellsInBox } from "../../shared/deck/deck.js";
 import { writeRunFiles, checkExperimentName } from "../../shared/file-writer/file-writer.js";
 import { zipFiles } from "../../shared/zip/zip.js";
@@ -23,6 +26,7 @@ import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
 import {
   START,
+  DEFAULT_MIX,
   emptyPlan,
   setExperimentName,
   probesFor,
@@ -158,6 +162,16 @@ let addingComponent = null;
 // What the deck shows now (section 11), and the plates as the open stage starts (for arrow colors).
 let shownSnapshot = null;
 let stageStartSnapshot = null;
+
+// The wells the open stage mixes (section 6), keyed by wellKey, each as { share, short,
+// problemVolume, waiting } (mixedWellsOf). Empty unless a stage with transfers that mixes is open.
+// Worked out by refreshDeck, for the badges and the contents card.
+let openStageMixedWells = new Map();
+
+// The wells causing a mix problem in a stage before the open one (all stages at End), keyed by
+// wellKey, each as { stage, volume }: the first such stage's ID and its mix volume there
+// (lastingMixProblemsOf). Their red badges stay on the deck through later stages (section 6).
+let lastingMixProblems = new Map();
 
 // Each drawn well's element, by wellKey, so marks and arrows can find them.
 const wellElements = new Map();
@@ -820,6 +834,8 @@ function refreshDeck() {
   stageStartSnapshot = isStage(plan, open)
     ? replay(plan.startingContents, plan.operationList, operationCountBefore(plan, open))
     : null;
+  openStageMixedWells = mixedWellsOf(plan, open);
+  lastingMixProblems = lastingMixProblemsOf(plan, open);
   refreshTimeline(plan, open);
   elements.undo.disabled = !history.canUndo();
   elements.redo.disabled = !history.canRedo();
@@ -830,6 +846,88 @@ function refreshDeck() {
   drawKey();
   drawStageArrows();
   drawCursorArrow();
+}
+
+// The wells stage `key` mixes, at either end, keyed by wellKey, each as { share, short,
+// problemVolume, waiting } (section 6; mix-volumes.md, mixedWells and problems):
+// - problemVolume: the mix volume if the well causes a mix problem (the emptiest well of a row whose
+//   mix is under MIN_MIX_VOLUME), otherwise null; in more than one row, the first;
+// - share and short: its smallest mixed share in the rows without a mix problem at its end, and
+//   whether any of those is short; share is null if every row mixing it has one;
+// - waiting: true if it's another well of a row with a mix problem at its end, so not mixed until
+//   the well in red is fixed.
+// Empty for START, END, or a stage without transfers or mixing, e.g. a stage mixing Plate1 A1 at
+// 90% → Map { '["Plate1","A1"]' → { share: 90, short: false, problemVolume: null, waiting: false } }.
+function mixedWellsOf(plan, key) {
+  const mixed = new Map();
+  if (!isStage(plan, key) || !stageMixes(plan, key)) {
+    return mixed;
+  }
+  const { stages, problems } = mixVolumes(plan);
+  const rows = stages.find((entry) => entry.stage === key)?.rows ?? [];
+  // mix-volumes lists the stage's problems in row order, source before destination, so they're
+  // taken in turn as the rows' ends under the minimum come up.
+  const stageProblems = problems.filter((problem) => problem.stage === key);
+  for (const row of rows) {
+    for (const end of ["source", "destination"]) {
+      const volume = row[`${end}MixVolume`];
+      const problem = volume !== null && volume < MIN_MIX_VOLUME ? stageProblems.shift() : null;
+      for (const entry of row.mixedWells.filter((mixedWell) => mixedWell.end === end)) {
+        addMixedWell(mixed, entry, problem, volume);
+      }
+    }
+  }
+  return mixed;
+}
+
+// The wells causing a mix problem in a stage before `open` in the stage order, or in any stage when
+// End is open, keyed by wellKey, each as { stage, volume }: the first such stage's ID and its mix
+// volume there (section 6: a red badge stays from its stage through End). Empty at Start. E.g. with
+// stage 1 dispensing 0.05 µL into Plate1 A1 and stage 2 open →
+// Map { '["Plate1","A1"]' → { stage: "1", volume: 0 } }.
+function lastingMixProblemsOf(plan, open) {
+  const lasting = new Map();
+  const order = stageOrder(plan);
+  const earlier = open === END ? order : order.slice(0, Math.max(order.indexOf(open), 0));
+  const withProblem = stagesWithMixProblem(plan);
+  for (const stage of earlier.filter((id) => withProblem.has(id))) {
+    for (const [key, mixed] of mixedWellsOf(plan, stage)) {
+      if (mixed.problemVolume !== null && !lasting.has(key)) {
+        lasting.set(key, { stage, volume: mixed.problemVolume });
+      }
+    }
+  }
+  return lasting;
+}
+
+// Adds one of a row's mixed wells, `entry` (mix-volumes, mixedWells), to `mixed` (as mixedWellsOf
+// gives it), where `problem` is the row's mix problem at the well's end, or null, and `volume` the
+// row's mix volume there. A well already in `mixed` keeps the first problem volume and the smallest
+// share, and is short if any of its mixes is.
+function addMixedWell(mixed, entry, problem, volume) {
+  const wellKeyText = wellKey(entry);
+  const well = mixed.get(wellKeyText) ?? { share: null, short: false, problemVolume: null, waiting: false };
+  if (problem === null) {
+    well.share = well.share === null ? entry.share : Math.min(well.share, entry.share);
+    well.short = well.short || entry.short;
+  } else if (problem.labware === entry.labware && problem.well === entry.well) {
+    well.problemVolume = well.problemVolume ?? volume;
+  } else {
+    well.waiting = true;
+  }
+  mixed.set(wellKeyText, well);
+}
+
+// True if stage `id` mixes at either end.
+function stageMixes(plan, id) {
+  const { settings } = plan.stageList.get(id);
+  return settings.sourceMix !== null || settings.destinationMix !== null;
+}
+
+// Stage `id`'s stage-worklist rows with their mix volumes and mixed wells (mixVolumes), or none if
+// it has no transfers.
+function mixRowsOf(plan, id) {
+  return mixVolumes(plan).stages.find((entry) => entry.stage === id)?.rows ?? [];
 }
 
 // True if `key` is one of the plan's stages (not START or END).
@@ -976,8 +1074,8 @@ function drawComponentColors(plan) {
   );
 }
 
-// Draws the key (section 6): only the marks on the deck now, Overdraw and Off plan; hidden with
-// neither. Called after the wells are drawn and marked.
+// Draws the key (section 6): only the marks on the deck now, Overdraw, Off plan and Mix problem;
+// hidden with none. Called after the wells are drawn and marked.
 function drawKey() {
   const items = [];
   if (elements.labwareArea.querySelector(".well.overdraw") !== null) {
@@ -985,6 +1083,9 @@ function drawKey() {
   }
   if (elements.labwareArea.querySelector(".well.off-plan:not(.overdraw)") !== null) {
     items.push(createKeyItem("off-plan", "Off plan"));
+  }
+  if (elements.labwareArea.querySelector(".mix-badge.problem") !== null) {
+    items.push(createMixProblemKeyItem());
   }
   elements.key.replaceChildren(...items);
 }
@@ -994,6 +1095,15 @@ function drawKey() {
 function createKeyItem(mark, name) {
   const item = document.createElement("li");
   item.append(createElement("span", "", `key-well ${mark}`), createElement("span", name));
+  return item;
+}
+
+// The key's Mix problem item: a red ⟳ badge, drawn as on the deck but in the line, and its name.
+function createMixProblemKeyItem() {
+  const item = document.createElement("li");
+  const badge = createElement("span", "⟳", "mix-badge problem key-badge");
+  badge.setAttribute("aria-hidden", "true");
+  item.append(badge, createElement("span", "Mix problem"));
   return item;
 }
 
@@ -1129,8 +1239,66 @@ function createWell(plan, end, isTrough) {
     wellElement.setAttribute("aria-label", `${wellName(plan, end)}, ${formatVolume(total)} µL`);
   }
   wellElement.append(label);
+  const mixed = openStageMixedWells.get(wellKey(end));
+  const lastingProblem = lastingMixProblems.get(wellKey(end));
+  if (mixed !== undefined) {
+    addMixBadge(wellElement, mixed, lastingProblem !== undefined);
+  } else if (lastingProblem !== undefined) {
+    addLastingMixBadge(wellElement, plan, lastingProblem);
+  }
   wellElements.set(wellKey(end), wellElement);
   return wellElement;
+}
+
+// Gives a well the open stage mixes its ⟳ badge at its top right, and adds how it's mixed to its
+// accessible name (section 6): red if it causes a mix problem ("…, holds too little to mix");
+// otherwise yellow when a mix is short and blue if not ("Assay plate A1, 120 µL, mixed 17%"); blue
+// for another well of a row with a mix problem ("…, not mixed until the well in red is fixed").
+// `mixed` is the well's entry from mixedWellsOf; `earlierProblem` is true if the well caused a mix
+// problem in an earlier stage, so its badge stays red whatever the open stage does.
+function addMixBadge(wellElement, mixed, earlierProblem) {
+  wellElement.classList.add("mixed");
+  const badge = createElement("span", "⟳", "mix-badge");
+  const causesProblem = mixed.problemVolume !== null || earlierProblem;
+  badge.classList.toggle("problem", causesProblem);
+  badge.classList.toggle("short", !causesProblem && mixed.short);
+  // The accessible name says it in words, so the symbol itself is hidden from screen readers.
+  badge.setAttribute("aria-hidden", "true");
+  wellElement.append(badge);
+  const name = wellElement.getAttribute("aria-label");
+  wellElement.setAttribute("aria-label", `${name}, ${mixedWords(mixed)}`);
+}
+
+// Gives a well that caused a mix problem in an earlier stage (and isn't mixed in the open one) its
+// red ⟳ badge, which stays from that stage through End (section 6), and says so in its accessible
+// name, e.g. "Assay plate A1, empty, can't be mixed in stage 1, “Tiny dispense”". `lastingProblem`
+// is the well's entry from lastingMixProblemsOf.
+function addLastingMixBadge(wellElement, plan, lastingProblem) {
+  wellElement.classList.add("mixed");
+  const badge = createElement("span", "⟳", "mix-badge problem");
+  badge.setAttribute("aria-hidden", "true");
+  wellElement.append(badge);
+  const name = wellElement.getAttribute("aria-label");
+  wellElement.setAttribute("aria-label", `${name}, can't be mixed in ${stageLabel(plan, lastingProblem.stage)}`);
+}
+
+// How a well the open stage mixes is mixed, in words for its accessible name, from its entry in
+// mixedWellsOf, e.g. "mixed 17%", "holds too little to mix" or "not mixed until the well in red is
+// fixed".
+function mixedWords(mixed) {
+  if (mixed.problemVolume !== null) {
+    return "holds too little to mix";
+  }
+  if (mixed.share !== null) {
+    return `mixed ${mixedPercent(mixed.share)}%`;
+  }
+  return "not mixed until the well in red is fixed";
+}
+
+// A mixed share as a whole percent, rounded down, so a short mix never reads as the limit
+// (section 6), e.g. mixedPercent(39.99) → 39.
+function mixedPercent(share) {
+  return Math.floor(share);
 }
 
 // The CSS gradient filling a well with its components' colors in proportion, in the order the
@@ -1338,7 +1506,8 @@ function createEntry(plan, key, open, problems) {
   } else if (isStage(plan, key) && problems.mixProblem.has(key)) {
     // A mix problem looks the same as an overdraw (Andy, 2026-10-30), with its own tooltip.
     entry.classList.add("has-overdraw");
-    entry.title = "This stage mixes a well that holds too little: the mix works out to 0 µL.";
+    entry.title =
+      `This stage mixes a well that holds too little: the mix is under ${formatVolume(MIN_MIX_VOLUME)} µL.`;
   }
   const row = createElement(isOpen ? "div" : "button", "", "entry-row");
   if (!isOpen) {
@@ -1401,16 +1570,28 @@ function createEntryBody(plan, key) {
   return body;
 }
 
-// A stage card's settings in one line, e.g. "↑ Slow · ↓ Non-Contact". No probe count: a stage uses
-// all its tips' probes, and the tip group's heading counts them (section 7). (The ✎ that opens the
-// stage's editing box is in the card's heading, beside its name.)
+// A stage card's settings in one line, e.g. "↑ Slow ⟳   ↓ Non-Contact": each end's mode, with ⟳
+// after it if that end mixes; the two ends 18px apart, wrapping onto two lines if the card is narrow.
+// No probe count: a stage uses all its tips' probes, and the tip group's heading counts them
+// (section 7). (The ✎ that opens the stage's editing box is in the card's heading, beside its name.)
 function createSettingsLine(plan, id) {
   const settings = plan.stageList.get(id).settings;
-  const aspirate = modeOf("source", settings) ?? "custom";
-  const dispense = modeOf("destination", settings) ?? "custom";
+  const ends = [
+    { arrow: "↑", word: "aspirate", end: "source" },
+    { arrow: "↓", word: "dispense", end: "destination" },
+  ].map(({ arrow, word, end }) => {
+    const mode = modeOf(end, settings) ?? "custom";
+    const mixes = settings[`${end}Mix`] !== null;
+    return {
+      text: `${arrow} ${mode}${mixes ? " ⟳" : ""}`,
+      spoken: `${word} ${mode}${mixes ? ", mixing" : ""}`,
+    };
+  });
   const line = createElement("div", "", "settings-line");
-  const text = createElement("span", `↑ ${aspirate} · ↓ ${dispense}`);
-  text.setAttribute("aria-label", `aspirate ${aspirate}, dispense ${dispense}`);
+  const text = createElement("span", "", "settings-ends");
+  text.append(...ends.map((end) => createElement("span", end.text, "settings-end")));
+  // Read as words, e.g. "aspirate Slow, mixing, dispense Non-Contact", in place of the arrows and ⟳.
+  text.setAttribute("aria-label", ends.map((end) => end.spoken).join(", "));
   line.append(text);
   return line;
 }
@@ -2225,7 +2406,8 @@ function hideContentsCard() {
 }
 
 // The contents card's lines for a well: its name and total, each component's swatch, name, volume
-// and share, each overdraw of the well, and whether it's off plan.
+// and share, each overdraw of the well, whether it's off plan, and how much of it the open stage
+// mixes.
 function contentsCardLines(plan, end) {
   const total = shownSnapshot.totalVolumeOf(end.labware, end.well);
   const lines = [
@@ -2261,7 +2443,50 @@ function contentsCardLines(plan, end) {
     const numbers = causes.map((index) => `#${index + 1}`).join(", ");
     lines.push(createElement("div", `Contents differ from the plan because of transfer ${numbers}.`, "card-problem"));
   }
+  const lastingProblem = lastingMixProblems.get(wellKey(end));
+  if (lastingProblem !== undefined) {
+    lines.push(lastingMixCardLine(plan, lastingProblem));
+  }
+  const mixed = openStageMixedWells.get(wellKey(end));
+  if (mixed !== undefined) {
+    lines.push(mixCardLine(mixed));
+  }
   return lines;
+}
+
+// The contents card's line for a well that caused a mix problem in an earlier stage than the open
+// one, or at End (section 6), from its entry in lastingMixProblemsOf, in the problem color, e.g.
+// "Stage 1, “Tiny dispense”, can't mix this well: its mix is 0 µL, under 1 µL."
+function lastingMixCardLine(plan, lastingProblem) {
+  const order = stageOrder(plan);
+  const stage = lastingProblem.stage;
+  return createElement(
+    "div",
+    `Stage ${order.indexOf(stage) + 1}, “${plan.stageList.get(stage).name}”, can't mix this well: ` +
+      `its mix is ${formatVolume(lastingProblem.volume)} µL, under ${formatVolume(MIN_MIX_VOLUME)} µL.`,
+    "card-problem",
+  );
+}
+
+// The contents card's line for a well the open stage mixes (section 6), from its entry in
+// mixedWellsOf: for the well causing a mix problem, "Holds too little to mix: the mix is 0.8 µL,
+// under 1 µL." in the problem color; otherwise "Mixed 17% of well", yellow when short; for
+// another well of a row with a mix problem, "Not mixed until the well in red is fixed."
+function mixCardLine(mixed) {
+  if (mixed.problemVolume !== null) {
+    return createElement(
+      "div",
+      `Holds too little to mix: the mix is ${formatVolume(mixed.problemVolume)} µL, ` +
+        `under ${formatVolume(MIN_MIX_VOLUME)} µL.`,
+      "card-problem",
+    );
+  }
+  if (mixed.share !== null) {
+    const line = createElement("div", `Mixed ${mixedPercent(mixed.share)}% of well`, "card-mix");
+    line.classList.toggle("short", mixed.short);
+    return line;
+  }
+  return createElement("div", "Not mixed until the well in red is fixed.", "card-mix");
 }
 
 // --- Editing boxes (section 10) ---
@@ -2294,8 +2519,8 @@ function openEditingBox(kind, key) {
   focusEditingBox();
 }
 
-// What a box edits, before any changes: a component's name and color; a stage's name and modes; a
-// tip change's tip type and probes.
+// What a box edits, before any changes: a component's name and color; a stage's name, modes and
+// whether each end mixes; a tip change's tip type and probes.
 function originalFor(plan, kind, key) {
   if (kind === "component") {
     const component = plan.components.find((candidate) => candidate.name === key);
@@ -2307,6 +2532,8 @@ function originalFor(plan, kind, key) {
       name,
       aspirate: modeOf("source", settings),
       dispense: modeOf("destination", settings),
+      aspirateMix: settings.sourceMix !== null,
+      dispenseMix: settings.destinationMix !== null,
     };
   }
   const tipChange = tipChangeAt(plan, key);
@@ -2334,7 +2561,9 @@ function isBoxDirty() {
     return (
       draft.name !== original.name ||
       draft.aspirate !== original.aspirate ||
-      draft.dispense !== original.dispense
+      draft.dispense !== original.dispense ||
+      draft.aspirateMix !== original.aspirateMix ||
+      draft.dispenseMix !== original.dispenseMix
     );
   }
   return (
@@ -2491,38 +2720,112 @@ function colorsOffered(plan, ownName, ownColor, showAll) {
 function stageBoxFields(plan) {
   const { draft } = editingBox;
   const nameField = createNameField(draft.name, "Name");
-  const grid = createSettingsGrid(draft);
+  const grid = createSettingsGrid(plan, editingBox.key, draft);
   return [nameField, grid];
 }
 
+// The two ends of a stage as the box shows them: the logic's end, the draft's names for that end's
+// mode and Mix, the column's heading, and the words naming its mix (section 10).
+const BOX_ENDS = [
+  { end: "source", mode: "aspirate", mix: "aspirateMix", heading: "Aspirate", mixName: "Mix before aspirating" },
+  { end: "destination", mode: "dispense", mix: "dispenseMix", heading: "Dispense", mixName: "Mix after dispensing" },
+];
+
 // The stage's settings as a grid (section 10): the stage's ends as columns, headed Aspirate and
-// Dispense, and its settings as rows, each labeled once at the left. For now one row, Mode, with a
-// menu per end. The top left cell is empty: it's above the labels and left of the headings.
-function createSettingsGrid(draft) {
+// Dispense, and its settings as rows, each labeled once at the left: Mode, a menu per end, and Mix,
+// a checkbox per end. The top left cell is empty: it's above the labels and left of the headings.
+function createSettingsGrid(plan, id, draft) {
+  const original = editingBox.original;
   const grid = createElement("div", "", "settings-grid");
   grid.append(
     createElement("span"),
-    createElement("span", "Aspirate", "field-name"),
-    createElement("span", "Dispense", "field-name"),
+    ...BOX_ENDS.map((boxEnd) => createElement("span", boxEnd.heading, "field-name")),
     createElement("span", "Mode", "field-name"),
-    createModeMenu("source", "Aspirate mode", draft.aspirate, (name) => {
-      draft.aspirate = name;
+    ...BOX_ENDS.map((boxEnd) => {
+      const offerNotAMode = original[boxEnd.mode] === null;
+      const onChoose = (name) => chooseMode(draft, boxEnd, name);
+      return createModeMenu(boxEnd.end, `${boxEnd.heading} mode`, draft[boxEnd.mode], offerNotAMode, onChoose);
     }),
-    createModeMenu("destination", "Dispense mode", draft.dispense, (name) => {
-      draft.dispense = name;
-    }),
+    createElement("span", "Mix", "field-name"),
+    ...BOX_ENDS.map((boxEnd) => createMixCell(plan, id, draft, boxEnd)),
   );
   return grid;
 }
 
+// Puts the mode called `name` (or null for "(not one of the modes)") in the draft for one end, and
+// keeps that end's Mix as section 10 says: a mode that can't mix unchecks it; going back to "(not
+// one of the modes)" restores whether the stage mixes there; a mode that can mix keeps it as it is
+// (so after a mode that can't mix, the checkbox comes back unchecked). Redraws the box.
+function chooseMode(draft, boxEnd, name) {
+  draft[boxEnd.mode] = name;
+  if (name === null) {
+    draft[boxEnd.mix] = editingBox.original[boxEnd.mix];
+  } else if (!canMix(boxEnd.end, name)) {
+    draft[boxEnd.mix] = false;
+  }
+  redrawEditingBox();
+}
+
+// True if the mode called `name` at `end` can mix (it has a mixing technique), e.g.
+// canMix("destination", "Non-Contact") → false.
+function canMix(end, name) {
+  const mode = modesFor(end).find((candidate) => candidate.name === name);
+  return mode !== undefined && mode.mixingTechnique !== null;
+}
+
+// One end's Mix cell (section 10): a checkbox, checked while that end mixes in the draft; for a mode
+// that can't mix, "Can't mix" instead; for an end that isn't one of the modes, the checkbox showing
+// whether the stage mixes there, disabled. The cell's tooltip says what the checkbox does.
+function createMixCell(plan, id, draft, boxEnd) {
+  const cell = createElement("span", "", "mix-cell");
+  const mode = draft[boxEnd.mode];
+  if (mode !== null && !canMix(boxEnd.end, mode)) {
+    cell.classList.add("cannot-mix");
+    cell.textContent = "Can't mix";
+    cell.title = `${mode} can't mix.`;
+    return cell;
+  }
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = draft[boxEnd.mix];
+  checkbox.setAttribute("aria-label", boxEnd.mixName);
+  // The tooltip is on the cell and the checkbox both, so it shows over a disabled checkbox too.
+  cell.title = mode === null ? "Choose a mode to switch mixing." : mixTooltip(plan, id, boxEnd);
+  checkbox.title = cell.title;
+  checkbox.disabled = mode === null;
+  checkbox.addEventListener("change", () => {
+    draft[boxEnd.mix] = checkbox.checked;
+  });
+  cell.append(checkbox);
+  return cell;
+}
+
+// What a Mix checkbox does, from that end's mix, or DEFAULT_MIX if the stage doesn't mix there,
+// e.g. "Mix before aspirating: 90% of the well, 3 times, at 400 µL/s." When the saved stage mixes
+// there and has transfers, the volume it works out to follows "of the well": "(≈ 108 µL)", or a range
+// such as "(≈ 18–200 µL)" when its rows differ (mixVolumes).
+function mixTooltip(plan, id, boxEnd) {
+  const ownMix = plan.stageList.get(id).settings[`${boxEnd.end}Mix`];
+  const mix = ownMix ?? DEFAULT_MIX;
+  const volumes = ownMix === null ? [] : mixRowsOf(plan, id).map((row) => row[`${boxEnd.end}MixVolume`]);
+  let volumeText = "";
+  if (volumes.length > 0) {
+    const least = Math.min(...volumes);
+    const most = Math.max(...volumes);
+    const range = least === most ? formatVolume(least) : `${formatVolume(least)}–${formatVolume(most)}`;
+    volumeText = ` (≈ ${range} µL)`;
+  }
+  return `${boxEnd.mixName}: ${mix.share}% of the well${volumeText}, ${countOf(mix.times, "time")}, at ${mix.speed} µL/s.`;
+}
+
 // One end's menu of pipetting modes (modesFor), with "(not one of the modes)" first if the stage's
-// settings there aren't one of them. Its column heading isn't its label, so `accessibleName` (e.g.
-// "Aspirate mode") names it for screen readers. `onChoose` gets the mode's name, or null for that
-// line.
-function createModeMenu(end, accessibleName, chosen, onChoose) {
+// settings there aren't one of them (`offerNotAMode`), so it can be chosen again after another mode.
+// Its column heading isn't its label, so `accessibleName` (e.g. "Aspirate mode") names it for screen
+// readers. `chosen` is the mode shown (null for that line); `onChoose` gets the mode's name, or null.
+function createModeMenu(end, accessibleName, chosen, offerNotAMode, onChoose) {
   const menu = document.createElement("select");
   menu.setAttribute("aria-label", accessibleName);
-  if (chosen === null) {
+  if (offerNotAMode) {
     menu.append(new Option("(not one of the modes)", ""));
   }
   for (const mode of modesFor(end)) {
@@ -2769,23 +3072,35 @@ function saveComponentDraft(plan, name, draft) {
   return { plan: saved, message: `Saved ${newName}.` };
 }
 
-// A stage's Save: renames it (if the name changed) and changes its settings, as one edit. An end
-// whose menu still shows "(not one of the modes)" keeps its technique and liquid type. A mode chosen
-// for an end that mixes gets the mode's mixing technique, so the end keeps mixing; a mode that can't
-// mix throws modeSettings' message there, and nothing is saved (section 10). Every other setting,
-// such as the stage's mixes, is carried over unchanged from the stage: the box doesn't offer them
-// yet, and the stage list refuses settings that leave any out.
+// A stage's Save: renames it (if the name changed) and changes its settings, as one edit
+// (changeStageSettings, which checks them). The settings are built end by end (stageEndSettings),
+// from the draft's mode and Mix (section 10).
 function saveStageDraft(plan, id, draft) {
   const stage = plan.stageList.get(id);
-  let saved = draft.name === stage.name ? plan : renameStage(plan, id, draft.name);
-  const sourceMixes = stage.settings.sourceMix !== null;
-  const destinationMixes = stage.settings.destinationMix !== null;
-  const settings = {
-    ...stage.settings,
-    ...(draft.aspirate === null ? {} : modeSettings("source", draft.aspirate, sourceMixes)),
-    ...(draft.dispense === null ? {} : modeSettings("destination", draft.dispense, destinationMixes)),
-  };
+  const saved = draft.name === stage.name ? plan : renameStage(plan, id, draft.name);
+  const settings = { ...stage.settings };
+  for (const boxEnd of BOX_ENDS) {
+    Object.assign(settings, stageEndSettings(stage.settings, boxEnd, draft[boxEnd.mode], draft[boxEnd.mix]));
+  }
   return changeStageSettings(saved, id, settings);
+}
+
+// One end's settings as Save builds them (section 10), from the stage's `settings`, the draft's mode
+// `name` for the end and whether its Mix is `checked`. An end still showing "(not one of the modes)"
+// (`name` null) keeps its technique, liquid type and mix. Otherwise the mode's settings, with its
+// mixing technique when Mix is checked (modeSettings, which throws for a mode that can't mix), and
+// the end's mix: its own if it already mixes, else DEFAULT_MIX, or null when Mix is unchecked, e.g.
+// ({…no mixing…}, the source, "Slow", true) → { sourceTechnique: "OperationMix",
+// sourceLiquidType: "Slow", sourceMix: { share: 90, times: 3, speed: 400 } }.
+function stageEndSettings(settings, boxEnd, name, checked) {
+  const mixSetting = `${boxEnd.end}Mix`;
+  if (name === null) {
+    return {};
+  }
+  return {
+    ...modeSettings(boxEnd.end, name, checked),
+    [mixSetting]: checked ? (settings[mixSetting] ?? DEFAULT_MIX) : null,
+  };
 }
 
 // A tip change's Save: sets its tip type and probes as one edit, returning { plan, message },

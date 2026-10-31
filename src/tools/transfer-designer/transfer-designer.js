@@ -13,6 +13,7 @@
 
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
+import { DEFAULT_MIX as CONFIGURED_DEFAULT_MIX } from "../../../config/mixing.js";
 import { describeValue } from "../../shared/error-messages/error-messages.js";
 import { isObject, listNames, checkName } from "../../shared/input-checks/input-checks.js";
 import { OperationList } from "../../shared/operation-list/operation-list.js";
@@ -27,6 +28,12 @@ import { checkExperimentName } from "../../shared/file-writer/file-writer.js";
 // re-exported (passed on under the same names) so the page and plan-file.js can keep importing them
 // from here (transfer-designer.md, section 4; tip-groups.md).
 export { START, tipGroups };
+
+// The mix an end gets when a tool switches its mixing on, from config/mixing.js, e.g.
+// { share: 90, times: 3, speed: 400 }. Re-exported, frozen, so a tool takes all the transfer
+// designer's configuration from here and can't change the default by accident
+// (transfer-designer.md, "Mixing"). A copy is frozen, leaving the config file's own object as it is.
+export const DEFAULT_MIX = Object.freeze({ ...CONFIGURED_DEFAULT_MIX });
 
 // What a new stage is called. Not numbered: a number stopped matching the stage's place once a
 // stage was inserted before it (Andy, 2026-10-25).
@@ -294,9 +301,9 @@ export function stagesWithOverdraw(plan) {
   return new Set(problems.map((problem) => operations[problem.operationIndex].stage));
 }
 
-// The IDs of the stages with a mix problem: a mix that works out to 0 µL in any of their rows,
-// because the well it's worked out from holds too little when it's mixed (mix-volumes.md),
-// e.g. new Set(["3"]).
+// The IDs of the stages with a mix problem: a mix volume under the minimum (MIN_MIX_VOLUME in
+// config/mixing.js, 1 µL) in any of their rows, because the well it's worked out from holds too
+// little when it's mixed (mix-volumes.md), e.g. new Set(["3"]).
 export function stagesWithMixProblem(plan) {
   return new Set(mixVolumes(plan).problems.map((problem) => problem.stage));
 }

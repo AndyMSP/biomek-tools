@@ -2,12 +2,16 @@
 //
 // They build plans through the transfer designer's edits, so every plan is one the page could make,
 // and find labware in DECK by grid and labware type rather than naming it, so they still pass when
-// the deck changes. They also check MIX_VOLUME_LIMITS in config/tip-types.js (ADR 0009).
+// the deck changes. They also check MIX_VOLUME_LIMITS in config/tip-types.js, and SHORT_MIX_SHARE
+// and MIN_MIX_VOLUME in config/mixing.js (ADR 0009). Only those checks of the config files' form
+// look at the values themselves: every other test works out its volumes and expected results from
+// them, so changing config/ never breaks a test (mix-volumes.md, "Configuration").
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { DECK } from "../../../config/deck.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
+import { SHORT_MIX_SHARE, MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import {
   START,
   emptyPlan,
@@ -78,6 +82,31 @@ function tipTypeHolding(volume) {
   return TIP_TYPES.find((tipType) => MIX_VOLUME_LIMITS[tipType] >= volume);
 }
 
+// The tip type with the smallest mix volume limit in MIX_VOLUME_LIMITS, e.g. "BC230".
+function tipTypeWithSmallestLimit() {
+  return [...TIP_TYPES].sort((a, b) => MIX_VOLUME_LIMITS[a] - MIX_VOLUME_LIMITS[b])[0];
+}
+
+// `value` rounded to `places` decimal places, to undo floating-point error,
+// e.g. roundTo(0.30000000000000004, 3) → 0.3.
+function roundTo(value, places) {
+  return Number(value.toFixed(places));
+}
+
+// The smallest mix volume that isn't a mix problem: MIN_MIX_VOLUME, as a whole number of tenths of
+// a µL, since mix volumes are rounded down to tenths (mix-volumes.md), e.g. 1 → 1.
+const LOWEST_FINE_MIX = Math.ceil(roundTo(MIN_MIX_VOLUME * 10, 6)) / 10;
+
+// One tenth of a µL under LOWEST_FINE_MIX: the largest mix volume that is a mix problem, e.g. 0.9.
+const HIGHEST_PROBLEM_MIX = roundTo(LOWEST_FINE_MIX - 0.1, 1);
+
+// The least volume, in thousandths of a µL, a well must hold for a mix at `share` percent to work
+// out to `mixVolume` (a whole number of tenths of a µL), e.g. heldForMix(1, 90) → 1.112, since 90%
+// of it is 1.0008, rounded down to 1.
+function heldForMix(mixVolume, share) {
+  return Math.ceil(roundTo((mixVolume * 100 * 1000) / share, 6)) / 1000;
+}
+
 // The rows of the stage with `id` in a mixVolumes result.
 function rowsOf(result, id) {
   return result.stages.find((entry) => entry.stage === id).rows;
@@ -142,6 +171,7 @@ describe("mix-volumes", () => {
     assert.deepEqual(Object.keys(rows[0]).sort(), [
       "destinationLabwareType",
       "destinationMixVolume",
+      "mixedWells",
       "sourceLabwareType",
       "sourceMixVolume",
       "transfers",
@@ -168,8 +198,8 @@ describe("mix-volumes", () => {
     assert.equal(mixVolumes(plan).stages[0].rows[0].destinationMixVolume, 30);
   });
 
-  test("source: 1000 µL drawn 100, 50 and 200 µL holds 700 at least, so at 90% on BC1070 tips the row mixes 630", () => {
-    let plan = onTips(planWithTroughs(), "BC1070");
+  test("source: 1000 µL drawn 100, 50 and 200 µL holds 700 at least, so at 90% on tips that allow it the row mixes 630", () => {
+    let plan = onTips(planWithTroughs(), tipTypeHolding(630));
     plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 100);
     plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A2"), 50);
     plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A3"), 200);
@@ -244,23 +274,24 @@ describe("mix-volumes", () => {
     }
   });
 
-  test("the tip limit: 90% of 1000 µL gives each tip type's limit if it's below 900, else 900; a tip change before the stage changes it", () => {
+  test("the tip limit: 90% of a well gives each tip type's limit when that's less, and 90% otherwise; a tip change before the stage changes it", () => {
+    const byLimit = [...TIP_TYPES].sort((a, b) => MIX_VOLUME_LIMITS[a] - MIX_VOLUME_LIMITS[b]);
+    // Twice the largest limit: 90% of it is above every limit. 10 µL: 90% of it is under every limit.
+    const full = 2 * MIX_VOLUME_LIMITS[byLimit.at(-1)];
     for (const tipType of TIP_TYPES) {
-      let plan = onTips(withMedia(planWithStages(1), [well(RESERVOIR, "3")], 1000), tipType);
-      plan = withTransfer(plan, "1", well(RESERVOIR, "3"), well(PLATE, "A1"), 10);
-      plan = setStageMix(plan, "1", "source", mixAt(90));
-      assert.equal(
-        mixVolumes(plan).stages[0].rows[0].sourceMixVolume,
-        Math.min(900, MIX_VOLUME_LIMITS[tipType]),
-        tipType,
-      );
+      for (const [held, expected] of [
+        [full, MIX_VOLUME_LIMITS[tipType]],
+        [10, 9],
+      ]) {
+        let plan = onTips(withMedia(planWithStages(1), [well(RESERVOIR, "3")], held), tipType);
+        plan = withTransfer(plan, "1", well(RESERVOIR, "3"), well(PLATE, "A1"), 1);
+        plan = setStageMix(plan, "1", "source", mixAt(90));
+        assert.equal(mixVolumes(plan).stages[0].rows[0].sourceMixVolume, expected, `${tipType}, ${held}`);
+      }
     }
-    assert.equal(MIX_VOLUME_LIMITS.BC230, 200);
-    assert.equal(Math.min(900, MIX_VOLUME_LIMITS.BC1070), 900);
 
     // Stage 1 on the smallest-limit tips; stage 2 after a tip change to the largest.
-    const byLimit = [...TIP_TYPES].sort((a, b) => MIX_VOLUME_LIMITS[a] - MIX_VOLUME_LIMITS[b]);
-    let plan = withMedia(planWithStages(2), [well(RESERVOIR, "3"), well(RESERVOIR, "4")], 1000);
+    let plan = withMedia(planWithStages(2), [well(RESERVOIR, "3"), well(RESERVOIR, "4")], full);
     plan = onTips(plan, byLimit[0]);
     plan = setTipType(addTipChange(plan, "2"), "2", byLimit.at(-1));
     plan = withTransfer(plan, "1", well(RESERVOIR, "3"), well(PLATE, "A1"), 10);
@@ -268,8 +299,8 @@ describe("mix-volumes", () => {
     plan = setStageMix(plan, "1", "source", mixAt(90));
     plan = setStageMix(plan, "2", "source", mixAt(90));
     const result = mixVolumes(plan);
-    assert.equal(rowsOf(result, "1")[0].sourceMixVolume, Math.min(900, MIX_VOLUME_LIMITS[byLimit[0]]));
-    assert.equal(rowsOf(result, "2")[0].sourceMixVolume, Math.min(900, MIX_VOLUME_LIMITS[byLimit.at(-1)]));
+    assert.equal(rowsOf(result, "1")[0].sourceMixVolume, MIX_VOLUME_LIMITS[byLimit[0]]);
+    assert.equal(rowsOf(result, "2")[0].sourceMixVolume, MIX_VOLUME_LIMITS[byLimit.at(-1)]);
   });
 
   test("each row on its own: in a stage with two substages, each row's volume comes from its own wells only", () => {
@@ -300,6 +331,112 @@ describe("mix-volumes", () => {
         [30, 100],
       ],
     );
+  });
+
+  // --- Mixed shares ---
+
+  test("mixed shares: the section 4 example gives A1 holding 20 at 90% and A2 holding 150 at 12%, each short if under SHORT_MIX_SHARE", () => {
+    let plan = withMedia(planWithTroughs(), [well(PLATE, "A2")], 50);
+    plan = onTips(plan, "BC230");
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 20);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "2"), well(PLATE, "A2"), 100);
+    plan = setStageMix(plan, "1", "destination", mixAt(90));
+    assert.deepEqual(mixVolumes(plan).stages[0].rows[0].mixedWells, [
+      { end: "destination", labware: PLATE.name, well: "A1", held: 20, share: 90, short: 90 < SHORT_MIX_SHARE },
+      { end: "destination", labware: PLATE.name, well: "A2", held: 150, share: 12, short: 12 < SHORT_MIX_SHARE },
+    ]);
+  });
+
+  test("a mix capped at the tips' limit is short when its share is under SHORT_MIX_SHARE", () => {
+    // On the tips with the smallest limit, a source holding enough that the limit is half of
+    // SHORT_MIX_SHARE of it; 90% of it is above the limit, so the mix is capped. (With today's
+    // config: 200 µL of a source holding 1000 µL on BC230 tips, a share of 20.)
+    const tipType = tipTypeWithSmallestLimit();
+    const limit = MIX_VOLUME_LIMITS[tipType];
+    const held = roundTo((limit * 100 * 2) / SHORT_MIX_SHARE, 3);
+    let plan = onTips(withMedia(planWithStages(1), [well(RESERVOIR, "3")], held), tipType);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "3"), well(PLATE, "A1"), 1);
+    plan = setStageMix(plan, "1", "source", mixAt(90));
+    const [row] = rowsOf(mixVolumes(plan), "1");
+    assert.equal(row.sourceMixVolume, limit);
+    assert.equal(row.mixedWells.length, 1);
+    // The share is checked to within 0.001, as `held` is rounded to 3 decimal places.
+    const { share, ...rest } = row.mixedWells[0];
+    assert.deepEqual(rest, { end: "source", labware: RESERVOIR.name, well: "3", held, short: true });
+    assert.ok(Math.abs(share - SHORT_MIX_SHARE / 2) < 0.001, String(share));
+  });
+
+  test("a well holding nothing when mixed gives share 0, short", () => {
+    // 20 µL drawn twice, 30 µL each: it holds 0 when mixed (as in "never below 0").
+    let plan = withMedia(planWithStages(1), [well(RESERVOIR, "3")], 20);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "3"), well(PLATE, "A1"), 30);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "3"), well(PLATE, "A2"), 30);
+    plan = setStageMix(plan, "1", "source", mixAt(90));
+    assert.deepEqual(rowsOf(mixVolumes(plan), "1")[0].mixedWells, [
+      { end: "source", labware: RESERVOIR.name, well: "3", held: 0, share: 0, short: true },
+    ]);
+  });
+
+  test("a share of exactly SHORT_MIX_SHARE isn't short; one just under it (0.01 less) is", () => {
+    // A1 holds 100 µL when mixed, the emptiest, so mixed at SHORT_MIX_SHARE the row mixes
+    // SHORT_MIX_SHARE µL: exactly SHORT_MIX_SHARE percent of A1. A2 holds a little more, so the same
+    // mix is 0.01 under SHORT_MIX_SHARE percent of it (to within A2's 3 decimal places). With today's
+    // 40: A2 holds 100.025 µL, and 40 µL is 39.99% of it.
+    const underShare = SHORT_MIX_SHARE - 0.01;
+    const a2Holds = roundTo((100 * SHORT_MIX_SHARE) / underShare, 3);
+    let plan = onTips(planWithTroughs(), tipTypeHolding(SHORT_MIX_SHARE));
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 100);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "2"), well(PLATE, "A2"), a2Holds);
+    plan = setStageMix(plan, "1", "destination", mixAt(SHORT_MIX_SHARE));
+    const [atLimit, under] = rowsOf(mixVolumes(plan), "1")[0].mixedWells;
+    assert.equal(atLimit.share, SHORT_MIX_SHARE);
+    assert.equal(atLimit.short, false);
+    assert.ok(Math.abs(under.share - underShare) < 0.001 && under.share < SHORT_MIX_SHARE, String(under.share));
+    assert.equal(under.short, true);
+  });
+
+  test("a well a row draws from twice is listed once, with what it holds by the emptiest-well rule", () => {
+    // Trough 1 holds 1000 µL, drawn 100 and 50 µL: it holds 900 at least when mixed (1000 − 150 + 50).
+    let plan = onTips(planWithTroughs(), tipTypeHolding(450));
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 100);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A2"), 50);
+    plan = setStageMix(plan, "1", "source", mixAt(50));
+    assert.deepEqual(rowsOf(mixVolumes(plan), "1")[0].mixedWells, [
+      { end: "source", labware: RESERVOIR.name, well: "1", held: 900, share: 50, short: 50 < SHORT_MIX_SHARE },
+    ]);
+  });
+
+  test("an end that doesn't mix lists no wells; a row that doesn't mix has mixedWells []; sources come before destinations", () => {
+    let plan = planWithTroughs();
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 100);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "2"), well(PLATE, "A2"), 100);
+    assert.deepEqual(rowsOf(mixVolumes(plan), "1")[0].mixedWells, []);
+
+    const sourceOnly = setStageMix(plan, "1", "source", mixAt(90));
+    assert.deepEqual(
+      rowsOf(mixVolumes(sourceOnly), "1")[0].mixedWells.map((entry) => [entry.end, entry.well]),
+      [
+        ["source", "1"],
+        ["source", "2"],
+      ],
+    );
+
+    const both = setStageMix(sourceOnly, "1", "destination", mixAt(90));
+    assert.deepEqual(
+      rowsOf(mixVolumes(both), "1")[0].mixedWells.map((entry) => [entry.end, entry.labware, entry.well]),
+      [
+        ["source", RESERVOIR.name, "1"],
+        ["source", RESERVOIR.name, "2"],
+        ["destination", PLATE.name, "A1"],
+        ["destination", PLATE.name, "A2"],
+      ],
+    );
+  });
+
+  test("config/mixing.js: SHORT_MIX_SHARE is a number above 0 and at most 100", () => {
+    assert.equal(typeof SHORT_MIX_SHARE, "number");
+    assert.ok(Number.isFinite(SHORT_MIX_SHARE));
+    assert.ok(SHORT_MIX_SHARE > 0 && SHORT_MIX_SHARE <= 100);
   });
 
   // --- Problems ---
@@ -364,13 +501,34 @@ describe("mix-volumes", () => {
     );
   });
 
-  test("a row whose mix works out to 0.1 has no problem", () => {
+  test("the minimum, from config/: a destination whose mix works out to a tenth of a µL under MIN_MIX_VOLUME is a problem", () => {
+    // With today's 1 µL: holding 1 µL, at 90% it mixes 0.9.
+    const held = heldForMix(HIGHEST_PROBLEM_MIX, 90);
     let plan = planWithTroughs();
-    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 0.12);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), held);
     plan = setStageMix(plan, "1", "destination", mixAt(90));
     const result = mixVolumes(plan);
-    assert.equal(result.stages[0].rows[0].destinationMixVolume, 0.1);
+    assert.equal(result.stages[0].rows[0].destinationMixVolume, HIGHEST_PROBLEM_MIX);
+    assert.deepEqual(result.problems, [
+      { stage: "1", end: "destination", labware: PLATE.name, well: "A1", held },
+    ]);
+  });
+
+  test("the minimum, from config/: a destination whose mix works out to exactly MIN_MIX_VOLUME isn't a problem", () => {
+    // With today's 1 µL: holding 1.112 µL, at 90% it mixes 1 (1.0008 rounded down).
+    const held = heldForMix(LOWEST_FINE_MIX, 90);
+    let plan = onTips(planWithTroughs(), tipTypeHolding(LOWEST_FINE_MIX));
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), held);
+    plan = setStageMix(plan, "1", "destination", mixAt(90));
+    const result = mixVolumes(plan);
+    assert.equal(result.stages[0].rows[0].destinationMixVolume, LOWEST_FINE_MIX);
     assert.deepEqual(result.problems, []);
+  });
+
+  test("config/mixing.js: MIN_MIX_VOLUME is a number above 0", () => {
+    assert.equal(typeof MIN_MIX_VOLUME, "number");
+    assert.ok(Number.isFinite(MIN_MIX_VOLUME));
+    assert.ok(MIN_MIX_VOLUME > 0);
   });
 
   test("held is rounded to 3 decimal places: 0.1 + 0.2 µL is given as 0.3", () => {

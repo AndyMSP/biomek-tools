@@ -8,7 +8,7 @@
 > changes"; section 3, `Stages.csv`, and section 6).
 >
 > **Draft change (2026-10-30, mixing layer (b)):** the mix columns are written from each stage's
-> mixes, with volumes from the `mix-volumes` module, and a plan with a mix that works out to 0 µL is
+> mixes, with volumes from the `mix-volumes` module, and a plan with a mix under the minimum is
 > refused (ADR 0007, "Mixing"; sections 2, 3, 5 and 6). Substages come from the `substages` shared
 > module, unchanged.
 
@@ -220,7 +220,7 @@ in the files (section 3, "How values are written").
 | The plan has no transfers | `There's nothing to write: the plan has no transfers. Add transfers to a stage first.` |
 | A stage with transfers comes later than 99th in the stage order, so its file name has no room for its place (section 3) | `Stage 104, "Wash", is too far down the list: file names have room for 99 stages. Remove some stages before it.` |
 | A stage has an **overdraw**: a transfer asks a well for more than it holds (`contents-tracking`) (Andy, 2026-10-28) | `Stage 3, "Seeding", has an overdraw: a transfer asks a well for more than it holds. Fix it before writing the files.` |
-| A stage has a **mix problem**: a mix works out to 0 µL, because its emptiest well holds too little when it's mixed (`mix-volumes`) (Andy, 2026-10-30) | `Stage 3, "Seeding", mixes Plate1 A2 after dispensing when it holds only 0.05 µL, and 90% of that is 0 µL. Turn that mixing off, or put more in the well first.` For a source, "before aspirating". It names the stage's first mix problem (`mix-volumes`, `problems`), and the well by its labware's name, as the files do. |
+| A stage has a **mix problem**: a mix volume under `MIN_MIX_VOLUME`, because its emptiest well holds too little when it's mixed (`mix-volumes`) (Andy, 2026-10-30) | `Stage 3, "Seeding", mixes Plate1 A2 after dispensing when it holds only 0.9 µL: 90% of that is 0.8 µL, and a mix needs at least 1 µL. Turn that mixing off, or put more in the well first.` (The example uses today's minimum, 1 µL; the message gives `MIN_MIX_VOLUME`, and the tests build theirs from it.) For a source, "before aspirating". It names the stage's first mix problem (`mix-volumes`, `problems`), and the well by its labware's name, as the files do; volumes are written as in the files. |
 | A transfer's volume is 0 once rounded to 3 decimal places, so Biomek would skip it ("Skip zero volume transfers", ADR 0007) | `Stage 2, "Media", has a transfer of 0.0004 µL, which is 0 µL to 3 decimal places, so the Biomek would skip it. Use at least 0.001 µL.` |
 
 **Order of checks.** For `writeRunFiles`: the timestamp, then the plan: its form (including that it

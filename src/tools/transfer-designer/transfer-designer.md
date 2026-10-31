@@ -15,6 +15,9 @@
 > `setStageMix` switches an end's mixing on or off, and its technique with it; settings whose
 > technique doesn't match their mixing are refused; and stages with a mix problem are reported, as
 > overdraws are (sections 2 to 6).
+>
+> **Draft change (2026-10-30, mixing layer (c1)):** the default mix, `DEFAULT_MIX`, from
+> `config/mixing.js`, for a tool switching mixing on (sections 3, 4 and 6).
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -162,9 +165,12 @@ technique follows its mixing** (ADR 0007, "Mixing"):
   the end to be one of the modes, and a mode that can mix to switch it on. If the end already has
   that mix (equal `share`, `times` and `speed`, or both `null`), the same plan is returned, as an
   unchanged experiment name is.
+- **The default mix** is `DEFAULT_MIX` in `config/mixing.js` (below): what a tool gives an end
+  when it switches mixing on, since it offers mixing only as on or off (Andy, 2026-10-29). An end
+  that already mixes keeps its own mix, so a plan made with another default still runs as made.
 - **Choosing a mode** keeps the end's mixing: `modeSettings(end, name, mixes)` gives the mode's
   `mixingTechnique` when `mixes` is `true`.
-- **Mix problems:** a stage whose mix works out to 0 µL in any row has a **mix problem**
+- **Mix problems:** a stage whose mix volume in any row is under the minimum mix volume (`MIN_MIX_VOLUME`, `mix-volumes.md`) has a **mix problem**
   (`mix-volumes.md`). It's reported as soon as it appears, as an overdraw is (Andy, 2026-10-30), and
   the file writer refuses the plan until it's fixed (`file-writer.md`).
 
@@ -244,6 +250,10 @@ Two files in `config/` (ADR 0009), which this module's tests check:
   ends, e.g. `"Medium"`; it must be a mode usable at both ends.
 - **`config/tip-types.js`** exports `TIP_TYPES`: a non-empty list of tip type names, e.g.
   `["BC230", "BC1070"]`, each a name, none repeated.
+- **`config/mixing.js`** (new) exports `DEFAULT_MIX`: the mix an end gets when mixing is switched
+  on, `{ share: 90, times: 3, speed: 400 }` (90% of the well, 3 times, at 400 µL/s; Andy,
+  2026-10-29). It must be a mix the stage list accepts (`stage-list.md`). (The file also holds
+  `SHORT_MIX_SHARE`, which the `mix-volumes` module's tests check; `mix-volumes.md`.)
 - **`config/tip-types.js`** also exports `DEFAULT_PROBE_COUNT`: how many probes a new plan's first
   tips go on, the first that many (`probesFor`). A whole number from 1 to 8; `4` (Andy, 2026-10-30).
   It's in `config/` because it may change (CLAUDE.md, "No hard-coded configuration").
@@ -281,6 +291,7 @@ given; "returns the plan with …" means a new plan.
 | `stageEnds(plan)` | for each stage with transfers, in run order, `{ stage, transfersDone }`: how many transfers have run when it ends, e.g. `[{ stage: "1", transfersDone: 4 }, { stage: "2", transfersDone: 8 }]`. |
 | `stagesWithOverdraw(plan)` | a `Set` of the IDs of stages with an overdraw. |
 | `stagesWithMixProblem(plan)` | a `Set` of the IDs of stages with a mix problem (`mix-volumes.md`). |
+| `DEFAULT_MIX` | (a constant) the default mix from `config/mixing.js`, e.g. `{ share: 90, times: 3, speed: 400 }`, frozen, re-exported so a tool takes all the transfer designer's configuration from one place. |
 
 **Transfers**
 | Function | Returns |
@@ -407,6 +418,9 @@ order of checks.
   end has at least one mode; `DEFAULT_PIPETTING_MODE` names a mode usable at both ends.
 - `config/tip-types.js`: a non-empty list of valid names, none repeated; `DEFAULT_PROBE_COUNT` a
   whole number from 1 to 8.
+- `config/mixing.js`: `DEFAULT_MIX` is accepted by the stage list as a mix (a stage given it at
+  either end, with the mixing technique, is accepted); `DEFAULT_MIX` as exported here can't be
+  changed.
 
 **Plans and modes**
 - `defaultSettings()` gives `DEFAULT_PIPETTING_MODE`'s technique and liquid type at both ends,
@@ -466,7 +480,7 @@ order of checks.
   technique is `"Operation"` (e.g. `addStage` copying a stage that mixes; the plan file's mixing
   plan; the `transfer-designer` REPL topic) now give it with `setStageMix`, or with
   `"OperationMix"`, since the rule refuses the old way. What each test checks doesn't change.
-- `stagesWithMixProblem` names a stage whose destination mix works out to 0 µL (an empty well given
+- `stagesWithMixProblem` names a stage whose destination mix is under the minimum (an empty well given
   0.05 µL, mixed at 90%), and no other; a plan without mixing gives an empty `Set`.
 
 **Transfers**
