@@ -450,7 +450,8 @@ or moving keyboard focus to its buttons, shows a blue line across it with a `+` 
 the middle (tooltip `Add a stage here`), floating over the cards; the `+` is two white bars, 2px
 thick and 12px long, crossing at the circle's center, so it's exactly centered (a "+" character
 sits wherever the font puts it; Andy, 2026-10-26). Between two stages of a box, also a
-tip button (tooltip `New tips here`), the same size, **just right of the `+`**, 6px from it. Each
+tip button (tooltip `New tips here`), the same size, **just right of the `+`**, 6px from it; the
+seam below a box's last stage has a tip button too, which adds a stage with new tips (below). Each
 seam button has a **fixed spot**: the `+` always in the exact middle of the line, the tip button
 always just right of it; a seam without a tip button leaves its spot empty, so nothing moves from
 one seam to the next (Andy, 2026-10-30, from the mixing preview: buttons spread along the line
@@ -856,10 +857,10 @@ page's configuration (ADR 0009):
 - capacities and dead volume: a trough filled with little more than its dead volume, then drawn
   from past it: the X, the dead-volume message in the card and after adding, the stage red, the
   problem counted, the Biomek files refused; the trough then holding only dead volume: striped,
-  `Only dead volume` in the key, `0 µL usable` in the card; a plate well filled past its capacity
+  `Only dead volume` in the key; a plate well filled past its capacity
   at Start, and another taken over it by a transfer: the bar, `Overfill` in the key, the messages,
-  the count, the refusal; a well both overdrawn and overfilled shows both marks; every card shows
-  the usable volume and the limits line; the stripes and marks on a plate and on a trough alike;
+  the count, the refusal; a well both overdrawn and overfilled shows both marks; the stripes and
+  marks on a plate and on a trough alike;
 - mix steps: the ⟳ on seams (always just left of the `+`) adds one and opens it; clicking a well
   mixes it, again stops mixing it, and dragging mixes a box; its card's `N wells mixed`, ⟳ after its
   name, its wells' list with `N% of well` and `×`; its box's note and Remove; a new mix step copies
