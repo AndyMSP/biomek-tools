@@ -48,6 +48,13 @@
 > starting volume is the volume put in the well, dead volume included. They become Final once built
 > and tested by Andy.
 
+> **Draft changes (2026-10-31, page tweaks, from Andy's use of the #118 build; branch
+> `page-tweaks`):** a picked color swatch keeps its color; Remove in every box acts at once, with no
+> question; the tip button on a tip group's last seam adds a stage with new tips; a transfer row
+> with a contents problem shows its volume in red, with a short tooltip; the contents card shows
+> only the well, its components and problem or warning lines (sections 6, 7, 10 and 16; the
+> roadmap's "Six page tweaks"). They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -278,12 +285,12 @@ labware above to bring it into the editor.`
 **Pointing at a well** shows its contents card at once, beside the well: to its left if it fits there
 (the cursor's volume label is to the right), otherwise to its right, and kept inside the window. The
 card (dark, light text) shows:
-- the well, e.g. `Assay plate A1`; its total, `120 µL total`, or `Empty`;
-- if it holds something: its usable volume (`usableVolumeOf`), `100 µL usable`, or, when that's
-  0, `0 µL usable: all of it is dead volume`;
+- the well, e.g. `Assay plate A1`; `Empty` if it holds nothing;
 - for each component: its swatch, name, volume in µL and percentage (section 13);
-- the labware's limits, in small gray text: `Capacity 360 µL · dead volume 20 µL` (`capacityOf`
-  and `deadVolumeOf`, `deck.md`);
+- (Andy, 2026-10-31: no total, usable-volume or capacity lines. The components add up to the
+  total, the labware's limits are the same for every well of it, and holding only dead volume is
+  neither a problem nor a warning: the stripes say it. The card shows only problems and warnings
+  after the components, and their lines carry the numbers.)
 - for each contents problem of this well, by its kind (`contents-tracking.md`), in the problem
   color: a draw into the dead volume, `Transfer #5 asked for 400 µL but only 300 µL was above the
   dead volume (held 2300 µL, dead volume 2000 µL).`; an overdraw, `Transfer #5 asked for 60 µL but
@@ -375,6 +382,11 @@ holds:
   that removes it (`removeTransfer`; message `Removed Assay plate A1 → Drug plate B2 from stage 2,
   “Drugs”.`). No `·` separates the route from the volume: the volume sits at the right, so a dot
   after the route was left hanging (Andy, 2026-10-30).
+- **A transfer with a contents problem** (`contents-tracking.md`; the transfer's own problem, the
+  first if it has two) shows its volume in red and semibold, with the tooltip `Only 450 µL is
+  reachable.` (a draw into the dead volume or an overdraw: `available`) or `Overfills the well by
+  20 µL.` (`held` minus `capacity`), so the list and the deck tell one story (Andy, 2026-10-31: the
+  list kept saying 200 µL while the deck moved 180).
 - **A transfer's volume** is a button: clicking it turns it into a text box holding the volume,
   selected. It's saved with `changeVolume` (message `Volume changed to 25 µL.`); an unchanged volume
   saves nothing; Escape cancels.
@@ -454,6 +466,14 @@ takes a click meant for a card. Each `+` adds a stage into the box it's in, and 
 | between two stages | just before the lower one: `addStage(plan, lowerStage)` | `Insert a stage before stage 3, “Drugs”` |
 | below a box's last stage | at the end of the box: `addStage(plan, nextBoxFirstStage)`, or `null` for the last box | `Add a stage at the end of these tips` |
 
+The seam **below a box's last stage** also has a tip button, in the tip button's spot (tooltip `New
+tips, with a new stage`; accessible name `Add a stage with new tips at the end of these tips`): it
+adds a stage where that seam's `+` would, then a tip change on it (`addStage`, then
+`addTipChange(plan, newStage)`), as one undoable edit, and opens it (message `Added a stage with
+new tips. New transfers go into it.`). So a new tip group can be started at the end of a box
+without first adding a stage and then its tips (Andy, 2026-10-31). The new stage copies the stage
+before it, as a new stage does. The seam above a box's first stage keeps no tip button.
+
 The **mix step button** adds a mix step where the `+` would add a stage, with the same tips
 (`addMixStep`, with the same `beforeId` and `takeTips` as the `+` in the table), and opens it
 (message `Added a mix step. Click or drag across wells on the deck to mix them.`), as one undoable
@@ -518,10 +538,12 @@ the chips below, moved left if needed to stay inside the Start card:
   component's own, in list order; its own color is always among them (in place of the 10th if it's
   further down the list). `More colors` shows all 30, and becomes `Fewer colors`. A color another
   component has is faded and crossed out, can't be chosen, and its tooltip says `Used by Drug_A`. The
-  component's own color is outlined.
-- **Remove**: asks first, in the box: `Remove Media from 4 wells?` (or `Remove Media?` if it's in no
-  well), with `Cancel` and `Remove` (solid red). Remove takes it out with `removeComponent` (message
-  `Removed Media from 4 wells. Undo can bring it back.`, or `Removed Media. Undo can bring it back.`)
+  component's own color is outlined, and keeps its color: the general pressed-button look (a blue
+  tint) doesn't apply to swatches (Andy, 2026-10-31: the picked swatch turned pale blue, hiding
+  the color chosen).
+- **Remove**: takes the component out at once with `removeComponent` (message `Removed Media from
+  4 wells. Undo can bring it back.`, or `Removed Media. Undo can bring it back.`). No question
+  first: Undo brings it back (Andy, 2026-10-31; every box's Remove works this way).
   and closes the box. If it was picked, the first component left is picked, or the eraser if none is.
 - **Save** renames and recolors as one edit (`renameComponent`, then `setComponentColor` if the color
   changed; message `Saved Media.`). If it was picked, the renamed component stays picked.
@@ -597,7 +619,8 @@ closes it, as a click outside would (below). Its ✎ is shown pressed while it's
   clicking another chip picks it). With unsaved changes, the click does nothing else: the box gives a
   small sideways shake, its Save and Discard pulse twice with a thick blue ring, and the message bar
   says `Save or discard your changes first.`
-- `Remove` acts at once after its own question (Cancel / Remove), not through Save.
+- `Remove` acts at once, not through Save, and asks no question (Andy, 2026-10-31: Undo brings
+  back what it removed, so the question only slowed things down).
 
 **A stage's box** is 320px wide (other boxes are 280px), so its menus show their whole names, such
 as `Non-Contact`. From the top:
@@ -633,8 +656,7 @@ as `Non-Contact`. From the top:
   MODE      [ Medium  ▾ ]  [ Medium  ▾ ]
   MIX         [✓]            [ ]
   ```
-- **Remove**, which asks `Remove stage 2, “Drugs” and its 4 transfers?` (or `Remove stage 2,
-  “Drugs”?` with none). Remove takes it out (`removeStage`; message `Removed stage 2, “Drugs” and
+- **Remove**, which takes it out at once (`removeStage`; message `Removed stage 2, “Drugs” and
   its 4 transfers. Undo brings it back.`, or without "and its …"); if it was open, the first stage
   in the stage order opens. When it's the only stage, Remove is disabled, with the tooltip `Keep at
   least one stage.`
@@ -645,15 +667,16 @@ as `Non-Contact`. From the top:
 **A mix step's box** (280px): **Name**; then a note saying how it mixes, from its `destinationMix`:
 `Mixes each well: 90% of the well (≈ 108 µL), 3 times, at 400 µL/s.`, with the volume as for a
 transfer stage's Mix tooltip (section 10, above), or `(no wells yet)` while it has none; then
-**Remove**, as for a stage, asking `Remove stage 2, “Mix plate” and its 4 mixed wells?`. No modes:
+**Remove**, as for a stage (message `Removed stage 2, “Mix plate” and its 4 mixed wells. Undo
+brings it back.`). No modes:
 a mix step's settings are its own (`transfer-designer.md`, "Mix steps"). (Andy, 2026-10-29: mixing
 has no options for now.)
 
 **A tip change's box**: **Tip type**, a button per tip type (`TIP_TYPES`), one chosen; **Probes**,
 buttons `1` to `8`, choosing how many probes get tips (`probesFor`), with every probe the tip change
 loads highlighted (picking 4 lights up 1 to 4; Andy, 2026-10-30: moved here from the stage's box,
-since every stage uses all its tips' probes); **Remove**, which asks `Remove these new tips?` and
-removes it (`removeTipChange`; message `Removed the new tips: the stages after them keep the tips
+since every stage uses all its tips' probes); **Remove**, which removes it at once
+(`removeTipChange`; message `Removed the new tips: the stages after them keep the tips
 before.`). The first tip change has no Remove, and says `The run always starts by loading tips, so
 these can't be removed.` **Save** sets the tip type and probes as one edit (`setTipType`,
 `setTipProbes`; message `New tips: BC230 on 4 probes.`).
@@ -823,6 +846,12 @@ page's configuration (ADR 0009):
   any security warnings noted;
 - undo and redo with the buttons and the keys, after each kind of edit;
 - a plan with an overdraw shows the marks, the key, the red stage and the problem count;
+- the page tweaks of 2026-10-31: a picked swatch keeps its color; Remove in a component's, a
+  stage's, a mix step's and a tip change's box removes at once and Undo brings it back; the last
+  seam of a box shows a tip button that adds a stage with new tips, as one undo; a problem
+  transfer's volume is red with its tooltip, for a dead-volume draw, an overdraw and an overfill;
+  the card has no total, usable or capacity lines, on a plate and a trough, and a striped well's
+  card shows nothing extra;
 - capacities and dead volume: a trough filled with little more than its dead volume, then drawn
   from past it: the X, the dead-volume message in the card and after adding, the stage red, the
   problem counted, the Biomek files refused; the trough then holding only dead volume: striped,
