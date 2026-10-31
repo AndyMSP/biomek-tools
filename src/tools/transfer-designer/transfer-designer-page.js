@@ -1113,7 +1113,9 @@ function drawKey() {
 // "dead-volume-only" or "off-plan") are on the deck, and the mark's name.
 function createKeyItem(mark, name) {
   const item = document.createElement("li");
-  const example = createElement("span", "", `key-well ${mark}`);
+  // The overfill example gets its class from markOverfill, with its bar; markOverfill skips a well
+  // that already has the class.
+  const example = createElement("span", "", mark === "overfill" ? "key-well" : `key-well ${mark}`);
   if (mark === "overfill") {
     markOverfill(example);
   }
