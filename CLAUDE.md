@@ -179,6 +179,9 @@ biomek-tools/
 - Keep README.md current: what the project is, how to set it up, how to run tests and build.
 - Record each significant decision as an ADR in `docs/adr/`: context, decision, consequences.
 - Keep the roadmap's "Where things stand" current whenever work finishes or a decision is made.
+  A topic's entry is updated on the topic's own branch, so its merge carries it: when a build goes
+  to Andy's preview, the entry says "built (#N)" in the same commit; being on `main` then means it
+  passed his test and was merged (Andy, 2026-10-31).
 - **Draft or Final.** A specification written in a hurry, to meet a deadline, says **Draft** at the
   top, with what still needs review. Once it has been reviewed, it says **Final**, or loses the line.
 - **Technical debt.** Every shortcut taken knowingly goes in the roadmap's "Technical debt" section:
