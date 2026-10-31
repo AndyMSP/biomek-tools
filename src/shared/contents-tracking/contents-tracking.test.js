@@ -3,8 +3,24 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { DECK } from "../../../config/deck.js";
+import { LABWARE_TYPES } from "../../../config/labware-types.js";
 import { replay, ContentsSnapshot } from "./contents-tracking.js";
 import { OperationList } from "../operation-list/operation-list.js";
+
+// The labware on the real deck with the largest dead volume, with its numbers taken from
+// config/labware-types.js (spec section 6, "Dead volume and capacity"), so changing the numbers
+// never breaks the tests. The largest, so that the specification's examples hold: a transfer of
+// 150 µL from a well holding D + 100 is a dead-volume problem only while D is at least 50.
+const WITH_DEAD_VOLUME = DECK.reduce((largest, entry) =>
+  LABWARE_TYPES[entry.labwareType].deadVolume > LABWARE_TYPES[largest.labwareType].deadVolume
+    ? entry
+    : largest,
+);
+const ON_DECK = WITH_DEAD_VOLUME.name;
+// D and C, as the specification calls them.
+const D = LABWARE_TYPES[WITH_DEAD_VOLUME.labwareType].deadVolume;
+const C = LABWARE_TYPES[WITH_DEAD_VOLUME.labwareType].capacity;
 
 // How far apart two amounts may be and still count as equal, in µL. Decimal arithmetic leaves tiny
 // leftovers (spec section 6).
@@ -265,7 +281,16 @@ describe("contents-tracking", () => {
       makeList(makeTransfer("Plate 1/B1", "Plate 1/B2", 60)),
     );
     assert.deepEqual(snapshot.listProblems(), [
-      { operationIndex: 0, labware: "Plate 1", well: "B1", requested: 60, available: 50 },
+      {
+        kind: "overdraw",
+        operationIndex: 0,
+        labware: "Plate 1",
+        well: "B1",
+        requested: 60,
+        held: 50,
+        deadVolume: 0,
+        available: 50,
+      },
     ]);
     assert.deepEqual(snapshot.componentsOf("Plate 1", "B1"), {});
     assertComponentsClose(snapshot.componentsOf("Plate 1", "B2"), { Water: 50 });
@@ -291,7 +316,16 @@ describe("contents-tracking", () => {
       makeList(makeTransfer("Plate 2/A1", "Plate 1/A1", 5)),
     );
     assert.deepEqual(snapshot.listProblems(), [
-      { operationIndex: 0, labware: "Plate 2", well: "A1", requested: 5, available: 0 },
+      {
+        kind: "overdraw",
+        operationIndex: 0,
+        labware: "Plate 2",
+        well: "A1",
+        requested: 5,
+        held: 0,
+        deadVolume: 0,
+        available: 0,
+      },
     ]);
     assert.deepEqual(snapshot.componentsOf("Plate 1", "A1"), { Media: 90 });
   });
@@ -360,10 +394,179 @@ describe("contents-tracking", () => {
       makeList(makeTransfer("Plate 1/B1", "Plate 1/B1", 60)),
     );
     assert.deepEqual(snapshot.listProblems(), [
-      { operationIndex: 0, labware: "Plate 1", well: "B1", requested: 60, available: 50 },
+      {
+        kind: "overdraw",
+        operationIndex: 0,
+        labware: "Plate 1",
+        well: "B1",
+        requested: 60,
+        held: 50,
+        deadVolume: 0,
+        available: 50,
+      },
     ]);
     assert.deepEqual(snapshot.causesOf("Plate 1", "B1"), [0]);
     assert.deepEqual(snapshot.componentsOf("Plate 1", "B1"), { Water: 50 });
+  });
+
+  test("labware the deck doesn't know gets no overfill: a well holding 1,000,000 µL has no problem", () => {
+    const snapshot = replay(
+      [
+        { labware: "Reagents", well: "A1", components: { Dye: 1000 } },
+        { labware: "Plate 1", well: "A1", components: { Water: 1000000 } },
+      ],
+      makeList(makeTransfer("Reagents/A1", "Plate 1/A1", 10)),
+    );
+    assert.deepEqual(snapshot.listProblems(), []);
+  });
+
+  // --- Dead volume and capacity (on the real deck) ---
+
+  // Starting contents with `held` µL of Water in well A1 of the labware on the deck, and
+  // `destinationHeld` µL of Media in its A2 (left out when 0).
+  function onDeck(held, destinationHeld = 0) {
+    const contents = [{ labware: ON_DECK, well: "A1", components: { Water: held } }];
+    if (destinationHeld > 0) {
+      contents.push({ labware: ON_DECK, well: "A2", components: { Media: destinationHeld } });
+    }
+    return contents;
+  }
+
+  // A transfer of `volume` µL from A1 to A2 of the labware on the deck.
+  function fromA1(volume) {
+    return makeTransfer(`${ON_DECK}/A1`, `${ON_DECK}/A2`, volume);
+  }
+
+  test("a well holding D + 100 with a transfer of 100 µL from it: no problem; it holds D afterwards", () => {
+    const snapshot = replay(onDeck(D + 100), makeList(fromA1(100)));
+    assert.deepEqual(snapshot.listProblems(), []);
+    assertClose(snapshot.totalVolumeOf(ON_DECK, "A1"), D);
+  });
+
+  test("a well holding D + 100 with a transfer of 150 µL from it: a dead-volume problem, 100 moved, both wells affected", () => {
+    const snapshot = replay(onDeck(D + 100), makeList(fromA1(150)));
+    assert.deepEqual(snapshot.listProblems(), [
+      {
+        kind: "dead-volume",
+        operationIndex: 0,
+        labware: ON_DECK,
+        well: "A1",
+        requested: 150,
+        held: D + 100,
+        deadVolume: D,
+        available: 100,
+      },
+    ]);
+    assertClose(snapshot.totalVolumeOf(ON_DECK, "A1"), D);
+    assertClose(snapshot.totalVolumeOf(ON_DECK, "A2"), 100);
+    assert.deepEqual(snapshot.causesOf(ON_DECK, "A1"), [0]);
+    assert.deepEqual(snapshot.causesOf(ON_DECK, "A2"), [0]);
+  });
+
+  test("a well holding D + 100 with a transfer of D + 150 µL from it: an overdraw, 100 moved", () => {
+    const snapshot = replay(onDeck(D + 100), makeList(fromA1(D + 150)));
+    const [problem] = snapshot.listProblems();
+    assert.equal(snapshot.listProblems().length, 1);
+    assert.equal(problem.kind, "overdraw");
+    assert.equal(problem.held, D + 100);
+    assert.equal(problem.available, 100);
+    assertClose(snapshot.totalVolumeOf(ON_DECK, "A2"), 100);
+  });
+
+  test("a well holding D exactly, or less, has 0 usable: 1 µL from it is a dead-volume problem and nothing moves", () => {
+    for (const held of [D, D / 2]) {
+      const snapshot = replay(onDeck(held), makeList(fromA1(1)));
+      const [problem] = snapshot.listProblems();
+      assert.equal(snapshot.listProblems().length, 1);
+      // Only a labware with a dead volume above 0 can have a dead-volume problem; D is above 0
+      // here, by the choice of WITH_DEAD_VOLUME.
+      assert.equal(problem.kind, "dead-volume");
+      assert.equal(problem.available, 0);
+      assertClose(snapshot.totalVolumeOf(ON_DECK, "A1"), held);
+      assert.equal(snapshot.totalVolumeOf(ON_DECK, "A2"), 0);
+    }
+  });
+
+  test("requesting 0.0000005 µL more than the usable volume isn't a problem; 0.000002 µL more is", () => {
+    const small = replay(onDeck(D + 100), makeList(fromA1(100.0000005)));
+    assert.deepEqual(small.listProblems(), []);
+    const larger = replay(onDeck(D + 100), makeList(fromA1(100.000002)));
+    assert.equal(larger.listProblems().length, 1);
+  });
+
+  test("a well holding C - 10 receiving 20 µL: an overfill, the well holds C + 10, and no well is affected", () => {
+    // The source holds plenty above its dead volume (and within its capacity), so the only problem
+    // is the overfill.
+    const snapshot = replay(onDeck(D + 200, C - 10), makeList(fromA1(20)));
+    assert.deepEqual(snapshot.listProblems(), [
+      { kind: "overfill", operationIndex: 0, labware: ON_DECK, well: "A2", held: C + 10, capacity: C },
+    ]);
+    assertClose(snapshot.totalVolumeOf(ON_DECK, "A2"), C + 10);
+    assert.deepEqual(snapshot.listAffected(), []);
+    assert.deepEqual(snapshot.causesOf(ON_DECK, "A2"), []);
+    assert.deepEqual(snapshot.causesOf(ON_DECK, "A1"), []);
+  });
+
+  test("a well holding C - 10 receiving 10 µL exactly, or 10.0000005, is no problem; 10.000002 is", () => {
+    for (const [volume, count] of [[10, 0], [10.0000005, 0], [10.000002, 1]]) {
+      const snapshot = replay(onDeck(D + 200, C - 10), makeList(fromA1(volume)));
+      assert.equal(snapshot.listProblems().length, count, String(volume));
+    }
+  });
+
+  test("the transfer that takes a well over capacity is the problem; a second into the well, now over, isn't", () => {
+    const snapshot = replay(onDeck(D + 200, C - 10), makeList(fromA1(20), fromA1(20)));
+    assert.equal(snapshot.listProblems().length, 1);
+    assert.equal(snapshot.listProblems()[0].operationIndex, 0);
+  });
+
+  test("a well that starts holding C + 1 is an overfill with operationIndex null, before any transfer's problem, and a transfer into it adds no overfill", () => {
+    const startingContents = [
+      // A dead-volume problem in the first transfer, so there's a transfer's problem to come after.
+      { labware: ON_DECK, well: "A1", components: { Water: D + 10 } },
+      { labware: ON_DECK, well: "A2", components: { Media: C + 1 } },
+    ];
+    const snapshot = replay(startingContents, makeList(fromA1(20)));
+    assert.deepEqual(
+      snapshot.listProblems().map((problem) => [problem.kind, problem.operationIndex]),
+      [["overfill", null], ["dead-volume", 0]],
+    );
+    assert.deepEqual(snapshot.listProblems()[0], {
+      kind: "overfill",
+      operationIndex: null,
+      labware: ON_DECK,
+      well: "A2",
+      held: C + 1,
+      capacity: C,
+    });
+  });
+
+  test("one transfer with both: a dead-volume problem then an overfill, in that order", () => {
+    const snapshot = replay(onDeck(D + 50, C - 10), makeList(fromA1(60)));
+    const problems = snapshot.listProblems();
+    assert.deepEqual(problems.map((problem) => problem.kind), ["dead-volume", "overfill"]);
+    assert.equal(problems[1].held, C + 40);
+    assertClose(snapshot.totalVolumeOf(ON_DECK, "A2"), C + 40);
+  });
+
+  test("problems of several kinds are listed in the order they occur", () => {
+    const snapshot = replay(
+      [
+        { labware: ON_DECK, well: "A1", components: { Water: D + 200 } },
+        { labware: ON_DECK, well: "A2", components: { Media: C - 10 } },
+        { labware: ON_DECK, well: "A3", components: { Media: D + 10 } },
+        { labware: "Plate 1", well: "B1", components: { Water: 50 } },
+      ],
+      makeList(
+        fromA1(20), // overfills A2
+        makeTransfer(`${ON_DECK}/A3`, `${ON_DECK}/A4`, 20), // dead volume in A3
+        makeTransfer("Plate 1/B1", "Plate 1/B2", 60), // overdraws B1
+      ),
+    );
+    assert.deepEqual(
+      snapshot.listProblems().map((problem) => [problem.kind, problem.operationIndex]),
+      [["overfill", 0], ["dead-volume", 1], ["overdraw", 2]],
+    );
   });
 
   // --- Tiny amounts ---
@@ -378,7 +581,7 @@ describe("contents-tracking", () => {
     assert.deepEqual(snapshot.listProblems(), []);
   });
 
-  test("requesting 0.0000005 µL more than the source holds isn't a problem; 0.000002 µL more is", () => {
+  test("requesting 0.0000005 µL more than the source holds isn't a problem; 0.000002 µL more is (dead volume 0)", () => {
     const smallExcess = replay(
       makeStartingContents(),
       makeList(makeTransfer("Plate 1/B1", "Plate 1/B2", 50.0000005)),
@@ -428,6 +631,7 @@ describe("contents-tracking", () => {
     contents.push("something else");
     const problems = snapshot.listProblems();
     problems[0].requested = 1;
+    problems[0].kind = "overfill";
     problems.pop();
     const affected = snapshot.listAffected();
     affected[0].causes.push(9);

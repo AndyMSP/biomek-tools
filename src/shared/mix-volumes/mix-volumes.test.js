@@ -10,7 +10,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { DECK } from "../../../config/deck.js";
-import { gridOf } from "../deck/deck.js";
+import { gridOf, deadVolumeOf } from "../deck/deck.js";
 import { GRID_96, GRID_1X12_NUMBERED } from "../well-grid/well-grid.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
 import { SHORT_MIX_SHARE, MIN_MIX_VOLUME, DEFAULT_MIX } from "../../../config/mixing.js";
@@ -212,20 +212,28 @@ describe("mix-volumes", () => {
   });
 
   test("its own stage, not the whole plan: a destination filled again later, and a source drawn from earlier", () => {
-    let plan = onTips(planWithTroughs(2), tipTypeHolding(300));
+    // Each trough holds its dead volume and 1000 µL more, so stage 1's draws really move liquid
+    // between stages (contents tracking moves only what's above the dead volume,
+    // contents-tracking.md); within a stage, mix-volumes does its own arithmetic.
+    const deadVolume = deadVolumeOf(RESERVOIR.name);
+    // What trough 1 holds after stage 1, and 10% of it, rounded down to a tenth of a µL.
+    const heldAfterStage1 = deadVolume + 1000 - 400;
+    const tenthOfIt = Math.floor(roundTo(heldAfterStage1, 6)) / 10;
+    let plan = withMedia(planWithTroughs(2), [well(RESERVOIR, "1"), well(RESERVOIR, "2")], deadVolume);
+    plan = onTips(plan, tipTypeHolding(tenthOfIt));
     // Stage 1: 20 µL into the empty A1 (from trough 2), and 400 µL from trough 1.
     plan = withTransfer(plan, "1", well(RESERVOIR, "2"), well(PLATE, "A1"), 20);
     plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A2"), 400);
-    // Stage 2: 100 µL more into A1, from trough 1, which holds 600 µL after stage 1.
+    // Stage 2: 100 µL more into A1, from trough 1, which holds heldAfterStage1 after stage 1.
     plan = withTransfer(plan, "2", well(RESERVOIR, "1"), well(PLATE, "A1"), 100);
     plan = setStageMix(plan, "1", "destination", mixAt(90));
-    plan = setStageMix(plan, "2", "source", mixAt(50));
+    plan = setStageMix(plan, "2", "source", mixAt(10));
     plan = setStageMix(plan, "2", "destination", mixAt(90));
     const result = mixVolumes(plan);
     // Stage 1 mixes A1 with 20 µL in it, whatever stage 2 adds later.
     assert.equal(rowsOf(result, "1")[0].destinationMixVolume, 18);
-    // Stage 2: trough 1 holds 600 µL (1000 − 400 drawn by stage 1), so 50% is 300; A1 held 20.
-    assert.equal(rowsOf(result, "2")[0].sourceMixVolume, 300);
+    // Stage 2: trough 1 holds what stage 1 left (its start less 400), so 10% of that; A1 held 20.
+    assert.equal(rowsOf(result, "2")[0].sourceMixVolume, tenthOfIt);
     assert.equal(rowsOf(result, "2")[0].destinationMixVolume, 108);
   });
 

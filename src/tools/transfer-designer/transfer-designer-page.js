@@ -44,7 +44,7 @@ import {
   canRemoveStage,
   removeStage,
   stageEnds,
-  stagesWithOverdraw,
+  stagesWithContentsProblem,
   stagesWithMixProblem,
   addTransfers,
   changeVolume,
@@ -1489,9 +1489,9 @@ function refreshStages() {
 }
 
 // The stages with a problem (section 7), as { overdrawn, mixProblem }: two Sets of stage IDs, from
-// stagesWithOverdraw and stagesWithMixProblem.
+// stagesWithContentsProblem and stagesWithMixProblem.
 function stageProblems(plan) {
-  return { overdrawn: stagesWithOverdraw(plan), mixProblem: stagesWithMixProblem(plan) };
+  return { overdrawn: stagesWithContentsProblem(plan), mixProblem: stagesWithMixProblem(plan) };
 }
 
 // Start, a stage or End as a row (closed) or a card (open), sharing one look: a number in a badge, a

@@ -360,12 +360,19 @@ export function stageEnds(plan) {
   });
 }
 
-// The IDs of the stages with an overdraw: a transfer that asks a well for more than it holds, as
-// contents tracking finds it, e.g. new Set(["2"]).
-export function stagesWithOverdraw(plan) {
+// The IDs of the stages with a contents problem of any kind, as contents tracking finds them: a
+// transfer that draws into its source's dead volume, one that asks a well for more than it holds,
+// or one that fills a well over its capacity (contents-tracking.md), e.g. new Set(["2"]). A problem
+// of the starting contents (a well that starts over its capacity, operationIndex null) names no
+// stage.
+export function stagesWithContentsProblem(plan) {
   const operations = plan.operationList.listOperations();
   const problems = replay(plan.startingContents, plan.operationList).listProblems();
-  return new Set(problems.map((problem) => operations[problem.operationIndex].stage));
+  return new Set(
+    problems
+      .filter((problem) => problem.operationIndex !== null)
+      .map((problem) => operations[problem.operationIndex].stage),
+  );
 }
 
 // The IDs of the stages with a mix problem: a mix volume under the minimum (MIN_MIX_VOLUME in
