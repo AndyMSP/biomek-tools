@@ -437,6 +437,22 @@ describe("contents-tracking", () => {
     return makeTransfer(`${ON_DECK}/A1`, `${ON_DECK}/A2`, volume);
   }
 
+  test("usableVolumeOf: D + 100 gives 100; D or less gives 0; 0 after a mixture is drawn to D; the total off the deck", () => {
+    assertClose(replay(onDeck(D + 100), new OperationList()).usableVolumeOf(ON_DECK, "A1"), 100);
+    assert.equal(replay(onDeck(D), new OperationList()).usableVolumeOf(ON_DECK, "A1"), 0);
+    if (D > 0) {
+      assert.equal(replay(onDeck(D / 2), new OperationList()).usableVolumeOf(ON_DECK, "A1"), 0);
+    }
+    // Two components drawn down to exactly D can leave an arithmetic leftover above D (e.g. 2150 +
+    // 150 drawn 300 leaves 2000.0000000000002); the usable volume is still exactly 0.
+    const mixture = [{ labware: ON_DECK, well: "A1", components: { Water: D + 100, Dye: 50 } }];
+    const drawn = replay(mixture, makeList(fromA1(150)));
+    assert.equal(drawn.usableVolumeOf(ON_DECK, "A1"), 0);
+    assert.equal(drawn.listProblems().length, 0);
+    const offDeck = replay(makeStartingContents(), new OperationList());
+    assert.equal(offDeck.usableVolumeOf("Reagents", "A1"), offDeck.totalVolumeOf("Reagents", "A1"));
+  });
+
   test("a well holding D + 100 with a transfer of 100 µL from it: no problem; it holds D afterwards", () => {
     const snapshot = replay(onDeck(D + 100), makeList(fromA1(100)));
     assert.deepEqual(snapshot.listProblems(), []);
@@ -837,7 +853,7 @@ describe("contents-tracking", () => {
       ["", "is blank. Give it at least one character that isn't a space."],
       [" A1", '" A1" has spaces at the start or end. Remove them.'],
     ];
-    for (const method of ["componentsOf", "totalVolumeOf", "volumeFractionsOf", "causesOf"]) {
+    for (const method of ["componentsOf", "totalVolumeOf", "usableVolumeOf", "volumeFractionsOf", "causesOf"]) {
       for (const [value, ending] of cases) {
         assert.throws(() => snapshot[method](value, "A1"), {
           message: `The labware given to ${method} ${ending}`,

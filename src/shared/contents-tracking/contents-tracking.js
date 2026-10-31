@@ -115,6 +115,16 @@ export class ContentsSnapshot {
     return totalVolume(this.#findComponents(labware, well, "totalVolumeOf"));
   }
 
+  // One well's usable volume in µL: its total minus its labware's dead volume, never below 0, and 0
+  // when the difference is below NEGLIGIBLE_MICROLITERS, so a mixture drawn down to exactly the
+  // dead volume reads as 0 despite arithmetic leftovers, e.g. a trough holding 2000.0000000000002
+  // over a 2000 dead volume → 0. Callers take the usable volume from here rather than subtracting.
+  usableVolumeOf(labware, well) {
+    const held = totalVolume(this.#findComponents(labware, well, "usableVolumeOf"));
+    const usable = usableVolume(held, deadVolumeOfLabware(labware));
+    return usable < NEGLIGIBLE_MICROLITERS ? 0 : usable;
+  }
+
   // Each component's share of one well, from 0 to 1, e.g. { Dye: 0.1, Media: 0.9 }.
   // An empty well gives {}.
   volumeFractionsOf(labware, well) {

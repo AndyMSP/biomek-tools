@@ -1262,7 +1262,7 @@ function createWell(plan, end, isTrough) {
     wellElement.style.setProperty("--well-fill", fillGradient(plan, components, isTrough));
     let name = `${wellName(plan, end)}, ${formatVolume(total)} µL`;
     // Holding only dead volume: a tip can reach none of it, so it's drawn under stripes.
-    if (usableVolumeOf(end.labware, total) === 0) {
+    if (shownSnapshot.usableVolumeOf(end.labware, end.well) === 0) {
       wellElement.classList.add("dead-volume-only");
       name += ", all dead volume";
     }
@@ -2716,7 +2716,7 @@ function contentsCardLines(plan, end) {
     createElement("div", total === 0 ? "Empty" : `${formatVolume(total)} µL total`, "card-total"),
   ];
   if (total > 0) {
-    const usable = usableVolumeOf(end.labware, total);
+    const usable = shownSnapshot.usableVolumeOf(end.labware, end.well);
     lines.push(
       createElement(
         "div",
@@ -2790,12 +2790,6 @@ function describeCardProblem(problem) {
     return `Starts with ${formatVolume(problem.held)} µL, ${over}`;
   }
   return `${transfer} brought this well to ${formatVolume(problem.held)} µL, ${over}`;
-}
-
-// The usable volume of a well on `labware` holding `total` µL: what's above the labware's dead
-// volume (deadVolumeOf, deck.md), never below 0, e.g. ("Res1", 2300) → 300; ("Res1", 1500) → 0.
-function usableVolumeOf(labware, total) {
-  return Math.max(0, total - deadVolumeOf(labware));
 }
 
 // The contents card's line for a well that caused a mix problem in an earlier stage than the open
