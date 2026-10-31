@@ -326,7 +326,11 @@ added on 2026-10-28 (Andy).
     height so it reaches down to the labware's dead volume. Capacities and dead volumes live in `config/` (with the deck description), so
     stand-in numbers can go in first and be replaced when measured, as the pipetting modes were;
     stand-ins go in "Technical debt" until then. Known so far: reservoir trough 2 mL, deep well
-    200 µL (`exp37.md`). Next: the preview.
+    200 µL (`exp37.md`). *Also decided 2026-10-30 (Andy):* **capacity is one value per labware
+    type too**, the labware type's "Maximum volume per well" in the Biomek's Labware Type Editor
+    (B56358AF 17-18), copied into `config/` by hand with that source in its comment. The tool warns
+    only on true overfilling; a lower working maximum (headroom for mixing, say) is not modelled.
+    Next: the preview.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
