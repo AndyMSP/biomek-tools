@@ -795,7 +795,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
     as sections 6, 8 and 10 say;
   - **the main action** (`Biomek files`, a box's `Save`): solid blue, white text, semibold;
   - **danger** (`Reset`, `Remove`): red text with a light red border (`#E8A39B`); the confirming
-    button of their questions (`Reset everything`, and `Remove` beside `Cancel`): solid red;
+    button of Reset's question (`Reset everything`): solid red (Remove asks no question since
+    2026-10-31);
   - **disabled** buttons: gray text and border on a light gray background, whatever their group;
   - buttons with a look of their own keep it: `Show transfers`, a transfer's volume and `×`, a
     labware's label, the seams, and the Stages column's rows.
