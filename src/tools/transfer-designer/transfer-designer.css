@@ -47,7 +47,8 @@
      reservoir has both too (its left column empty), so it's exactly the same size as a plate. */
   --grid-heading-row: 18px;
   --grid-heading-column: 22px;
-  /* The overdraw X's lines on a well; the key's example well sets its own, thinner. */
+  /* The overdraw X's and the overfill bar's lines on a well; the key's example well sets its own,
+     thinner. */
   --overdraw-line: 3px;
   --labware-gap: 20px;
   --panel-padding: 20px;
@@ -553,7 +554,8 @@ input.experiment-name-box.invalid {
 }
 
 /* The key's example wells, drawn as the marks on the deck are: a red ring, and for an overdraw a
-   red X with 2px lines. */
+   red X with 2px lines, for an overfill a red bar; the "Only dead volume" example has no ring, only
+   a blue fill under the stripes. */
 .key-well {
   --overdraw-line: 2px;
   --mark-size: 16px;
@@ -561,9 +563,15 @@ input.experiment-name-box.invalid {
   display: inline-block;
   width: 16px;
   height: 16px;
+  overflow: hidden;
   border-radius: 50%;
   box-shadow: 0 0 0 2.5px var(--red);
   background: var(--panel-background);
+}
+
+.key-well.dead-volume-only {
+  box-shadow: none;
+  background: var(--blue);
 }
 
 /* --- The labware (section 6) --- */
@@ -717,23 +725,46 @@ input.experiment-name-box.invalid {
   border-radius: 8px;
 }
 
+/* A well holding only dead volume (section 6): its fill under diagonal stripes of the page's
+   background at 75% opacity, 3px wide and 7px apart at 45°, so it reads as liquid that's out of
+   reach. The stripes are a second background layer over the fill, so the same rule serves plates and
+   troughs. */
+.well.dead-volume-only,
+.key-well.dead-volume-only {
+  --stripe: rgba(246, 245, 241, 0.75);
+  background-image:
+    repeating-linear-gradient(45deg, var(--stripe) 0 3px, transparent 3px 7px),
+    var(--well-fill, none);
+}
+
+.key-well.dead-volume-only {
+  background-image: repeating-linear-gradient(45deg, var(--stripe) 0 3px, transparent 3px 7px);
+}
+
 /* Marks on the wells (section 6). */
 .well.off-plan,
-.well.overdraw {
+.well.overdraw,
+.well.overfill {
   box-shadow: 0 0 0 3px var(--red);
 }
 
 /* The overdraw's X: two red lines with rounded ends, each 120% of the well's width (--mark-size:
    the well's size, or the key's example well's), crossing at the well's center at ±45°, so it's
-   exactly centered and reaches a little past the well's edge (which the well mustn't clip). */
-.well.overdraw {
+   exactly centered and reaches a little past the well's edge (which the well mustn't clip). The
+   overfill's bar is one such line, level: an element of its own (.overfill-bar, added by the page
+   script), since the X uses both of the well's pseudo-elements and a well can show both marks. */
+.well.overdraw,
+.well.overfill,
+.key-well.overdraw,
+.key-well.overfill {
   overflow: visible;
 }
 
 .well.overdraw::before,
 .well.overdraw::after,
 .key-well.overdraw::before,
-.key-well.overdraw::after {
+.key-well.overdraw::after,
+.overfill-bar {
   content: "";
   position: absolute;
   top: 50%;
@@ -749,6 +780,11 @@ input.experiment-name-box.invalid {
 .well.overdraw::after,
 .key-well.overdraw::after {
   transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* The overfill bar: level through the well's center, behind the label (which is raised above it). */
+.overfill-bar {
+  transform: translate(-50%, -50%);
 }
 
 .well.faded {
@@ -1619,9 +1655,22 @@ button.entry-row {
   font-weight: 600;
 }
 
-.contents-card .card-total {
-  margin-bottom: 6px;
+.contents-card .card-total,
+.contents-card .card-usable {
   opacity: 0.8;
+}
+
+/* The total, or the usable volume under it (section 6), ends the heading. */
+.contents-card .card-total:not(:has(+ .card-usable)),
+.contents-card .card-usable {
+  margin-bottom: 6px;
+}
+
+/* The labware's capacity and dead volume (section 6), small and gray, under the components. */
+.contents-card .card-limits {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.6;
 }
 
 .contents-card ul {

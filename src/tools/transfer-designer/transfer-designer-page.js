@@ -19,7 +19,14 @@ import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
-import { labwareNames, gridOf, labwareTypeOf, wellsInBox } from "../../shared/deck/deck.js";
+import {
+  labwareNames,
+  gridOf,
+  labwareTypeOf,
+  capacityOf,
+  deadVolumeOf,
+  wellsInBox,
+} from "../../shared/deck/deck.js";
 import { writeRunFiles, checkExperimentName } from "../../shared/file-writer/file-writer.js";
 import { zipFiles } from "../../shared/zip/zip.js";
 import { PlanHistory } from "./plan-history.js";
@@ -995,8 +1002,9 @@ function timelineCaption(plan, open) {
   return `As stage ${place}, “${name}”, will start (no transfers yet)`;
 }
 
-// Shows "No problems" in green or "N problems" in red (section 6): each overdraw in the whole plan
-// counts as one, and so does each stage with a mix problem.
+// Shows "No problems" in green or "N problems" in red (section 6): each contents problem in the
+// whole plan (a draw into the dead volume, an overdraw or an overfill, including a well that starts
+// over its capacity) counts as one, and so does each stage with a mix problem.
 function refreshProblemCount(plan) {
   const count =
     replay(plan.startingContents, plan.operationList).listProblems().length +
@@ -1078,14 +1086,21 @@ function drawComponentColors(plan) {
   );
 }
 
-// Draws the key (section 6): only the marks on the deck now, Overdraw, Off plan and Mix problem;
-// hidden with none. Called after the wells are drawn and marked.
+// Draws the key (section 6): only the marks on the deck now, Overdraw, Overfill, Only dead volume,
+// Off plan and Mix problem, in that order; hidden with none. Called after the wells are drawn and
+// marked.
 function drawKey() {
   const items = [];
   if (elements.labwareArea.querySelector(".well.overdraw") !== null) {
     items.push(createKeyItem("overdraw", "Overdraw"));
   }
-  if (elements.labwareArea.querySelector(".well.off-plan:not(.overdraw)") !== null) {
+  if (elements.labwareArea.querySelector(".well.overfill") !== null) {
+    items.push(createKeyItem("overfill", "Overfill"));
+  }
+  if (elements.labwareArea.querySelector(".well.dead-volume-only") !== null) {
+    items.push(createKeyItem("dead-volume-only", "Only dead volume"));
+  }
+  if (elements.labwareArea.querySelector(".well.off-plan:not(.overdraw):not(.overfill)") !== null) {
     items.push(createKeyItem("off-plan", "Off plan"));
   }
   if (elements.labwareArea.querySelector(".mix-badge.problem") !== null) {
@@ -1094,11 +1109,15 @@ function drawKey() {
   elements.key.replaceChildren(...items);
 }
 
-// One item of the key: an example well, drawn as the wells with `mark` ("overdraw" or "off-plan")
-// are on the deck, and the mark's name.
+// One item of the key: an example well, drawn as the wells with `mark` ("overdraw", "overfill",
+// "dead-volume-only" or "off-plan") are on the deck, and the mark's name.
 function createKeyItem(mark, name) {
   const item = document.createElement("li");
-  item.append(createElement("span", "", `key-well ${mark}`), createElement("span", name));
+  const example = createElement("span", "", `key-well ${mark}`);
+  if (mark === "overfill") {
+    markOverfill(example);
+  }
+  item.append(example, createElement("span", name));
   return item;
 }
 
@@ -1223,7 +1242,8 @@ function createGridHeading(text, gridRow, gridColumn) {
 
 // One well: a button (so it can be reached with Tab and pressed with Enter or Space) showing what
 // the well holds at the point the deck shows: its name if empty, otherwise its components' colors
-// in proportion and its total volume in short form.
+// in proportion and its total volume in short form, under stripes when all of it is dead volume
+// (section 6).
 function createWell(plan, end, isTrough) {
   const wellElement = createElement("button", "", "well");
   wellElement.type = "button";
@@ -1240,7 +1260,13 @@ function createWell(plan, end, isTrough) {
     label.textContent = formatShortVolume(total);
     wellElement.classList.add("holding");
     wellElement.style.setProperty("--well-fill", fillGradient(plan, components, isTrough));
-    wellElement.setAttribute("aria-label", `${wellName(plan, end)}, ${formatVolume(total)} µL`);
+    let name = `${wellName(plan, end)}, ${formatVolume(total)} µL`;
+    // Holding only dead volume: a tip can reach none of it, so it's drawn under stripes.
+    if (usableVolumeOf(end.labware, total) === 0) {
+      wellElement.classList.add("dead-volume-only");
+      name += ", all dead volume";
+    }
+    wellElement.setAttribute("aria-label", name);
   }
   wellElement.append(label);
   const mixed = openStageMixedWells.get(wellKey(end));
@@ -1320,11 +1346,31 @@ function fillGradient(plan, components, isTrough) {
   return isTrough ? `linear-gradient(to top, ${stops.join(", ")})` : `conic-gradient(${stops.join(", ")})`;
 }
 
-// Puts the marks on the wells (section 6): overdraw and off plan from the shown contents, the open
-// stage's untouched wells faded, and the chosen source outlined.
+// Gives a well (or the key's example well) the overfill mark (section 6): the class, and the red bar
+// behind its label as an element of its own, since the overdraw X uses the well's pseudo-elements
+// and a well can show both. A well overfilled more than once gets one bar.
+function markOverfill(wellElement) {
+  if (!wellElement.classList.contains("overfill")) {
+    wellElement.classList.add("overfill");
+    const bar = createElement("span", "", "overfill-bar");
+    bar.setAttribute("aria-hidden", "true");
+    wellElement.prepend(bar);
+  }
+}
+
+// Puts the marks on the wells (section 6): overdraw (a "dead-volume" or "overdraw" problem),
+// overfill and off plan from the shown contents, the open stage's untouched wells faded, and the
+// chosen source outlined.
 function markWells(plan, open) {
   for (const problem of shownSnapshot.listProblems()) {
-    wellElements.get(wellKey(problem))?.classList.add("overdraw");
+    const wellElement = wellElements.get(wellKey(problem));
+    if (wellElement !== undefined) {
+      if (problem.kind === "overfill") {
+        markOverfill(wellElement);
+      } else {
+        wellElement.classList.add("overdraw");
+      }
+    }
   }
   for (const affected of shownSnapshot.listAffected()) {
     wellElements.get(wellKey(affected))?.classList.add("off-plan");
@@ -1489,7 +1535,7 @@ function refreshStages() {
 }
 
 // The stages with a problem (section 7), as { overdrawn, mixProblem }: two Sets of stage IDs, from
-// stagesWithContentsProblem and stagesWithMixProblem.
+// stagesWithContentsProblem (a contents problem of any kind) and stagesWithMixProblem.
 function stageProblems(plan) {
   return { overdrawn: stagesWithContentsProblem(plan), mixProblem: stagesWithMixProblem(plan) };
 }
@@ -1497,8 +1543,8 @@ function stageProblems(plan) {
 // Start, a stage or End as a row (closed) or a card (open), sharing one look: a number in a badge, a
 // name and a count; a card adds its contents, and a stage's card its ✎ after the name. A mix step has
 // a ⟳ after its name. A stage with
-// a problem (`problems`, from stageProblems) is marked, with a tooltip saying which; one with both an
-// overdraw and a mix problem has the overdraw's tooltip.
+// a problem (`problems`, from stageProblems) is marked, with a tooltip saying which; one with both a
+// contents problem and a mix problem has the contents problem's tooltip.
 function createEntry(plan, key, open, problems) {
   const isOpen = key === open;
   const entry = createElement("div", "", "entry");
@@ -1507,9 +1553,11 @@ function createEntry(plan, key, open, problems) {
   const { badge, name, count } = entryHeading(plan, key);
   if (isStage(plan, key) && problems.overdrawn.has(key)) {
     entry.classList.add("has-overdraw");
-    entry.title = "This stage has an overdraw: a transfer asks a well for more than it holds.";
+    entry.title =
+      "This stage has a problem: a transfer asks a well for more than it holds above its dead " +
+      "volume, or fills a well over its capacity.";
   } else if (isStage(plan, key) && problems.mixProblem.has(key)) {
-    // A mix problem looks the same as an overdraw (Andy, 2026-10-30), with its own tooltip.
+    // A mix problem looks the same as a contents problem (Andy, 2026-10-30), with its own tooltip.
     entry.classList.add("has-overdraw");
     entry.title =
       `This stage mixes a well that holds too little: the mix is under ${formatVolume(MIN_MIX_VOLUME)} µL.`;
@@ -2178,9 +2226,37 @@ function fillWells(wells) {
   }
   const name = brush.pick.name;
   const volume = volumeValue(brush.volume.text);
-  if (tryEdit(() => addToWells(plan, wells, name, volume)) !== false) {
-    showMessage(`Added ${formatVolume(volume)} µL of ${name} to ${countOf(wells.length, "well")}.`, "ok");
+  const filled = tryEdit(() => addToWells(plan, wells, name, volume));
+  if (filled === false) {
+    return;
   }
+  const added = `Added ${formatVolume(volume)} µL of ${name} to ${countOf(wells.length, "well")}`;
+  const overfilled = newStartingOverfill(plan, filled);
+  if (overfilled === null) {
+    showMessage(`${added}.`, "ok");
+  } else {
+    showMessage(
+      `${added}, but ${wellName(filled, overfilled)} starts with ${formatVolume(overfilled.held)} µL, ` +
+        `over its ${formatVolume(overfilled.capacity)} µL capacity.`,
+      "error",
+    );
+  }
+}
+
+// The first well, in the starting contents' order, that a fill from `before` to `after` took over
+// its capacity (an "overfill" problem of the start that wasn't there before; section 8), or null.
+// A well already over before the fill isn't reported again.
+function newStartingOverfill(before, after) {
+  const overBefore = new Set(startingOverfills(before).map(wellKey));
+  return startingOverfills(after).find((problem) => !overBefore.has(wellKey(problem))) ?? null;
+}
+
+// The "overfill" problems of `plan`'s starting contents (operationIndex null), in the starting
+// contents' order.
+function startingOverfills(plan) {
+  return replay(plan.startingContents, plan.operationList)
+    .listProblems()
+    .filter((problem) => problem.operationIndex === null);
 }
 
 // --- Transfers (section 9) ---
@@ -2258,9 +2334,10 @@ function mixWellsWithReport(wells) {
   }
 }
 
-// The well an edit from `before` to `after` left causing a mix problem or an overdraw that wasn't
-// there before, { labware, well }, or null: a new mix problem's well first, otherwise a new
-// overdraw's well. Overdraws are recognized across the edit as transfers are (section 9).
+// The well an edit from `before` to `after` left causing a mix problem or an overdraw (a draw into
+// the dead volume or past what the well holds) that wasn't there before, { labware, well }, or
+// null: a new mix problem's well first, otherwise a new overdraw's well. Overdraws are recognized
+// across the edit as transfers are (section 9).
 function newWellHoldingTooLittle(before, after) {
   const problemKey = (problem) => JSON.stringify([problem.stage, problem.end, wellKey(problem)]);
   const problemsBefore = new Set(mixVolumes(before).problems.map(problemKey));
@@ -2268,11 +2345,11 @@ function newWellHoldingTooLittle(before, after) {
   if (newMixProblem !== undefined) {
     return newMixProblem;
   }
-  const overdrawnBefore = overdrawnOperations(before);
+  const overdrawnBefore = problemOperations(before);
   const operations = after.operationList.listOperations();
   const newOverdraw = replay(after.startingContents, after.operationList)
     .listProblems()
-    .find((problem) => !overdrawnBefore.has(operations[problem.operationIndex]));
+    .find((problem) => isDrawProblem(problem) && !overdrawnBefore.has(operations[problem.operationIndex]));
   return newOverdraw ?? null;
 }
 
@@ -2294,8 +2371,8 @@ function clearSource() {
 }
 
 // Adds one transfer from `from` to `to` into the open stage, with the next transfer's volume
-// (section 9). Says what was added, or, if the plan now has more overdraws, which transfer asks for
-// more than its well holds.
+// (section 9). Says what was added, or, if the edit caused a new contents problem, which transfer
+// has it and what kind it is.
 function addOneTransfer(from, to) {
   const plan = currentPlan();
   const stage = currentOpen();
@@ -2304,14 +2381,14 @@ function addOneTransfer(from, to) {
   if (added === null) {
     return;
   }
-  if (added.newOverdraw === null) {
+  if (added.newProblem === null) {
     showMessage(
       `Added to ${stageLabel(added.plan, stage)}: ${wellName(plan, from)} → ${wellName(plan, to)}, ` +
         `${formatVolume(transfer.volume)} µL.`,
       "ok",
     );
   } else {
-    showMessage(`Added, but ${added.newOverdraw}`, "error");
+    showMessage(`Added, but ${added.newProblem}`, "error");
   }
 }
 
@@ -2326,21 +2403,22 @@ function addManyTransfers(from, wells) {
     return;
   }
   const what = `${countOf(transfers.length, "transfer")} of ${formatVolume(volume)} µL from ${wellName(plan, from)}`;
-  if (added.newOverdraw === null) {
+  if (added.newProblem === null) {
     showMessage(`Added ${what} to ${stageLabel(added.plan, stage)}.`, "ok");
   } else {
-    showMessage(`Added ${what}, but ${added.newOverdraw}`, "error");
+    showMessage(`Added ${what}, but ${added.newProblem}`, "error");
   }
 }
 
 // Adds `transfers` to the plan as one edit and records it. Returns null if the logic refuses (its
-// message is shown), otherwise { plan, newOverdraw }: the new plan, and, if the edit caused a new
-// overdraw (section 9), one described, e.g. "transfer #5 asks for 60 µL from Drug plate A1, which
-// holds 50 µL.", or null. A new overdraw is one that wasn't there before the edit: a transfer
-// that's overdrawn now but wasn't, or wasn't in the plan. An added transfer's own overdraw is
-// named first; otherwise the first new overdraw in the run, such as a later transfer left short.
+// message is shown), otherwise { plan, newProblem }: the new plan, and, if the edit caused a new
+// contents problem (section 9), one described by its kind, e.g. "transfer #5 asks for 60 µL from
+// Drug plate A1, which holds 50 µL.", or null. A new problem is one that wasn't there before the
+// edit: a transfer that has a problem now but didn't, or wasn't in the plan; a problem of the
+// starting contents is never new here. An added transfer's own problem is named first; otherwise
+// the first new problem in the run, such as a later transfer left short.
 function addTransfersWithReport(plan, transfers) {
-  const overdrawnBefore = overdrawnOperations(plan);
+  const withProblemBefore = problemOperations(plan);
   const operationsBefore = new Set(plan.operationList.listOperations());
   const added = tryEdit(() => addTransfers(plan, transfers));
   if (added === false) {
@@ -2351,29 +2429,58 @@ function addTransfersWithReport(plan, transfers) {
   const operations = added.operationList.listOperations();
   const newProblems = replay(added.startingContents, added.operationList)
     .listProblems()
-    .filter((problem) => !overdrawnBefore.has(operations[problem.operationIndex]));
+    .filter(
+      (problem) =>
+        problem.operationIndex !== null && !withProblemBefore.has(operations[problem.operationIndex]),
+    );
   const reported =
     newProblems.find((problem) => !operationsBefore.has(operations[problem.operationIndex])) ??
     newProblems[0];
   return {
     plan: added,
-    newOverdraw: reported === undefined ? null : describeOverdraw(added, reported),
+    newProblem: reported === undefined ? null : describeNewProblem(added, reported),
   };
 }
 
-// The operations of `plan` with an overdraw, as a Set of the operation objects themselves.
-function overdrawnOperations(plan) {
+// The operations of `plan` with a contents problem of any kind, as a Set of the operation objects
+// themselves. A problem of the starting contents names no operation, so it's left out.
+function problemOperations(plan) {
   const operations = plan.operationList.listOperations();
   const problems = replay(plan.startingContents, plan.operationList).listProblems();
-  return new Set(problems.map((problem) => operations[problem.operationIndex]));
+  return new Set(
+    problems
+      .filter((problem) => problem.operationIndex !== null)
+      .map((problem) => operations[problem.operationIndex]),
+  );
 }
 
-// An overdraw from contents tracking, described for a message, e.g. "transfer #5 asks for 60 µL from
-// Drug plate A1, which holds 50 µL."
-function describeOverdraw(plan, problem) {
+// True if `problem` (from contents tracking) is a draw problem: a "dead-volume" or "overdraw"
+// problem, which the page marks as an overdraw; false for an "overfill".
+function isDrawProblem(problem) {
+  return problem.kind === "dead-volume" || problem.kind === "overdraw";
+}
+
+// A transfer's contents problem, described by its kind for the message after adding (section 9),
+// e.g. an overdraw: "transfer #5 asks for 60 µL from Drug plate A1, which holds 50 µL."; a draw into
+// the dead volume: "transfer #5 asks for 400 µL from Reservoir 5, which has only 300 µL above its
+// dead volume."; an overfill: "transfer #5 brings Assay plate A1 to 380 µL, over its 360 µL capacity."
+function describeNewProblem(plan, problem) {
+  const transfer = `transfer #${problem.operationIndex + 1}`;
+  if (problem.kind === "dead-volume") {
+    return (
+      `${transfer} asks for ${formatVolume(problem.requested)} µL from ${wellName(plan, problem)}, ` +
+      `which has only ${formatVolume(problem.available)} µL above its dead volume.`
+    );
+  }
+  if (problem.kind === "overdraw") {
+    return (
+      `${transfer} asks for ${formatVolume(problem.requested)} µL from ${wellName(plan, problem)}, ` +
+      `which holds ${formatVolume(problem.held)} µL.`
+    );
+  }
   return (
-    `transfer #${problem.operationIndex + 1} asks for ${formatVolume(problem.requested)} µL from ` +
-    `${wellName(plan, problem)}, which holds ${formatVolume(problem.available)} µL.`
+    `${transfer} brings ${wellName(plan, problem)} to ${formatVolume(problem.held)} µL, ` +
+    `over its ${formatVolume(problem.capacity)} µL capacity.`
   );
 }
 
@@ -2599,15 +2706,25 @@ function hideContentsCard() {
   elements.contentsCard.hidden = true;
 }
 
-// The contents card's lines for a well: its name and total, each component's swatch, name, volume
-// and share, each overdraw of the well, whether it's off plan, and how much of it the open stage
-// mixes.
+// The contents card's lines for a well (section 6): its name and total, its usable volume, each
+// component's swatch, name, volume and share, the labware's limits, each contents problem of the
+// well by its kind, whether it's off plan, and how much of it the open stage mixes.
 function contentsCardLines(plan, end) {
   const total = shownSnapshot.totalVolumeOf(end.labware, end.well);
   const lines = [
     createElement("div", wellName(plan, end), "card-title"),
     createElement("div", total === 0 ? "Empty" : `${formatVolume(total)} µL total`, "card-total"),
   ];
+  if (total > 0) {
+    const usable = usableVolumeOf(end.labware, total);
+    lines.push(
+      createElement(
+        "div",
+        usable === 0 ? "0 µL usable: all of it is dead volume" : `${formatVolume(usable)} µL usable`,
+        "card-usable",
+      ),
+    );
+  }
   const fractions = shownSnapshot.volumeFractionsOf(end.labware, end.well);
   const list = document.createElement("ul");
   for (const [name, volume] of Object.entries(shownSnapshot.componentsOf(end.labware, end.well))) {
@@ -2620,16 +2737,16 @@ function contentsCardLines(plan, end) {
     list.append(item);
   }
   lines.push(list);
+  lines.push(
+    createElement(
+      "div",
+      `Capacity ${formatVolume(capacityOf(end.labware))} µL · dead volume ${formatVolume(deadVolumeOf(end.labware))} µL`,
+      "card-limits",
+    ),
+  );
   for (const problem of shownSnapshot.listProblems()) {
     if (problem.labware === end.labware && problem.well === end.well) {
-      lines.push(
-        createElement(
-          "div",
-          `Transfer #${problem.operationIndex + 1} asked for ${formatVolume(problem.requested)} µL ` +
-            `but this well held ${formatVolume(problem.available)} µL.`,
-          "card-problem",
-        ),
-      );
+      lines.push(createElement("div", describeCardProblem(problem), "card-problem"));
     }
   }
   const causes = shownSnapshot.causesOf(end.labware, end.well);
@@ -2646,6 +2763,39 @@ function contentsCardLines(plan, end) {
     lines.push(mixCardLine(mixed));
   }
   return lines;
+}
+
+// A contents problem of the well, in words for the contents card (section 6), by its kind: a draw
+// into the dead volume, "Transfer #5 asked for 400 µL but only 300 µL was above the dead volume (held
+// 2300 µL, dead volume 2000 µL)."; an overdraw, "Transfer #5 asked for 60 µL but this well held 50
+// µL."; an overfill, "Transfer #5 brought this well to 380 µL, over its 360 µL capacity.", or, for
+// the start, "Starts with 400 µL, over its 360 µL capacity."
+function describeCardProblem(problem) {
+  const transfer = `Transfer #${problem.operationIndex + 1}`;
+  if (problem.kind === "dead-volume") {
+    return (
+      `${transfer} asked for ${formatVolume(problem.requested)} µL but only ` +
+      `${formatVolume(problem.available)} µL was above the dead volume ` +
+      `(held ${formatVolume(problem.held)} µL, dead volume ${formatVolume(problem.deadVolume)} µL).`
+    );
+  }
+  if (problem.kind === "overdraw") {
+    return (
+      `${transfer} asked for ${formatVolume(problem.requested)} µL but this well held ` +
+      `${formatVolume(problem.held)} µL.`
+    );
+  }
+  const over = `over its ${formatVolume(problem.capacity)} µL capacity.`;
+  if (problem.operationIndex === null) {
+    return `Starts with ${formatVolume(problem.held)} µL, ${over}`;
+  }
+  return `${transfer} brought this well to ${formatVolume(problem.held)} µL, ${over}`;
+}
+
+// The usable volume of a well on `labware` holding `total` µL: what's above the labware's dead
+// volume (deadVolumeOf, deck.md), never below 0, e.g. ("Res1", 2300) → 300; ("Res1", 1500) → 0.
+function usableVolumeOf(labware, total) {
+  return Math.max(0, total - deadVolumeOf(labware));
 }
 
 // The contents card's line for a well that caused a mix problem in an earlier stage than the open
