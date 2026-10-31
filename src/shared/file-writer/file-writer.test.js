@@ -628,7 +628,7 @@ describe("file-writer", () => {
     assert.throws(() => write(plan), {
       message:
         `Stage 3, "Seeding", mixes ${PLATE.name} A3 after dispensing when it holds only 0.9 µL: ` +
-        "90% of that is 0.8 µL, and a mix needs at least 1.1 µL. " +
+        "90% of that is 0.8 µL, and a mix needs at least 1 µL. " +
         "Turn that mixing off, or put more in the well first.",
     });
   });
@@ -641,7 +641,7 @@ describe("file-writer", () => {
     assert.throws(() => write(plan), {
       message:
         `Stage 1, "Wash", mixes ${PLATE.name} H1 before aspirating when it holds only 0.1 µL: ` +
-        "50% of that is 0 µL, and a mix needs at least 1.1 µL. " +
+        "50% of that is 0 µL, and a mix needs at least 1 µL. " +
         "Turn that mixing off, or put more in the well first.",
     });
   });

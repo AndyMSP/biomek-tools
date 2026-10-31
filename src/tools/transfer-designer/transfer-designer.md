@@ -170,7 +170,7 @@ technique follows its mixing** (ADR 0007, "Mixing"):
   that already mixes keeps its own mix, so a plan made with another default still runs as made.
 - **Choosing a mode** keeps the end's mixing: `modeSettings(end, name, mixes)` gives the mode's
   `mixingTechnique` when `mixes` is `true`.
-- **Mix problems:** a stage whose mix volume in any row is under the minimum (1.1 µL) has a **mix problem**
+- **Mix problems:** a stage whose mix volume in any row is under the minimum (1 µL) has a **mix problem**
   (`mix-volumes.md`). It's reported as soon as it appears, as an overdraw is (Andy, 2026-10-30), and
   the file writer refuses the plan until it's fixed (`file-writer.md`).
 

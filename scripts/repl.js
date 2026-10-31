@@ -282,7 +282,7 @@ const TOPICS = {
       "mixVolumes(mixPlan).stages[0].rows[0]",
       "mixVolumes(mixPlan).stages[0].rows[0].mixedWells",
       "mixVolumes(mixPlan).problems",
-      'mixPlan = addTransfer(mixPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "B1" }, volume: 1.2, stage: "1" })',
+      'mixPlan = addTransfer(mixPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "B1" }, volume: 1.1, stage: "1" })',
       "mixVolumes(mixPlan).stages[0].rows[0].destinationMixVolume",
       "mixVolumes(mixPlan).problems",
     ],

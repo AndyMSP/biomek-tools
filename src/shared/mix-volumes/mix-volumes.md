@@ -8,7 +8,7 @@
 > what share of the well that is, and whether it's short (sections 2, 3, 4 and 6).
 >
 > **Draft change (2026-10-30, mixing layer (c1), later):** a mix problem is a mix volume under the
-> minimum mix volume, `MIN_MIX_VOLUME` (1.1 µL), not only 0 µL (Andy, 2026-10-30; sections 1, 3
+> minimum mix volume, `MIN_MIX_VOLUME` (1 µL), not only 0 µL (Andy, 2026-10-30; sections 1, 3
 > and 6).
 
 ## 1. Purpose
@@ -88,9 +88,9 @@ cause, whether the emptiest well or the tips' limit). A short mix isn't a proble
 still be written, and a tool shows it as a warning.
 
 **A mix problem** is a row whose mix volume at an end is **under `MIN_MIX_VOLUME`**, the minimum
-mix volume (1.1 µL): its emptiest well holds too little when it's mixed. Such a mix wouldn't run on
-the Biomek: a mix runs on a transfer of 1 µL (Andy, 2026-10-30), and mix volumes needn't be
-accurate, only possible. So the plan can't be written to files until it's fixed (Andy,
+mix volume (1 µL): its emptiest well holds too little when it's mixed. Mix volumes needn't be
+accurate, only possible, and a smaller mix wouldn't run (Andy, 2026-10-30; how the Biomek handles
+1 µL is to be checked at the instrument). So the plan can't be written to files until it's fixed (Andy,
 2026-10-30). A stage with a mix problem at either end of any row **has a mix problem**.
 
 ### Configuration
@@ -103,7 +103,8 @@ BC230 tip holds in one trip, and what a 1 mL syringe holds in one draw with air 
 file: each tip type has exactly one limit, a number above 0, and there are no others.
 
 `config/mixing.js` (ADR 0009, new) exports `MIN_MIX_VOLUME`: the smallest mix volume that runs, in
-µL: `1.1` (Andy, 2026-10-30: a mix runs on a transfer of 1 µL, so it needs more than that). A
+µL: `1` (Andy, 2026-10-30: first 1.1, since a mix runs on a transfer of 1 µL; then 1, a round
+limit, with how the Biomek handles 1 µL to be checked at the instrument). A
 number above 0, checked by this module's tests. It also exports `SHORT_MIX_SHARE`: the mixed share, in percent, below
 which a mix is short: `40` (Andy, 2026-10-29). A number above 0 and at most 100, checked by this
 module's tests. (The file also holds `DEFAULT_MIX`, which the transfer designer's tests check;
@@ -194,8 +195,8 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
 **Problems**
 - A destination that's empty before the stage and gets 0.05 µL, mixed at 90%, gives `0` and one
   problem: `{ stage, end: "destination", labware, well, held: 0.05 }`.
-- A destination holding 0.9 µL when mixed, at 90%, gives `0.8` and a problem; holding 1.2 µL gives
-  `1` (1.08 rounded down) and a problem; holding 1.25 µL gives `1.1` (1.125 rounded down) and no
+- A destination holding 0.9 µL when mixed, at 90%, gives `0.8` and a problem; holding 1.1 µL gives
+  `0.9` (0.99 rounded down) and a problem; holding 1.2 µL gives `1` (1.08 rounded down) and no
   problem.
 - A source drawn empty by the stage, with a smallest draw of 0.1 µL, mixed at 50%, gives `0` and a
   problem naming it.

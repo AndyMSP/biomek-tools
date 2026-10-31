@@ -29,7 +29,7 @@
 > Mix checkbox for each end in a stage's box; ⟳ after an end's mode on the stage's card; a ⟳ badge
 > on each well the open stage mixes, yellow when the mix is short; and `Mixed N% of well` in the
 > contents card (sections 6, 7, 10, 15 and 16); the well causing a mix problem has a red badge, and
-> a mix under 1.1 µL is a problem (Andy, 2026-10-30, from the preview). Also the seam's tip button just right of its `+`,
+> a mix under 1 µL is a problem (Andy, 2026-10-30, from the preview). Also the seam's tip button just right of its `+`,
 > each in a fixed spot (section 7; preview change 30). Mix steps come in layer (c2). They become
 > Final once built and tested by Andy.
 
@@ -261,7 +261,7 @@ card (dark, light text) shows:
   `mixedWells`; `mix-volumes.md`), rounded **down** to a whole percent, so a short mix never reads
   as 40%; if the stage mixes it in more than one row, the smallest. In yellow (`#FFD45C`) when the
   mix is short. For the well causing a mix problem instead: `Holds too little to mix: the mix is
-  0.8 µL, under 1.1 µL.`, in the card's problem color; for the other wells of that row: `Not mixed
+  0.8 µL, under 1 µL.`, in the card's problem color; for the other wells of that row: `Not mixed
   until the well in red is fixed.`
 
 Transfer numbers are positions in the operation list counting from 1. The card hides when the
@@ -360,7 +360,7 @@ holds:
 A stage **with an overdraw** (`stagesWithOverdraw`), row or card, has a light red background and
 border, and the tooltip `This stage has an overdraw: a transfer asks a well for more than it holds.`
 A stage **with a mix problem** (`stagesWithMixProblem`) looks the same, with the tooltip `This stage
-mixes a well that holds too little: the mix is under 1.1 µL.` (the minimum from `config/`); one with both has the overdraw's
+mixes a well that holds too little: the mix is under 1 µL.` (the minimum from `config/`); one with both has the overdraw's
 tooltip.
 
 **End** (number `✓`, name `End`, count `N transfers done`: every transfer in the plan). Its card
@@ -736,7 +736,8 @@ page's configuration (ADR 0009):
 - mixing: checking and unchecking Mix at each end, then Save, Undo and Redo; the card's ⟳; choosing
   Non-Contact for Dispense on a stage whose destination mixes unchecks it and shows `Can't mix`; an
   end `(not one of the modes)` shows a disabled checkbox; the tooltips' volumes; ⟳ badges on the open
-  stage's mixed wells only, yellow for a short mix (e.g. BC230 tips mixing a deep well holding
+  stage's mixed wells only, red for the well causing a mix problem (a mix under 1 µL; that row's
+  other wells blue), yellow for a short mix (e.g. BC230 tips mixing a deep well holding
   1000 µL), and `Mixed N% of well` in the contents card; a short mix isn't counted as a problem;
   a saved plan reopens with the same mixing, and its Biomek files have the mix columns;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;

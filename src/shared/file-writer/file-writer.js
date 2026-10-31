@@ -252,7 +252,7 @@ function checkStages(plan, stages, mixing) {
 
 // The message for `problem`, a mix problem (mix-volumes) of `stage`, shown as `shown` (its place and
 // name), whose mix volume is `volume`, e.g. 'Stage 3, "Seeding", mixes Plate1 A2 after dispensing
-// when it holds only 0.9 µL: 90% of that is 0.8 µL, and a mix needs at least 1.1 µL. Turn that
+// when it holds only 0.9 µL: 90% of that is 0.8 µL, and a mix needs at least 1 µL. Turn that
 // mixing off, or put more in the well first.' The well is named by its labware's name, as the files
 // name it, and volumes are written as in the files.
 function mixProblemMessage(shown, stage, problem, volume) {

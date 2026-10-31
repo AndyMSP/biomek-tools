@@ -19,6 +19,7 @@ export const DEFAULT_MIX = { share: 90, times: 3, speed: 400 };
 // and at most 100.
 export const SHORT_MIX_SHARE = 40;
 
-// The smallest mix volume that runs, in µL: 1.1 (Andy, 2026-10-30). A mix runs on a transfer of
-// 1 µL, so it needs more than that; mix volumes needn't be accurate, only possible. A number above 0.
-export const MIN_MIX_VOLUME = 1.1;
+// The smallest mix volume allowed, in µL: 1 (Andy, 2026-10-30, rather than 1.1, for a round limit;
+// how the Biomek handles 1 µL is to be checked at the instrument). Mix volumes needn't be accurate,
+// only possible. A number above 0.
+export const MIN_MIX_VOLUME = 1;

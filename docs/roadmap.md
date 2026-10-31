@@ -217,11 +217,12 @@ Last updated: 2026-10-28
   volume per row from the new `mix-volumes` shared module (substages move into a `substages` shared
   module); each mode's mixing technique in `config/`, `setStageMix` switching an end's mixing and
   technique together, and settings whose technique doesn't match their mixing refused (item (1)
-  above); a mix that works out to 0 µL is a **mix problem** (since #110: under 1.1 µL), shown on the page as an overdraw is,
+  above); a mix that works out to 0 µL is a **mix problem** (since #110: under 1 µL), shown on the page as an overdraw is,
   and refused by the file writer (Andy, 2026-10-30). Item (2) above stays open. **For layer (c):**
   switching mixing on and off on the page, the default mix in `config/` (90% × 3 at 400 µL/s), mix
   steps, and the short-mix warning (40%). **At the Biomek:** a simulation run with files from a
-  mixing plan, checking each row mixes the volume written.
+  mixing plan, checking each row mixes the volume written, and how a 1 µL mix and a 1 µL transfer
+  run (the minimum mix volume is 1 µL; Andy, 2026-10-30).
   **Built** (#109, 2026-10-30): code, tests and REPL of `substages`, `mix-volumes`, the transfer designer, the file writer and the page; checked in headless Chrome.
 - **Mixing layer (c), the page, goes in two parts** (Andy, 2026-10-30): **(c1) mixing in transfer
   stages is specified** (Draft, 2026-10-30): a Mix checkbox for each end in a stage's box, giving

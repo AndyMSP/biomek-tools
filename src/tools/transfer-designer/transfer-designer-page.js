@@ -2397,7 +2397,7 @@ function contentsCardLines(plan, end) {
 
 // The contents card's line for a well the open stage mixes (section 6), from its entry in
 // mixedWellsOf: for the well causing a mix problem, "Holds too little to mix: the mix is 0.8 µL,
-// under 1.1 µL." in the problem color; otherwise "Mixed 17% of well", yellow when short; for
+// under 1 µL." in the problem color; otherwise "Mixed 17% of well", yellow when short; for
 // another well of a row with a mix problem, "Not mixed until the well in red is fixed."
 function mixCardLine(mixed) {
   if (mixed.problemVolume !== null) {

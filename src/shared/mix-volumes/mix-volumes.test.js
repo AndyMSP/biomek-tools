@@ -473,23 +473,23 @@ describe("mix-volumes", () => {
     ]);
   });
 
-  test("a destination holding 1.2 µL when mixed at 90% gives 1 (1.08 rounded down) and a problem", () => {
+  test("a destination holding 1.1 µL when mixed at 90% gives 0.9 (0.99 rounded down) and a problem", () => {
+    let plan = planWithTroughs();
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 1.1);
+    plan = setStageMix(plan, "1", "destination", mixAt(90));
+    const result = mixVolumes(plan);
+    assert.equal(result.stages[0].rows[0].destinationMixVolume, 0.9);
+    assert.deepEqual(result.problems, [
+      { stage: "1", end: "destination", labware: PLATE.name, well: "A1", held: 1.1 },
+    ]);
+  });
+
+  test("a destination holding 1.2 µL when mixed at 90% gives 1 (1.08 rounded down) and no problem", () => {
     let plan = planWithTroughs();
     plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 1.2);
     plan = setStageMix(plan, "1", "destination", mixAt(90));
     const result = mixVolumes(plan);
     assert.equal(result.stages[0].rows[0].destinationMixVolume, 1);
-    assert.deepEqual(result.problems, [
-      { stage: "1", end: "destination", labware: PLATE.name, well: "A1", held: 1.2 },
-    ]);
-  });
-
-  test("a destination holding 1.25 µL when mixed at 90% gives 1.1 (1.125 rounded down) and no problem", () => {
-    let plan = planWithTroughs();
-    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 1.25);
-    plan = setStageMix(plan, "1", "destination", mixAt(90));
-    const result = mixVolumes(plan);
-    assert.equal(result.stages[0].rows[0].destinationMixVolume, 1.1);
     assert.deepEqual(result.problems, []);
   });
 

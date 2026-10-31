@@ -302,7 +302,7 @@ export function stagesWithOverdraw(plan) {
 }
 
 // The IDs of the stages with a mix problem: a mix volume under the minimum (MIN_MIX_VOLUME in
-// config/mixing.js, 1.1 µL) in any of their rows, because the well it's worked out from holds too
+// config/mixing.js, 1 µL) in any of their rows, because the well it's worked out from holds too
 // little when it's mixed (mix-volumes.md), e.g. new Set(["3"]).
 export function stagesWithMixProblem(plan) {
   return new Set(mixVolumes(plan).problems.map((problem) => problem.stage));
