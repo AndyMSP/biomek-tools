@@ -35,6 +35,10 @@ import {
   modeOf,
   stageOrder,
   addStage,
+  addMixStep,
+  isMixStep,
+  mixWells,
+  unmixWell,
   renameStage,
   changeStageSettings,
   canRemoveStage,
@@ -1491,7 +1495,8 @@ function stageProblems(plan) {
 }
 
 // Start, a stage or End as a row (closed) or a card (open), sharing one look: a number in a badge, a
-// name and a count; a card adds its contents, and a stage's card its ✎ after the name. A stage with
+// name and a count; a card adds its contents, and a stage's card its ✎ after the name. A mix step has
+// a ⟳ after its name. A stage with
 // a problem (`problems`, from stageProblems) is marked, with a tooltip saying which; one with both an
 // overdraw and a mix problem has the overdraw's tooltip.
 function createEntry(plan, key, open, problems) {
@@ -1515,6 +1520,13 @@ function createEntry(plan, key, open, problems) {
     row.addEventListener("click", () => openEntry(key));
   }
   row.append(createElement("span", badge, "entry-badge"), createElement("span", name, "entry-name"));
+  // A mix step has a gray ⟳ after its name (section 7), so the names line up.
+  if (isStage(plan, key) && isMixStep(plan, key)) {
+    row.classList.add("with-mix-mark");
+    const mark = createElement("span", "⟳", "mix-step-mark");
+    mark.title = "Mix step";
+    row.append(mark);
+  }
   // An open stage's ✎ sits just after its name, so its editing box floats under the heading
   // (section 10); the count stays at the right.
   if (isOpen && isStage(plan, key)) {
@@ -1530,24 +1542,32 @@ function createEntry(plan, key, open, problems) {
 }
 
 // The badge, name and count of an entry: Start ("0", "N wells filled"), a stage (its place, "N
-// transfers") or End ("✓", "N transfers done").
+// transfers"), a mix step (its place, "N wells mixed") or End ("✓", "N transfers done").
 function entryHeading(plan, key) {
   if (key === START) {
     return { badge: "0", name: "Start", count: `${countOf(plan.startingContents.length, "well")} filled` };
   }
   if (key === END) {
-    const total = plan.operationList.listOperations().length;
-    return { badge: "✓", name: "End", count: `${countOf(total, "transfer")} done` };
+    return { badge: "✓", name: "End", count: `${countOf(transfersDone(plan), "transfer")} done` };
   }
+  const count = transfersIn(plan, key).length;
   return {
     badge: String(stageOrder(plan).indexOf(key) + 1),
     name: plan.stageList.get(key).name,
-    count: countOf(transfersIn(plan, key).length, "transfer"),
+    count: isMixStep(plan, key) ? `${countOf(count, "well")} mixed` : countOf(count, "transfer"),
   };
 }
 
-// An open card's contents: the palette for Start, the settings and transfers for a stage, a note for
-// End.
+// How many transfers the plan's transfer stages hold, for End's count (section 7): a mix step's
+// mixed wells aren't counted, since they move no liquid (Andy, 2026-10-30).
+function transfersDone(plan) {
+  return stageOrder(plan)
+    .filter((id) => !isMixStep(plan, id))
+    .reduce((total, id) => total + transfersIn(plan, id).length, 0);
+}
+
+// An open card's contents: the palette for Start, the settings and transfers for a stage, the mixed
+// wells for a mix step, a note for End.
 function createEntryBody(plan, key) {
   const body = createElement("div", "", "entry-body");
   if (key === START) {
@@ -1564,6 +1584,9 @@ function createEntryBody(plan, key) {
         "note",
       ),
     );
+  } else if (isMixStep(plan, key)) {
+    // A mix step's card has no settings line: the ⟳ after its name says what it is (section 7).
+    body.append(...createMixedWellSection(plan, key));
   } else {
     body.append(createSettingsLine(plan, key), ...createTransferSection(plan, key));
   }
@@ -1603,8 +1626,17 @@ function createTransferSection(plan, id) {
   if (transfers.length === 0) {
     return [createElement("p", "No transfers yet. Add some on the deck.", "note")];
   }
+  const toggle = createListToggle(id, "transfers");
   const shown = expandedStages.has(id);
-  const toggle = createElement("button", shown ? "Hide transfers ▾" : "Show transfers ▸", "toggle-list");
+  return shown ? [toggle, createTransferList(plan, id, transfers)] : [toggle];
+}
+
+// The button that shows or hides an open stage's list, "Show transfers ▸" / "Hide transfers ▾" (or
+// "wells" for a mix step, given as `what`). Each stage remembers whether its list is shown, while
+// the page is open; showing it scrolls the column to show the whole card (section 7).
+function createListToggle(id, what) {
+  const shown = expandedStages.has(id);
+  const toggle = createElement("button", shown ? `Hide ${what} ▾` : `Show ${what} ▸`, "toggle-list");
   toggle.type = "button";
   toggle.setAttribute("aria-expanded", String(shown));
   toggle.addEventListener("click", () => {
@@ -1618,7 +1650,63 @@ function createTransferSection(plan, id) {
     // Showing the list scrolls the column to show the whole card; hiding it doesn't scroll.
     scrollCardIntoView(elements.stagesList.querySelector(`[data-entry="${cssEscape(id)}"]`));
   });
-  return shown ? [toggle, createTransferList(plan, id, transfers)] : [toggle];
+  return toggle;
+}
+
+// A mix step card's wells (section 7): a note with none; otherwise Show wells / Hide wells and,
+// when shown, a row per mixed well.
+function createMixedWellSection(plan, id) {
+  const mixedWells = transfersIn(plan, id);
+  if (mixedWells.length === 0) {
+    return [createElement("p", "No wells mixed yet. Click or drag across wells on the deck.", "note")];
+  }
+  const toggle = createListToggle(id, "wells");
+  if (!expandedStages.has(id)) {
+    return [toggle];
+  }
+  const howMixed = mixedWellsOf(plan, id);
+  const list = createElement("ul", "", "transfer-list");
+  list.append(...mixedWells.map((transfer) => createMixedWellRow(plan, id, transfer, howMixed)));
+  return [toggle, list];
+}
+
+// One mixed well's row (section 7), e.g. "⟳ Plate1 A2", then how much of the well is mixed,
+// "33% of well" ("too little" in red for the well causing a mix problem, "–" for the other wells of
+// that row), and × at the right, which stops mixing it. Pointing at the row singles its well out on
+// the deck, as for a transfer. `howMixed` is the mix step's wells from mixedWellsOf.
+function createMixedWellRow(plan, id, transfer, howMixed) {
+  const row = createElement("li", "", "transfer-row mixed-well-row");
+  row.dataset.position = String(transfer.position);
+  const name = wellName(plan, transfer.source);
+  const mixed = howMixed.get(wellKey(transfer.source));
+  const share = createElement("span", mixedShareText(mixed), "mixed-share");
+  share.classList.toggle("problem", mixed !== undefined && mixed.problemVolume !== null);
+  const remove = createElement("button", "×", "remove-transfer");
+  remove.type = "button";
+  remove.setAttribute("aria-label", `Stop mixing ${name}`);
+  remove.addEventListener("click", () => {
+    highlightTransfer(null);
+    if (tryEdit(() => unmixWell(plan, id, transfer.source)) !== false) {
+      showMessage(`Stopped mixing ${name}.`, "note");
+    }
+  });
+  row.append(createElement("span", `⟳ ${name}`, "transfer-text"), share, remove);
+  row.addEventListener("pointerenter", () => highlightTransfer(transfer.position));
+  row.addEventListener("pointerleave", () => highlightTransfer(null));
+  return row;
+}
+
+// How much of a mixed well is mixed, for its row in a mix step's card (section 7), from its entry in
+// mixedWellsOf: "33% of well" (its mixed share, rounded down), "too little" for the well causing a
+// mix problem, or "–" for the other wells of that row.
+function mixedShareText(mixed) {
+  if (mixed === undefined) {
+    return "–";
+  }
+  if (mixed.problemVolume !== null) {
+    return "too little";
+  }
+  return mixed.share === null ? "–" : `${mixedPercent(mixed.share)}% of well`;
 }
 
 // The open stage's transfer list: one row per transfer.
@@ -1824,12 +1912,21 @@ function createTipGroupHeading(plan, group) {
   return heading;
 }
 
-// A seam (section 7): the space between two cards, which shows a line and a + for adding a stage
-// (and, between two stages, a tip button) while pointed at or focused. `addBefore` is the stage the
-// new stage goes before (null for last); `tipsBefore` the stage a tip change goes before, if any.
+// A seam (section 7): the space between two cards, which shows a line, a + for adding a stage, the
+// mix step button just left of it (and, between two stages, a tip button just right of it) while
+// pointed at or focused. `addBefore` is the stage the new stage goes before (null for last);
+// `accessibleName` the +'s, which says "a stage"; `tipsBefore` the stage a tip change goes before,
+// if any.
 function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore }) {
   const seam = createElement("div", "", "seam");
   seam.append(createElement("span", "", "seam-line"));
+  // The mix step button adds a mix step where the + would add a stage, with the same tips.
+  const mix = createElement("button", "⟳", "seam-button add-mix-step");
+  mix.type = "button";
+  mix.title = "Add a mix step here";
+  mix.setAttribute("aria-label", accessibleName.replace("a stage", "a mix step"));
+  mix.addEventListener("click", () => addMixStepAt(addBefore, takeTips));
+  seam.append(mix);
   // The + is drawn by the stylesheet, two bars crossing at the circle's center, so it's centered.
   const add = createElement("button", "", "seam-button add-stage");
   add.type = "button";
@@ -1860,6 +1957,21 @@ function addStageAt(beforeId, takeTips) {
   source = null;
   recordEdit(added.plan, added.id);
   showMessage("Added a stage. New transfers go into it.", "ok");
+  scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(added.id)}"]`));
+}
+
+// Adds a mix step before `beforeId` (or last, for null) and opens it, as one undoable edit
+// (section 7).
+function addMixStepAt(beforeId, takeTips) {
+  const added = tryLogic(() => addMixStep(currentPlan(), beforeId, { takeTips }));
+  if (added === false) {
+    return;
+  }
+  // As for a new stage: it opens as part of the same undoable edit.
+  closeEditingBox();
+  source = null;
+  recordEdit(added.plan, added.id);
+  showMessage("Added a mix step. Click or drag across wells on the deck to mix them.", "ok");
   scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(added.id)}"]`));
 }
 
@@ -2074,7 +2186,8 @@ function fillWells(wells) {
 // --- Transfers (section 9) ---
 
 // Acts on a click on a well: while Start is open it fills the well; while a stage is open it chooses
-// the source, clears it, or adds the transfer; while End is open it says nothing can be added.
+// the source, clears it, or adds the transfer; while a mix step is open it mixes the well, or stops
+// mixing it; while End is open it says nothing can be added.
 function clickWell(end) {
   const open = currentOpen();
   if (open === START) {
@@ -2083,6 +2196,10 @@ function clickWell(end) {
   }
   if (open === END) {
     showMessage("End shows the finished plates. Open a stage to add transfers into it.", "note");
+    return;
+  }
+  if (isMixStep(currentPlan(), open)) {
+    toggleMixedWell(end);
     return;
   }
   if (source === null) {
@@ -2094,6 +2211,69 @@ function clickWell(end) {
     source = null;
     addOneTransfer(from, end);
   }
+}
+
+// --- Mixing wells (section 9, "A mix step open") ---
+
+// A click on a well with a mix step open: mixes the well (mixWells), or, if the mix step mixes it
+// already, stops mixing it (unmixWell).
+function toggleMixedWell(end) {
+  const plan = currentPlan();
+  const stage = currentOpen();
+  const isMixed = transfersIn(plan, stage).some((transfer) => wellKey(transfer.source) === wellKey(end));
+  if (isMixed) {
+    if (tryEdit(() => unmixWell(plan, stage, end)) !== false) {
+      showMessage(`Stopped mixing ${wellName(plan, end)}.`, "note");
+    }
+    return;
+  }
+  mixWellsWithReport([end]);
+}
+
+// Mixes each of `wells` the open mix step doesn't mix yet, as one edit (mixWells), and says so:
+// "Mixing Plate1 A2." for one well, "Mixing 12 wells." for several, or "Those wells are mixed
+// already." If the edit leaves a well causing a mix problem or an overdraw that wasn't there before,
+// the message is an error naming it, e.g. "Mixing Plate1 A2, but it holds too little to mix."
+function mixWellsWithReport(wells) {
+  const plan = currentPlan();
+  const stage = currentOpen();
+  const mixedAlready = new Set(transfersIn(plan, stage).map((transfer) => wellKey(transfer.source)));
+  const toMix = wells.filter((well) => !mixedAlready.has(wellKey(well)));
+  if (toMix.length === 0) {
+    showMessage("Those wells are mixed already.", "note");
+    return;
+  }
+  const mixed = tryEdit(() => mixWells(plan, stage, toMix));
+  if (mixed === false) {
+    return;
+  }
+  const what = toMix.length === 1 ? wellName(plan, toMix[0]) : countOf(toMix.length, "well");
+  const tooLittle = newWellHoldingTooLittle(plan, mixed);
+  if (tooLittle === null) {
+    showMessage(`Mixing ${what}.`, "ok");
+  } else if (toMix.length === 1) {
+    showMessage(`Mixing ${what}, but it holds too little to mix.`, "error");
+  } else {
+    showMessage(`Mixing ${what}, but ${wellName(plan, tooLittle)} holds too little to mix.`, "error");
+  }
+}
+
+// The well an edit from `before` to `after` left causing a mix problem or an overdraw that wasn't
+// there before, { labware, well }, or null: a new mix problem's well first, otherwise a new
+// overdraw's well. Overdraws are recognized across the edit as transfers are (section 9).
+function newWellHoldingTooLittle(before, after) {
+  const problemKey = (problem) => JSON.stringify([problem.stage, problem.end, wellKey(problem)]);
+  const problemsBefore = new Set(mixVolumes(before).problems.map(problemKey));
+  const newMixProblem = mixVolumes(after).problems.find((problem) => !problemsBefore.has(problemKey(problem)));
+  if (newMixProblem !== undefined) {
+    return newMixProblem;
+  }
+  const overdrawnBefore = overdrawnOperations(before);
+  const operations = after.operationList.listOperations();
+  const newOverdraw = replay(after.startingContents, after.operationList)
+    .listProblems()
+    .find((problem) => !overdrawnBefore.has(operations[problem.operationIndex]));
+  return newOverdraw ?? null;
 }
 
 // Chooses a well as the source of the next transfer.
@@ -2234,11 +2414,17 @@ function movePointer(event) {
   drawCursorArrow();
 }
 
-// Turns the press into a drag: filling a box while Start is open; sending the chosen source into a
-// box, or making one transfer, while a stage is open.
+// Turns the press into a drag: filling a box while Start is open; mixing a box while a mix step is
+// open; sending the chosen source into a box, or making one transfer, while a stage is open.
 function beginDrag() {
   hideContentsCard();
-  const kind = currentOpen() === START ? "fill" : source !== null ? "box" : "transfer";
+  const open = currentOpen();
+  let kind = source !== null ? "box" : "transfer";
+  if (open === START) {
+    kind = "fill";
+  } else if (isMixStep(currentPlan(), open)) {
+    kind = "mix";
+  }
   drag = { kind, from: press.end, over: press.end };
   updateDragMarks();
 }
@@ -2276,13 +2462,20 @@ function clickWellWithKeyboard(event) {
   }
 }
 
-// Finishes a drag (sections 8 and 9): fills the box, adds one transfer, or sends the source into
-// the box.
+// Finishes a drag (sections 8 and 9): fills the box, mixes the box, adds one transfer, or sends the
+// source into the box.
 function finishDrag({ kind, from, over }) {
   updateDragMarks();
   if (kind === "fill") {
     if (over !== null && over.labware === from.labware) {
       fillWells(wellsInBox(from, over));
+    }
+    return;
+  }
+  if (kind === "mix") {
+    // As when filling, a drag that ends off the labware it started on mixes nothing.
+    if (over !== null && over.labware === from.labware) {
+      mixWellsWithReport(wellsInBox(from, over));
     }
     return;
   }
@@ -2359,11 +2552,12 @@ function endOf(element) {
 // --- The cursor's label and the contents card (sections 6 and 12) ---
 
 // Shows, beside the pointer, what a click does: the next transfer's volume with a stage open; the
-// brush with Start open; nothing with End open or off the labware.
+// brush with Start open; nothing with a mix step or End open, or off the labware.
 function updateCursorLabel() {
   const label = elements.cursorLabel;
   const open = currentOpen();
-  if (pointerPosition === null || open === END) {
+  // A mix step has no volume at the cursor (section 9).
+  if (pointerPosition === null || open === END || (open !== START && isMixStep(currentPlan(), open))) {
     label.hidden = true;
     return;
   }
@@ -2520,11 +2714,15 @@ function openEditingBox(kind, key) {
 }
 
 // What a box edits, before any changes: a component's name and color; a stage's name, modes and
-// whether each end mixes; a tip change's tip type and probes.
+// whether each end mixes; a mix step's name; a tip change's tip type and probes.
 function originalFor(plan, kind, key) {
   if (kind === "component") {
     const component = plan.components.find((candidate) => candidate.name === key);
     return { name: component.name, color: component.color };
+  }
+  if (kind === "stage" && isMixStep(plan, key)) {
+    // A mix step's box edits only its name (section 10).
+    return { name: plan.stageList.get(key).name, mixStep: true };
   }
   if (kind === "stage") {
     const { name, settings } = plan.stageList.get(key);
@@ -2635,10 +2833,13 @@ function redrawEditingBox() {
 // The open editing box's element: its fields for its kind, then Remove, Discard and Save.
 function createEditingBox(plan) {
   const box = createElement("div", "", "editing-box");
-  // A stage's box is wider than the others, so its menus show whole mode names (section 15).
-  box.classList.toggle("stage-box", editingBox.kind === "stage");
+  const isMixStepBox = editingBox.original.mixStep === true;
+  // A stage's box is wider than the others, so its menus show whole mode names (section 15); a mix
+  // step's has no menus, so it's as wide as the others (section 10).
+  box.classList.toggle("stage-box", editingBox.kind === "stage" && !isMixStepBox);
   box.setAttribute("role", "dialog");
-  box.setAttribute("aria-label", `Edit ${editingBox.kind === "tip" ? "new tips" : editingBox.kind}`);
+  const what = isMixStepBox ? "mix step" : editingBox.kind === "tip" ? "new tips" : editingBox.kind;
+  box.setAttribute("aria-label", `Edit ${what}`);
   box.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && event.target.matches("input[type=text]")) {
       event.preventDefault();
@@ -2652,6 +2853,8 @@ function createEditingBox(plan) {
   });
   if (editingBox.kind === "component") {
     box.append(...componentBoxFields(plan));
+  } else if (isMixStepBox) {
+    box.append(...mixStepBoxFields(plan));
   } else if (editingBox.kind === "stage") {
     box.append(...stageBoxFields(plan));
   } else {
@@ -2722,6 +2925,22 @@ function stageBoxFields(plan) {
   const nameField = createNameField(draft.name, "Name");
   const grid = createSettingsGrid(plan, editingBox.key, draft);
   return [nameField, grid];
+}
+
+// A mix step's box (section 10): Name, then a note saying how it mixes, from its destinationMix,
+// e.g. "Mixes each well: 90% of the well (≈ 108 µL), 3 times, at 400 µL/s.", or "(no wells yet)"
+// in place of the volume while it mixes none. No modes: a mix step's settings are its own.
+function mixStepBoxFields(plan) {
+  const id = editingBox.key;
+  const nameField = createNameField(editingBox.draft.name, "Name");
+  const mix = plan.stageList.get(id).settings.destinationMix;
+  if (mix === null) {
+    // Not one the page makes, but a plan file could hold it.
+    return [nameField, createElement("p", "Doesn't mix: it has no mix after dispensing.", "note")];
+  }
+  const volume = transfersIn(plan, id).length === 0 ? " (no wells yet)" : mixVolumeText(plan, id, "destination");
+  const note = `Mixes each well: ${mix.share}% of the well${volume}, ${countOf(mix.times, "time")}, at ${mix.speed} µL/s.`;
+  return [nameField, createElement("p", note, "note mix-step-note")];
 }
 
 // The two ends of a stage as the box shows them: the logic's end, the draft's names for that end's
@@ -2807,15 +3026,21 @@ function createMixCell(plan, id, draft, boxEnd) {
 function mixTooltip(plan, id, boxEnd) {
   const ownMix = plan.stageList.get(id).settings[`${boxEnd.end}Mix`];
   const mix = ownMix ?? DEFAULT_MIX;
-  const volumes = ownMix === null ? [] : mixRowsOf(plan, id).map((row) => row[`${boxEnd.end}MixVolume`]);
-  let volumeText = "";
-  if (volumes.length > 0) {
-    const least = Math.min(...volumes);
-    const most = Math.max(...volumes);
-    const range = least === most ? formatVolume(least) : `${formatVolume(least)}–${formatVolume(most)}`;
-    volumeText = ` (≈ ${range} µL)`;
-  }
+  const volumeText = ownMix === null ? "" : mixVolumeText(plan, id, boxEnd.end);
   return `${boxEnd.mixName}: ${mix.share}% of the well${volumeText}, ${countOf(mix.times, "time")}, at ${mix.speed} µL/s.`;
+}
+
+// The volume stage `id`'s mix at `end` works out to, for a tooltip or note (section 10): " (≈ 108
+// µL)", or a range such as " (≈ 18–200 µL)" when its rows differ (mixVolumes); "" if it has no rows.
+function mixVolumeText(plan, id, end) {
+  const volumes = mixRowsOf(plan, id).map((row) => row[`${end}MixVolume`]);
+  if (volumes.length === 0) {
+    return "";
+  }
+  const least = Math.min(...volumes);
+  const most = Math.max(...volumes);
+  const range = least === most ? formatVolume(least) : `${formatVolume(least)}–${formatVolume(most)}`;
+  return ` (≈ ${range} µL)`;
 }
 
 // One end's menu of pipetting modes (modesFor), with "(not one of the modes)" first if the stage's
@@ -2965,7 +3190,7 @@ function createRemoveQuestion(plan) {
 }
 
 // The question Remove asks, e.g. "Remove Media from 4 wells?" or "Remove stage 2, “Drugs” and its
-// 4 transfers?" or "Remove these new tips?".
+// 4 transfers?" ("4 mixed wells" for a mix step) or "Remove these new tips?".
 function removeQuestionText(plan) {
   const { kind, key } = editingBox;
   if (kind === "component") {
@@ -2975,7 +3200,7 @@ function removeQuestionText(plan) {
   if (kind === "stage") {
     const transfers = transfersIn(plan, key).length;
     const label = stageLabel(plan, key);
-    return transfers === 0 ? `Remove ${label}?` : `Remove ${label} and its ${countOf(transfers, "transfer")}?`;
+    return transfers === 0 ? `Remove ${label}?` : `Remove ${label} and its ${transfersWord(plan, key, transfers)}?`;
   }
   return "Remove these new tips?";
 }
@@ -3014,6 +3239,12 @@ function removeComponentFromBox(plan, name) {
   showMessage(`Removed ${name}${from}. Undo can bring it back.`, "note");
 }
 
+// A stage's transfers counted for Remove's question and message (section 10): "4 transfers", or for
+// a mix step "4 mixed wells".
+function transfersWord(plan, id, count) {
+  return isMixStep(plan, id) ? countOf(count, "mixed well") : countOf(count, "transfer");
+}
+
 // Removes a stage (section 10). If it was open, the first stage in the stage order opens.
 function removeStageFromBox(plan, id) {
   const transfers = transfersIn(plan, id).length;
@@ -3025,7 +3256,7 @@ function removeStageFromBox(plan, id) {
   closeEditingBox();
   const open = currentOpen() === id ? stageOrder(removed)[0] : currentOpen();
   recordEdit(removed, open);
-  const andTransfers = transfers === 0 ? "" : ` and its ${countOf(transfers, "transfer")}`;
+  const andTransfers = transfers === 0 ? "" : ` and its ${transfersWord(plan, id, transfers)}`;
   showMessage(`Removed ${label}${andTransfers}. Undo brings it back.`, "note");
 }
 
@@ -3073,11 +3304,15 @@ function saveComponentDraft(plan, name, draft) {
 }
 
 // A stage's Save: renames it (if the name changed) and changes its settings, as one edit
-// (changeStageSettings, which checks them). The settings are built end by end (stageEndSettings),
+// (changeStageSettings, which checks them); a mix step's Save only renames it. The settings are built end by end (stageEndSettings),
 // from the draft's mode and Mix (section 10).
 function saveStageDraft(plan, id, draft) {
   const stage = plan.stageList.get(id);
   const saved = draft.name === stage.name ? plan : renameStage(plan, id, draft.name);
+  if (draft.mixStep === true) {
+    // A mix step's box changes only its name (section 10).
+    return saved;
+  }
   const settings = { ...stage.settings };
   for (const boxEnd of BOX_ENDS) {
     Object.assign(settings, stageEndSettings(stage.settings, boxEnd, draft[boxEnd.mode], draft[boxEnd.mix]));
