@@ -620,15 +620,16 @@ describe("file-writer", () => {
     });
   });
 
-  test("a stage with a mix problem at the destination is refused, naming the well and its volume", () => {
+  test("a stage with a mix problem at the destination is refused, naming the well and its volumes", () => {
     let plan = renameStage(planWithStages(3), "3", "Seeding");
     plan = withTransfersIn(plan, ["1", "2"]);
-    plan = addTransfer(plan, transferTo("3", "A3", 0.05));
+    plan = addTransfer(plan, transferTo("3", "A3", 0.9));
     plan = setStageMix(plan, "3", "destination", exampleMix());
     assert.throws(() => write(plan), {
       message:
-        `Stage 3, "Seeding", mixes ${PLATE.name} A3 after dispensing when it holds only 0.05 µL, ` +
-        "and 90% of that is 0 µL. Turn that mixing off, or put more in the well first.",
+        `Stage 3, "Seeding", mixes ${PLATE.name} A3 after dispensing when it holds only 0.9 µL: ` +
+        "90% of that is 0.8 µL, and a mix needs at least 1.1 µL. " +
+        "Turn that mixing off, or put more in the well first.",
     });
   });
 
@@ -639,8 +640,9 @@ describe("file-writer", () => {
     plan = setStageMix(plan, "1", "source", { share: 50, times: 2, speed: 100 });
     assert.throws(() => write(plan), {
       message:
-        `Stage 1, "Wash", mixes ${PLATE.name} H1 before aspirating when it holds only 0.1 µL, ` +
-        "and 50% of that is 0 µL. Turn that mixing off, or put more in the well first.",
+        `Stage 1, "Wash", mixes ${PLATE.name} H1 before aspirating when it holds only 0.1 µL: ` +
+        "50% of that is 0 µL, and a mix needs at least 1.1 µL. " +
+        "Turn that mixing off, or put more in the well first.",
     });
   });
 

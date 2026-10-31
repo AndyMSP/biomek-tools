@@ -21,6 +21,7 @@ import { replay } from "../contents-tracking/contents-tracking.js";
 import { labwareNames, gridOf } from "../deck/deck.js";
 import { tipGroups } from "../tip-groups/tip-groups.js";
 import { mixVolumes } from "../mix-volumes/mix-volumes.js";
+import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 
 // The two files every run has; the Transfer From File files are named after their stages.
 const SETUP_FILE_NAME = "Setup.csv";
@@ -102,7 +103,7 @@ export function writeRunFiles(plan, timestamp) {
   checkPlan(plan);
   const stages = stagesWithTransfers(plan);
   const mixing = mixVolumes(plan);
-  checkStages(plan, stages, mixing.problems);
+  checkStages(plan, stages, mixing);
 
   const folderName = folderNameFor(timestamp, plan.experimentName);
   const folderPath = `${BASE_FOLDER}${folderName}\\`;
@@ -216,9 +217,9 @@ function checkPlanHasTransfers(plan) {
 
 // Throws at the first problem among `stages` (the stages with transfers, in stage order), checking
 // each stage in turn for its place (at most HIGHEST_PLACE), then an overdraw, then a mix problem
-// (among `mixProblems`, from mix-volumes), then a transfer whose volume rounds to 0. Stages are
+// (among `mixing`'s problems, from mix-volumes), then a transfer whose volume rounds to 0. Stages are
 // named by place and name, as the page shows them.
-function checkStages(plan, stages, mixProblems) {
+function checkStages(plan, stages, mixing) {
   const overdrawn = stagesWithOverdraw(plan);
   for (const stage of stages) {
     const shown = `Stage ${stage.place}, ${describeValue(stage.name)},`;
@@ -234,9 +235,10 @@ function checkStages(plan, stages, mixProblems) {
           "Fix it before writing the files.",
       );
     }
-    const mixProblem = mixProblems.find((problem) => problem.stage === stage.id);
+    const mixProblem = mixing.problems.find((problem) => problem.stage === stage.id);
     if (mixProblem !== undefined) {
-      throw new Error(mixProblemMessage(shown, stage, mixProblem));
+      const rows = mixing.stages.find((entry) => entry.stage === stage.id).rows;
+      throw new Error(mixProblemMessage(shown, stage, mixProblem, mixProblemVolume(rows, mixProblem)));
     }
     const skipped = stage.transfers.find((transfer) => roundVolume(transfer.volume) === 0);
     if (skipped !== undefined) {
@@ -249,17 +251,28 @@ function checkStages(plan, stages, mixProblems) {
 }
 
 // The message for `problem`, a mix problem (mix-volumes) of `stage`, shown as `shown` (its place and
-// name), e.g. 'Stage 3, "Seeding", mixes Plate1 A2 after dispensing when it holds only 0.05 µL, and
-// 90% of that is 0 µL. Turn that mixing off, or put more in the well first.' The well is named by its
-// labware's name, as the files name it.
-function mixProblemMessage(shown, stage, problem) {
+// name), whose mix volume is `volume`, e.g. 'Stage 3, "Seeding", mixes Plate1 A2 after dispensing
+// when it holds only 0.9 µL: 90% of that is 0.8 µL, and a mix needs at least 1.1 µL. Turn that
+// mixing off, or put more in the well first.' The well is named by its labware's name, as the files
+// name it, and volumes are written as in the files.
+function mixProblemMessage(shown, stage, problem, volume) {
   const when = problem.end === "source" ? "before aspirating" : "after dispensing";
   const { share } = stage.settings[`${problem.end}Mix`];
   return (
     `${shown} mixes ${problem.labware} ${problem.well} ${when} when it holds only ` +
-    `${formatVolume(problem.held)} µL, and ${share}% of that is 0 µL. ` +
+    `${formatVolume(problem.held)} µL: ${share}% of that is ${formatVolume(volume)} µL, ` +
+    `and a mix needs at least ${formatVolume(MIN_MIX_VOLUME)} µL. ` +
     "Turn that mixing off, or put more in the well first."
   );
+}
+
+// The mix volume of a stage's first mix problem, `problem`, from the stage's `rows` (mix-volumes):
+// the first row whose volume at the problem's end is under MIN_MIX_VOLUME. mix-volumes lists a
+// stage's problems in row order, so no earlier row has one at that end, e.g. 0.8 for a destination
+// holding 0.9 µL, mixed at 90%.
+function mixProblemVolume(rows, problem) {
+  const column = `${problem.end}MixVolume`;
+  return rows.find((row) => row[column] !== null && row[column] < MIN_MIX_VOLUME)[column];
 }
 
 // The IDs of the stages with an overdraw: a transfer that asks a well for more than it holds, as
