@@ -1,12 +1,13 @@
 // Unit tests for deck.js. Each test comes from the "Test cases" section of deck.md.
 //
-// They use the real config/deck.js, and also check that file (ADR 0009). Where a test needs a
-// labware of a given grid, it finds one in DECK rather than naming it, so the tests still pass when
-// the deck changes.
+// They use the real config/deck.js and config/labware-types.js, and also check both files
+// (ADR 0009). Where a test needs a labware of a given grid, it finds one in DECK by gridOf rather
+// than naming it, so the tests still pass when the deck changes.
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { DECK } from "../../../config/deck.js";
+import { LABWARE_TYPES } from "../../../config/labware-types.js";
 import { checkName } from "../input-checks/input-checks.js";
 import { GRID_96, GRID_1X12_NUMBERED } from "../well-grid/well-grid.js";
 import {
@@ -14,18 +15,20 @@ import {
   hasLabware,
   gridOf,
   labwareTypeOf,
+  capacityOf,
+  deadVolumeOf,
   checkWell,
   wellsInBox,
 } from "./deck.js";
 
-// The name of the first labware in DECK whose grid is `gridName`, e.g. "GRID_96" → "Plate".
-function labwareWithGrid(gridName) {
-  return DECK.find((entry) => entry.grid === gridName).name;
+// The name of the first labware in DECK whose grid is `grid`, e.g. GRID_96 → "Plate".
+function labwareWithGrid(grid) {
+  return DECK.find((entry) => gridOf(entry.name) === grid).name;
 }
 
 // A 96-well labware and the numbered (reservoir) labware, found in DECK.
-const PLATE = labwareWithGrid("GRID_96");
-const RESERVOIR = labwareWithGrid("GRID_1X12_NUMBERED");
+const PLATE = labwareWithGrid(GRID_96);
+const RESERVOIR = labwareWithGrid(GRID_1X12_NUMBERED);
 
 // The message for a labware that isn't on the deck, e.g. noLabwareMessage("Bench") →
 // 'There\'s no labware "Bench" on the deck. The deck has "Plate", "Deep", "Res".'
@@ -42,9 +45,9 @@ function notAWellMessage(got) {
 describe("deck", () => {
   // --- The deck description (config/deck.js) ---
 
-  test("every entry has exactly name, grid and labwareType", () => {
+  test("every entry has exactly name and labwareType", () => {
     for (const entry of DECK) {
-      assert.deepEqual(Object.keys(entry).sort(), ["grid", "labwareType", "name"]);
+      assert.deepEqual(Object.keys(entry).sort(), ["labwareType", "name"]);
     }
   });
 
@@ -60,9 +63,38 @@ describe("deck", () => {
     assert.equal(new Set(names).size, names.length);
   });
 
-  test('every grid is "GRID_96" or "GRID_1X12_NUMBERED"', () => {
+  test("every labwareType is a key in LABWARE_TYPES", () => {
     for (const entry of DECK) {
-      assert.ok(["GRID_96", "GRID_1X12_NUMBERED"].includes(entry.grid), `grid of ${entry.name}`);
+      assert.ok(Object.hasOwn(LABWARE_TYPES, entry.labwareType), `type of ${entry.name}`);
+    }
+  });
+
+  // --- The labware types (config/labware-types.js) ---
+
+  test("every labware type's key passes checkName", () => {
+    for (const key of Object.keys(LABWARE_TYPES)) {
+      assert.doesNotThrow(() => checkName(key, "labware type"));
+    }
+  });
+
+  test("every labware type has exactly grid, capacity and deadVolume", () => {
+    for (const [key, type] of Object.entries(LABWARE_TYPES)) {
+      assert.deepEqual(Object.keys(type).sort(), ["capacity", "deadVolume", "grid"], key);
+    }
+  });
+
+  test('every labware type\'s grid is "GRID_96" or "GRID_1X12_NUMBERED"', () => {
+    for (const [key, type] of Object.entries(LABWARE_TYPES)) {
+      assert.ok(["GRID_96", "GRID_1X12_NUMBERED"].includes(type.grid), `grid of ${key}`);
+    }
+  });
+
+  test("every capacity is a number above 0, and every deadVolume a number from 0 to the capacity", () => {
+    for (const [key, type] of Object.entries(LABWARE_TYPES)) {
+      assert.equal(typeof type.capacity, "number", `capacity of ${key}`);
+      assert.ok(type.capacity > 0, `capacity of ${key}`);
+      assert.equal(typeof type.deadVolume, "number", `deadVolume of ${key}`);
+      assert.ok(type.deadVolume >= 0 && type.deadVolume <= type.capacity, `deadVolume of ${key}`);
     }
   });
 
@@ -97,7 +129,13 @@ describe("deck", () => {
     }
   });
 
-  test('gridOf gives GRID_96 for a "GRID_96" labware and GRID_1X12_NUMBERED for a numbered one', () => {
+  test('gridOf gives GRID_96 for a labware whose type\'s grid is "GRID_96", and GRID_1X12_NUMBERED for "GRID_1X12_NUMBERED"', () => {
+    const expectedGrids = { GRID_96, GRID_1X12_NUMBERED };
+    for (const entry of DECK) {
+      const gridName = LABWARE_TYPES[entry.labwareType].grid;
+      assert.equal(gridOf(entry.name), expectedGrids[gridName], entry.name);
+    }
+    // Both grids are on the deck, so both cases are covered.
     assert.equal(gridOf(PLATE), GRID_96);
     assert.equal(gridOf(RESERVOIR), GRID_1X12_NUMBERED);
   });
@@ -108,9 +146,18 @@ describe("deck", () => {
     }
   });
 
-  test("gridOf and labwareTypeOf refuse a labware that isn't on the deck", () => {
-    assert.throws(() => gridOf("Bench"), { message: noLabwareMessage("Bench") });
-    assert.throws(() => labwareTypeOf("Bench"), { message: noLabwareMessage("Bench") });
+  test("capacityOf and deadVolumeOf give each entry's type's capacity and deadVolume", () => {
+    for (const entry of DECK) {
+      const type = LABWARE_TYPES[entry.labwareType];
+      assert.equal(capacityOf(entry.name), type.capacity, entry.name);
+      assert.equal(deadVolumeOf(entry.name), type.deadVolume, entry.name);
+    }
+  });
+
+  test("gridOf, labwareTypeOf, capacityOf and deadVolumeOf refuse a labware that isn't on the deck", () => {
+    for (const lookUp of [gridOf, labwareTypeOf, capacityOf, deadVolumeOf]) {
+      assert.throws(() => lookUp("Bench"), { message: noLabwareMessage("Bench") }, lookUp.name);
+    }
   });
 
   // --- Wells ---

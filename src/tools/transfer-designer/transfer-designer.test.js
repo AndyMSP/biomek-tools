@@ -10,6 +10,8 @@ import assert from "node:assert/strict";
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
+import { gridOf } from "../../shared/deck/deck.js";
+import { GRID_96, GRID_1X12_NUMBERED } from "../../shared/well-grid/well-grid.js";
 import {
   DEFAULT_MIX as CONFIGURED_DEFAULT_MIX,
   MIN_MIX_VOLUME,
@@ -71,10 +73,10 @@ import {
 } from "./transfer-designer.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
-const [PLATE, OTHER_PLATE] = DECK.filter((entry) => entry.grid === "GRID_96").map(
+const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_96).map(
   (entry) => entry.name,
 );
-const RESERVOIR = DECK.find((entry) => entry.grid === "GRID_1X12_NUMBERED").name;
+const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED).name;
 
 // The parts every plan has.
 const PLAN_PARTS = [

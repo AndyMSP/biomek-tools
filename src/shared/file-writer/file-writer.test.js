@@ -12,6 +12,7 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { DECK } from "../../../config/deck.js";
+import { GRID_96, GRID_1X12_NUMBERED } from "../well-grid/well-grid.js";
 import { TIP_TYPES } from "../../../config/tip-types.js";
 import {
   MIN_MIX_VOLUME,
@@ -41,11 +42,11 @@ import { writeRunFiles, checkExperimentName, folderNameFor } from "./file-writer
 
 // A 96-well labware, a 96-well labware of another labware type (a deep-well plate), and the
 // numbered (reservoir) labware, each found in DECK with its labware type.
-const PLATE = DECK.find((entry) => entry.grid === "GRID_96");
+const PLATE = DECK.find((entry) => gridOf(entry.name) === GRID_96);
 const DEEP = DECK.find(
-  (entry) => entry.grid === "GRID_96" && entry.labwareType !== PLATE.labwareType,
+  (entry) => gridOf(entry.name) === GRID_96 && entry.labwareType !== PLATE.labwareType,
 );
-const RESERVOIR = DECK.find((entry) => entry.grid === "GRID_1X12_NUMBERED");
+const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED);
 
 // The timestamp most tests write with, the experiment name their plans have, and the folder they
 // give.

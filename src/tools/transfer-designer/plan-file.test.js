@@ -8,6 +8,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { TIP_TYPES } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
+import { gridOf } from "../../shared/deck/deck.js";
+import { GRID_96, GRID_1X12_NUMBERED } from "../../shared/well-grid/well-grid.js";
 import {
   START,
   emptyPlan,
@@ -33,10 +35,10 @@ import {
 import { PLAN_FILE_FORMAT, PLAN_FILE_VERSION, planToText, planFromText } from "./plan-file.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK, in the deck's order.
-const [PLATE, OTHER_PLATE] = DECK.filter((entry) => entry.grid === "GRID_96").map(
+const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_96).map(
   (entry) => entry.name,
 );
-const RESERVOIR = DECK.find((entry) => entry.grid === "GRID_1X12_NUMBERED").name;
+const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED).name;
 
 const SAVED_BY = "transfer designer v0.2.0";
 

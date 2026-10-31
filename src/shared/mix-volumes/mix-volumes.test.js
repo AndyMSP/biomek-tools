@@ -10,6 +10,8 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { DECK } from "../../../config/deck.js";
+import { gridOf } from "../deck/deck.js";
+import { GRID_96, GRID_1X12_NUMBERED } from "../well-grid/well-grid.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
 import { SHORT_MIX_SHARE, MIN_MIX_VOLUME, DEFAULT_MIX } from "../../../config/mixing.js";
 import {
@@ -29,11 +31,11 @@ import { mixVolumes } from "./mix-volumes.js";
 
 // A 96-well labware, a 96-well labware of another labware type (a deep-well plate), and the
 // numbered (reservoir) labware, each found in DECK with its labware type.
-const PLATE = DECK.find((entry) => entry.grid === "GRID_96");
+const PLATE = DECK.find((entry) => gridOf(entry.name) === GRID_96);
 const DEEP = DECK.find(
-  (entry) => entry.grid === "GRID_96" && entry.labwareType !== PLATE.labwareType,
+  (entry) => gridOf(entry.name) === GRID_96 && entry.labwareType !== PLATE.labwareType,
 );
-const RESERVOIR = DECK.find((entry) => entry.grid === "GRID_1X12_NUMBERED");
+const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED);
 
 // The one component the tests put in wells.
 const MEDIA = "Media";
