@@ -1,5 +1,8 @@
 # contents-tracking — specification
 
+> **Draft (2026-10-30).** Reopened for item 11 of v0.2.0 (well capacities and dead volume): the
+> three kinds of problem, and the usable volume. Final once Andy has tested the page built from it.
+
 ## 1. Purpose
 `contents-tracking.js` works out what each well contains after a series of operations. It starts
 from the contents of the wells before the first operation, and replays the transfers of an operation
@@ -23,8 +26,10 @@ It is used by:
 Version 1 takes the starting contents of the wells and an operation list, and works out the µL of
 each named component in each well after any number of operations. A well's total volume and each
 component's volume fraction (its share of the well, e.g. 10% Dye) are calculated from those amounts.
-It also reports when a transfer takes more liquid than its source well holds at that point, and which
-wells are affected as a result.
+It also reports **problems**: a transfer that asks for more than its source well has above its
+dead volume, and a well filled over its capacity; and which wells are affected as a result. Each
+labware's capacity and dead volume come from the `deck` module (`deck.md`); labware the deck
+doesn't know has neither, so only its arithmetic is tracked.
 
 Other operation types, when they're added, are skipped unless they change what's in a well.
 
@@ -32,8 +37,9 @@ Not in version 1 (see `docs/roadmap.md`):
 - **Final concentrations** in units such as mM. These need each component's stock concentration,
   such as "Dye is 10 mM." Version 1 gives each component's volume fraction of a well (e.g. 10%); a
   later version multiplies that by the stock concentration (10% × 10 mM = 1 mM final).
-- **Well capacities**, such as warning when a well overfills. These need labware types.
-- **Dead volume**, the liquid a well holds that a tip can't reach.
+- **Spilling.** A well filled over its capacity is reported, but its contents are tracked as if
+  the liquid had fit, since what spills can't be known.
+- **A working maximum** below the capacity, such as headroom for mixing (roadmap, item 11).
 - **Losses**, such as evaporation, liquid left on tips, or pipetting inaccuracy. Version 1 assumes
   every transfer moves exactly its volume.
 - **Saving and loading** starting contents.
@@ -67,32 +73,66 @@ The same shape as the starting contents, so it could be used as starting content
 - A well that has been emptied is listed with empty components, `{}`.
 - The order of wells, and of components within a well, isn't specified.
 
+**Capacity, dead volume and usable volume**
+
+For a labware the deck knows (`hasLabware`, `deck.md`), its capacity is `capacityOf(labware)` and
+its dead volume `deadVolumeOf(labware)`. A well's **usable volume** is what it holds minus its
+labware's dead volume, never below 0: a trough holding 2300 µL with a 2000 µL dead volume has
+300 µL usable; one holding 1500 µL has 0. For labware the deck doesn't know, the dead volume is 0
+(the usable volume is what the well holds) and there is no capacity.
+
 **Applying a transfer**
 
 The transfer's volume leaves the source in proportion to everything in it, and the same amounts of
-each component are added to the destination.
+each component are added to the destination. A transfer can take only the source's usable volume:
+if it asks for more, it moves the usable volume and is recorded as a problem (below).
 
 **Problems**
 
-One entry for each transfer that requested more than its source well held at that point, in the
-order they occur:
-```js
-{ operationIndex: 2, labware: "Plate 2", well: "D5", requested: 60, available: 50 }
-```
-- `operationIndex` is the transfer's position in `listOperations()`, counting from 0.
-- `labware` and `well` are the source well.
-- `requested` is the transfer's volume, and `available` is what the source held at that point, both
-  in µL. The transfer moves `available`, which empties the source, and the replay carries on.
+One entry for each problem, in the order they occur, each with a `kind`:
+
+- **`"dead-volume"`**: a transfer asked its source for more than its usable volume, but not more
+  than it held. The tip would reach into the dead volume and draw air.
+  ```js
+  { kind: "dead-volume", operationIndex: 2, labware: "Res", well: "5",
+    requested: 400, held: 2300, deadVolume: 2000, available: 300 }
+  ```
+- **`"overdraw"`**: a transfer asked its source for more than it held at all. The same entry
+  shape as `"dead-volume"`, e.g. `requested: 60, held: 50, deadVolume: 20, available: 30`.
+- **`"overfill"`**: a well is over its capacity: a transfer took its destination over, or a well
+  starts over. Reported once per crossing: a transfer into a well that's already over capacity
+  isn't a new problem, and a well that starts over is a problem of the start only.
+  ```js
+  { kind: "overfill", operationIndex: 4, labware: "Plate 2", well: "A1", held: 380, capacity: 360 }
+  { kind: "overfill", operationIndex: null, labware: "Plate 2", well: "B1", held: 400, capacity: 360 }
+  ```
+
+In every entry:
+- `operationIndex` is the transfer's position in `listOperations()`, counting from 0; `null` for
+  a well that starts over its capacity.
+- `labware` and `well` are the source well for a draw, the destination for an overfill.
+- Volumes are in µL: `requested` is the transfer's volume; `held` what the well held when the
+  transfer was asked (for an overfill, what it holds after it); `deadVolume` the labware's;
+  `available` the usable volume, which the transfer moves; `capacity` the labware's.
+
+A draw problem is `"dead-volume"` or `"overdraw"`, never both: `"overdraw"` when `requested` is
+more than `held`, else `"dead-volume"`. Labware the deck doesn't know can have `"overdraw"`
+problems only (its dead volume is 0 and it has no capacity).
+
+Problems come in the order they occur: the starting overfills first, in the starting contents'
+order, then each transfer's, a draw problem before an overfill of the same transfer.
 
 **Affected wells**
 
-One entry for each well whose contents differ from the plan because of one or more problems:
+One entry for each well whose contents differ from the plan because of one or more draw problems
+(`"dead-volume"` or `"overdraw"`):
 ```js
 { labware: "Plate 2", well: "D7", causes: [2, 3] }
 ```
-- `causes` lists the `operationIndex` of each problem that reached this well, from lowest to
+- `causes` lists the `operationIndex` of each draw problem that reached this well, from lowest to
   highest, each once.
-- A problem affects its source well and its destination well.
+- A draw problem affects its source well and its destination well.
+- An overfill affects no well: the contents are tracked as the plan says (section 2, "Spilling").
 - Any transfer from an affected well passes all of that well's causes to its destination, combined
   with any causes the destination already has.
 - The order of the affected wells isn't specified.
@@ -105,9 +145,11 @@ One entry for each well whose contents differ from the plan because of one or mo
   volume is below 0.000001 µL (one picoliter), the well is treated as empty, `{}`.
 - Components in a well that isn't empty are kept, however small. For example, a well after nine
   10-fold dilutions still holds 0.0000001 µL of Dye, and that's real.
-- A transfer counts as taking too much only if it requests more than the source holds by more than
-  0.000001 µL. A transfer that requests more by less than that isn't a problem, and moves what the
-  source holds, as an overdraw does, so no amount goes below 0.
+- A transfer counts as taking too much only if it requests more than the source's usable volume by
+  more than 0.000001 µL, and as an overdraw only if it requests more than the source holds by more
+  than that. A transfer that requests more by less than that isn't a problem, and moves the usable
+  volume, as a draw problem does, so no amount goes below 0. Likewise a well counts as over its
+  capacity only by more than 0.000001 µL.
 - Rounding for display is left to pages.
 
 One picoliter is far smaller than anything a pipette can move, and far larger than rounding
@@ -186,8 +228,8 @@ before its volume), then the operation list, then the operation
 count. The first problem found is reported. `NaN` and `Infinity` count as numbers in JavaScript, so
 the volume and count checks reject them by name.
 
-A transfer that asks for more than its source holds is not an error. It is recorded as a problem
-(section 3), and the replay carries on.
+A transfer that asks for more than its source's usable volume, or that fills a well over its
+capacity, is not an error. It is recorded as a problem (section 3), and the replay carries on.
 
 **Methods that take a labware and a well**
 
@@ -247,10 +289,11 @@ The examples use these starting contents unless a case says otherwise:
 - Leaving out `operationCount`, and passing `undefined`, both apply every operation.
 - `operationCount` equal to the number of operations is accepted.
 
-**Problems and affected wells**
+**Problems and affected wells** (on labware the deck doesn't know, where the dead volume is 0)
 - 60 µL from Plate 1 B1 (holding 50) to Plate 1 B2, as operation 0: `listProblems()` gives
-  `[{ operationIndex: 0, labware: "Plate 1", well: "B1", requested: 60, available: 50 }]`. B1 holds
-  `{}`, B2 holds `{ Water: 50 }`, and both have causes `[0]`.
+  `[{ kind: "overdraw", operationIndex: 0, labware: "Plate 1", well: "B1", requested: 60, held: 50,
+  deadVolume: 0, available: 50 }]`. B1 holds `{}`, B2 holds `{ Water: 50 }`, and both have causes
+  `[0]`.
 - The replay carries on: a later transfer from B2 to B3 gives B3 causes `[0]`.
 - A transfer from a well that has never held anything is a problem with `available: 0`.
 - Causes combine: if B3 then receives a transfer from a second problem, operation 2, its causes are
@@ -260,6 +303,36 @@ The examples use these starting contents unless a case says otherwise:
 - Problems are listed in the order the operations occur.
 - An overdraw from a well to itself is a problem, the well is affected, and its contents are
   unchanged.
+- Labware the deck doesn't know gets no overfill: a well on Plate 1 holding 1,000,000 µL has no
+  problem.
+
+**Dead volume and capacity** (on the real deck: the tests find a labware in `DECK` and take its
+capacity and dead volume from `config/labware-types.js`, so changing the numbers never breaks
+them; `D` is the dead volume and `C` the capacity of the labware chosen.)
+- A well holding `D + 100` with a transfer of 100 µL from it: no problem; it holds `D` afterwards.
+- A well holding `D + 100` with a transfer of 150 µL from it: one `"dead-volume"` problem with
+  `requested: 150, held: D + 100, deadVolume: D, available: 100`; the well holds `D` afterwards
+  (100 moved), and both wells have the transfer in their causes.
+- A well holding `D + 100` with a transfer of `D + 150` µL from it: one `"overdraw"` problem with
+  `held: D + 100, available: 100`; 100 moved.
+- A well holding `D` exactly, or less, has 0 usable: a transfer of 1 µL from it is a
+  `"dead-volume"` problem with `available: 0`, and nothing moves. (Only if `D` is above 0; for a
+  labware with `D` of 0 the case is an overdraw.)
+- Requesting 0.0000005 µL more than the usable volume isn't a problem; 0.000002 µL more is.
+- A well holding `C - 10` receiving 20 µL: one `"overfill"` problem with
+  `operationIndex` the transfer's, `held: C + 10, capacity: C`; the well holds `C + 10`, and
+  neither well is affected (`listAffected()` doesn't list it; `causesOf` gives `[]`).
+- A well holding `C - 10` receiving 10 µL exactly: no problem. Receiving `10 + 0.0000005` µL: no
+  problem; `10 + 0.000002`: a problem.
+- The transfer that takes a well over capacity is the problem, and a second transfer into the
+  well, now over, isn't: two transfers of 20 µL into a well holding `C - 10` give one problem,
+  the first's.
+- A well that starts holding `C + 1` gives an `"overfill"` problem with `operationIndex: null`
+  before any transfer's problem, and a transfer into it adds no overfill.
+- One transfer with both: from a well holding `D + 50` asking 60 µL into a well holding `C - 10`:
+  a `"dead-volume"` problem then an `"overfill"` problem (50 moved, so the destination holds
+  `C + 40`), in that order.
+- Problems of several kinds are listed in the order they occur.
 
 **Tiny amounts**
 - A well holding `{ Water: 0.30000000000000004 }` (0.1 + 0.2 in JavaScript) gives `{}` after a
