@@ -232,6 +232,9 @@ Last updated: 2026-10-28
   its own kind (above); each mixed well stored as a transfer into itself with a **1 µL placeholder**
   volume (whether the volume matters is to check at the Biomek); End's count leaves mix steps' wells
   out; a mix step's card has ⟳ after its name and no separate `⟳ Mixes` line.
+  **(c1) is built** (#110, 2026-10-30): `config/mixing.js`, each row's `mixedWells` in
+  `mix-volumes`, `DEFAULT_MIX` in the transfer designer, and the page's Mix row, ⟳ and badges;
+  checked in headless Chrome.
 - **Trying: Claude starts Claude Code's builds itself,** as a background agent with only the
   specifications and the repository, then reviews them (Andy, 2026-10-30; first used for #106).
   CLAUDE.md's "Who does what" stays unchanged until Andy decides after a longer trial.
