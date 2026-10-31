@@ -83,14 +83,13 @@ An end whose mix is `null` has no mix volume.
 holds more than the emptiest mixes a smaller share of itself. For each well a row mixes, its
 **mixed share** is the row's mix volume as a percentage of what that well holds when it's mixed
 (worked out as for the emptiest well, above): `volume / held × 100`, or `0` if it holds nothing. A
-mix is **short** if its mixed share is under `SHORT_MIX_SHARE` (Andy, 2026-10-29: 40%, whatever the
+mix is **short** if its mixed share is under `SHORT_MIX_SHARE` (Andy, 2026-10-29: whatever the
 cause, whether the emptiest well or the tips' limit). A short mix isn't a problem: the plan can
 still be written, and a tool shows it as a warning.
 
 **A mix problem** is a row whose mix volume at an end is **under `MIN_MIX_VOLUME`**, the minimum
-mix volume (1 µL): its emptiest well holds too little when it's mixed. Mix volumes needn't be
-accurate, only possible, and a smaller mix wouldn't run (Andy, 2026-10-30; how the Biomek handles
-1 µL is to be checked at the instrument). So the plan can't be written to files until it's fixed (Andy,
+mix volume: its emptiest well holds too little when it's mixed. Mix volumes needn't be
+accurate, only possible, and a smaller mix wouldn't run (Andy, 2026-10-30). So the plan can't be written to files until it's fixed (Andy,
 2026-10-30). A stage with a mix problem at either end of any row **has a mix problem**.
 
 ### Configuration
@@ -101,6 +100,11 @@ in µL, as an object with one entry for each tip type in `TIP_TYPES`, e.g.
 BC230 tip holds in one trip, and what a 1 mL syringe holds in one draw with air gaps (`biomek.md`,
 "Volumes and tips"), not checked as mix volumes on the instrument. This module's tests check the
 file: each tip type has exactly one limit, a number above 0, and there are no others.
+
+These two values, and `MIX_VOLUME_LIMITS`, are named only here: elsewhere, this specification and its
+tests use them by name (`MIN_MIX_VOLUME`, `SHORT_MIX_SHARE`), so changing `config/` never breaks a
+test (CLAUDE.md, "Testing"). The tests work out their wells' volumes from the config value, and only
+the tests of the config file itself name a number. Examples with numbers use today's values.
 
 `config/mixing.js` (ADR 0009, new) exports `MIN_MIX_VOLUME`: the smallest mix volume that runs, in
 µL: `1` (Andy, 2026-10-30: first 1.1, since a mix runs on a transfer of 1 µL; then 1, a round
@@ -184,10 +188,10 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
 **Mixed shares**
 - The example in section 4 gives two destination wells: A1, `held` `20`, `share` `90`, not short;
   A2, `held` `150`, `share` `12` (18 ÷ 150 × 100), short.
-- A mix capped at the tips' limit is short when the share it gives is under 40%: 200 µL of a source
-  holding 1000 µL (BC230 tips) gives `share` `20`, short.
+- A mix capped at the tips' limit is short when the share it gives is under `SHORT_MIX_SHARE`:
+  200 µL of a source holding 1000 µL (BC230 tips) gives `share` `20`, short (with today's 40%).
 - A well holding nothing when mixed gives `share` `0`, short.
-- A share of exactly `40` isn't short; `39.99` is.
+- A share of exactly `SHORT_MIX_SHARE` isn't short; one just under it (0.01 less) is.
 - A well a row draws from twice is listed once, with what it holds as the emptiest-well rule works
   it out; an end that doesn't mix lists no wells; a row that doesn't mix has `mixedWells` `[]`.
 - `config/mixing.js`: `SHORT_MIX_SHARE` is a number above 0 and at most 100.
@@ -195,9 +199,9 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
 **Problems**
 - A destination that's empty before the stage and gets 0.05 µL, mixed at 90%, gives `0` and one
   problem: `{ stage, end: "destination", labware, well, held: 0.05 }`.
-- A destination holding 0.9 µL when mixed, at 90%, gives `0.8` and a problem; holding 1.1 µL gives
-  `0.9` (0.99 rounded down) and a problem; holding 1.2 µL gives `1` (1.08 rounded down) and no
-  problem.
+- **The minimum, from `config/`:** a destination whose mix works out to one tenth of a µL under
+  `MIN_MIX_VOLUME` is a problem; one whose mix works out to exactly `MIN_MIX_VOLUME` isn't. (With
+  today's 1 µL, at 90%: holding 1.1 µL gives `0.9`, a problem; holding 1.2 µL gives `1`, none.)
 - A source drawn empty by the stage, with a smallest draw of 0.1 µL, mixed at 50%, gives `0` and a
   problem naming it.
 - With two wells holding equally little, the problem names the first in the row's transfer order.

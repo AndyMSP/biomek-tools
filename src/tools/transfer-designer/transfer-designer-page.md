@@ -261,7 +261,7 @@ card (dark, light text) shows:
   `mixedWells`; `mix-volumes.md`), rounded **down** to a whole percent, so a short mix never reads
   as 40%; if the stage mixes it in more than one row, the smallest. In yellow (`#FFD45C`) when the
   mix is short. For the well causing a mix problem instead: `Holds too little to mix: the mix is
-  0.8 µL, under 1 µL.`, in the card's problem color; for the other wells of that row: `Not mixed
+  0.8 µL, under 1 µL.` (the minimum, `MIN_MIX_VOLUME`; today 1 µL), in the card's problem color; for the other wells of that row: `Not mixed
   until the well in red is fixed.`
 
 Transfer numbers are positions in the operation list counting from 1. The card hides when the
@@ -360,7 +360,7 @@ holds:
 A stage **with an overdraw** (`stagesWithOverdraw`), row or card, has a light red background and
 border, and the tooltip `This stage has an overdraw: a transfer asks a well for more than it holds.`
 A stage **with a mix problem** (`stagesWithMixProblem`) looks the same, with the tooltip `This stage
-mixes a well that holds too little: the mix is under 1 µL.` (the minimum from `config/`); one with both has the overdraw's
+mixes a well that holds too little: the mix is under 1 µL.` (the minimum, `MIN_MIX_VOLUME`, from `config/`; today 1 µL); one with both has the overdraw's
 tooltip.
 
 **End** (number `✓`, name `End`, count `N transfers done`: every transfer in the plan). Its card
