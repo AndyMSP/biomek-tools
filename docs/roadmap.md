@@ -321,6 +321,12 @@ added on 2026-10-28 (Andy).
     about drawing into the dead volume. Starts with the facts, with sources (`docs/domain/`):
     each value, and whether dead volume depends on the tips or technique as well as the labware.
     How starting volumes are entered once dead volume is modelled is decided in its specification.
+    *Decided 2026-10-30 (Andy):* **one dead volume per labware type**; tips and technique don't
+    affect it, because Andy builds the lab's techniques and sets each one's minimum pipetting
+    height so it reaches down to the labware's dead volume. Capacities and dead volumes live in `config/` (with the deck description), so
+    stand-in numbers can go in first and be replaced when measured, as the pipetting modes were;
+    stand-ins go in "Technical debt" until then. Known so far: reservoir trough 2 mL, deep well
+    200 µL (`exp37.md`). Next: the preview.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
