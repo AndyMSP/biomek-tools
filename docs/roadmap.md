@@ -269,7 +269,7 @@ Last updated: 2026-10-28
   `Overfills the well by 20 µL.`; (6) the contents card drops its total, usable and capacity
   lines altogether: the well, its components, then only problem and warning lines (holding only
   dead volume is neither; the problem lines carry the numbers). Tried in one preview (2026-10-31;
-  Andy liked it), then specified and built.
+  Andy liked it), then specified and **built (#119)**.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
