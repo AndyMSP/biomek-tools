@@ -1933,6 +1933,7 @@ function createTipGroupBox(plan, group, index, nextGroup, open, problems, drawnK
       addBefore: nextGroup === undefined ? null : nextGroup.stages[0],
       takeTips: false,
       accessibleName: "Add a stage at the end of these tips",
+      tipsWithStage: true,
     }),
   );
   box.append(stages);
@@ -1963,11 +1964,12 @@ function createTipGroupHeading(plan, group) {
 }
 
 // A seam (section 7): the space between two cards, which shows a line, a + for adding a stage, the
-// mix step button just left of it (and, between two stages, a tip button just right of it) while
-// pointed at or focused. `addBefore` is the stage the new stage goes before (null for last);
-// `accessibleName` the +'s, which says "a stage"; `tipsBefore` the stage a tip change goes before,
-// if any.
-function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore }) {
+// mix step button just left of it and, on all but a box's first seam, a tip button just right of it,
+// while pointed at or focused. `addBefore` is the stage the new stage goes before (null for last);
+// `accessibleName` the +'s, which says "a stage"; `tipsBefore` the stage a tip change goes before
+// (a seam between two stages); `tipsWithStage` true on a box's last seam, whose tip button adds a
+// stage with new tips instead. A seam above a box's first stage has neither.
+function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore, tipsWithStage = false }) {
   const seam = createElement("div", "", "seam");
   seam.append(createElement("span", "", "seam-line"));
   // The mix step button adds a mix step where the + would add a stage, with the same tips.
@@ -1985,43 +1987,73 @@ function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore }) {
   add.addEventListener("click", () => addStageAt(addBefore, takeTips));
   seam.append(add);
   if (tipsBefore !== undefined) {
-    const tips = createElement("button", "", "seam-button add-tips");
-    tips.type = "button";
-    tips.title = "New tips here";
-    tips.setAttribute("aria-label", `New tips before ${stageLabel(plan, tipsBefore)}`);
-    tips.append(createElement("span", "", "tip-icon"));
-    tips.addEventListener("click", () => addTipChangeBefore(tipsBefore));
-    seam.append(tips);
+    seam.append(
+      createSeamTipButton("New tips here", `New tips before ${stageLabel(plan, tipsBefore)}`, () =>
+        addTipChangeBefore(tipsBefore),
+      ),
+    );
+  } else if (tipsWithStage) {
+    seam.append(
+      createSeamTipButton(
+        "New tips, with a new stage",
+        "Add a stage with new tips at the end of these tips",
+        () => addStageWithNewTipsAt(addBefore),
+      ),
+    );
   }
   return seam;
+}
+
+// A seam's tip button (section 7): a circle with the tip icon, in the tip button's fixed spot just
+// right of the +, with `tooltip`, `accessibleName` and `onClick`.
+function createSeamTipButton(tooltip, accessibleName, onClick) {
+  const tips = createElement("button", "", "seam-button add-tips");
+  tips.type = "button";
+  tips.title = tooltip;
+  tips.setAttribute("aria-label", accessibleName);
+  tips.append(createElement("span", "", "tip-icon"));
+  tips.addEventListener("click", onClick);
+  return tips;
 }
 
 // Adds a stage before `beforeId` (or last, for null) and opens it (section 7).
 function addStageAt(beforeId, takeTips) {
   const added = tryLogic(() => addStage(currentPlan(), beforeId, { takeTips }));
-  if (added === false) {
-    return;
+  if (added !== false) {
+    openAddedStage(added, "Added a stage. New transfers go into it.");
   }
-  // The new stage opens, as openEntry would open it, but as part of the same undoable edit.
-  closeEditingBox();
-  source = null;
-  recordEdit(added.plan, added.id);
-  showMessage("Added a stage. New transfers go into it.", "ok");
-  scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(added.id)}"]`));
 }
 
 // Adds a mix step before `beforeId` (or last, for null) and opens it, as one undoable edit
 // (section 7).
 function addMixStepAt(beforeId, takeTips) {
   const added = tryLogic(() => addMixStep(currentPlan(), beforeId, { takeTips }));
-  if (added === false) {
-    return;
+  if (added !== false) {
+    openAddedStage(added, "Added a mix step. Click or drag across wells on the deck to mix them.");
   }
-  // As for a new stage: it opens as part of the same undoable edit.
+}
+
+// Adds a stage where a box's last seam would (before `beforeId`, or last, for null), then a tip
+// change on it, as one undoable edit, and opens it (section 7): a new tip group started at the end
+// of a box in one press (Andy, 2026-10-31).
+function addStageWithNewTipsAt(beforeId) {
+  const added = tryLogic(() => {
+    const { plan, id } = addStage(currentPlan(), beforeId);
+    return { plan: addTipChange(plan, id), id };
+  });
+  if (added !== false) {
+    openAddedStage(added, "Added a stage with new tips. New transfers go into it.");
+  }
+}
+
+// Records `added` ({ plan, id }, from addStage or addMixStep) with the new stage open, as openEntry
+// would open it but as part of the same undoable edit, shows `message` (ok) and scrolls the column
+// to show the new card.
+function openAddedStage(added, message) {
   closeEditingBox();
   source = null;
   recordEdit(added.plan, added.id);
-  showMessage("Added a mix step. Click or drag across wells on the deck to mix them.", "ok");
+  showMessage(message, "ok");
   scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(added.id)}"]`));
 }
 
