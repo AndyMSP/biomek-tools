@@ -29,7 +29,8 @@
 > Mix checkbox for each end in a stage's box; ⟳ after an end's mode on the stage's card; a ⟳ badge
 > on each well the open stage mixes, yellow when the mix is short; and `Mixed N% of well` in the
 > contents card (sections 6, 7, 10, 15 and 16); the well causing a mix problem has a red badge, and
-> a mix under 1 µL is a problem (Andy, 2026-10-30, from the preview). Also the seam's tip button just right of its `+`,
+> a mix under 1 µL is a problem, and its red badge stays on the deck from its stage through End, with
+> `Mix problem` in the key (Andy, 2026-10-30, from the preview). Also the seam's tip button just right of its `+`,
 > each in a fixed spot (section 7; preview change 30). Mix steps come in layer (c2). They become
 > Final once built and tested by Andy.
 
@@ -217,8 +218,9 @@ to the right, which looked scattered.)
   while its labware is out. Its tooltip says `Bring out <label>` or `Put away <label>`. Putting
   labware away clears a source chosen on it. Undo doesn't change what's out.
 - **The key** shows only marks on the deck now: `Overdraw` (a well with a red ring and a red X) and
-  `Off plan` (a well with a red ring). Its example wells are drawn as the marks on the deck are
-  (below), the X's lines 2px thick. With neither, the key is hidden.
+  `Off plan` (a well with a red ring), and `Mix problem` (a red ⟳ badge, drawn as on the deck but
+  in the line, not on a well), each while that mark is on the deck. Its example wells are drawn as
+  the marks on the deck are (below), the X's lines 2px thick. With none, the key is hidden.
 - **The component colors** (third bar): each component's swatch and name, in the plan's order.
 - **`Arrows`** (pressed while on) shows or hides the transfer arrows.
 
@@ -262,7 +264,10 @@ card (dark, light text) shows:
   as 40%; if the stage mixes it in more than one row, the smallest. In yellow (`#FFD45C`) when the
   mix is short. For the well causing a mix problem instead: `Holds too little to mix: the mix is
   0.8 µL, under 1 µL.` (the minimum, `MIN_MIX_VOLUME`; today 1 µL), in the card's problem color; for the other wells of that row: `Not mixed
-  until the well in red is fixed.`
+  until the well in red is fixed.`;
+- if the well causes a mix problem in an earlier stage than the one open (or the deck shows End):
+  `Stage 1, “Tiny dispense”, can't mix this well: its mix is 0 µL, under 1 µL.`, in the card's
+  problem color: the first such stage, its mix volume, and `MIN_MIX_VOLUME` (today 1 µL).
 
 Transfer numbers are positions in the operation list counting from 1. The card hides when the
 pointer leaves the well, the page scrolls, or a drag starts.
@@ -281,8 +286,10 @@ pointer leaves the well, the page scrolls, or a drag starts.
   a **mix problem** (`mix-volumes`, `problems`): red for problems, yellow for warnings (Andy,
   2026-10-30). In a row with a mix problem, its other wells stay blue, not yellow: only the well to
   fix is marked, since the row's volume means nothing until it's fixed. A well mixed in more than
-  one row is red if it causes a problem in any, otherwise yellow if any of its mixes is short. Only the open stage's badges show, as with its arrows; Start and
-  End show none. A short mix is a warning, not a problem: it doesn't count in the problem count,
+  one row is red if it causes a problem in any, otherwise yellow if any of its mixes is short. Blue
+  and yellow badges are only the open stage's, as with its arrows. **A red badge stays**, as an
+  overdraw's marks do: from the stage with the mix problem through every later stage and End,
+  whichever stage is open (Andy, 2026-10-30: problems are seen wherever you look). Start shows none. A short mix is a warning, not a problem: it doesn't count in the problem count,
   and the files can still be written (Andy, 2026-10-30: the warning shows only on the deck; a
   warning in the Stages column was tried and left for later).
 - **A chosen source:** a blue outline. **The well under a drag:** a dashed blue outline. **A box being
@@ -737,7 +744,8 @@ page's configuration (ADR 0009):
   Non-Contact for Dispense on a stage whose destination mixes unchecks it and shows `Can't mix`; an
   end `(not one of the modes)` shows a disabled checkbox; the tooltips' volumes; ⟳ badges on the open
   stage's mixed wells only, red for the well causing a mix problem (a mix under 1 µL; that row's
-  other wells blue), yellow for a short mix (e.g. BC230 tips mixing a deep well holding
+  other wells blue; the red badge staying through later stages and End, with `Mix problem` in the
+  key), yellow for a short mix (e.g. BC230 tips mixing a deep well holding
   1000 µL), and `Mixed N% of well` in the contents card; a short mix isn't counted as a problem;
   a saved plan reopens with the same mixing, and its Biomek files have the mix columns;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
