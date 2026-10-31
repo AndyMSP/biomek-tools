@@ -132,6 +132,10 @@ biomek-tools/
 - Run the full test suite (`npm test`) before every commit. Never commit with failing tests.
 - Never change a test's expected result just to make it pass; find out why it fails. Never edit a
   golden file to make a test pass.
+- **Tests follow `config/`.** A test of behavior that depends on a value in `config/` works out its
+  numbers from that value, so changing `config/` never breaks a test; only the tests of the config
+  file itself name a number. Likewise, a specification gives a config value's number once, where it
+  describes the config file, and elsewhere uses its name (Andy, 2026-10-30).
 
 ## Git
 - Never commit directly to `main`. Do each task on its own branch, created from the latest `main`
