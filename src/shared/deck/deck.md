@@ -97,8 +97,8 @@ The module exports eight functions. None changes anything; each reads the config
 the same way, whichever corners are given.
 
 `capacityOf` and `deadVolumeOf` return the configured numbers as they are. The usable volume
-(what's held minus the dead volume) is worked out by whoever needs it, such as contents tracking,
-so that the rounding rule lives in one place.
+(what's held minus the dead volume) is worked out by contents tracking only (`usableVolumeOf`,
+`contents-tracking.md`), so that the rounding rule lives in one place.
 
 ## 5. Errors
 Each message says what's wrong and how to fix it. Values are shown with `describeValue`

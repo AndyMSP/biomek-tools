@@ -266,8 +266,9 @@ labware above to bring it into the editor.`
   in the order the components are listed in the well; for a trough, bands from the bottom up), with
   its total volume in short form (section 13) in the middle, on a small white label (white at 88%
   opacity, 4px corners, 2px × 3px padding), so it reads on any component color (Andy, 2026-10-26).
-- **Holding only dead volume:** a well whose total is at most its labware's dead volume
-  (`deadVolumeOf`, `deck.md`), so a tip can reach none of it, is filled as above but under
+- **Holding only dead volume:** a well that holds something but whose usable volume is 0
+  (`usableVolumeOf`, `contents-tracking.md`; the page never subtracts the dead volume itself), so
+  a tip can reach none of it, is filled as above but under
   diagonal stripes of the page's background color at 75% opacity (3px stripes, 7px apart, at
   45°), so it reads as liquid that's out of reach; its label is still the total. The same on
   plates and troughs (Andy, 2026-10-30: one rule for every labware). An empty well isn't striped.
@@ -278,8 +279,8 @@ labware above to bring it into the editor.`
 (the cursor's volume label is to the right), otherwise to its right, and kept inside the window. The
 card (dark, light text) shows:
 - the well, e.g. `Assay plate A1`; its total, `120 µL total`, or `Empty`;
-- if it holds something: its usable volume, `100 µL usable`, or, when that's 0, `0 µL usable: all
-  of it is dead volume`;
+- if it holds something: its usable volume (`usableVolumeOf`), `100 µL usable`, or, when that's
+  0, `0 µL usable: all of it is dead volume`;
 - for each component: its swatch, name, volume in µL and percentage (section 13);
 - the labware's limits, in small gray text: `Capacity 360 µL · dead volume 20 µL` (`capacityOf`
   and `deadVolumeOf`, `deck.md`);

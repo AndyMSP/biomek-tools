@@ -172,6 +172,7 @@ The module exports one function and one class.
 | `listAffected()` | The affected-wells list, as a new list each time. |
 | `componentsOf(labware, well)` | One well's components, e.g. `{ Dye: 10, Media: 90 }`. A well that has never held anything gives `{}`. |
 | `totalVolumeOf(labware, well)` | One well's total volume in µL, e.g. `100`. |
+| `usableVolumeOf(labware, well)` | One well's usable volume in µL: its total minus its labware's dead volume, never below 0, and 0 when the difference is below 0.000001 µL (section 3, "Tiny amounts"), so a mixture drawn down to exactly the dead volume reads as 0 usable despite arithmetic leftovers. Callers take the usable volume from here rather than subtracting themselves. |
 | `volumeFractionsOf(labware, well)` | Each component's volume fraction, from 0 to 1, e.g. `{ Dye: 0.1, Media: 0.9 }`. An empty well gives `{}`. |
 | `causesOf(labware, well)` | The well's causes, e.g. `[2, 3]`, or `[]` if it isn't affected. |
 
@@ -233,7 +234,7 @@ capacity, is not an error. It is recorded as a problem (section 3), and the repl
 
 **Methods that take a labware and a well**
 
-`componentsOf`, `totalVolumeOf`, `volumeFractionsOf` and `causesOf` check `labware`, then `well`,
+`componentsOf`, `totalVolumeOf`, `usableVolumeOf`, `volumeFractionsOf` and `causesOf` check `labware`, then `well`,
 with the same text rules. Each message names the method:
 
 | Problem | Message |
@@ -319,6 +320,10 @@ them; `D` is the dead volume and `C` the capacity of the labware chosen.)
   `"dead-volume"` problem with `available: 0`, and nothing moves. (Only if `D` is above 0; for a
   labware with `D` of 0 the case is an overdraw.)
 - Requesting 0.0000005 µL more than the usable volume isn't a problem; 0.000002 µL more is.
+- `usableVolumeOf` gives `100` for a well holding `D + 100`, `0` for one holding `D` or less,
+  and `0` for a well of two components holding `D + 150` after a draw of 150 µL, whatever leftover
+  the arithmetic leaves (e.g. 2150 + 150 drawn 300 leaves 2000.0000000000002); on labware the deck
+  doesn't know, it equals `totalVolumeOf`.
 - A well holding `C - 10` receiving 20 µL: one `"overfill"` problem with
   `operationIndex` the transfer's, `held: C + 10, capacity: C`; the well holds `C + 10`, and
   neither well is affected (`listAffected()` doesn't list it; `causesOf` gives `[]`).
