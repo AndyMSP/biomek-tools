@@ -160,7 +160,10 @@ How the tool decides the mix columns:
   the mode can't mix there (Non-Contact). Switching mixing on or off at an end switches that end's
   stored technique in the same edit, so the stored technique is always the one Biomek gets.
 - **A mix step** uses its own mode, from `config/` (MixOnly2 at both ends), and its `destinationMix`,
-  since MixOnly2 mixes at the dispense end.
+  since MixOnly2 mixes at the dispense end. Each of its wells is a transfer from the well into
+  itself of a placeholder volume (`MIX_STEP_VOLUME` in `config/`; Andy, 2026-10-30), since a row
+  needs a transfer to mix at;
+  whether that volume matters is to be checked at the Biomek.
 
 ### Volumes and checks
 - **Volumes in the files are rounded to 3 decimal places** (1 nL). Biomek keeps 15 significant

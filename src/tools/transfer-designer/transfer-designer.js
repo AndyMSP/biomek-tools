@@ -3,8 +3,10 @@
 //
 // A plan holds the components, the starting contents, the operation list, the stage list, the
 // stage order (a list of stage IDs; ADR 0011), the tip changes, the labware labels and the
-// experiment name. It is never changed after it's made: every edit returns a new plan that shares
-// every part the edit didn't change, so the plan history can keep many plans cheaply. The page
+// experiment name. A stage is a transfer stage or a mix step, which only mixes its wells, each a
+// transfer from the well into itself. A plan is never changed after it's made: every edit returns
+// a new plan that shares every part the edit didn't change, so the plan history can keep many
+// plans cheaply. The page
 // shows a plan and passes on what the user does; every rule about what that means lives here, so it
 // can be tested in Node.
 // It builds on the shared modules (operation-list, stage-list, contents-tracking, mix-volumes, deck)
@@ -13,7 +15,11 @@
 
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
-import { DEFAULT_MIX as CONFIGURED_DEFAULT_MIX } from "../../../config/mixing.js";
+import {
+  DEFAULT_MIX as CONFIGURED_DEFAULT_MIX,
+  MIX_STEP_MODE,
+  MIX_STEP_VOLUME,
+} from "../../../config/mixing.js";
 import { describeValue } from "../../shared/error-messages/error-messages.js";
 import { isObject, listNames, checkName } from "../../shared/input-checks/input-checks.js";
 import { OperationList } from "../../shared/operation-list/operation-list.js";
@@ -38,6 +44,9 @@ export const DEFAULT_MIX = Object.freeze({ ...CONFIGURED_DEFAULT_MIX });
 // What a new stage is called. Not numbered: a number stopped matching the stage's place once a
 // stage was inserted before it (Andy, 2026-10-25).
 export const NEW_STAGE_NAME = "New stage";
+
+// What a new mix step is called (transfer-designer.md, "Mix steps").
+export const NEW_MIX_STEP_NAME = "New mix step";
 
 // The Span-8 has probes 1 to 8, numbered as in Biomek Software. It's a fact about the instrument,
 // not a setting that might change, so it lives here rather than in config/.
@@ -166,34 +175,89 @@ export function stageOrder(plan) {
   return plan.stageOrder;
 }
 
-// Returns { plan, id }: the plan with a new stage, called NEW_STAGE_NAME, just before stage
+// Returns { plan, id }: the plan with a new transfer stage, called NEW_STAGE_NAME, just before stage
 // `beforeId` (or last, for null), and the new stage's ID. All its settings, mixes included, are
-// copied from the stage before it in the stage order, or from the first stage if there's none, so
-// it pipettes and mixes as that stage does (Andy, 2026-10-30). With takeTips, a tip change
-// before `beforeId` moves onto the new stage, so the new stage is the first to use those tips;
-// without it, the new stage uses the tips before that tip change.
+// copied from the nearest transfer stage: the nearest before it in the stage order, or, with none
+// before it, the nearest after it; with none at all, it has the default settings (Andy, 2026-10-30:
+// a new stage copies the nearest stage of its own kind). With takeTips, a tip change before
+// `beforeId` moves onto the new stage, so the new stage is the first to use those tips; without it,
+// the new stage uses the tips before that tip change.
 // e.g. addStage(plan, "2", { takeTips: true }).
 export function addStage(plan, beforeId, { takeTips = false } = {}) {
-  if (beforeId !== null && !plan.stageList.has(beforeId)) {
-    throw new Error(`There's no stage ${describeValue(beforeId)} to add a stage before.`);
-  }
-  const order = plan.stageOrder;
-  const newPlace = beforeId === null ? order.length : order.indexOf(beforeId);
-  // order[-1] is undefined, so a stage added before the first copies the first stage.
-  const copiedFrom = order[newPlace - 1] ?? order[0];
-  const settings = plan.stageList.get(copiedFrom).settings;
-  const { stageList, id } = plan.stageList.add(NEW_STAGE_NAME, settings);
-
-  let tipChanges = plan.tipChanges;
-  if (takeTips && beforeId !== null && Object.hasOwn(tipChanges, beforeId)) {
-    tipChanges = withKey(withoutKey(tipChanges, beforeId), id, tipChanges[beforeId]);
-  }
-  const added = withParts(plan, {
-    stageList,
-    stageOrder: [...order.slice(0, newPlace), id, ...order.slice(newPlace)],
-    tipChanges,
+  return addStageOfKind(plan, beforeId, takeTips, {
+    name: NEW_STAGE_NAME,
+    isOfKind: (settings) => !isMixStepSettings(settings),
+    defaults: defaultSettings,
   });
-  return { plan: withStartTipsFirst(added), id };
+}
+
+// Returns { plan, id }: the plan with a new mix step (docs/glossary.md), called NEW_MIX_STEP_NAME,
+// just before stage `beforeId` (or last, for null), and its ID, as addStage does for a transfer
+// stage. Its settings are copied from the nearest mix step, before it, else after it, or are the
+// default mix step settings if the plan has none (transfer-designer.md, "Mix steps").
+// e.g. addMixStep(plan, "3") puts a mix step just before stage 3.
+export function addMixStep(plan, beforeId, { takeTips = false } = {}) {
+  return addStageOfKind(plan, beforeId, takeTips, {
+    name: NEW_MIX_STEP_NAME,
+    isOfKind: isMixStepSettings,
+    defaults: defaultMixStepSettings,
+  });
+}
+
+// True if stage `id` is a mix step: its technique and liquid type are MIX_STEP_MODE's at both ends
+// (transfer-designer.md, "Mix steps"). False for a transfer stage, or an ID that isn't a stage.
+// e.g. isMixStep(plan, "2") → true.
+export function isMixStep(plan, id) {
+  return plan.stageList.has(id) && isMixStepSettings(plan.stageList.get(id).settings);
+}
+
+// Returns the plan with mix step `id` mixing each of `wells` (each { labware, well }, on the deck)
+// that it doesn't mix yet, as one edit: each becomes a transfer from the well into itself of
+// MIX_STEP_VOLUME (transfer-designer.md, "Mix steps"). Wells it mixes already, or listed twice, are
+// left out; if that leaves none, the same plan is returned. Throws, in this order, if `id` isn't a
+// mix step, `wells` isn't a list, or a well isn't on the deck (the first such well).
+// e.g. mixWells(plan, "2", [{ labware: "Plate1", well: "A1" }, { labware: "Plate1", well: "A2" }]).
+export function mixWells(plan, id, wells) {
+  checkMixStep(plan, id);
+  if (!Array.isArray(wells)) {
+    throw new Error(
+      `The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], ` +
+        `but got ${describeValue(wells)}.`,
+    );
+  }
+  wells.forEach((well) => checkWell(well));
+  const mixed = new Set(transfersIn(plan, id).map((transfer) => wellKey(transfer.source)));
+  const toMix = [];
+  for (const well of wells) {
+    const key = wellKey(well);
+    if (!mixed.has(key)) {
+      mixed.add(key);
+      toMix.push(mixedWellTransfer(id, well));
+    }
+  }
+  if (toMix.length === 0) {
+    return plan;
+  }
+  return addTransfers(plan, toMix);
+}
+
+// Returns the plan without mix step `id`'s mixed well `well` ({ labware, well }), so it no longer
+// mixes that well. Throws, in this order, if `id` isn't a mix step, `well` isn't an object, or the
+// mix step doesn't mix `well`, e.g. 'Stage 2, “Mix plate”, doesn't mix Plate1 A2.'
+export function unmixWell(plan, id, well) {
+  checkMixStep(plan, id);
+  if (!isObject(well)) {
+    throw new Error(
+      `The well to stop mixing must be a well, like { labware: "Plate1", well: "A1" }, ` +
+        `but got ${describeValue(well)}.`,
+    );
+  }
+  const key = wellKey(well);
+  const mixedWell = transfersIn(plan, id).find((transfer) => wellKey(transfer.source) === key);
+  if (mixedWell === undefined) {
+    throw new Error(`${stageNamed(plan, id)}, doesn't mix ${well.labware} ${well.well}.`);
+  }
+  return removeTransfer(plan, mixedWell.position);
 }
 
 // Returns the plan with stage `id` called `name`. The stage list checks both.
@@ -204,12 +268,15 @@ export function renameStage(plan, id, name) {
 // Returns the plan with stage `id`'s settings replaced by `settings`. The stage list checks both;
 // then each end's technique must match its mixing, the source's first (checkMixingMatches), so a
 // plan file can't bring in a stage whose technique Biomek would mix with when the plan says not to,
-// or the reverse (transfer-designer.md, section 3, "Mixing").
+// or the reverse (transfer-designer.md, section 3, "Mixing"); then the mix step rules
+// (checkMixStepSettings), so a plan file can't bring in a broken mix step either
+// (transfer-designer.md, "Mix steps").
 export function changeStageSettings(plan, id, settings) {
   const stageList = plan.stageList.changeSettings(id, settings);
   for (const end of ENDS) {
     checkMixingMatches(settings, end);
   }
+  checkMixStepSettings(plan, id, settings);
   return withParts(plan, { stageList });
 }
 
@@ -313,8 +380,9 @@ export function stagesWithMixProblem(plan) {
 // Returns the plan with `transfer` added to its stage, without changing the stage order. If the
 // stage already has transfers, it goes after them; if not, it goes just before the next stage in the
 // stage order that has transfers, or last. Throws, in this order, if the operation list refuses it
-// (its form, then the stage rule), its source or destination well isn't on the deck, or its stage
-// isn't in the plan.
+// (its form, then the stage rule), its source or destination well isn't on the deck, its stage
+// isn't in the plan, or its stage is a mix step and it isn't a mixed well (a transfer from a well
+// into itself of MIX_STEP_VOLUME; transfer-designer.md, "Mix steps").
 export function addTransfer(plan, transfer) {
   // add() runs the operation list's checks first, so a badly formed transfer never reaches the
   // later checks. Its result is the new list if the stage already has transfers.
@@ -324,6 +392,12 @@ export function addTransfer(plan, transfer) {
   if (!plan.stageList.has(transfer.stage)) {
     throw new Error(
       `There's no stage ${describeValue(transfer.stage)} in the plan to add this transfer to.`,
+    );
+  }
+  if (isMixStep(plan, transfer.stage) && !isMixedWell(transfer)) {
+    throw new Error(
+      `${stageNamed(plan, transfer.stage)}, is a mix step: it only mixes wells. ` +
+        "Add this transfer to a transfer stage.",
     );
   }
   if (positionsInStage(plan, transfer.stage).length > 0) {
@@ -340,9 +414,17 @@ export function addTransfers(plan, transfers) {
 }
 
 // Returns the plan with the transfer at `position` (counting from 0) given `volume`, keeping its
-// place and stage, e.g. changeVolume(plan, 3, 25). The operation list checks both.
+// place and stage, e.g. changeVolume(plan, 3, 25). The operation list checks both. Throws for a
+// mix step's mixed well, whose volume is a placeholder that can't be changed (transfer-designer.md,
+// "Mix steps").
 export function changeVolume(plan, position, volume) {
   const operation = plan.operationList.listOperations()[position];
+  // A position that isn't one gives undefined here; replace() reports it below.
+  if (operation !== undefined && isMixStep(plan, operation.stage)) {
+    throw new Error(
+      "A mix step's wells are mixed with its own settings, so their volume can't be changed.",
+    );
+  }
   // replace() checks the position before anything else, so a bad position is reported even though
   // `operation` is then undefined (spreading undefined gives nothing).
   return withParts(plan, {
@@ -631,6 +713,140 @@ export function setLabels(plan, labels) {
 }
 
 // --- Helpers used only inside this module ---
+
+// Returns { plan, id }: the plan with a new stage of one kind (a transfer stage or a mix step) just
+// before stage `beforeId` (or last, for null), as addStage and addMixStep describe. `kind` says
+// which: { name, isOfKind, defaults }: the new stage's name; a function telling whether a stage's
+// settings are of this kind; and a function giving the settings when no stage of this kind is
+// there to copy. Throws if `beforeId` isn't a stage or null.
+function addStageOfKind(plan, beforeId, takeTips, kind) {
+  if (beforeId !== null && !plan.stageList.has(beforeId)) {
+    throw new Error(`There's no stage ${describeValue(beforeId)} to add a stage before.`);
+  }
+  const order = plan.stageOrder;
+  const newPlace = beforeId === null ? order.length : order.indexOf(beforeId);
+  const copiedFrom = nearestOfKind(plan, newPlace, kind.isOfKind);
+  const settings =
+    copiedFrom === undefined ? kind.defaults() : plan.stageList.get(copiedFrom).settings;
+  const { stageList, id } = plan.stageList.add(kind.name, settings);
+
+  let tipChanges = plan.tipChanges;
+  if (takeTips && beforeId !== null && Object.hasOwn(tipChanges, beforeId)) {
+    tipChanges = withKey(withoutKey(tipChanges, beforeId), id, tipChanges[beforeId]);
+  }
+  const added = withParts(plan, {
+    stageList,
+    stageOrder: [...order.slice(0, newPlace), id, ...order.slice(newPlace)],
+    tipChanges,
+  });
+  return { plan: withStartTipsFirst(added), id };
+}
+
+// The ID of the stage a new stage at `newPlace` in the stage order copies: the nearest stage before
+// that place whose settings pass `isOfKind`, or, with none before it, the nearest after it; or
+// undefined if there's none (transfer-designer.md, "Stages"), e.g. with stage order ["1", "2", "3"],
+// where "2" is a mix step, a transfer stage at place 2 (between "2" and "3") copies "1".
+function nearestOfKind(plan, newPlace, isOfKind) {
+  const order = plan.stageOrder;
+  const isKind = (id) => isOfKind(plan.stageList.get(id).settings);
+  // findLast searches from the end back, so it finds the nearest before the new place.
+  const before = order.slice(0, newPlace).findLast(isKind);
+  return before ?? order.slice(newPlace).find(isKind);
+}
+
+// The default mix step settings, for a mix step with no other to copy: MIX_STEP_MODE's technique and
+// liquid type at both ends, no source mix, and DEFAULT_MIX at the destination, since MixOnly2 mixes
+// at the dispense end (transfer-designer.md, "Mix steps"). A new object each time.
+function defaultMixStepSettings() {
+  return {
+    sourceTechnique: MIX_STEP_MODE.technique,
+    sourceLiquidType: MIX_STEP_MODE.liquidType,
+    destinationTechnique: MIX_STEP_MODE.technique,
+    destinationLiquidType: MIX_STEP_MODE.liquidType,
+    sourceMix: null,
+    destinationMix: { ...DEFAULT_MIX },
+  };
+}
+
+// True if a stage's `settings` are a mix step's: MIX_STEP_MODE's technique and liquid type at both
+// ends, whatever its mixes.
+function isMixStepSettings(settings) {
+  return ENDS.every(
+    (end) =>
+      settings[`${end}Technique`] === MIX_STEP_MODE.technique &&
+      settings[`${end}LiquidType`] === MIX_STEP_MODE.liquidType,
+  );
+}
+
+// True if `transfer` is a mixed well: from a well into itself, of MIX_STEP_VOLUME.
+function isMixedWell(transfer) {
+  return (
+    wellKey(transfer.source) === wellKey(transfer.destination) &&
+    transfer.volume === MIX_STEP_VOLUME
+  );
+}
+
+// The transfer that mixes `well` in mix step `id`: from the well into itself, of MIX_STEP_VOLUME,
+// e.g. mixedWellTransfer("2", { labware: "Plate1", well: "A1" }) → { type: "transfer",
+// source: { labware: "Plate1", well: "A1" }, destination: { … the same }, volume: 1, stage: "2" }.
+function mixedWellTransfer(id, well) {
+  const end = { labware: well.labware, well: well.well };
+  return {
+    type: "transfer",
+    source: end,
+    destination: { ...end },
+    volume: MIX_STEP_VOLUME,
+    stage: id,
+  };
+}
+
+// Throws unless stage `id` is a mix step: 'There's no stage "9" in the plan.' for an ID that isn't a
+// stage, or 'Stage 2, “Drugs”, isn't a mix step, so it can't mix wells.'
+function checkMixStep(plan, id) {
+  if (!plan.stageList.has(id)) {
+    throw new Error(`There's no stage ${describeValue(id)} in the plan.`);
+  }
+  if (!isMixStep(plan, id)) {
+    throw new Error(`${stageNamed(plan, id)}, isn't a mix step, so it can't mix wells.`);
+  }
+}
+
+// A stage named by its place in the stage order (from 1) and its name, as messages start with it,
+// e.g. 'Stage 2, “Mix plate”'.
+function stageNamed(plan, id) {
+  return `Stage ${plan.stageOrder.indexOf(id) + 1}, “${plan.stageList.get(id).name}”`;
+}
+
+// Throws if stage `id`'s new `settings` break a mix step rule (transfer-designer.md, "Mix steps"),
+// checked in this order: MIX_STEP_MODE's technique at one end only; a mix step with a source mix;
+// a mix step without a destination mix; a stage with transfers changing kind (a transfer stage
+// becoming a mix step, or the reverse). A stage without transfers may change kind, since a plan
+// file gives its stages their settings before their transfers.
+// e.g. a mix step given a source mix throws 'A mix step mixes after dispensing only, so it can't
+// have a source mix.'
+function checkMixStepSettings(plan, id, settings) {
+  const atEnds = ENDS.filter((end) => settings[`${end}Technique`] === MIX_STEP_MODE.technique);
+  if (atEnds.length === 1) {
+    throw new Error(
+      `${describeValue(MIX_STEP_MODE.technique)} only mixes, so it's used at both ends of a mix ` +
+        `step or at neither.`,
+    );
+  }
+  const becomesMixStep = isMixStepSettings(settings);
+  if (becomesMixStep && settings.sourceMix !== null) {
+    throw new Error("A mix step mixes after dispensing only, so it can't have a source mix.");
+  }
+  if (becomesMixStep && settings.destinationMix === null) {
+    throw new Error("A mix step needs a destination mix: that's what it does.");
+  }
+  if (becomesMixStep !== isMixStep(plan, id) && transfersIn(plan, id).length > 0) {
+    throw new Error(
+      becomesMixStep
+        ? `${stageNamed(plan, id)}, has transfers, so it can't become a mix step.`
+        : `${stageNamed(plan, id)}, has mixed wells, so it can't become a transfer stage.`,
+    );
+  }
+}
 
 // The pipetting mode that a stage's `settings` use at `end`: the mode for that end whose liquid type
 // is the end's and whose technique, or mixing technique, is the end's; undefined if none is. The

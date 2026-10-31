@@ -33,6 +33,12 @@
 > `Mix problem` in the key (Andy, 2026-10-30, from the preview). Also the seam's tip button just right of its `+`,
 > each in a fixed spot (section 7; preview change 30). Mix steps come in layer (c2). They become
 > Final once built and tested by Andy.
+>
+> **Draft changes (2026-10-30, mixing layer (c2)):** mix steps, from the mixing preview Andy shaped
+> on 2026-10-29 and 2026-10-30 (its changes 1, 2, 12, 14, 18, 22 and 30, and Andy's decisions that
+> evening): the ⟳ button on each seam, a mix step's look, card and box, mixing wells on the deck,
+> and End counting only transfers (sections 7, 9, 10 and 16). They become Final once built and
+> tested by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -370,7 +376,20 @@ A stage **with a mix problem** (`stagesWithMixProblem`) looks the same, with the
 mixes a well that holds too little: the mix is under 1 µL.` (the minimum, `MIN_MIX_VOLUME`, from `config/`; today 1 µL); one with both has the overdraw's
 tooltip.
 
-**End** (number `✓`, name `End`, count `N transfers done`: every transfer in the plan). Its card
+**A mix step** (`isMixStep`) looks like any other stage, row or card, with a **⟳ after its name**
+in gray (`Mix plate ⟳`), so the names line up (Andy, 2026-10-29: only problems are color coded).
+Its count is `N wells mixed`. Its card holds no settings line (the ⟳ after its name says what it
+is; Andy, 2026-10-30), then:
+- with no wells: `No wells mixed yet. Click or drag across wells on the deck.`
+- otherwise `Show wells ▸` / `Hide wells ▾`, remembered as a stage's list is, showing a row per
+  mixed well: `⟳ Plate1 A2`, then, where a transfer's volume goes, how much of the well is mixed:
+  `33% of well` (its mixed share, rounded down; section 6), `too little` in red for the well causing
+  a mix problem, or `–` for the other wells of that row; then a `×` that stops mixing it
+  (`unmixWell`; message `Stopped mixing Plate1 A2.`). Pointing at a row singles out its well on the
+  deck, as for a transfer.
+
+**End** (number `✓`, name `End`, count `N transfers done`: every transfer in the plan's transfer
+stages; mix steps' mixed wells aren't counted, since they move no liquid; Andy, 2026-10-30). Its card
 holds `The deck shows the plates after every stage has run. Open a stage to add or change
 transfers.`
 
@@ -392,8 +411,9 @@ tip button (tooltip `New tips here`), the same size, **just right of the `+`**, 
 seam button has a **fixed spot**: the `+` always in the exact middle of the line, the tip button
 always just right of it; a seam without a tip button leaves its spot empty, so nothing moves from
 one seam to the next (Andy, 2026-10-30, from the mixing preview: buttons spread along the line
-looked scattered, and buttons that shift when one is missing jump around). The spot just left of
-the `+` is kept for the mix step button (mixing layer (c2)). A seam never takes room of its own, and never
+looked scattered, and buttons that shift when one is missing jump around). **Just left of the
+`+`**, 6px from it, every seam has the **mix step button**: a 26px circle, white with a blue border
+and a blue ⟳, like the tip button (tooltip `Add a mix step here`). A seam never takes room of its own, and never
 takes a click meant for a card. Each `+` adds a stage into the box it's in, and opens it (message
 `Added a stage. New transfers go into it.`):
 
@@ -402,6 +422,14 @@ takes a click meant for a card. Each `+` adds a stage into the box it's in, and 
 | above a box's first stage | at the top of the box: `addStage(plan, thatStage, { takeTips: true })`, so the new stage takes the box's tips | `Add a stage at the start of these tips` |
 | between two stages | just before the lower one: `addStage(plan, lowerStage)` | `Insert a stage before stage 3, “Drugs”` |
 | below a box's last stage | at the end of the box: `addStage(plan, nextBoxFirstStage)`, or `null` for the last box | `Add a stage at the end of these tips` |
+
+The **mix step button** adds a mix step where the `+` would add a stage, with the same tips
+(`addMixStep`, with the same `beforeId` and `takeTips` as the `+` in the table), and opens it
+(message `Added a mix step. Click or drag across wells on the deck to mix them.`), as one undoable
+edit. Its accessible names are the `+`'s with "a mix step" for "a stage", e.g. `Insert a mix step
+before stage 3, “Drugs”`. (Andy, 2026-10-29: choosing a mix step with the button you press, rather
+than a kind in the stage's box, which made two workflows.) A new stage or mix step copies the
+nearest of its own kind (`transfer-designer.md`).
 
 The tip button adds a tip change before the lower stage (`addTipChange`; message `New tips before
 stage 3, “Drugs”.`), which starts a new box there.
@@ -502,6 +530,15 @@ edit caused. Adding a transfer that runs first and empties a well named a later 
 13), and carries over to the next transfer. It shows at the arrow's tip while a source is chosen or
 a drag is under way.
 
+**A mix step open.** Clicking a well **mixes** it (`mixWells`; message `Mixing Plate1 A2.`), or, if
+the mix step mixes it already, **stops** mixing it (`unmixWell`; `Stopped mixing Plate1 A2.`).
+**Dragging** across a box of wells on one labware mixes each well in it that isn't mixed yet, as one
+edit (`Mixing 12 wells.`; a box of wells all mixed already: `Those wells are mixed already.`). There
+is no source, arrow or volume at the cursor; the box is highlighted while dragging, as when filling
+wells. If the edit leaves a well causing a mix problem or an overdraw that wasn't there before, the
+message is an error instead: `Mixing Plate1 A2, but it holds too little to mix.` (Andy,
+2026-10-29: a click mixes a well, again stops mixing it, a drag mixes a box.)
+
 **End open.** Nothing can be added: clicking a well says `End shows the finished plates. Open a
 stage to add transfers into it.`, and dragging does nothing.
 
@@ -565,6 +602,13 @@ as `Non-Contact`. From the top:
 
 **Save** renames it (if the name changed) and changes its settings as one edit (message `Saved stage
 2, “Drugs”.`). Settings the box doesn't offer, such as the stage's mixes, are kept as they are.
+
+**A mix step's box** (280px): **Name**; then a note saying how it mixes, from its `destinationMix`:
+`Mixes each well: 90% of the well (≈ 108 µL), 3 times, at 400 µL/s.`, with the volume as for a
+transfer stage's Mix tooltip (section 10, above), or `(no wells yet)` while it has none; then
+**Remove**, as for a stage, asking `Remove stage 2, “Mix plate” and its 4 mixed wells?`. No modes:
+a mix step's settings are its own (`transfer-designer.md`, "Mix steps"). (Andy, 2026-10-29: mixing
+has no options for now.)
 
 **A tip change's box**: **Tip type**, a button per tip type (`TIP_TYPES`), one chosen; **Probes**,
 buttons `1` to `8`, choosing how many probes get tips (`probesFor`), with every probe the tip change
@@ -740,6 +784,11 @@ page's configuration (ADR 0009):
   any security warnings noted;
 - undo and redo with the buttons and the keys, after each kind of edit;
 - a plan with an overdraw shows the marks, the key, the red stage and the problem count;
+- mix steps: the ⟳ on seams (always just left of the `+`) adds one and opens it; clicking a well
+  mixes it, again stops mixing it, and dragging mixes a box; its card's `N wells mixed`, ⟳ after its
+  name, its wells' list with `N% of well` and `×`; its box's note and Remove; a new mix step copies
+  the nearest mix step and a new stage the nearest transfer stage; End's count leaves mixed wells
+  out; the Biomek files write a mix step's row and file;
 - mixing: checking and unchecking Mix at each end, then Save, Undo and Redo; the card's ⟳; choosing
   Non-Contact for Dispense on a stage whose destination mixes unchecks it and shows `Can't mix`; an
   end `(not one of the modes)` shows a disabled checkbox; the tooltips' volumes; ⟳ badges on the open

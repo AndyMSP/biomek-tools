@@ -26,11 +26,11 @@ transfer designer, to report those stages as problems as soon as they appear, as
 (`transfer-designer.md`; Andy, 2026-10-30).
 
 ## 2. Scope
-Version 1 works out mix volumes for transfer stages, one per row.
+Version 1 works out mix volumes for transfer stages and mix steps (`docs/glossary.md`), one per
+row. A mix step needs nothing of its own: its mixed wells are transfers from each well into itself,
+so the rules below give what each holds as the stage starts (since 2026-10-30, mixing layer (c2)).
 
 Not in version 1:
-- **Mix steps** (`docs/glossary.md`): a stage that only mixes. They come with the page's mixing
-  (roadmap, mixing layer (c)).
 - **Splitting a stage into rows by well volume**, so fuller wells mix closer to their share
   (roadmap, "Later").
 
@@ -184,6 +184,10 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
 - **Each row on its own:** in a stage with two substages, each row's volume comes from its own
   wells only.
 - **Both ends:** a stage mixing at both ends gives both volumes in each row.
+- **A mix step** (built with `addMixStep` and `mixWells`) mixing two wells holding 100 µL and
+  200 µL, with `DEFAULT_MIX`'s share: one row, `sourceMixVolume` `null`, `destinationMixVolume` that
+  share of 100 µL (as the rules work it out), and the 200 µL well's mixed share half the 100 µL
+  well's.
 
 **Mixed shares**
 - The example in section 4 gives two destination wells: A1, `held` `20`, `share` `90`, not short;

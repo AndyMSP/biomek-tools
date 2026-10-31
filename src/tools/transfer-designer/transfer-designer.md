@@ -18,6 +18,10 @@
 >
 > **Draft change (2026-10-30, mixing layer (c1)):** the default mix, `DEFAULT_MIX`, from
 > `config/mixing.js`, for a tool switching mixing on (sections 3, 4 and 6).
+>
+> **Draft change (2026-10-30, mixing layer (c2)):** mix steps: `addMixStep`, `isMixStep`,
+> `mixWells`, `unmixWell`; a mix step takes only mixed wells; and a new stage copies the nearest
+> stage of its own kind (sections 3 to 6).
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -43,7 +47,7 @@ the labware it uses.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Moving** a stage, or a transfer within its stage. A transfer can be removed and added again.
-- **Mix steps** (`docs/glossary.md`; roadmap, mixing layer (c)), final concentrations, smarter
+- **Final concentrations**, smarter
   staging (the tool forming stages itself).
 - **Checking techniques against tip types** (roadmap, "Technical debt").
 - **Dead volume** (roadmap, "Technical debt").
@@ -125,10 +129,13 @@ without transfers isn't run.
 - A new stage is called **`NEW_STAGE_NAME`**, `"New stage"` (Andy, 2026-10-25: a number in the name
   stopped matching the stage's place once one was inserted). Stage names needn't be unique
   (`stage-list.md`).
-- A new stage's settings are copied from the stage just before it in the stage order, or, with none
-  before it, from the first stage, **mixes included**, so it mixes as that stage does, with the
-  techniques that go with its mixing (Andy, 2026-10-30: one rule, and a new stage is often "another
-  one like the last"). The stage of a new plan has the **default settings**: the default pipetting
+- A new stage's settings are copied from the **nearest stage of its own kind** (Andy, 2026-10-30):
+  a transfer stage from the nearest transfer stage, a mix step from the nearest mix step (section 3,
+  "Mix steps"); the nearest before it in the stage order, or, with none before it, the nearest
+  after it; **mixes included**, so it mixes as that stage does, with the techniques that go with
+  its mixing (Andy, 2026-10-30: one rule, and a new stage is often "another one like the last").
+  With no stage of its kind, it has the default settings (a transfer stage) or the default mix step
+  settings (below). The stage of a new plan has the **default settings**: the default pipetting
   mode, `DEFAULT_PIPETTING_MODE` in `config/` (below), at both ends, and no mixing (Andy, 2026-10-26: named in `config/`, so the menus
   keep their order and the default can change without changing code).
 - A stage is added **before** a given stage (or last). With **take tips**, a tip change keyed by that
@@ -173,6 +180,36 @@ technique follows its mixing** (ADR 0007, "Mixing"):
 - **Mix problems:** a stage whose mix volume in any row is under the minimum mix volume (`MIN_MIX_VOLUME`, `mix-volumes.md`) has a **mix problem**
   (`mix-volumes.md`). It's reported as soon as it appears, as an overdraw is (Andy, 2026-10-30), and
   the file writer refuses the plan until it's fixed (`file-writer.md`).
+
+### Mix steps
+A **mix step** (`docs/glossary.md`) is a stage that only mixes: it moves no liquid, and mixes each
+of its wells in place (ADR 0007, "Mixing"). It's still a stage, in the stage list and the stage
+order, using its tip group's tips, and becoming stage-worklist rows; the plan file needs nothing
+new for it (`plan-file.md`).
+- **Its settings** are `MIX_STEP_MODE` (`config/mixing.js`, below) at both ends, the technique that
+  only mixes and its liquid type; no source mix; and a destination mix, since that technique mixes
+  at the dispense end (ADR 0007). The **default mix step settings**, for a mix step with none to
+  copy: `MIX_STEP_MODE` at both ends, `sourceMix` `null`, `destinationMix` `DEFAULT_MIX`. A stage
+  **is a mix step** (`isMixStep`) exactly when its technique and liquid type are `MIX_STEP_MODE`'s
+  at both ends. (Since that technique isn't one of the pipetting modes', the mixing rule above
+  doesn't check it.)
+- **Its settings are checked** whenever a stage's settings change (`changeStageSettings`, so plan
+  files too; from #112's review): `MIX_STEP_MODE`'s technique is used at both ends or at neither;
+  a mix step has no source mix and has a destination mix; and **a stage with transfers keeps its
+  kind**, so a transfer stage's transfers never become a mix step's row, nor a mix step's mixed
+  wells a transfer stage's. (A stage without transfers may change kind: a plan file's stages are
+  given their settings before their transfers, `plan-file.md`.)
+- **Its transfers are its mixed wells:** each is a transfer from a well into itself of
+  `MIX_STEP_VOLUME` (`config/mixing.js`), a placeholder (Andy, 2026-10-30: 1 µL; whether the
+  volume matters is to be checked at the Biomek). A mix step takes no other transfer, and a mixed
+  well's volume can't be changed. A well is mixed at most once in a mix step (the operation list's
+  stage rule refuses it twice).
+- **Mixing wells** (`mixWells`) adds a mixed well for each well given that the mix step doesn't mix
+  yet, as one edit, leaving out the rest; **unmixing a well** (`unmixWell`) removes its mixed well.
+- A mixed well is a transfer like any other to the modules that work on transfers: the operation
+  list, contents tracking (it leaves the well's contents as they were, and is an overdraw if the
+  well holds less than `MIX_STEP_VOLUME`), `mix-volumes` (its mix volume is the share of what the
+  emptiest well holds as the stage starts) and the file writer (a row with the mix step's settings).
 
 ### Transfers
 - A transfer is added to a stage. If that stage already has transfers, it goes after them (the
@@ -252,7 +289,13 @@ Two files in `config/` (ADR 0009), which this module's tests check:
   `["BC230", "BC1070"]`, each a name, none repeated.
 - **`config/mixing.js`** (new) exports `DEFAULT_MIX`: the mix an end gets when mixing is switched
   on, `{ share: 90, times: 3, speed: 400 }` (90% of the well, 3 times, at 400 µL/s; Andy,
-  2026-10-29). It must be a mix the stage list accepts (`stage-list.md`). (The file also holds
+  2026-10-29). It must be a mix the stage list accepts (`stage-list.md`). It also exports
+  `MIX_STEP_MODE`, the technique and liquid type of a mix step at both ends,
+  `{ technique: "MixOnly2", liquidType: "Medium" }` (Andy's mix-only technique; its liquid type
+  doesn't matter, since every mix speed comes from the worklist; Andy, 2026-10-29): names, the
+  liquid type following Biomek's rule, and the technique none of the pipetting modes' techniques or
+  mixing techniques, so a mix step is never read as a mode; and `MIX_STEP_VOLUME`, a mixed well's
+  placeholder transfer volume in µL, `1` (Andy, 2026-10-30), a number above 0. (The file also holds
   `SHORT_MIX_SHARE`, which the `mix-volumes` module's tests check; `mix-volumes.md`.)
 - **`config/tip-types.js`** also exports `DEFAULT_PROBE_COUNT`: how many probes a new plan's first
   tips go on, the first that many (`probesFor`). A whole number from 1 to 8; `4` (Andy, 2026-10-30).
@@ -281,8 +324,13 @@ given; "returns the plan with …" means a new plan.
 | Function | Returns |
 |---|---|
 | `NEW_STAGE_NAME` | (a constant) `"New stage"`. |
+| `NEW_MIX_STEP_NAME` | (a constant) `"New mix step"`. |
 | `stageOrder(plan)` | the stage IDs in stage order (the plan's `stageOrder`). |
-| `addStage(plan, beforeId, { takeTips })` | `{ plan, id }`: the plan with a new stage before stage `beforeId` (or last, for `null`), and its ID. `takeTips` defaults to `false`. Throws if `beforeId` isn't a stage or `null`. |
+| `addStage(plan, beforeId, { takeTips })` | `{ plan, id }`: the plan with a new transfer stage before stage `beforeId` (or last, for `null`), and its ID; its settings copied from the nearest transfer stage (section 3, "Stages"). `takeTips` defaults to `false`. Throws if `beforeId` isn't a stage or `null`. |
+| `addMixStep(plan, beforeId, { takeTips })` | the same for a new mix step called `NEW_MIX_STEP_NAME`, its settings copied from the nearest mix step, or the default mix step settings (section 3, "Mix steps"). |
+| `isMixStep(plan, id)` | `true` if stage `id` is a mix step; `false` for a transfer stage or an ID that isn't a stage. |
+| `mixWells(plan, id, wells)` | the plan with mix step `id` mixing each of `wells` (each `{ labware, well }`, on the deck) it doesn't mix yet, as one edit; the same plan if it mixes them all already. Throws if `id` isn't a mix step, or a well isn't on the deck. |
+| `unmixWell(plan, id, well)` | the plan without mix step `id`'s mixed well `well`. Throws if `id` isn't a mix step, or it doesn't mix `well`. |
 | `renameStage(plan, id, name)` | the plan with stage `id` named `name` (the stage list checks it). |
 | `changeStageSettings(plan, id, settings)` | the plan with stage `id`'s settings replaced (the stage list checks them, then this module checks that each end's technique matches its mixing; section 3, "Mixing"). |
 | `setStageMix(plan, id, end, mix)` | the plan with stage `id` mixing at `end` (`"source"` or `"destination"`) as `mix`, a mix or `null` (`stage-list.md`), and that end's technique switched to match (section 3, "Mixing"). Throws if `id` isn't a stage, `end` isn't an end, the end's technique and liquid type aren't one of the modes, the stage list refuses the mix, or `mix` isn't `null` and the mode can't mix. |
@@ -357,6 +405,16 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `addStage`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a stage before.` |
 | `removeStage`: the only stage | `A plan needs at least one stage, so its only stage can't be removed.` |
 | `addTransfer`: the stage isn't in the plan | `There's no stage "9" in the plan to add this transfer to.` |
+| `addTransfer`, `addTransfers`: a transfer into a mix step that isn't a mixed well (from a well into itself, of `MIX_STEP_VOLUME`) | `Stage 2, “Mix plate”, is a mix step: it only mixes wells. Add this transfer to a transfer stage.` |
+| `changeVolume`: a mix step's mixed well | `A mix step's wells are mixed with its own settings, so their volume can't be changed.` |
+| `mixWells`, `unmixWell`: `id` isn't a mix step | `Stage 2, “Drugs”, isn't a mix step, so it can't mix wells.` (or `There's no stage "9" in the plan.`) |
+| `unmixWell`: the mix step doesn't mix that well | `Stage 2, “Mix plate”, doesn't mix Plate1 A2.` |
+| `mixWells`: `wells` isn't a list of wells | `The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], but got null.` |
+| `unmixWell`: `well` isn't a well | `The well to stop mixing must be a well, like { labware: "Plate1", well: "A1" }, but got undefined.` |
+| `changeStageSettings`: `MIX_STEP_MODE`'s technique at one end only | `"MixOnly2" only mixes, so it's used at both ends of a mix step or at neither.` (naming `MIX_STEP_MODE`'s technique) |
+| `changeStageSettings`: a mix step with a source mix | `A mix step mixes after dispensing only, so it can't have a source mix.` |
+| `changeStageSettings`: a mix step without a destination mix | `A mix step needs a destination mix: that's what it does.` |
+| `changeStageSettings`: a stage with transfers changing kind | `Stage 2, “Drugs”, has transfers, so it can't become a mix step.` (or `Stage 2, “Mix plate”, has mixed wells, so it can't become a transfer stage.`) |
 | `addTipChange`: `beforeId` isn't a stage | `There's no stage "9" to add new tips before.` |
 | `addTipChange`: it's the first stage | `The first stage always starts with new tips, so there can't be another tip change before it.` |
 | `addTipChange`: there's one there already | `There are already new tips before stage "2".` |
@@ -385,12 +443,14 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 **Order of checks.** The first problem found is reported:
 - `addTransfer`: the operation list's checks of the transfer (its form, then the stage rule), then
   its source well on the deck, then its destination well (`deck`'s messages), then its stage in the
-  plan. So a badly formed transfer gets the operation list's message, never a confusing one from a
-  later check.
+  plan, then, for a mix step, that it's a mixed well. So a badly formed transfer gets the operation
+  list's message, never a confusing one from a later check.
 - `addTipChange`: in the table's order.
 - `setTipType`: none at `key`, then the tip type.
 - `changeStageSettings`: the stage list's checks, then the source's mixing, then the
-  destination's.
+  destination's, then the mix step checks in the table's order (one end only, source mix,
+  destination mix, change of kind).
+- `mixWells`: the mix step, then the list, then each well on the deck.
 - `setStageMix`: the stage, then the end, then the end's mode, then the stage list's checks of the
   mix, then whether the mode can mix.
 - `setTipProbes`: none at `key`, then the list, then each probe in order, then repeats. (These three
@@ -440,9 +500,45 @@ order of checks.
 - After every kind of edit, the stage order holds every stage exactly once, and the operation
   list's blocks (`groupByStage()`) are in the same order as those stages in the stage order.
 - `addStage` before a stage puts it there in `stageOrder`; with `null`, last; it's called
-  `NEW_STAGE_NAME` and copies the settings of the stage before it; added before the first stage, it
-  copies the first stage's. Its mixes are copied too: copying a stage with a `sourceMix` and a
-  `destinationMix` gives a stage with the same mixes, techniques and liquid types.
+  `NEW_STAGE_NAME` and copies the settings of the nearest transfer stage before it; added before the
+  first stage, the nearest after it. Its mixes are copied too: copying a stage with a `sourceMix`
+  and a `destinationMix` gives a stage with the same mixes, techniques and liquid types.
+
+**Mix steps**
+- `addMixStep` gives a stage called `NEW_MIX_STEP_NAME`, with `isMixStep` `true`; with no other mix
+  step, the default mix step settings (built from `MIX_STEP_MODE` and `DEFAULT_MIX`, not from fixed
+  values: CLAUDE.md, "Tests follow `config/`"); with one before it whose `destinationMix` differs,
+  that mix; with none before it but one after, that one's.
+- **Own kind:** `addStage` right after a mix step copies the transfer stage before the mix step,
+  not the mix step; `addMixStep` right after a transfer stage copies the nearest mix step, or the
+  defaults. With only mix steps, `addStage` gives the default settings.
+- `isMixStep` is `false` for a transfer stage and for an ID that isn't a stage.
+- `mixWells` with three wells adds three transfers, each from the well into itself of
+  `MIX_STEP_VOLUME`, in the mix step; given one it mixes already and one it doesn't, it adds one;
+  given only wells it mixes, it returns the same plan. Refused: a transfer stage; a well not on the
+  deck. Each leaves the plan unchanged.
+- `unmixWell` removes that well's transfer only; refused for a well the mix step doesn't mix.
+- `mixWells` refuses `null`, a single well (not in a list) and a list holding `5`; `unmixWell`
+  refuses `undefined` and `"A1"`; each with its message, never a crash.
+- `changeStageSettings` refuses each mix step row of section 5: `MIX_STEP_MODE`'s technique at the
+  destination only; a mix step with a source mix; one without a destination mix; a stage holding a
+  transfer between two wells given `MIX_STEP_MODE` settings; a mix step holding mixed wells given a
+  pipetting mode's settings. It accepts either change of kind for a stage without transfers.
+- A plan file whose mix step has a source mix, or no destination mix, is refused with `stage N: `
+  and that message (`plan-file.md`, check 6).
+- **Own kind, at the start:** `addStage` before a mix step that comes first in the stage order,
+  with a transfer stage after it, copies that transfer stage.
+- `addTransfer` into a mix step refuses a transfer between two wells, and a well into itself of
+  any volume but `MIX_STEP_VOLUME`; accepts a well into itself of `MIX_STEP_VOLUME`. `changeVolume`
+  refuses a mix step's transfer.
+- A mix step's mixed well holding at least `MIX_STEP_VOLUME` changes no well's contents; a well
+  holding less is an overdraw (`stagesWithOverdraw`).
+- In the table of which parts of the plan each edit may change: `addMixStep` changes `stageList`
+  and `stageOrder` (and `tipChanges` with `takeTips`, as `addStage`); `mixWells` and `unmixWell`
+  only `operationList`.
+- `config/mixing.js`: `MIX_STEP_MODE`'s technique and liquid type are names, the liquid type
+  follows Biomek's rule, and the technique isn't any pipetting mode's technique or mixing technique;
+  `MIX_STEP_VOLUME` is a number above 0.
 - `addStage` with `takeTips` before a stage with a tip change moves the tip change to the new stage;
   without it, the new stage joins the tip group before.
 - `addStage` before the first stage keeps the `START` tips first.

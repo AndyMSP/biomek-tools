@@ -13,13 +13,20 @@ import assert from "node:assert/strict";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { DECK } from "../../../config/deck.js";
 import { TIP_TYPES } from "../../../config/tip-types.js";
-import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
+import {
+  MIN_MIX_VOLUME,
+  DEFAULT_MIX,
+  MIX_STEP_MODE,
+  MIX_STEP_VOLUME,
+} from "../../../config/mixing.js";
 import { labwareNames, gridOf } from "../deck/deck.js";
 import {
   START,
   emptyPlan,
   setExperimentName,
   addStage,
+  addMixStep,
+  mixWells,
   renameStage,
   setStageMix,
   addTransfer,
@@ -404,6 +411,37 @@ describe("file-writer", () => {
         [DEEP.labwareType, "10"],
       ],
     );
+  });
+
+  test("a mix step is written like any stage: MIX_STEP_MODE at both ends, empty SrcMix columns, the row's mix volume with DEFAULT_MIX's times and speed, and a file of each well into itself of MIX_STEP_VOLUME", () => {
+    let plan = withTransfersIn(planWithStages(1), ["1", "1"]);
+    const { plan: withMixStep, id } = addMixStep(plan, null);
+    plan = mixWells(withMixStep, id, [well(PLATE, "A1"), well(PLATE, "A2")]);
+    const result = write(plan);
+    const [, , row] = rowsOf(fileNamed(result, "Stages.csv"));
+    const volume = mixVolumes(plan).stages[1].rows[0].destinationMixVolume;
+    assert.deepEqual(
+      [row.TransferFile, row.SrcTechnique, row.SrcLiquidType, row.DestTechnique, row.DestLiquidType],
+      [
+        `${FOLDER_PATH}Stage02_A.csv`,
+        MIX_STEP_MODE.technique,
+        MIX_STEP_MODE.liquidType,
+        MIX_STEP_MODE.technique,
+        MIX_STEP_MODE.liquidType,
+      ],
+    );
+    assert.deepEqual([row.SrcLabwareType, row.DestLabwareType], [PLATE.labwareType, PLATE.labwareType]);
+    assert.deepEqual(mixFieldsOf(row, "Src"), ["", "", ""]);
+    assert.deepEqual(mixFieldsOf(row, "Dest"), [
+      volumeText(volume),
+      String(DEFAULT_MIX.times),
+      String(DEFAULT_MIX.speed),
+    ]);
+    assert.deepEqual(linesOf(fileNamed(result, "Stage02_A.csv")), [
+      "SourceLabware,SourceWell,DestLabware,DestWell,Volume",
+      `${PLATE.name},A1,${PLATE.name},A1,${volumeText(MIX_STEP_VOLUME)}`,
+      `${PLATE.name},A2,${PLATE.name},A2,${volumeText(MIX_STEP_VOLUME)}`,
+    ]);
   });
 
   test("a mix speed of 150.5 is written 150.5, and a mix volume of 89.9 is written 89.9", () => {
