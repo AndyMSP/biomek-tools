@@ -30,6 +30,9 @@
   --glow-background: #fff1bf;
   --glow-ring: #f3d36b;
   --card-problem-text: #ffb4aa;
+  /* A short mix (section 6): a yellow ⟳ badge with a dark yellow ⟳, and its contents card line. */
+  --short-mix: #ffd45c;
+  --short-mix-symbol: #8a6400;
 
   --empty-well-border: #bdbdb5;
   --empty-well-text: #6b6b66;
@@ -64,6 +67,7 @@
   );
   --stage-gap: 10px;
   --seam-button-size: 26px;
+  --mix-badge-size: 14px;
 }
 
 /* --- Page --- */
@@ -667,6 +671,7 @@ input.experiment-name-box.invalid {
    by transfer-designer-page.js as --well-fill (a gradient of its components' colors). */
 .well {
   --mark-size: var(--well-size);
+  --well-border-width: 1.5px;
   position: relative;
   display: flex;
   align-items: center;
@@ -676,7 +681,7 @@ input.experiment-name-box.invalid {
   min-height: var(--well-size);
   padding: 0;
   overflow: hidden;
-  border: 1.5px solid var(--empty-well-border);
+  border: var(--well-border-width) solid var(--empty-well-border);
   border-radius: 50%;
   background: var(--well-fill, var(--panel-background));
   color: var(--empty-well-text);
@@ -766,6 +771,45 @@ input.experiment-name-box.invalid {
 
 .well.in-box:not(.holding) {
   background: var(--blue-tint);
+}
+
+/* A well the open stage mixes (section 6) carries a ⟳ badge centered on its top-right edge, at 45°
+   from its center, so the well mustn't clip it. --badge-corner is the radius of the well's corner
+   there: half the well for a round plate well, 8px for a trough's rounded corner. The point at 45° on
+   that corner is 0.2929 (1 − cos 45°) of the radius in from the well's top and right edges; the
+   badge is placed from inside the well's border, so the border's width is taken off. */
+.well.mixed {
+  --badge-corner: calc(var(--well-size) / 2);
+  overflow: visible;
+}
+
+.well.trough.mixed {
+  --badge-corner: 8px;
+}
+
+.mix-badge {
+  position: absolute;
+  top: calc(0.2929 * var(--badge-corner) - var(--mix-badge-size) / 2 - var(--well-border-width));
+  right: calc(0.2929 * var(--badge-corner) - var(--mix-badge-size) / 2 - var(--well-border-width));
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: var(--mix-badge-size);
+  height: var(--mix-badge-size);
+  border: 1px solid #ffffff;
+  border-radius: 50%;
+  background: var(--blue);
+  color: #ffffff;
+  font: 600 10px/1 var(--text-font);
+  letter-spacing: 0;
+  pointer-events: none;
+}
+
+.mix-badge.short {
+  background: var(--short-mix);
+  color: var(--short-mix-symbol);
 }
 
 .well.drop-target {
@@ -906,6 +950,18 @@ button.entry-row {
   gap: 6px;
   color: var(--muted-text);
   font-size: 13px;
+}
+
+/* Its two ends, 18px apart with nothing between them, wrapping onto two lines if the card is narrow
+   (section 7). */
+.settings-ends {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 18px;
+}
+
+.settings-end {
+  white-space: nowrap;
 }
 
 /* A ✎ button: small and plain. */
@@ -1300,6 +1356,19 @@ button.entry-row {
   padding: 0 4px;
 }
 
+/* The Mix row (section 10): each checkbox, or "Can't mix", centered in its column. */
+.settings-grid .mix-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+}
+
+.settings-grid .mix-cell.cannot-mix {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
 /* The probes, in a tip change's box: buttons 1 to 8, with every probe the tip change loads lit. */
 .probe-buttons {
   display: flex;
@@ -1519,6 +1588,15 @@ button.entry-row {
 .contents-card .card-problem {
   margin-top: 6px;
   color: var(--card-problem-text);
+}
+
+/* How much of the well the open stage mixes (section 6), in yellow when the mix is short. */
+.contents-card .card-mix {
+  margin-top: 6px;
+}
+
+.contents-card .card-mix.short {
+  color: var(--short-mix);
 }
 
 /* --- Motion: none with the system's "reduce motion" setting (section 15) --- */
