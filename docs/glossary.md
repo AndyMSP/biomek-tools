@@ -43,6 +43,12 @@ A mix whose volume is under the minimum mix volume (1 µL): the well a row's mix
 out from holds too little when it's mixed (ADR 0007, "Mixing"). Like an overdraw, it's shown as a problem, and the Biomek files
 can't be written until it's fixed.
 
+**Mix step**
+A stage that only mixes: it moves no liquid, and each of its wells is mixed in place (a transfer
+from the well to itself, run with a technique that only mixes; ADR 0007, "Mixing"). On the page it's
+added with its own button, and shown with a ⟳ after its name. It's still a stage: it has a place in
+the stage order, uses the tips of its tip group, and becomes stage-worklist rows.
+
 **Overdraw**
 A transfer that asks a well for more than it can give: more than its usable volume (the tip
 would reach into the dead volume and draw air) or more than it holds at all. Contents tracking
@@ -54,12 +60,6 @@ fixed.
 A well over its capacity, because a transfer filled it past that or it starts over. Shown as a
 problem, with its own mark; the Biomek files can't be written until it's fixed. The tool can't
 know what spills, so it tracks the well's contents as if the liquid had fit.
-
-**Mix step**
-A stage that only mixes: it moves no liquid, and each of its wells is mixed in place (a transfer
-from the well to itself, run with a technique that only mixes; ADR 0007, "Mixing"). On the page it's
-added with its own button, and shown with a ⟳ after its name. It's still a stage: it has a place in
-the stage order, uses the tips of its tip group, and becomes stage-worklist rows.
 
 **Pipetting mode**
 What the user chooses for how one end of a stage pipettes, such as "Slow" at the sources and
