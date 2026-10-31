@@ -194,8 +194,9 @@ button.danger {
   font-weight: 600;
 }
 
-/* A button shown pressed while what it controls is on or open (aria-pressed). */
-button[aria-pressed="true"] {
+/* A button shown pressed while what it controls is on or open (aria-pressed). Not a color swatch:
+   its color is what it shows, and the blue tint hid it (section 8; Andy, 2026-10-31). */
+button[aria-pressed="true"]:not(.color-swatch) {
   border-color: var(--blue);
   background: var(--blue-tint);
   color: var(--blue);
