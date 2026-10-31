@@ -15,6 +15,7 @@ import packageJson from "../../../package.json" with { type: "json" };
 import { COMPONENT_COLORS } from "../../../config/component-colors.js";
 import { DEFAULT_TRANSFER_VOLUME, DEFAULT_FILL_VOLUME } from "../../../config/default-volumes.js";
 import { TIP_TYPES } from "../../../config/tip-types.js";
+import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
@@ -162,9 +163,9 @@ let addingComponent = null;
 let shownSnapshot = null;
 let stageStartSnapshot = null;
 
-// The wells the open stage mixes (section 6), keyed by wellKey, each as { share, short }: its
-// smallest mixed share in the stage and whether any of its mixes is short. Empty unless a stage
-// with transfers that mixes is open. Worked out by refreshDeck, for the badges and the contents card.
+// The wells the open stage mixes (section 6), keyed by wellKey, each as { share, short,
+// problemVolume, waiting } (mixedWellsOf). Empty unless a stage with transfers that mixes is open.
+// Worked out by refreshDeck, for the badges and the contents card.
 let openStageMixedWells = new Map();
 
 // Each drawn well's element, by wellKey, so marks and arrows can find them.
@@ -841,26 +842,54 @@ function refreshDeck() {
   drawCursorArrow();
 }
 
-// The wells stage `key` mixes, at either end, keyed by wellKey, as { share, short }: a well mixed in
-// more than one row (or at both ends) gives its smallest share, and is short if any of its mixes is
-// (section 6; mix-volumes.md, mixedWells). Empty for START, END, or a stage without transfers or
-// mixing, e.g. a stage mixing Plate1 A1 at 90% → Map { '["Plate1","A1"]' → { share: 90, short: false } }.
+// The wells stage `key` mixes, at either end, keyed by wellKey, each as { share, short,
+// problemVolume, waiting } (section 6; mix-volumes.md, mixedWells and problems):
+// - problemVolume: the mix volume if the well causes a mix problem (the emptiest well of a row whose
+//   mix is under MIN_MIX_VOLUME), otherwise null; in more than one row, the first;
+// - share and short: its smallest mixed share in the rows without a mix problem at its end, and
+//   whether any of those is short; share is null if every row mixing it has one;
+// - waiting: true if it's another well of a row with a mix problem at its end, so not mixed until
+//   the well in red is fixed.
+// Empty for START, END, or a stage without transfers or mixing, e.g. a stage mixing Plate1 A1 at
+// 90% → Map { '["Plate1","A1"]' → { share: 90, short: false, problemVolume: null, waiting: false } }.
 function mixedWellsOf(plan, key) {
   const mixed = new Map();
   if (!isStage(plan, key) || !stageMixes(plan, key)) {
     return mixed;
   }
-  for (const row of mixRowsOf(plan, key)) {
-    for (const entry of row.mixedWells) {
-      const wellKeyText = wellKey(entry);
-      const before = mixed.get(wellKeyText);
-      mixed.set(wellKeyText, {
-        share: before === undefined ? entry.share : Math.min(before.share, entry.share),
-        short: entry.short || (before?.short ?? false),
-      });
+  const { stages, problems } = mixVolumes(plan);
+  const rows = stages.find((entry) => entry.stage === key)?.rows ?? [];
+  // mix-volumes lists the stage's problems in row order, source before destination, so they're
+  // taken in turn as the rows' ends under the minimum come up.
+  const stageProblems = problems.filter((problem) => problem.stage === key);
+  for (const row of rows) {
+    for (const end of ["source", "destination"]) {
+      const volume = row[`${end}MixVolume`];
+      const problem = volume !== null && volume < MIN_MIX_VOLUME ? stageProblems.shift() : null;
+      for (const entry of row.mixedWells.filter((mixedWell) => mixedWell.end === end)) {
+        addMixedWell(mixed, entry, problem, volume);
+      }
     }
   }
   return mixed;
+}
+
+// Adds one of a row's mixed wells, `entry` (mix-volumes, mixedWells), to `mixed` (as mixedWellsOf
+// gives it), where `problem` is the row's mix problem at the well's end, or null, and `volume` the
+// row's mix volume there. A well already in `mixed` keeps the first problem volume and the smallest
+// share, and is short if any of its mixes is.
+function addMixedWell(mixed, entry, problem, volume) {
+  const wellKeyText = wellKey(entry);
+  const well = mixed.get(wellKeyText) ?? { share: null, short: false, problemVolume: null, waiting: false };
+  if (problem === null) {
+    well.share = well.share === null ? entry.share : Math.min(well.share, entry.share);
+    well.short = well.short || entry.short;
+  } else if (problem.labware === entry.labware && problem.well === entry.well) {
+    well.problemVolume = well.problemVolume ?? volume;
+  } else {
+    well.waiting = true;
+  }
+  mixed.set(wellKeyText, well);
 }
 
 // True if stage `id` mixes at either end.
@@ -1180,18 +1209,35 @@ function createWell(plan, end, isTrough) {
   return wellElement;
 }
 
-// Gives a well the open stage mixes its ⟳ badge at its top right, yellow when the mix is short, and
-// adds how much is mixed to its accessible name, e.g. "Assay plate A1, 120 µL, mixed 17%" (section 6).
-// `mixed` is the well's { share, short }.
+// Gives a well the open stage mixes its ⟳ badge at its top right, and adds how it's mixed to its
+// accessible name (section 6): red if it causes a mix problem ("…, holds too little to mix");
+// otherwise yellow when a mix is short and blue if not ("Assay plate A1, 120 µL, mixed 17%"); blue
+// for another well of a row with a mix problem ("…, not mixed until the well in red is fixed").
+// `mixed` is the well's entry from mixedWellsOf.
 function addMixBadge(wellElement, mixed) {
   wellElement.classList.add("mixed");
   const badge = createElement("span", "⟳", "mix-badge");
-  badge.classList.toggle("short", mixed.short);
+  const causesProblem = mixed.problemVolume !== null;
+  badge.classList.toggle("problem", causesProblem);
+  badge.classList.toggle("short", !causesProblem && mixed.short);
   // The accessible name says it in words, so the symbol itself is hidden from screen readers.
   badge.setAttribute("aria-hidden", "true");
   wellElement.append(badge);
   const name = wellElement.getAttribute("aria-label");
-  wellElement.setAttribute("aria-label", `${name}, mixed ${mixedPercent(mixed.share)}%`);
+  wellElement.setAttribute("aria-label", `${name}, ${mixedWords(mixed)}`);
+}
+
+// How a well the open stage mixes is mixed, in words for its accessible name, from its entry in
+// mixedWellsOf, e.g. "mixed 17%", "holds too little to mix" or "not mixed until the well in red is
+// fixed".
+function mixedWords(mixed) {
+  if (mixed.problemVolume !== null) {
+    return "holds too little to mix";
+  }
+  if (mixed.share !== null) {
+    return `mixed ${mixedPercent(mixed.share)}%`;
+  }
+  return "not mixed until the well in red is fixed";
 }
 
 // A mixed share as a whole percent, rounded down, so a short mix never reads as the limit
@@ -1405,7 +1451,8 @@ function createEntry(plan, key, open, problems) {
   } else if (isStage(plan, key) && problems.mixProblem.has(key)) {
     // A mix problem looks the same as an overdraw (Andy, 2026-10-30), with its own tooltip.
     entry.classList.add("has-overdraw");
-    entry.title = "This stage mixes a well that holds too little: the mix works out to 0 µL.";
+    entry.title =
+      `This stage mixes a well that holds too little: the mix is under ${formatVolume(MIN_MIX_VOLUME)} µL.`;
   }
   const row = createElement(isOpen ? "div" : "button", "", "entry-row");
   if (!isOpen) {
@@ -2343,11 +2390,30 @@ function contentsCardLines(plan, end) {
   }
   const mixed = openStageMixedWells.get(wellKey(end));
   if (mixed !== undefined) {
-    const line = createElement("div", `Mixed ${mixedPercent(mixed.share)}% of well`, "card-mix");
-    line.classList.toggle("short", mixed.short);
-    lines.push(line);
+    lines.push(mixCardLine(mixed));
   }
   return lines;
+}
+
+// The contents card's line for a well the open stage mixes (section 6), from its entry in
+// mixedWellsOf: for the well causing a mix problem, "Holds too little to mix: the mix is 0.8 µL,
+// under 1.1 µL." in the problem color; otherwise "Mixed 17% of well", yellow when short; for
+// another well of a row with a mix problem, "Not mixed until the well in red is fixed."
+function mixCardLine(mixed) {
+  if (mixed.problemVolume !== null) {
+    return createElement(
+      "div",
+      `Holds too little to mix: the mix is ${formatVolume(mixed.problemVolume)} µL, ` +
+        `under ${formatVolume(MIN_MIX_VOLUME)} µL.`,
+      "card-problem",
+    );
+  }
+  if (mixed.share !== null) {
+    const line = createElement("div", `Mixed ${mixedPercent(mixed.share)}% of well`, "card-mix");
+    line.classList.toggle("short", mixed.short);
+    return line;
+  }
+  return createElement("div", "Not mixed until the well in red is fixed.", "card-mix");
 }
 
 // --- Editing boxes (section 10) ---

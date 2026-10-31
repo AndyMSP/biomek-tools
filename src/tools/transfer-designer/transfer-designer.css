@@ -814,6 +814,12 @@ input.experiment-name-box.invalid {
   color: var(--short-mix-symbol);
 }
 
+/* The well causing a mix problem (section 6): red for problems, yellow for warnings. */
+.mix-badge.problem {
+  background: var(--red);
+  color: #ffffff;
+}
+
 .well.drop-target {
   outline: 2px dashed var(--blue);
   outline-offset: 2px;
