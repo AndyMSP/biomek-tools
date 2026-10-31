@@ -338,6 +338,9 @@ still pass when the deck changes (as `deck.test.js` does).
   dead volume taken from `config/labware-types.js` for the labware chosen); a stage with a mix problem at the destination (the message above) and one at the source ("before
   aspirating"); a transfer of `0.0004` µL.
 - A stage at place 100 *without* transfers is accepted (it isn't written).
+- A mix problem is reached without a contents problem (2026-10-30): the dead-volume check comes
+  first, so the test's well holds at least the labware's dead volume plus what's drawn, and a
+  source mix problem uses a source drawn down to its dead volume, not one drawn empty.
 - A plan with no experiment name gives its message, with no files.
 - Order of checks: a bad timestamp with a plan with no name reports the timestamp; a plan with no
   name and no transfers reports the name; a plan with no transfers and a bad timestamp reports the

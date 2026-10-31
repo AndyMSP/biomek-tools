@@ -56,7 +56,6 @@ Not in version 1 (see `docs/roadmap.md`):
 - **Final concentrations**, smarter
   staging (the tool forming stages itself).
 - **Checking techniques against tip types** (roadmap, "Technical debt").
-- **Dead volume** (roadmap, "Technical debt").
 - **Which transfer runs short when a stage draws from an overdrawn well more than once** (roadmap,
   "Technical debt"): within a stage the Biomek chooses the order (B56358AF, 22-25), but contents
   tracking replays the planned order, so the wells it marks are one possible outcome. The stage
