@@ -2854,7 +2854,7 @@ function createPencil(kind, key, accessibleName) {
 function openEditingBox(kind, key) {
   const plan = currentPlan();
   const original = originalFor(plan, kind, key);
-  editingBox = { kind, key, original, draft: { ...original, showAllColors: false, confirmingRemove: false } };
+  editingBox = { kind, key, original, draft: { ...original, showAllColors: false } };
   refreshStages();
   focusEditingBox();
 }
@@ -2972,7 +2972,7 @@ function redrawEditingBox() {
   if (focusedAt !== -1) {
     focusables(box)[focusedAt]?.focus({ preventScroll: true });
   }
-  // A box that grew (e.g. Remove's question appeared) is shown in full, as when it opened.
+  // A box that grew (e.g. More colors was pressed) is shown in full, as when it opened.
   scrollIntoColumnView(box);
 }
 
@@ -3267,13 +3267,10 @@ function createNameField(value, title) {
   return field;
 }
 
-// The box's bottom: Remove at the left (or its question, or why there's none), Discard and Save at
-// the right.
+// The box's bottom: Remove at the left (or why there's none), Discard and Save at the right. Remove
+// acts at once, with no question: Undo brings back what it removed (section 10; Andy, 2026-10-31).
 function createBoxButtons(plan) {
   const holder = createElement("div");
-  if (editingBox.draft.confirmingRemove) {
-    holder.append(createRemoveQuestion(plan));
-  }
   const buttons = createElement("div", "", "box-buttons");
   const removal = removalFor(plan);
   if (removal.kind === "button") {
@@ -3283,10 +3280,7 @@ function createBoxButtons(plan) {
     if (removal.disabled) {
       remove.title = removal.reason;
     }
-    remove.addEventListener("click", () => {
-      editingBox.draft.confirmingRemove = true;
-      redrawEditingBox();
-    });
+    remove.addEventListener("click", removeFromEditingBox);
     buttons.append(remove);
   } else {
     // Why there's no Remove, on a line of its own above the buttons.
@@ -3316,42 +3310,7 @@ function removalFor(plan) {
   return { kind: "button", disabled: false };
 }
 
-// Remove's question inside the box, with Cancel and Remove (solid red).
-function createRemoveQuestion(plan) {
-  const question = createElement("div", "", "remove-question");
-  question.append(createElement("p", removeQuestionText(plan)));
-  const buttons = createElement("div", "", "confirm-buttons");
-  const cancel = createElement("button", "Cancel", "action");
-  cancel.type = "button";
-  cancel.addEventListener("click", () => {
-    editingBox.draft.confirmingRemove = false;
-    redrawEditingBox();
-  });
-  const remove = createElement("button", "Remove", "danger");
-  remove.type = "button";
-  remove.addEventListener("click", removeFromEditingBox);
-  buttons.append(cancel, remove);
-  question.append(buttons);
-  return question;
-}
-
-// The question Remove asks, e.g. "Remove Media from 4 wells?" or "Remove stage 2, “Drugs” and its
-// 4 transfers?" ("4 mixed wells" for a mix step) or "Remove these new tips?".
-function removeQuestionText(plan) {
-  const { kind, key } = editingBox;
-  if (kind === "component") {
-    const wells = countWellsWith(plan, key);
-    return wells === 0 ? `Remove ${key}?` : `Remove ${key} from ${countOf(wells, "well")}?`;
-  }
-  if (kind === "stage") {
-    const transfers = transfersIn(plan, key).length;
-    const label = stageLabel(plan, key);
-    return transfers === 0 ? `Remove ${label}?` : `Remove ${label} and its ${transfersWord(plan, key, transfers)}?`;
-  }
-  return "Remove these new tips?";
-}
-
-// Removes what the open box edits, after its question, and closes the box.
+// Removes what the open box edits, at once, and closes the box (section 10).
 function removeFromEditingBox() {
   const plan = currentPlan();
   const { kind, key } = editingBox;
@@ -3385,8 +3344,8 @@ function removeComponentFromBox(plan, name) {
   showMessage(`Removed ${name}${from}. Undo can bring it back.`, "note");
 }
 
-// A stage's transfers counted for Remove's question and message (section 10): "4 transfers", or for
-// a mix step "4 mixed wells".
+// A stage's transfers counted for Remove's message (section 10): "4 transfers", or for a mix step
+// "4 mixed wells".
 function transfersWord(plan, id, count) {
   return isMixStep(plan, id) ? countOf(count, "mixed well") : countOf(count, "transfer");
 }

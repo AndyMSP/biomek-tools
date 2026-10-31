@@ -186,7 +186,7 @@ button.danger-outline {
   color: var(--red);
 }
 
-/* The confirming button of a danger question: solid red. */
+/* The confirming button of Reset's question (Reset everything): solid red. */
 button.danger {
   border-color: var(--red);
   background: var(--red);
@@ -1569,18 +1569,6 @@ button.entry-row {
   50% {
     box-shadow: 0 0 0 4px var(--blue-border);
   }
-}
-
-/* Remove's question inside the box. */
-.remove-question {
-  padding: 10px 12px;
-  border: 1px solid var(--red-border);
-  border-radius: 8px;
-  background: var(--red-tint);
-}
-
-.remove-question p {
-  margin-bottom: 8px;
 }
 
 /* --- Floating elements: the message bar, the cursor's label and the contents card --- */
