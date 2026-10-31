@@ -265,10 +265,11 @@ Last updated: 2026-10-28
   last seam adds a new stage there with a tip change on it, the stage copying the one before it;
   (4) previews published to the preview artifact say `Preview: …` in the tab and route downloads
   through the artifact's save prompt (a preview habit, in CLAUDE.md); (5) a transfer row with a
-  contents problem shows its volume in red, with a tooltip saying what can be reached; (6) the
-  contents card drops its total, usable and capacity lines, showing the usable volume and the
-  labware's limits only on a well with a problem or holding only dead volume. Tried in one preview
-  first, then specified and built.
+  contents problem shows its volume in red, with a tooltip `Only 450 µL is reachable.` or
+  `Overfills the well by 20 µL.`; (6) the contents card drops its total, usable and capacity
+  lines altogether: the well, its components, then only problem and warning lines (holding only
+  dead volume is neither; the problem lines carry the numbers). Tried in one preview (2026-10-31;
+  Andy liked it), then specified and built.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
