@@ -783,7 +783,7 @@ describe("transfer-designer", () => {
     assert.doesNotThrow(() => changeStageSettings(added, id, settings));
   });
 
-  test("stagesWithMixProblem names a stage whose destination mix works out to 0 µL, and no other; a plan without mixing gives an empty Set", () => {
+  test("stagesWithMixProblem names a stage whose destination mix is under the minimum, and no other; a plan without mixing gives an empty Set", () => {
     let plan = addComponent(planWithStages(2), "Media", "#4e79a7");
     plan = addToWells(plan, [trough("1")], "Media", 1000);
     plan = addTransfer(plan, transferTo("1", "A1", 50));
