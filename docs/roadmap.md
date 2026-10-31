@@ -330,7 +330,11 @@ added on 2026-10-28 (Andy).
     type too**, the labware type's "Maximum volume per well" in the Biomek's Labware Type Editor
     (B56358AF 17-18), copied into `config/` by hand with that source in its comment. The tool warns
     only on true overfilling; a lower working maximum (headroom for mixing, say) is not modelled.
-    Next: the preview.
+    *Also decided 2026-10-30 (Andy):* **a starting volume is what was put in the well**, dead volume
+    included, as at the bench today; the tool subtracts the dead volume itself and warns when a
+    draw would go into it, and the setup worklist carries the real volume. The feature warns; it
+    doesn't change how people fill labware. (Replaces the workaround in "Technical debt" of
+    entering a reservoir's volume minus its dead volume.) Next: the preview.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
