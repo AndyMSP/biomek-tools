@@ -93,17 +93,20 @@ const LINE_ENDING = "\r\n";
 // the timestamp and the plan's experiment name) and the files, each { name, text }, in this order:
 // Setup.csv, Stages.csv, then the Transfer From File files in the order Stages.csv names them. The
 // caller saves them in that folder inside BASE_FOLDER. Checks, in this order, the timestamp, then
-// the plan (its form, its experiment name, whether it has transfers, then each stage with transfers
-// in stage order: its place, its overdraws, its mix problems, its volumes), and throws at the first
-// problem, returning nothing, so a refused plan gets no files.
+// the plan (its form, its experiment name, whether it has transfers, whether a well starts over its
+// capacity, then each stage with transfers in stage order: its place, its contents problems, its
+// mix problems, its volumes), and throws at the first problem, returning nothing, so a refused plan
+// gets no files.
 // e.g. with plan.experimentName "Exp36",
 //      writeRunFiles(plan, new Date(2026, 9, 28, 1, 57, 32)).folderName → "2026-10-28_015732_Exp36"
 export function writeRunFiles(plan, timestamp) {
   checkTimestamp(timestamp);
   checkPlan(plan);
+  const contentsProblems = replay(plan.startingContents, plan.operationList).listProblems();
+  checkStartingContents(contentsProblems);
   const stages = stagesWithTransfers(plan);
   const mixing = mixVolumes(plan);
-  checkStages(plan, stages, mixing);
+  checkStages(plan, stages, contentsProblems, mixing);
 
   const folderName = folderNameFor(timestamp, plan.experimentName);
   const folderPath = `${BASE_FOLDER}${folderName}\\`;
@@ -215,12 +218,26 @@ function checkPlanHasTransfers(plan) {
   }
 }
 
+// Throws if a well starts over its capacity: an "overfill" among `contentsProblems` (from contents
+// tracking) with operationIndex null. The first such well, in the starting contents' order.
+function checkStartingContents(contentsProblems) {
+  const startsOver = contentsProblems.find((problem) => problem.operationIndex === null);
+  if (startsOver !== undefined) {
+    throw new Error(
+      `${startsOver.labware} ${startsOver.well} starts with ${formatVolume(startsOver.held)} µL, ` +
+        `over its ${formatVolume(startsOver.capacity)} µL capacity. ` +
+        "Fix the starting contents before writing the files.",
+    );
+  }
+}
+
 // Throws at the first problem among `stages` (the stages with transfers, in stage order), checking
-// each stage in turn for its place (at most HIGHEST_PLACE), then an overdraw, then a mix problem
-// (among `mixing`'s problems, from mix-volumes), then a transfer whose volume rounds to 0. Stages are
-// named by place and name, as the page shows them.
-function checkStages(plan, stages, mixing) {
-  const overdrawn = stagesWithOverdraw(plan);
+// each stage in turn for its place (at most HIGHEST_PLACE), then a contents problem (among
+// `contentsProblems`, from contents tracking), then a mix problem (among `mixing`'s problems, from
+// mix-volumes), then a transfer whose volume rounds to 0. Stages are named by place and name, as
+// the page shows them.
+function checkStages(plan, stages, contentsProblems, mixing) {
+  const operations = plan.operationList.listOperations();
   for (const stage of stages) {
     const shown = `Stage ${stage.place}, ${describeValue(stage.name)},`;
     if (stage.place > HIGHEST_PLACE) {
@@ -229,11 +246,14 @@ function checkStages(plan, stages, mixing) {
           "Remove some stages before it.",
       );
     }
-    if (overdrawn.has(stage.id)) {
-      throw new Error(
-        `${shown} has an overdraw: a transfer asks a well for more than it holds. ` +
-          "Fix it before writing the files.",
-      );
+    // The stage's first contents problem in contents tracking's order; a problem of the starting
+    // contents (operationIndex null) was refused before any stage.
+    const contentsProblem = contentsProblems.find(
+      (problem) =>
+        problem.operationIndex !== null && operations[problem.operationIndex].stage === stage.id,
+    );
+    if (contentsProblem !== undefined) {
+      throw new Error(contentsProblemMessage(shown, contentsProblem));
     }
     const mixProblem = mixing.problems.find((problem) => problem.stage === stage.id);
     if (mixProblem !== undefined) {
@@ -275,13 +295,33 @@ function mixProblemVolume(rows, problem) {
   return rows.find((row) => row[column] !== null && row[column] < MIN_MIX_VOLUME)[column];
 }
 
-// The IDs of the stages with an overdraw: a transfer that asks a well for more than it holds, as
-// contents tracking finds it, e.g. new Set(["2"]). (The transfer designer has the same function;
-// a shared module can't import from a tool, so it's repeated here.)
-function stagesWithOverdraw(plan) {
-  const operations = plan.operationList.listOperations();
-  const problems = replay(plan.startingContents, plan.operationList).listProblems();
-  return new Set(problems.map((problem) => operations[problem.operationIndex].stage));
+// The message for `problem`, a contents problem (contents-tracking) of a stage shown as `shown`
+// (its place and name), by the problem's kind, e.g. for an overdraw: 'Stage 3, "Seeding", has an
+// overdraw: transfer #5 asks Plate1 A1 for 60 µL, but it holds 50 µL. Fix it before writing the
+// files.' The transfer is numbered by its position in the operation list counting from 1, as the
+// page numbers it; the well is named by its labware's name, as the files name it; and volumes are
+// written as in the files.
+function contentsProblemMessage(shown, problem) {
+  const transfer = `transfer #${problem.operationIndex + 1}`;
+  const well = `${problem.labware} ${problem.well}`;
+  const fix = "Fix it before writing the files.";
+  if (problem.kind === "dead-volume") {
+    return (
+      `${shown} draws into a dead volume: ${transfer} asks ${well} for ` +
+      `${formatVolume(problem.requested)} µL, but only ${formatVolume(problem.available)} µL is ` +
+      `above its ${formatVolume(problem.deadVolume)} µL dead volume. ${fix}`
+    );
+  }
+  if (problem.kind === "overdraw") {
+    return (
+      `${shown} has an overdraw: ${transfer} asks ${well} for ${formatVolume(problem.requested)} µL, ` +
+      `but it holds ${formatVolume(problem.held)} µL. ${fix}`
+    );
+  }
+  return (
+    `${shown} overfills ${well}: ${transfer} brings it to ${formatVolume(problem.held)} µL, ` +
+    `over its ${formatVolume(problem.capacity)} µL capacity. ${fix}`
+  );
 }
 
 // --- Stages and substages ---

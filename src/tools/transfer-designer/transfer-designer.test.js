@@ -10,6 +10,8 @@ import assert from "node:assert/strict";
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
+import { gridOf, capacityOf, deadVolumeOf } from "../../shared/deck/deck.js";
+import { GRID_96, GRID_1X12_NUMBERED } from "../../shared/well-grid/well-grid.js";
 import {
   DEFAULT_MIX as CONFIGURED_DEFAULT_MIX,
   MIN_MIX_VOLUME,
@@ -43,7 +45,7 @@ import {
   canRemoveStage,
   removeStage,
   stageEnds,
-  stagesWithOverdraw,
+  stagesWithContentsProblem,
   stagesWithMixProblem,
   addTransfer,
   addTransfers,
@@ -71,10 +73,10 @@ import {
 } from "./transfer-designer.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
-const [PLATE, OTHER_PLATE] = DECK.filter((entry) => entry.grid === "GRID_96").map(
+const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_96).map(
   (entry) => entry.name,
 );
-const RESERVOIR = DECK.find((entry) => entry.grid === "GRID_1X12_NUMBERED").name;
+const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED).name;
 
 // The parts every plan has.
 const PLAN_PARTS = [
@@ -663,14 +665,36 @@ describe("transfer-designer", () => {
     ]);
   });
 
-  test("stagesWithOverdraw names the stage whose transfer draws more than a well holds, and no other", () => {
+  test("stagesWithContentsProblem names the stage whose transfer draws more than a well's usable volume, and no other", () => {
+    // Each trough holds 100 µL above the reservoir's dead volume (D).
+    const D = deadVolumeOf(RESERVOIR);
     let plan = addComponent(planWithStages(3), "Media", "#4e79a7");
-    plan = addToWells(plan, [trough("1"), trough("2")], "Media", 100);
+    plan = addToWells(plan, [trough("1"), trough("2")], "Media", D + 100);
     plan = addTransfer(plan, transferTo("1", "A1", 60));
     plan = addTransfer(plan, transferTo("2", "A2", 60));
-    // From trough 2, which stage 2's overdraw didn't empty.
+    // From trough 2, which stage 2's draw into the dead volume didn't touch.
     plan = addTransfer(plan, { ...transferTo("3", "A3", 10), source: trough("2") });
-    assert.deepEqual(stagesWithOverdraw(plan), new Set(["2"]));
+    assert.deepEqual(stagesWithContentsProblem(plan), new Set(["2"]));
+  });
+
+  test("stagesWithContentsProblem names the stage whose transfer fills a well over its capacity, and no other", () => {
+    // Trough 1 holds plenty above its dead volume; A2 starts 10 µL under the plate's capacity (C).
+    const C = capacityOf(PLATE);
+    let plan = addComponent(planWithStages(3), "Media", "#4e79a7");
+    plan = addToWells(plan, [trough("1")], "Media", deadVolumeOf(RESERVOIR) + 1000);
+    plan = addToWells(plan, [{ labware: PLATE, well: "A2" }], "Media", C - 10);
+    plan = addTransfer(plan, transferTo("1", "A1", 20));
+    plan = addTransfer(plan, transferTo("2", "A2", 20));
+    plan = addTransfer(plan, transferTo("3", "A3", 20));
+    assert.deepEqual(stagesWithContentsProblem(plan), new Set(["2"]));
+  });
+
+  test("stagesWithContentsProblem is empty with only a well that starts over its capacity", () => {
+    let plan = addComponent(planWithStages(2), "Media", "#4e79a7");
+    plan = addToWells(plan, [trough("1")], "Media", deadVolumeOf(RESERVOIR) + 1000);
+    plan = addToWells(plan, [{ labware: PLATE, well: "B1" }], "Media", capacityOf(PLATE) + 1);
+    plan = addTransfer(plan, transferTo("1", "A1", 20));
+    assert.deepEqual(stagesWithContentsProblem(plan), new Set());
   });
 
   // --- Mix steps ---
@@ -981,17 +1005,18 @@ describe("transfer-designer", () => {
     assert.doesNotThrow(() => changeVolume(plan, 0, 25));
   });
 
-  test("a mixed well holding at least MIX_STEP_VOLUME changes no well's contents; a well holding less is an overdraw", () => {
+  test("a mixed well holding at least MIX_STEP_VOLUME above its dead volume changes no well's contents; a well holding less above it is a contents problem", () => {
+    const D = deadVolumeOf(PLATE);
     let plan = addComponent(planWithStages(1), "Media", "#4e79a7");
-    plan = addToWells(plan, [plateWell("A1")], "Media", MIX_STEP_VOLUME);
-    plan = addToWells(plan, [plateWell("A2")], "Media", MIX_STEP_VOLUME / 2);
+    plan = addToWells(plan, [plateWell("A1")], "Media", D + MIX_STEP_VOLUME);
+    plan = addToWells(plan, [plateWell("A2")], "Media", D + MIX_STEP_VOLUME / 2);
     let { plan: withMixStep, id } = addMixStep(plan, null);
     const full = mixWells(withMixStep, id, [plateWell("A1")]);
     const contents = (candidate) => replay(candidate.startingContents, candidate.operationList).listContents();
     assert.deepEqual(contents(full), contents(withMixStep));
-    assert.deepEqual(stagesWithOverdraw(full), new Set());
+    assert.deepEqual(stagesWithContentsProblem(full), new Set());
     const short = mixWells(full, id, [plateWell("A2")]);
-    assert.deepEqual(stagesWithOverdraw(short), new Set([id]));
+    assert.deepEqual(stagesWithContentsProblem(short), new Set([id]));
   });
 
   // --- Mixing ---

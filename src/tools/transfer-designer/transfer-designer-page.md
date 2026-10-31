@@ -40,6 +40,14 @@
 > and End counting only transfers (sections 7, 9, 10 and 16). They become Final once built and
 > tested by Andy.
 
+> **Draft changes (2026-10-30, well capacities and dead volume, item 11 of v0.2.0):** from the
+> preview Andy shaped on 2026-10-30: three kinds of contents problem (a draw into the dead volume,
+> marked as an overdraw; an overdraw; an overfill, with its own mark), all red, all counted, all
+> refused by the file writer; a well holding only dead volume drawn striped; the usable volume and
+> the labware's capacity and dead volume in the contents card (sections 6, 7, 9, 12 and 16). A
+> starting volume is the volume put in the well, dead volume included. They become Final once built
+> and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -207,8 +215,10 @@ nothing. Saving a file doesn't touch the copy; Reset leaves it holding the empty
 ## 6. The deck panel
 **First bar.** On the left, the timeline (section 11); on the right, `Undo`, `Redo` (each disabled
 when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the problem count: `No
-problems` in green, or `N problems` in red: each overdraw in the whole plan counts as one, and so
-does each stage with a mix problem (`stagesWithMixProblem`).
+problems` in green, or `N problems` in red: each contents problem in the whole plan (a draw into
+the dead volume, an overdraw or an overfill, including a well that starts over its capacity;
+`contents-tracking.md`) counts as one, and so does each stage with a mix problem
+(`stagesWithMixProblem`).
 
 **Second bar.** On the left, the **labware tray**; on the right, the key and the `Arrows` toggle,
 both about what the deck draws. On a narrow window the right side wraps onto its own line.
@@ -223,9 +233,10 @@ to the right, which looked scattered.)
   is hidden. Clicking a chip brings that labware out, or puts it away; a chip is shown pressed (blue)
   while its labware is out. Its tooltip says `Bring out <label>` or `Put away <label>`. Putting
   labware away clears a source chosen on it. Undo doesn't change what's out.
-- **The key** shows only marks on the deck now: `Overdraw` (a well with a red ring and a red X) and
-  `Off plan` (a well with a red ring), and `Mix problem` (a red ⟳ badge, drawn as on the deck but
-  in the line, not on a well), each while that mark is on the deck. Its example wells are drawn as
+- **The key** shows only marks on the deck now: `Overdraw` (a well with a red ring and a red X),
+  `Overfill` (a well with a red ring and a red bar across it), `Only dead volume` (a well striped
+  blue), `Off plan` (a well with a red ring), and `Mix problem` (a red ⟳ badge, drawn as on the
+  deck but in the line, not on a well), in that order, each while that mark is on the deck. Its example wells are drawn as
   the marks on the deck are (below), the X's lines 2px thick. With none, the key is hidden.
 - **The component colors** (third bar): each component's swatch and name, in the plan's order.
 - **`Arrows`** (pressed while on) shows or hides the transfer arrows.
@@ -255,15 +266,29 @@ labware above to bring it into the editor.`
   in the order the components are listed in the well; for a trough, bands from the bottom up), with
   its total volume in short form (section 13) in the middle, on a small white label (white at 88%
   opacity, 4px corners, 2px × 3px padding), so it reads on any component color (Andy, 2026-10-26).
+- **Holding only dead volume:** a well that holds something but whose usable volume is 0
+  (`usableVolumeOf`, `contents-tracking.md`; the page never subtracts the dead volume itself), so
+  a tip can reach none of it, is filled as above but under
+  diagonal stripes of the page's background color at 75% opacity (3px stripes, 7px apart, at
+  45°), so it reads as liquid that's out of reach; its label is still the total. The same on
+  plates and troughs (Andy, 2026-10-30: one rule for every labware). An empty well isn't striped.
 - Its accessible name is the well and its contents, e.g. `Assay plate A1, 120 µL` or `Assay plate
-  A2, empty`, then, if the open stage mixes it, how much: `Assay plate A1, 120 µL, mixed 17%`.
+  A2, empty` (holding only dead volume: `Assay plate A1, 20 µL, all dead volume`), then, if the open stage mixes it, how much: `Assay plate A1, 120 µL, mixed 17%`.
 
 **Pointing at a well** shows its contents card at once, beside the well: to its left if it fits there
 (the cursor's volume label is to the right), otherwise to its right, and kept inside the window. The
 card (dark, light text) shows:
 - the well, e.g. `Assay plate A1`; its total, `120 µL total`, or `Empty`;
+- if it holds something: its usable volume (`usableVolumeOf`), `100 µL usable`, or, when that's
+  0, `0 µL usable: all of it is dead volume`;
 - for each component: its swatch, name, volume in µL and percentage (section 13);
-- for each overdraw of this well: `Transfer #5 asked for 60 µL but this well held 50 µL.`;
+- the labware's limits, in small gray text: `Capacity 360 µL · dead volume 20 µL` (`capacityOf`
+  and `deadVolumeOf`, `deck.md`);
+- for each contents problem of this well, by its kind (`contents-tracking.md`), in the problem
+  color: a draw into the dead volume, `Transfer #5 asked for 400 µL but only 300 µL was above the
+  dead volume (held 2300 µL, dead volume 2000 µL).`; an overdraw, `Transfer #5 asked for 60 µL but
+  this well held 50 µL.`; an overfill, `Transfer #5 brought this well to 380 µL, over its 360 µL
+  capacity.`, or, for the start, `Starts with 400 µL, over its 360 µL capacity.`;
 - if the well is off plan: `Contents differ from the plan because of transfer #5, #7.`;
 - if the open stage mixes the well: `Mixed 17% of well`: its mixed share (`mixVolumes`,
   `mixedWells`; `mix-volumes.md`), rounded **down** to a whole percent, so a short mix never reads
@@ -279,10 +304,15 @@ Transfer numbers are positions in the operation list counting from 1. The card h
 pointer leaves the well, the page scrolls, or a drag starts.
 
 **Marks on the wells** (from `contents-tracking` at the point the deck shows):
-- **Overdraw:** a source well a transfer asked for more than it held: a thick red ring and a big red
-  X behind its label. The X is two red lines, 3px thick with rounded ends, each 120% of the well's
+- **Overdraw:** a source well a transfer asked for more than its usable volume (a `"dead-volume"`
+  or `"overdraw"` problem; `contents-tracking.md`): a thick red ring and a big red X behind its
+  label. The X is two red lines, 3px thick with rounded ends, each 120% of the well's
   width, crossing at the well's center at ±45°, so it's exactly centered (a "×" character sits
   wherever the font puts it) and reaches a little past the well's edge.
+- **Overfill:** a well a transfer filled over its capacity, or that starts over it (an `"overfill"`
+  problem): a thick red ring and a red bar behind its label: one red line, 3px thick with rounded
+  ends, 120% of the well's width, horizontal through the well's center (the X's lines, but one and
+  level). A well that's both overdrawn and overfilled shows both marks.
 - **Off plan:** a well whose contents differ from the plan because of an overdraw: a thick red ring.
 - **The open stage's wells:** while a stage with transfers is open, every well its transfers don't
   touch fades (to 30% opacity; 70% while pointed at).
@@ -370,10 +400,11 @@ holds:
   one transfer while another's volume is being typed (Andy, 2026-10-26: letting the pointer move it
   could cause a mistake). So Enter moves the highlight with the box.
 
-A stage **with an overdraw** (`stagesWithOverdraw`), row or card, has a light red background and
-border, and the tooltip `This stage has an overdraw: a transfer asks a well for more than it holds.`
+A stage **with a contents problem** (`stagesWithContentsProblem`), row or card, has a light red
+background and border, and the tooltip `This stage has a problem: a transfer asks a well for more
+than it holds above its dead volume, or fills a well over its capacity.`
 A stage **with a mix problem** (`stagesWithMixProblem`) looks the same, with the tooltip `This stage
-mixes a well that holds too little: the mix is under 1 µL.` (the minimum, `MIN_MIX_VOLUME`, from `config/`; today 1 µL); one with both has the overdraw's
+mixes a well that holds too little: the mix is under 1 µL.` (the minimum, `MIN_MIX_VOLUME`, from `config/`; today 1 µL); one with both has the contents problem's
 tooltip.
 
 **A mix step** (`isMixStep`) looks like any other stage, row or card, with a **⟳ after its name**
@@ -460,7 +491,11 @@ what a click does:
   component with + New, then fill wells with it.`
 
 **Filling.** With a component picked, a click or a box adds the brush's volume of it to each well
-(`addToWells`; message `Added 1000 µL of Media to 3 wells.`). With the eraser, it empties them
+(`addToWells`; message `Added 1000 µL of Media to 3 wells.`). If a fill takes a well over its
+capacity, the message is an error instead: `Added 1000 µL of Media to 3 wells, but Assay plate A1
+starts with 1400 µL, over its 360 µL capacity.` (the first such well in the starting contents'
+order); a well already over before the fill isn't reported again. A starting volume is the
+volume put in the well, dead volume included (roadmap, item 11): the page subtracts nothing. With the eraser, it empties them
 (`emptyWells`; message `Emptied 3 wells at the start.`). With nothing picked: `Pick a component in
 the Start card first, or add one with + New.` A drag that ends off the labware it started on fills
 nothing.
@@ -511,17 +546,21 @@ holding only the source: `The box held only the source well, so nothing was adde
 other labware: `Drag across wells of one labware to send the source into each of them.`
 
 **After adding** (`addTransfer`): `Added to stage 2, “Drugs”: Drug plate A1 → Assay plate A1, 20
-µL.` If the edit caused a **new overdraw**, the message is an error instead: `Added, but transfer
-#5 asks for 60 µL from Drug plate A1, which holds 50 µL.` (with several transfers, `Added 4
-transfers of 50 µL from Drug plate A1, but transfer #5 asks …`). If the logic refuses the transfer,
-its message is shown.
-- A **new overdraw** is one that wasn't there before the edit: a transfer that's overdrawn now but
-  wasn't, or wasn't in the plan. Transfers are recognized across the edit because the operation list
-  keeps every unchanged transfer as the same object (`operation-list.md`).
-- The message names a new transfer's own overdraw, if one of the added transfers asks for more
-  than its well holds; otherwise the first new overdraw in the run, such as a later transfer now
-  left short.
-- An edit that leaves only the overdraws that were already there gives the usual message.
+µL.` If the edit caused a **new contents problem**, the message is an error instead, by the
+problem's kind (`contents-tracking.md`): an overdraw, `Added, but transfer #5 asks for 60 µL from
+Drug plate A1, which holds 50 µL.`; a draw into the dead volume, `Added, but transfer #5 asks for
+400 µL from Reservoir 5, which has only 300 µL above its dead volume.`; an overfill, `Added, but
+transfer #5 brings Assay plate A1 to 380 µL, over its 360 µL capacity.` (with several transfers,
+`Added 4 transfers of 50 µL from Drug plate A1, but transfer #5 asks …`). If the logic refuses
+the transfer, its message is shown.
+- A **new contents problem** is one that wasn't there before the edit: a transfer that has a problem
+  now but didn't, or wasn't in the plan. Transfers are recognized across the edit because the
+  operation list keeps every unchanged transfer as the same object (`operation-list.md`). A
+  problem of the starting contents (`operationIndex` `null`) is recognized as the same problem
+  across edits, so adding transfers never reports it; filling wells can (section 8).
+- The message names a new transfer's own problem, if one of the added transfers has one;
+  otherwise the first new problem in the run, such as a later transfer now left short.
+- An edit that leaves only the problems that were already there gives the usual message.
 
 (Found 2026-10-26: the message used to name the plan's last overdraw, which needn't be one the
 edit caused. Adding a transfer that runs first and empties a well named a later transfer.)
@@ -660,7 +699,7 @@ open, `+ 1000 µL Media`, `Eraser`, or `No component picked`; with End open, not
 latest message until the next replaces it; it's hidden when empty. It's announced to screen readers.
 Each message has a kind: **ok** (green on pale green), **note** (gray on white, with a border) or
 **error** (dark red on pale red, with a border). Messages are listed with what causes them in
-sections 5 to 10. The kinds: errors from the logic, overdraws after adding, a file that can't be
+sections 5 to 10. The kinds: errors from the logic, contents problems after adding or filling, a file that can't be
 opened, a browser copy that can't be read, and `All 30 colors are in use…` are **error**; `Added…`, `Saved…`, `Renamed…`, `Named…`, `Opened…`, `Volume changed…` and `New
 tips…` are **ok**; the rest are **note**.
 
@@ -784,6 +823,13 @@ page's configuration (ADR 0009):
   any security warnings noted;
 - undo and redo with the buttons and the keys, after each kind of edit;
 - a plan with an overdraw shows the marks, the key, the red stage and the problem count;
+- capacities and dead volume: a trough filled with little more than its dead volume, then drawn
+  from past it: the X, the dead-volume message in the card and after adding, the stage red, the
+  problem counted, the Biomek files refused; the trough then holding only dead volume: striped,
+  `Only dead volume` in the key, `0 µL usable` in the card; a plate well filled past its capacity
+  at Start, and another taken over it by a transfer: the bar, `Overfill` in the key, the messages,
+  the count, the refusal; a well both overdrawn and overfilled shows both marks; every card shows
+  the usable volume and the limits line; the stripes and marks on a plate and on a trough alike;
 - mix steps: the ⟳ on seams (always just left of the `+`) adds one and opens it; clicking a well
   mixes it, again stops mixing it, and dragging mixes a box; its card's `N wells mixed`, ⟳ after its
   name, its wells' list with `N% of well` and `×`; its box's note and Remove; a new mix step copies

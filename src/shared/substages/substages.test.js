@@ -6,18 +6,20 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { DECK } from "../../../config/deck.js";
+import { gridOf } from "../deck/deck.js";
+import { GRID_96, GRID_1X12_NUMBERED } from "../well-grid/well-grid.js";
 import { substagesOf } from "./substages.js";
 
 // Two labware of one 96-well labware type (plates), a 96-well labware of another type (a
 // deep-well plate), and the numbered (reservoir) labware, each found in DECK with its labware type.
-const PLATE = DECK.find((entry) => entry.grid === "GRID_96");
+const PLATE = DECK.find((entry) => gridOf(entry.name) === GRID_96);
 const OTHER_PLATE = DECK.find(
   (entry) => entry.labwareType === PLATE.labwareType && entry.name !== PLATE.name,
 );
 const DEEP = DECK.find(
-  (entry) => entry.grid === "GRID_96" && entry.labwareType !== PLATE.labwareType,
+  (entry) => gridOf(entry.name) === GRID_96 && entry.labwareType !== PLATE.labwareType,
 );
-const RESERVOIR = DECK.find((entry) => entry.grid === "GRID_1X12_NUMBERED");
+const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED);
 
 // A transfer in stage "1" from `sourceWell` of `source` to `destinationWell` of `destination`
 // (each a DECK entry), e.g. transfer(RESERVOIR, "1", PLATE, "A1").

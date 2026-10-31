@@ -3,10 +3,22 @@
 The project's own terms, each defined once. Use a term here with this meaning only. Biomek's own terms
 (step, method, technique, worklist) keep Biomek's meaning; see `docs/domain/biomek.md`.
 
+**Capacity**
+The most one well of a labware type holds, in µL: the type's "Maximum volume per well" in Biomek
+Software, copied into `config/labware-types.js`. One value per labware type. A well filled past it
+is an overfill.
+
 **Component**
 A liquid the user names in a plan, such as "Media" or "Drug_A", each with its own color for drawing
 it. A plan's starting contents say how much of each component every well holds; contents tracking
 then follows the components through the transfers. Two components never share a name or a color.
+
+**Dead volume**
+The liquid a well holds that a tip can't reach, in µL: one value per labware type, in
+`config/labware-types.js`, because every technique's minimum pipetting height is set to reach it
+(roadmap, item 11 of v0.2.0). A well's **usable volume** is what it holds minus its dead volume,
+never below 0; a transfer can take only that. A starting volume is the volume put in the well,
+dead volume included: the tool does the subtraction.
 
 **Experiment name**
 The name the user gives a plan's experiment, such as "Exp36": the transfer designer page's heading,
@@ -36,6 +48,18 @@ A stage that only mixes: it moves no liquid, and each of its wells is mixed in p
 from the well to itself, run with a technique that only mixes; ADR 0007, "Mixing"). On the page it's
 added with its own button, and shown with a ⟳ after its name. It's still a stage: it has a place in
 the stage order, uses the tips of its tip group, and becomes stage-worklist rows.
+
+**Overdraw**
+A transfer that asks a well for more than it can give: more than its usable volume (the tip
+would reach into the dead volume and draw air) or more than it holds at all. Contents tracking
+tells the two apart (`"dead-volume"` and `"overdraw"`; `contents-tracking.md`); the page marks
+both as an overdraw. It's shown as a problem, and the Biomek files can't be written until it's
+fixed.
+
+**Overfill**
+A well over its capacity, because a transfer filled it past that or it starts over. Shown as a
+problem, with its own mark; the Biomek files can't be written until it's fixed. The tool can't
+know what spills, so it tracks the well's contents as if the liquid had fit.
 
 **Pipetting mode**
 What the user chooses for how one end of a stage pipettes, such as "Slow" at the sources and

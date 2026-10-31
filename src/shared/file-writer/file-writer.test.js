@@ -12,14 +12,15 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { DECK } from "../../../config/deck.js";
-import { TIP_TYPES } from "../../../config/tip-types.js";
+import { GRID_96, GRID_1X12_NUMBERED } from "../well-grid/well-grid.js";
+import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
 import {
   MIN_MIX_VOLUME,
   DEFAULT_MIX,
   MIX_STEP_MODE,
   MIX_STEP_VOLUME,
 } from "../../../config/mixing.js";
-import { labwareNames, gridOf } from "../deck/deck.js";
+import { labwareNames, gridOf, capacityOf, deadVolumeOf } from "../deck/deck.js";
 import {
   START,
   emptyPlan,
@@ -41,11 +42,11 @@ import { writeRunFiles, checkExperimentName, folderNameFor } from "./file-writer
 
 // A 96-well labware, a 96-well labware of another labware type (a deep-well plate), and the
 // numbered (reservoir) labware, each found in DECK with its labware type.
-const PLATE = DECK.find((entry) => entry.grid === "GRID_96");
+const PLATE = DECK.find((entry) => gridOf(entry.name) === GRID_96);
 const DEEP = DECK.find(
-  (entry) => entry.grid === "GRID_96" && entry.labwareType !== PLATE.labwareType,
+  (entry) => gridOf(entry.name) === GRID_96 && entry.labwareType !== PLATE.labwareType,
 );
-const RESERVOIR = DECK.find((entry) => entry.grid === "GRID_1X12_NUMBERED");
+const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED);
 
 // The timestamp most tests write with, the experiment name their plans have, and the folder they
 // give.
@@ -83,9 +84,12 @@ function well(entry, name) {
   return { labware: entry.name, well: name };
 }
 
+// What troughs 1 and 2 of the reservoir hold at the start, in µL: 1000 µL above the reservoir's dead
+// volume, so transfers from them are never a contents problem.
+const TROUGH_VOLUME = deadVolumeOf(RESERVOIR.name) + 1000;
+
 // A plan named NAME with `count` stages, "1" to `count`, each added last, Media in the plan's
-// components, and 1000 µL of Media in troughs 1 and 2 of the reservoir, so transfers from them
-// don't overdraw.
+// components, and TROUGH_VOLUME µL of Media in troughs 1 and 2 of the reservoir.
 function planWithStages(count) {
   let { plan } = emptyPlan();
   plan = setExperimentName(plan, NAME);
@@ -93,7 +97,7 @@ function planWithStages(count) {
     plan = addStage(plan, null).plan;
   }
   plan = addComponent(plan, MEDIA, "#4e79a7");
-  return addToWells(plan, [well(RESERVOIR, "1"), well(RESERVOIR, "2")], MEDIA, 1000);
+  return addToWells(plan, [well(RESERVOIR, "1"), well(RESERVOIR, "2")], MEDIA, TROUGH_VOLUME);
 }
 
 // A transfer in `stage` from `source` to `destination`,
@@ -324,14 +328,16 @@ describe("file-writer", () => {
   });
 
   test("Setup.csv gives each well the sum of its components, 0 if empty, and names reservoir wells by number", () => {
+    // The deep-well labware: a 96-well labware whose capacity has room for 750 µL.
+    assert.ok(capacityOf(DEEP.name) >= 750);
     let plan = addComponent(planWithStages(1), "Drug", "#e15759");
-    plan = addToWells(plan, [well(PLATE, "B2")], MEDIA, 500);
-    plan = addToWells(plan, [well(PLATE, "B2")], "Drug", 250);
+    plan = addToWells(plan, [well(DEEP, "B2")], MEDIA, 500);
+    plan = addToWells(plan, [well(DEEP, "B2")], "Drug", 250);
     plan = addToWells(plan, [well(RESERVOIR, "5")], "Drug", 300);
     plan = withTransfersIn(plan, ["1"]);
     const [row] = rowsOf(fileNamed(write(plan), "Setup.csv"));
-    assert.equal(row[`Vol_${PLATE.name}_B2`], "750");
-    assert.equal(row[`Vol_${PLATE.name}_B3`], "0");
+    assert.equal(row[`Vol_${DEEP.name}_B2`], "750");
+    assert.equal(row[`Vol_${DEEP.name}_B3`], "0");
     assert.equal(row[`Vol_${RESERVOIR.name}_5`], "300");
   });
 
@@ -393,8 +399,11 @@ describe("file-writer", () => {
     plan = setStageMix(plan, "1", "source", { share: 10, times: 2, speed: 100 });
     plan = setStageMix(plan, "1", "destination", exampleMix());
     const [, row] = rowsOf(fileNamed(write(plan), "Stages.csv"));
-    // Trough 1 holds 1000 µL when it's mixed (1000 − 50 + 50): 10% is 100.
-    assert.deepEqual(mixFieldsOf(row, "Src"), ["100", "2", "100"]);
+    // Trough 1 holds TROUGH_VOLUME when it's mixed (TROUGH_VOLUME − 50 + 50): 10% of that, rounded
+    // down to a tenth of a µL, or the START tips' mix volume limit if that's less (mix-volumes.md).
+    const tenth = Math.floor(roundTo(TROUGH_VOLUME * 10 * 10, 6)) / 10;
+    const sourceMix = Math.min(tenth, MIX_VOLUME_LIMITS[TIP_TYPES[0]]);
+    assert.deepEqual(mixFieldsOf(row, "Src"), [volumeText(sourceMix), "2", "100"]);
     assert.deepEqual(mixFieldsOf(row, "Dest"), ["45", "3", "400"]);
   });
 
@@ -673,13 +682,53 @@ describe("file-writer", () => {
     assert.ok(fileNamed(result, "Stage99_A.csv") !== undefined);
   });
 
-  test("a stage with an overdraw is refused, named by place and name", () => {
+  test("a well that starts over its capacity is refused, before any stage", () => {
+    const capacity = capacityOf(PLATE.name);
+    let plan = addToWells(planWithStages(1), [well(PLATE, "B1")], MEDIA, capacity + 40);
+    plan = withTransfersIn(plan, ["1"]);
+    assert.throws(() => write(plan), {
+      message:
+        `${PLATE.name} B1 starts with ${volumeText(capacity + 40)} µL, over its ` +
+        `${volumeText(capacity)} µL capacity. Fix the starting contents before writing the files.`,
+    });
+  });
+
+  test("a stage with a draw into the dead volume is refused, named by place and name, with the transfer, the well and the volumes", () => {
+    const deadVolume = deadVolumeOf(RESERVOIR.name);
+    let plan = renameStage(planWithStages(3), "3", "Seeding");
+    plan = withTransfersIn(plan, ["1", "2"]);
+    // Trough 5 holds 300 µL above its dead volume; 400 µL is asked.
+    plan = addToWells(plan, [well(RESERVOIR, "5")], MEDIA, deadVolume + 300);
+    plan = addTransfer(plan, transfer("3", well(RESERVOIR, "5"), well(PLATE, "A3"), 400));
+    assert.throws(() => write(plan), {
+      message:
+        `Stage 3, "Seeding", draws into a dead volume: transfer #3 asks ${RESERVOIR.name} 5 for 400 µL, ` +
+        `but only 300 µL is above its ${volumeText(deadVolume)} µL dead volume. ` +
+        "Fix it before writing the files.",
+    });
+  });
+
+  test("a stage with an overdraw is refused, named by place and name, with the transfer, the well and the volumes", () => {
     let plan = renameStage(planWithStages(3), "3", "Seeding");
     plan = withTransfersIn(plan, ["1", "2"]);
     plan = addTransfer(plan, transferTo("3", "A3", 5000));
     assert.throws(() => write(plan), {
       message:
-        'Stage 3, "Seeding", has an overdraw: a transfer asks a well for more than it holds. ' +
+        `Stage 3, "Seeding", has an overdraw: transfer #3 asks ${RESERVOIR.name} 1 for 5000 µL, ` +
+        `but it holds ${volumeText(TROUGH_VOLUME - 100)} µL. Fix it before writing the files.`,
+    });
+  });
+
+  test("a stage with an overfill is refused, named by place and name, with the transfer, the well and the volumes", () => {
+    const capacity = capacityOf(PLATE.name);
+    let plan = renameStage(planWithStages(3), "3", "Seeding");
+    plan = withTransfersIn(plan, ["1", "2"]);
+    plan = addToWells(plan, [well(PLATE, "A3")], MEDIA, capacity - 10);
+    plan = addTransfer(plan, transferTo("3", "A3", 30));
+    assert.throws(() => write(plan), {
+      message:
+        `Stage 3, "Seeding", overfills ${PLATE.name} A3: transfer #3 brings it to ` +
+        `${volumeText(capacity + 20)} µL, over its ${volumeText(capacity)} µL capacity. ` +
         "Fix it before writing the files.",
     });
   });
@@ -702,9 +751,12 @@ describe("file-writer", () => {
   });
 
   test("a stage with a mix problem at the source is refused, saying before aspirating", () => {
+    // H1 holds 0.1 µL and nothing is drawn from it (the transfer's volume is 0), so there's no
+    // contents problem, only the mix problem: a mix takes its share of what the well holds, dead
+    // volume included (roadmap, "Technical debt"), and 50% of 0.1 µL rounds down to 0.
     let plan = renameStage(planWithStages(1), "1", "Wash");
     plan = addToWells(plan, [well(PLATE, "H1")], MEDIA, 0.1);
-    plan = addTransfer(plan, transfer("1", well(PLATE, "H1"), well(DEEP, "A1"), 0.1));
+    plan = addTransfer(plan, transfer("1", well(PLATE, "H1"), well(DEEP, "A1"), 0));
     plan = setStageMix(plan, "1", "source", { share: 50, times: 2, speed: 100 });
     assert.throws(() => write(plan), {
       message:
@@ -742,6 +794,12 @@ describe("file-writer", () => {
     plan = addTransfer(plan, transferTo("2", "B1", 0.0004));
     plan = addTransfer(plan, transferTo("4", "B2", 5000));
     assert.throws(() => write(plan), { message: /^Stage 2, .* has a transfer of 0.0004 µL/ });
+  });
+
+  test("order of checks: a well starting over capacity and an overdraw in stage 1 reports the starting well", () => {
+    let plan = addToWells(planWithStages(1), [well(PLATE, "B1")], MEDIA, capacityOf(PLATE.name) + 1);
+    plan = addTransfer(plan, transferTo("1", "A3", 5000));
+    assert.throws(() => write(plan), { message: /^.* B1 starts with .* over its .* capacity/ });
   });
 
   test("order of checks: a stage with an overdraw and a mix problem reports the overdraw", () => {

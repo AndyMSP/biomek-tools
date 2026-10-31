@@ -334,7 +334,21 @@ added on 2026-10-28 (Andy).
     included, as at the bench today; the tool subtracts the dead volume itself and warns when a
     draw would go into it, and the setup worklist carries the real volume. The feature warns; it
     doesn't change how people fill labware. (Replaces the workaround in "Technical debt" of
-    entering a reservoir's volume minus its dead volume.) Next: the preview.
+    entering a reservoir's volume minus its dead volume.) **The preview is done** (2026-10-30;
+    Andy liked it): capacity and dead volume per labware type in a new `config/labware-types.js`
+    (stand-in numbers until measured; "Technical debt"); contents tracking finds **three kinds of
+    problem**, a draw that reaches into the dead volume (marked as an overdraw is), an overdraw,
+    and an **overfill** (a well over its capacity, from a transfer or at Start; a new mark: a red
+    ring and a red bar across the well), all red, all in the problem count, all refused by the
+    file writer (Andy, 2026-10-30); a well whose liquid is all dead volume is drawn **striped** in
+    its component's color, its label still the total, the same on plates and troughs (Andy,
+    2026-10-30); the contents card shows the usable volume and the labware's capacity and dead
+    volume. **Mixing stays as it is** (Andy, 2026-10-30): a mix takes its share of what the well
+    holds, dead volume included ("Technical debt"). *Decided 2026-10-30 (Andy):* the values live
+    in a new `config/labware-types.js`, which defines each labware type the deck uses: its grid,
+    capacity and dead volume; `config/deck.js` keeps only each labware's name and type, its `grid`
+    moving to the type (a `BCFlat96` is always 96 wells). The `deck` module reads the grid through
+    the type. Next: the specifications.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -440,7 +454,16 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   still use internal terms, such as "starting contents entry 3", and contents cards number transfers
   (`#5`) by their place in the operation list, which the page doesn't show. Properly: collect every
   message a user can meet and reword those into the page's terms.
-- **Dead volume isn't modelled.** A reservoir trough holds liquid a tip can't reach (2 mL in Exp37,
+- **Capacities and dead volumes are stand-ins** (2026-10-30): `config/labware-types.js` has
+  measured dead volumes for the deep well and the trough (`exp37.md`) but a guessed one for the
+  flat plate, and guessed capacities for all three. Properly: each capacity copied from the
+  Biomek's Labware Type Editor, and the flat plate's dead volume measured, with sources in the
+  file's comments.
+- **A mix can draw into the dead volume** (2026-10-30): `mix-volumes` takes a mix's share of what
+  the well holds, dead volume included, so a 90% mix of a trough holding little more than its dead
+  volume pulls air. Properly: the share of the usable volume, which also changes the short-mix
+  and mix-problem rules; a mix that would reach into the dead volume could be a problem of its own.
+- **Dead volume isn't modelled.** *(Replaced 2026-10-30 by item 11 of v0.2.0.)* A reservoir trough holds liquid a tip can't reach (2 mL in Exp37,
   `exp37.md`). For v0.2.0, the user enters a reservoir's starting volume minus its dead volume.
   The transfer designer page doesn't remind the user of this (Andy dropped the reminder,
   2026-10-25), so the lab needs to know it another way.

@@ -7,6 +7,10 @@
 > **Draft change (2026-10-30):** probes come from the tip changes, not the stages (ADR 0007, "Tip
 > changes"; section 3, `Stages.csv`, and section 6).
 >
+> **Draft change (2026-10-30, well capacities and dead volume, item 11 of v0.2.0):** contents
+> tracking's three kinds of problem (a draw into the dead volume, an overdraw, an overfill), each
+> refused with its own message, and a well that starts over its capacity (sections 5 and 6).
+>
 > **Draft change (2026-10-30, mixing layer (b)):** the mix columns are written from each stage's
 > mixes, with volumes from the `mix-volumes` module, and a plan with a mix under the minimum is
 > refused (ADR 0007, "Mixing"; sections 2, 3, 5 and 6). Substages come from the `substages` shared
@@ -218,14 +222,23 @@ in the files (section 3, "How values are written").
 | The plan has no experiment name (`""`) | `Name the experiment first: the files' folder is named after it.` |
 | The plan has no transfers | `There's nothing to write: the plan has no transfers. Add transfers to a stage first.` |
 | A stage with transfers comes later than 99th in the stage order, so its file name has no room for its place (section 3) | `Stage 104, "Wash", is too far down the list: file names have room for 99 stages. Remove some stages before it.` |
-| A stage has an **overdraw**: a transfer asks a well for more than it holds (`contents-tracking`) (Andy, 2026-10-28) | `Stage 3, "Seeding", has an overdraw: a transfer asks a well for more than it holds. Fix it before writing the files.` |
+| A well **starts over its capacity** (`contents-tracking`, an `"overfill"` with `operationIndex` `null`) (Andy, 2026-10-30) | `Plate1 B1 starts with 400 µL, over its 360 µL capacity. Fix the starting contents before writing the files.` |
+| A stage has a **contents problem** (`contents-tracking`): a transfer **draws into the dead volume** (Andy, 2026-10-30) | `Stage 3, "Seeding", draws into a dead volume: transfer #5 asks Res1 5 for 400 µL, but only 300 µL is above its 2000 µL dead volume. Fix it before writing the files.` |
+| … an **overdraw**: a transfer asks a well for more than it holds (Andy, 2026-10-28) | `Stage 3, "Seeding", has an overdraw: transfer #5 asks Plate1 A1 for 60 µL, but it holds 50 µL. Fix it before writing the files.` |
+| … an **overfill**: a transfer fills a well over its capacity (Andy, 2026-10-30) | `Stage 3, "Seeding", overfills Plate1 A1: transfer #5 brings it to 380 µL, over its 360 µL capacity. Fix it before writing the files.` |
 | A stage has a **mix problem**: a mix volume under `MIN_MIX_VOLUME`, because its emptiest well holds too little when it's mixed (`mix-volumes`) (Andy, 2026-10-30) | `Stage 3, "Seeding", mixes Plate1 A2 after dispensing when it holds only 0.9 µL: 90% of that is 0.8 µL, and a mix needs at least 1 µL. Turn that mixing off, or put more in the well first.` (The example uses today's minimum, 1 µL; the message gives `MIN_MIX_VOLUME`, and the tests build theirs from it.) For a source, "before aspirating". It names the stage's first mix problem (`mix-volumes`, `problems`), and the well by its labware's name, as the files do; volumes are written as in the files. |
 | A transfer's volume is 0 once rounded to 3 decimal places, so Biomek would skip it ("Skip zero volume transfers", ADR 0007) | `Stage 2, "Media", has a transfer of 0.0004 µL, which is 0 µL to 3 decimal places, so the Biomek would skip it. Use at least 0.001 µL.` |
 
+A contents problem names the stage's first problem in contents tracking's order, the transfer by
+its position in the operation list counting from 1 (as the transfer designer's page does), the
+well by its labware's name, and volumes as the files write them.
+
 **Order of checks.** For `writeRunFiles`: the timestamp, then the plan: its form (including that it
 holds `experimentName`), then its experiment name (none, then `checkExperimentName`), then whether
-it has transfers, then the stages in stage order, each checked for its place,
-then its overdraws, then its mix problems, then its volumes. The first problem found is reported,
+it has transfers,
+then whether a well starts over its capacity, then the stages in stage order, each checked for its
+place, then its contents problems, then its mix problems, then its volumes. The first problem found
+is reported,
 and no files are returned.
 
 Problems the plan's own modules already prevent (a well not on the deck, a stage's settings that
@@ -319,14 +332,20 @@ still pass when the deck changes (as `deck.test.js` does).
 
 **Refusing** (section 5)
 - Each row of section 5 gives its message, with no files: a plan that isn't an object; an empty
-  plan; a stage at place 100 with transfers; a stage with an overdraw (named by place and name); a
-  stage with a mix problem at the destination (the message above) and one at the source ("before
+  plan; a stage at place 100 with transfers; a well that starts over its capacity; a stage with a
+  draw into the dead volume, one with an overdraw and one with an overfill (each named by place
+  and name, with the transfer, the well and the volumes; on the real deck, with the capacity and
+  dead volume taken from `config/labware-types.js` for the labware chosen); a stage with a mix problem at the destination (the message above) and one at the source ("before
   aspirating"); a transfer of `0.0004` µL.
 - A stage at place 100 *without* transfers is accepted (it isn't written).
+- A mix problem is reached without a contents problem (2026-10-30): the dead-volume check comes
+  first, so the test's well holds at least the labware's dead volume plus what's drawn, and a
+  source mix problem uses a source drawn down to its dead volume, not one drawn empty.
 - A plan with no experiment name gives its message, with no files.
 - Order of checks: a bad timestamp with a plan with no name reports the timestamp; a plan with no
   name and no transfers reports the name; a plan with no transfers and a bad timestamp reports the
-  timestamp; a plan with an overdraw in stage 4 and a
+  timestamp; a well starting over capacity and an overdraw in stage 1 reports the starting
+  well; a plan with an overdraw in stage 4 and a
   zero-rounding volume in stage 2 reports stage 2's; a stage with both an overdraw and a mix problem
   reports the overdraw; a stage with a mix problem and a zero-rounding volume reports the mix
   problem.

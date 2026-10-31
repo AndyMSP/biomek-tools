@@ -158,6 +158,12 @@ is one the page could make, and find labware by grid and labware type in `DECK`.
 - A plan whose stages don't mix gives every row `null` at both ends, and no problems.
 - A stage without transfers isn't listed; a stage that splits into two substages has two rows, in
   substage order.
+- **On the real deck** (2026-10-30, item 11 of v0.2.0): these examples are written as if the
+  labware's dead volume were 0. A test on the real deck adds the source labware's dead volume
+  (`deadVolumeOf`, `deck.md`) to what the source holds, so no draw is a dead-volume problem, and
+  takes the number from the deck module, never writing it; "drawn empty" means drawn down to the
+  dead volume. The mix itself still takes its share of what the well holds, dead volume included
+  (roadmap, "Technical debt").
 - **Destination:** the example above gives `18`: A1 held 0 before the stage plus its one dispense of
   20 µL, the least of the two wells.
 - **Smallest dispense:** a destination dispensed into twice in a row, 30 µL and 10 µL, holding 50 µL

@@ -2,12 +2,15 @@
 //
 // It starts from the contents of the wells before the first operation and replays the transfers of
 // an operation list in order, assuming each well is well mixed. It records each well's components in
-// microliters (µL), and reports transfers that take more than their source holds, and which wells
-// those problems reach. It is a pure calculation: the same inputs always give the same result, and
-// nothing passed in is changed.
+// microliters (µL), and reports three kinds of problem: a transfer that draws into its source's
+// dead volume, one that asks for more than its source holds at all, and a well filled over its
+// capacity; and which wells the draw problems reach. Capacities and dead volumes come from the deck
+// module; labware the deck doesn't know has dead volume 0 and no capacity. It is a pure
+// calculation: the same inputs always give the same result, and nothing passed in is changed.
 // Specification: contents-tracking.md.
 
 import { describeValue } from "../error-messages/error-messages.js";
+import { hasLabware, capacityOf, deadVolumeOf } from "../deck/deck.js";
 import {
   isObject,
   findMissingProperties,
@@ -19,9 +22,10 @@ import {
 import { OperationList } from "../operation-list/operation-list.js";
 
 // One picoliter, in µL. After a transfer, a well whose total volume is below this is treated as
-// empty, and a transfer may ask for up to this much more than its source holds without being a
-// problem. It is far smaller than anything a pipette can move, and far larger than the leftovers
-// decimal arithmetic leaves (such as 0.1 + 0.2 - 0.3), so it separates the two (spec section 3).
+// empty; a transfer may ask for up to this much more than its source's usable volume without being
+// a problem; and a well may be over its capacity by up to this much without being overfilled. It is
+// far smaller than anything a pipette can move, and far larger than the leftovers decimal
+// arithmetic leaves (such as 0.1 + 0.2 - 0.3), so it separates the two (spec section 3).
 const NEGLIGIBLE_MICROLITERS = 0.000001;
 
 // Passed by replay to the ContentsSnapshot constructor. It isn't exported, so no other code can
@@ -41,7 +45,7 @@ export function replay(startingContents, operationList, operationCount) {
 
   const count = operationCount === undefined ? operations.length : operationCount;
   const wells = createWells(startingContents);
-  const problems = [];
+  const problems = findStartingOverfills(wells);
   operations.slice(0, count).forEach((operation, operationIndex) => {
     // Version 1 has only transfers; other types, when added, are skipped unless they change what's
     // in a well (spec section 2).
@@ -85,13 +89,14 @@ export class ContentsSnapshot {
     }));
   }
 
-  // The problems list, e.g.
-  // [{ operationIndex: 2, labware: "Plate 2", well: "D5", requested: 60, available: 50 }].
+  // The problems list, in the order they occur, e.g.
+  // [{ kind: "overdraw", operationIndex: 2, labware: "Plate 2", well: "D5", requested: 60,
+  //    held: 50, deadVolume: 0, available: 50 }].
   listProblems() {
     return this.#problems.map((problem) => ({ ...problem }));
   }
 
-  // The wells whose contents differ from the plan because of problems, e.g.
+  // The wells whose contents differ from the plan because of draw problems, e.g.
   // [{ labware: "Plate 2", well: "D7", causes: [2, 3] }].
   listAffected() {
     return [...this.#wells.values()]
@@ -108,6 +113,16 @@ export class ContentsSnapshot {
   // One well's total volume in µL, e.g. totalVolumeOf("Plate 1", "A1") → 100.
   totalVolumeOf(labware, well) {
     return totalVolume(this.#findComponents(labware, well, "totalVolumeOf"));
+  }
+
+  // One well's usable volume in µL: its total minus its labware's dead volume, never below 0, and 0
+  // when the difference is below NEGLIGIBLE_MICROLITERS, so a mixture drawn down to exactly the
+  // dead volume reads as 0 despite arithmetic leftovers, e.g. a trough holding 2000.0000000000002
+  // over a 2000 dead volume → 0. Callers take the usable volume from here rather than subtracting.
+  usableVolumeOf(labware, well) {
+    const held = totalVolume(this.#findComponents(labware, well, "usableVolumeOf"));
+    const usable = usableVolume(held, deadVolumeOfLabware(labware));
+    return usable < NEGLIGIBLE_MICROLITERS ? 0 : usable;
   }
 
   // Each component's share of one well, from 0 to 1, e.g. { Dye: 0.1, Media: 0.9 }.
@@ -165,21 +180,42 @@ function createWells(startingContents) {
   return wells;
 }
 
-// Applies one transfer to `wells`, and adds a problem to `problems` if the transfer asks for more
-// than its source holds. `operationIndex` is the transfer's position in the operation list.
+// The problems of the starting contents: an "overfill" with operationIndex null for each well that
+// starts over its capacity, in the starting contents' order (spec section 3, "Problems").
+function findStartingOverfills(wells) {
+  const problems = [];
+  for (const record of wells.values()) {
+    const held = totalVolume(record.components);
+    if (isOverCapacity(held, record.labware)) {
+      problems.push(overfillProblem(null, record, held));
+    }
+  }
+  return problems;
+}
+
+// Applies one transfer to `wells`, and adds to `problems` a draw problem if the transfer asks its
+// source for more than its usable volume, then an overfill if it takes its destination over its
+// capacity. `operationIndex` is the transfer's position in the operation list.
 function applyTransfer(wells, problems, transfer, operationIndex) {
   // Every well a transfer names is listed afterwards, even a source that never held anything,
   // because a tip still went into it.
   const source = findOrAddWell(wells, transfer.source);
   const destination = findOrAddWell(wells, transfer.destination);
-  const available = totalVolume(source.components);
+  const held = totalVolume(source.components);
+  const deadVolume = deadVolumeOfLabware(source.labware);
+  const available = usableVolume(held, deadVolume);
 
   if (transfer.volume > available + NEGLIGIBLE_MICROLITERS) {
     problems.push({
+      // The tip would reach into the dead volume and draw air; if the well doesn't even hold what's
+      // asked, it's an overdraw instead. Never both.
+      kind: transfer.volume > held + NEGLIGIBLE_MICROLITERS ? "overdraw" : "dead-volume",
       operationIndex,
       labware: source.labware,
       well: source.well,
       requested: transfer.volume,
+      held,
+      deadVolume,
       available,
     });
     source.causes = combineCauses(source.causes, [operationIndex]);
@@ -188,18 +224,61 @@ function applyTransfer(wells, problems, transfer, operationIndex) {
   // transfer just added.
   destination.causes = combineCauses(destination.causes, source.causes);
 
+  const destinationHeldBefore = totalVolume(destination.components);
   // A transfer from a well to itself changes nothing, so it's skipped; this also avoids tiny
   // arithmetic leftovers from taking liquid out and putting it back.
   if (source !== destination) {
-    // Never more than the source holds. A real overdraw moves what's there, and so does a transfer
-    // within NEGLIGIBLE_MICROLITERS of it, so nothing goes below 0 (spec section 3, "Tiny amounts").
+    // Never more than the usable volume. A draw problem moves what's reachable, and so does a
+    // transfer within NEGLIGIBLE_MICROLITERS of it, so nothing goes below the dead volume (spec
+    // section 3, "Tiny amounts").
     moveLiquid(source, destination, Math.min(transfer.volume, available));
   }
+  // An overfill is reported once per crossing: only the transfer that takes the well over its
+  // capacity, not a later one into a well that's already over (spec section 3, "Problems").
+  const destinationHeldAfter = totalVolume(destination.components);
+  if (
+    isOverCapacity(destinationHeldAfter, destination.labware) &&
+    !isOverCapacity(destinationHeldBefore, destination.labware)
+  ) {
+    problems.push(overfillProblem(operationIndex, destination, destinationHeldAfter));
+  }
+}
+
+// An "overfill" problem entry for the well `record`, holding `held` µL after the operation at
+// `operationIndex` (null for the start), e.g.
+// { kind: "overfill", operationIndex: 4, labware: "Plate 2", well: "A1", held: 380, capacity: 360 }.
+function overfillProblem(operationIndex, record, held) {
+  return {
+    kind: "overfill",
+    operationIndex,
+    labware: record.labware,
+    well: record.well,
+    held,
+    capacity: capacityOf(record.labware),
+  };
+}
+
+// True if a well on `labware` holding `held` µL is over its capacity by more than
+// NEGLIGIBLE_MICROLITERS. Labware the deck doesn't know has no capacity, so it's never over.
+function isOverCapacity(held, labware) {
+  return hasLabware(labware) && held > capacityOf(labware) + NEGLIGIBLE_MICROLITERS;
+}
+
+// The dead volume of `labware` in µL: the deck's value, or 0 for labware the deck doesn't know
+// (spec section 3, "Capacity, dead volume and usable volume").
+function deadVolumeOfLabware(labware) {
+  return hasLabware(labware) ? deadVolumeOf(labware) : 0;
+}
+
+// The usable volume of a well holding `held` µL above a dead volume of `deadVolume` µL: what a tip
+// can reach, never below 0, e.g. (2300, 2000) → 300 and (1500, 2000) → 0.
+function usableVolume(held, deadVolume) {
+  return Math.max(0, held - deadVolume);
 }
 
 // Moves `volume` µL from `source` to `destination` (two well records). It leaves the source in
 // proportion to everything in it, e.g. 50 µL from { Dye: 10, Media: 90 } moves { Dye: 5, Media: 45 }.
-// `volume` is never more than the source holds.
+// `volume` is never more than the source's usable volume, so never more than it holds.
 function moveLiquid(source, destination, volume) {
   // Nothing to move. Returning here also avoids dividing by 0 when the source is empty.
   if (volume === 0) {

@@ -60,7 +60,10 @@ Andy is learning, so explanations matter as much as the code.
   preview, and sends Andy a notification when it's ready for his test.
 - **Decisions for later work go into the repository straight away** (Andy, 2026-10-30): a decision
   about a piece of work not yet specified goes into that work's roadmap entry at once, not only into
-  a chat or a project file, so it can't be lost before the specification is written.
+  a chat or a project file, so it can't be lost before the specification is written. It goes onto
+  the topic's branch and is pushed; the pushed branch is the record. **One pull request per
+  topic** (Andy, 2026-10-30): the topic's decisions, its specifications and its build share one
+  branch and one pull request, reviewed and merged once, not one merge per decision.
 - **Exception:** a very small code fix (a few lines, found in a review) can be made in the chat,
   still specification first, on its own branch with a pull request (Andy, 2026-10-26).
 
