@@ -67,6 +67,8 @@
   );
   --stage-gap: 10px;
   --seam-button-size: 26px;
+  /* The space between the seam's + and the tip button just right of it (section 7). */
+  --seam-button-gap: 6px;
   --mix-badge-size: 14px;
 }
 
@@ -1176,8 +1178,10 @@ button.entry-row {
   transform: translate(-50%, -50%) rotate(90deg);
 }
 
+/* The tip button has a fixed spot just right of the + (section 7), whether or not other seams have
+   one. The spot just left of the + is kept for the mix step button (mixing layer (c2)). */
 .seam-button.add-tips {
-  right: 10px;
+  left: calc(50% + var(--seam-button-size) / 2 + var(--seam-button-gap));
   background: var(--panel-background);
   color: var(--blue);
 }
