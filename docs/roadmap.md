@@ -353,6 +353,11 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **Tests that hard-code config values** (2026-10-30): CLAUDE.md now says tests work out their
+  numbers from `config/`, but tests written before then may name config values (e.g. default
+  volumes, tip types, the experiment name's 40 characters if it moves to `config/`). The mixing
+  values were fixed in #110. Properly: each module's tests follow the rule the next time it's
+  changed; a quick check is to change a config value and run `npm test`.
 - **Mix volume limits are stand-ins** (2026-10-30, mixing layer (b)): `MIX_VOLUME_LIMITS` in
   `config/tip-types.js` (BC230 200 µL, BC1070 1000 µL) is about what each tip holds in one trip
   (`biomek.md`, "Volumes and tips"), not checked as a mix volume on the instrument. Doing it
