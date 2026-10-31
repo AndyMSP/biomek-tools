@@ -53,7 +53,14 @@ Andy is learning, so explanations matter as much as the code.
   the specifications, not Claude's conclusions; Claude checks what it finds and passes on what
   matters.
 - **Claude Code** writes the code and tests, from the specifications only, in a new session each
-  time, so the specifications must say everything it needs.
+  time, so the specifications must say everything it needs. **Claude starts it** (Andy,
+  2026-10-30): once Andy approves a PR's specifications, Claude starts the build as a background
+  agent, in its own copy of the repository (a git worktree), with only the specifications and the
+  repository to go on, pushing to the PR's branch. Claude then reviews the build, puts it in Andy's
+  preview, and sends Andy a notification when it's ready for his test.
+- **Decisions for later work go into the repository straight away** (Andy, 2026-10-30): a decision
+  about a piece of work not yet specified goes into that work's roadmap entry at once, not only into
+  a chat or a project file, so it can't be lost before the specification is written.
 - **Exception:** a very small code fix (a few lines, found in a review) can be made in the chat,
   still specification first, on its own branch with a pull request (Andy, 2026-10-26).
 
