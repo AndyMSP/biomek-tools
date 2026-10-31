@@ -517,8 +517,8 @@ as `Non-Contact`. From the top:
   as rows, each labeled once at the left (Andy, 2026-10-29: simpler and less cluttered, with no
   information lost). It has two rows. **Mode**: in each column a menu of the pipetting modes
   for that end (`modesFor`), choosing one setting that end's technique and liquid type
-  (`modeSettings`, with `mixes` `true` when that end of the stage mixes, so it keeps mixing; if the
-  chosen mode can't mix, Save shows the logic's message and saves nothing); if the stage's settings at that end aren't one of the modes, its menu shows
+  (`modeSettings`, with `mixes` `true` when that end's Mix is checked, so it keeps mixing; a mode
+  that can't mix unchecks it, below); if the stage's settings at that end aren't one of the modes, its menu shows
   `(not one of the modes)` first. The menus' accessible names are `Aspirate mode` and `Dispense
   mode`, since their column headings aren't their labels. **Mix**: in each column a checkbox,
   checked while that end mixes (Andy, 2026-10-29: on or off, with no options). Checking it gives
