@@ -1115,6 +1115,12 @@ button.entry-row {
   border-color: var(--input-border);
 }
 
+/* A transfer with a contents problem shows its volume in red and semibold (section 7). */
+.volume-button.problem {
+  color: var(--red);
+  font-weight: 600;
+}
+
 .volume-box {
   width: 80px;
   min-height: 26px;

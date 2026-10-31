@@ -1761,15 +1761,31 @@ function mixedShareText(mixed) {
 
 // The open stage's transfer list: one row per transfer.
 function createTransferList(plan, id, transfers) {
+  const problems = transferProblems(plan);
   const list = createElement("ul", "", "transfer-list");
-  list.append(...transfers.map((transfer) => createTransferRow(plan, id, transfer)));
+  list.append(...transfers.map((transfer) => createTransferRow(plan, id, transfer, problems.get(transfer.position))));
   return list;
+}
+
+// Each transfer's own contents problem over the whole run (`contents-tracking.md`), keyed by its
+// position in the operation list: the first problem if it has two (section 7). Problems of the
+// starting contents name no transfer, so they're left out.
+function transferProblems(plan) {
+  const problems = new Map();
+  for (const problem of replay(plan.startingContents, plan.operationList).listProblems()) {
+    if (problem.operationIndex !== null && !problems.has(problem.operationIndex)) {
+      problems.set(problem.operationIndex, problem);
+    }
+  }
+  return problems;
 }
 
 // One transfer's row, e.g. "Assay plate A1 → Drug plate B2", then "20 µL" and × at the right. Its
 // volume is a button that becomes a text box; pointing at the row singles its transfer out on the deck,
-// unless a volume box is open, whose transfer stays singled out until it closes.
-function createTransferRow(plan, id, transfer) {
+// unless a volume box is open, whose transfer stays singled out until it closes. `problem` is the
+// transfer's contents problem, if it has one: its volume is then red and semibold, with a tooltip
+// saying what's reachable or by how much it overfills (section 7).
+function createTransferRow(plan, id, transfer, problem) {
   const row = createElement("li", "", "transfer-row");
   row.dataset.position = String(transfer.position);
   const route = `${wellName(plan, transfer.source)} → ${wellName(plan, transfer.destination)}`;
@@ -1777,6 +1793,10 @@ function createTransferRow(plan, id, transfer) {
   volumeButton.type = "button";
   volumeButton.setAttribute("aria-label", `Volume of ${route}, ${formatVolume(transfer.volume)} µL. Click to change`);
   volumeButton.addEventListener("click", () => startEditingVolume(volumeButton, id, transfer));
+  if (problem !== undefined) {
+    volumeButton.classList.add("problem");
+    volumeButton.title = describeRowProblem(problem);
+  }
   const remove = createElement("button", "×", "remove-transfer");
   remove.type = "button";
   remove.setAttribute("aria-label", `Remove ${route}`);
@@ -1798,6 +1818,16 @@ function createTransferRow(plan, id, transfer) {
     }
   });
   return row;
+}
+
+// The tooltip of a problem transfer's volume (section 7): "Only 450 µL is reachable." for a draw
+// into the dead volume or an overdraw (the problem's `available`), or "Overfills the well by 20 µL."
+// for an overfill (`held` minus `capacity`).
+function describeRowProblem(problem) {
+  if (isDrawProblem(problem)) {
+    return `Only ${formatVolume(problem.available)} µL is reachable.`;
+  }
+  return `Overfills the well by ${formatVolume(problem.held - problem.capacity)} µL.`;
 }
 
 // Turns a transfer's volume into a text box holding the volume, selected, and singles the transfer
