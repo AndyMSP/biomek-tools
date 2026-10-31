@@ -820,6 +820,12 @@ input.experiment-name-box.invalid {
   color: #ffffff;
 }
 
+/* The key's Mix problem badge: drawn as on the deck, but in the line rather than on a well. */
+.mix-badge.key-badge {
+  position: static;
+  flex: none;
+}
+
 .well.drop-target {
   outline: 2px dashed var(--blue);
   outline-offset: 2px;

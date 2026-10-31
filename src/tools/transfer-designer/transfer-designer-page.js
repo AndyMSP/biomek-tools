@@ -168,6 +168,11 @@ let stageStartSnapshot = null;
 // Worked out by refreshDeck, for the badges and the contents card.
 let openStageMixedWells = new Map();
 
+// The wells causing a mix problem in a stage before the open one (all stages at End), keyed by
+// wellKey, each as { stage, volume }: the first such stage's ID and its mix volume there
+// (lastingMixProblemsOf). Their red badges stay on the deck through later stages (section 6).
+let lastingMixProblems = new Map();
+
 // Each drawn well's element, by wellKey, so marks and arrows can find them.
 const wellElements = new Map();
 
@@ -830,6 +835,7 @@ function refreshDeck() {
     ? replay(plan.startingContents, plan.operationList, operationCountBefore(plan, open))
     : null;
   openStageMixedWells = mixedWellsOf(plan, open);
+  lastingMixProblems = lastingMixProblemsOf(plan, open);
   refreshTimeline(plan, open);
   elements.undo.disabled = !history.canUndo();
   elements.redo.disabled = !history.canRedo();
@@ -872,6 +878,26 @@ function mixedWellsOf(plan, key) {
     }
   }
   return mixed;
+}
+
+// The wells causing a mix problem in a stage before `open` in the stage order, or in any stage when
+// End is open, keyed by wellKey, each as { stage, volume }: the first such stage's ID and its mix
+// volume there (section 6: a red badge stays from its stage through End). Empty at Start. E.g. with
+// stage 1 dispensing 0.05 µL into Plate1 A1 and stage 2 open →
+// Map { '["Plate1","A1"]' → { stage: "1", volume: 0 } }.
+function lastingMixProblemsOf(plan, open) {
+  const lasting = new Map();
+  const order = stageOrder(plan);
+  const earlier = open === END ? order : order.slice(0, Math.max(order.indexOf(open), 0));
+  const withProblem = stagesWithMixProblem(plan);
+  for (const stage of earlier.filter((id) => withProblem.has(id))) {
+    for (const [key, mixed] of mixedWellsOf(plan, stage)) {
+      if (mixed.problemVolume !== null && !lasting.has(key)) {
+        lasting.set(key, { stage, volume: mixed.problemVolume });
+      }
+    }
+  }
+  return lasting;
 }
 
 // Adds one of a row's mixed wells, `entry` (mix-volumes, mixedWells), to `mixed` (as mixedWellsOf
@@ -1048,8 +1074,8 @@ function drawComponentColors(plan) {
   );
 }
 
-// Draws the key (section 6): only the marks on the deck now, Overdraw and Off plan; hidden with
-// neither. Called after the wells are drawn and marked.
+// Draws the key (section 6): only the marks on the deck now, Overdraw, Off plan and Mix problem;
+// hidden with none. Called after the wells are drawn and marked.
 function drawKey() {
   const items = [];
   if (elements.labwareArea.querySelector(".well.overdraw") !== null) {
@@ -1057,6 +1083,9 @@ function drawKey() {
   }
   if (elements.labwareArea.querySelector(".well.off-plan:not(.overdraw)") !== null) {
     items.push(createKeyItem("off-plan", "Off plan"));
+  }
+  if (elements.labwareArea.querySelector(".mix-badge.problem") !== null) {
+    items.push(createMixProblemKeyItem());
   }
   elements.key.replaceChildren(...items);
 }
@@ -1066,6 +1095,15 @@ function drawKey() {
 function createKeyItem(mark, name) {
   const item = document.createElement("li");
   item.append(createElement("span", "", `key-well ${mark}`), createElement("span", name));
+  return item;
+}
+
+// The key's Mix problem item: a red ⟳ badge, drawn as on the deck but in the line, and its name.
+function createMixProblemKeyItem() {
+  const item = document.createElement("li");
+  const badge = createElement("span", "⟳", "mix-badge problem key-badge");
+  badge.setAttribute("aria-hidden", "true");
+  item.append(badge, createElement("span", "Mix problem"));
   return item;
 }
 
@@ -1202,8 +1240,11 @@ function createWell(plan, end, isTrough) {
   }
   wellElement.append(label);
   const mixed = openStageMixedWells.get(wellKey(end));
+  const lastingProblem = lastingMixProblems.get(wellKey(end));
   if (mixed !== undefined) {
-    addMixBadge(wellElement, mixed);
+    addMixBadge(wellElement, mixed, lastingProblem !== undefined);
+  } else if (lastingProblem !== undefined) {
+    addLastingMixBadge(wellElement, plan, lastingProblem);
   }
   wellElements.set(wellKey(end), wellElement);
   return wellElement;
@@ -1213,11 +1254,12 @@ function createWell(plan, end, isTrough) {
 // accessible name (section 6): red if it causes a mix problem ("…, holds too little to mix");
 // otherwise yellow when a mix is short and blue if not ("Assay plate A1, 120 µL, mixed 17%"); blue
 // for another well of a row with a mix problem ("…, not mixed until the well in red is fixed").
-// `mixed` is the well's entry from mixedWellsOf.
-function addMixBadge(wellElement, mixed) {
+// `mixed` is the well's entry from mixedWellsOf; `earlierProblem` is true if the well caused a mix
+// problem in an earlier stage, so its badge stays red whatever the open stage does.
+function addMixBadge(wellElement, mixed, earlierProblem) {
   wellElement.classList.add("mixed");
   const badge = createElement("span", "⟳", "mix-badge");
-  const causesProblem = mixed.problemVolume !== null;
+  const causesProblem = mixed.problemVolume !== null || earlierProblem;
   badge.classList.toggle("problem", causesProblem);
   badge.classList.toggle("short", !causesProblem && mixed.short);
   // The accessible name says it in words, so the symbol itself is hidden from screen readers.
@@ -1225,6 +1267,19 @@ function addMixBadge(wellElement, mixed) {
   wellElement.append(badge);
   const name = wellElement.getAttribute("aria-label");
   wellElement.setAttribute("aria-label", `${name}, ${mixedWords(mixed)}`);
+}
+
+// Gives a well that caused a mix problem in an earlier stage (and isn't mixed in the open one) its
+// red ⟳ badge, which stays from that stage through End (section 6), and says so in its accessible
+// name, e.g. "Assay plate A1, empty, can't be mixed in stage 1, “Tiny dispense”". `lastingProblem`
+// is the well's entry from lastingMixProblemsOf.
+function addLastingMixBadge(wellElement, plan, lastingProblem) {
+  wellElement.classList.add("mixed");
+  const badge = createElement("span", "⟳", "mix-badge problem");
+  badge.setAttribute("aria-hidden", "true");
+  wellElement.append(badge);
+  const name = wellElement.getAttribute("aria-label");
+  wellElement.setAttribute("aria-label", `${name}, can't be mixed in ${stageLabel(plan, lastingProblem.stage)}`);
 }
 
 // How a well the open stage mixes is mixed, in words for its accessible name, from its entry in
@@ -2388,11 +2443,29 @@ function contentsCardLines(plan, end) {
     const numbers = causes.map((index) => `#${index + 1}`).join(", ");
     lines.push(createElement("div", `Contents differ from the plan because of transfer ${numbers}.`, "card-problem"));
   }
+  const lastingProblem = lastingMixProblems.get(wellKey(end));
+  if (lastingProblem !== undefined) {
+    lines.push(lastingMixCardLine(plan, lastingProblem));
+  }
   const mixed = openStageMixedWells.get(wellKey(end));
   if (mixed !== undefined) {
     lines.push(mixCardLine(mixed));
   }
   return lines;
+}
+
+// The contents card's line for a well that caused a mix problem in an earlier stage than the open
+// one, or at End (section 6), from its entry in lastingMixProblemsOf, in the problem color, e.g.
+// "Stage 1, “Tiny dispense”, can't mix this well: its mix is 0 µL, under 1 µL."
+function lastingMixCardLine(plan, lastingProblem) {
+  const order = stageOrder(plan);
+  const stage = lastingProblem.stage;
+  return createElement(
+    "div",
+    `Stage ${order.indexOf(stage) + 1}, “${plan.stageList.get(stage).name}”, can't mix this well: ` +
+      `its mix is ${formatVolume(lastingProblem.volume)} µL, under ${formatVolume(MIN_MIX_VOLUME)} µL.`,
+    "card-problem",
+  );
 }
 
 // The contents card's line for a well the open stage mixes (section 6), from its entry in
