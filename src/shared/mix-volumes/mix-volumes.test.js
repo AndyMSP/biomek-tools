@@ -2,14 +2,14 @@
 //
 // They build plans through the transfer designer's edits, so every plan is one the page could make,
 // and find labware in DECK by grid and labware type rather than naming it, so they still pass when
-// the deck changes. They also check MIX_VOLUME_LIMITS in config/tip-types.js and SHORT_MIX_SHARE in
-// config/mixing.js (ADR 0009).
+// the deck changes. They also check MIX_VOLUME_LIMITS in config/tip-types.js, and SHORT_MIX_SHARE
+// and MIN_MIX_VOLUME in config/mixing.js (ADR 0009).
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { DECK } from "../../../config/deck.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
-import { SHORT_MIX_SHARE } from "../../../config/mixing.js";
+import { SHORT_MIX_SHARE, MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import {
   START,
   emptyPlan,
@@ -462,13 +462,41 @@ describe("mix-volumes", () => {
     );
   });
 
-  test("a row whose mix works out to 0.1 has no problem", () => {
+  test("a destination holding 0.9 µL when mixed at 90% gives 0.8 and a problem", () => {
     let plan = planWithTroughs();
-    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 0.12);
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 0.9);
     plan = setStageMix(plan, "1", "destination", mixAt(90));
     const result = mixVolumes(plan);
-    assert.equal(result.stages[0].rows[0].destinationMixVolume, 0.1);
+    assert.equal(result.stages[0].rows[0].destinationMixVolume, 0.8);
+    assert.deepEqual(result.problems, [
+      { stage: "1", end: "destination", labware: PLATE.name, well: "A1", held: 0.9 },
+    ]);
+  });
+
+  test("a destination holding 1.2 µL when mixed at 90% gives 1 (1.08 rounded down) and a problem", () => {
+    let plan = planWithTroughs();
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 1.2);
+    plan = setStageMix(plan, "1", "destination", mixAt(90));
+    const result = mixVolumes(plan);
+    assert.equal(result.stages[0].rows[0].destinationMixVolume, 1);
+    assert.deepEqual(result.problems, [
+      { stage: "1", end: "destination", labware: PLATE.name, well: "A1", held: 1.2 },
+    ]);
+  });
+
+  test("a destination holding 1.25 µL when mixed at 90% gives 1.1 (1.125 rounded down) and no problem", () => {
+    let plan = planWithTroughs();
+    plan = withTransfer(plan, "1", well(RESERVOIR, "1"), well(PLATE, "A1"), 1.25);
+    plan = setStageMix(plan, "1", "destination", mixAt(90));
+    const result = mixVolumes(plan);
+    assert.equal(result.stages[0].rows[0].destinationMixVolume, 1.1);
     assert.deepEqual(result.problems, []);
+  });
+
+  test("config/mixing.js: MIN_MIX_VOLUME is a number above 0", () => {
+    assert.equal(typeof MIN_MIX_VOLUME, "number");
+    assert.ok(Number.isFinite(MIN_MIX_VOLUME));
+    assert.ok(MIN_MIX_VOLUME > 0);
   });
 
   test("held is rounded to 3 decimal places: 0.1 + 0.2 µL is given as 0.3", () => {

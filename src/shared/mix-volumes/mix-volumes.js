@@ -1,5 +1,6 @@
 // mix-volumes.js — works out how many µL each stage-worklist row mixes, at each end that mixes, and
-// finds the mixes that work out to nothing (mix problems; docs/glossary.md, "Mix problem").
+// finds the mixes that work out to too little to run: under MIN_MIX_VOLUME in config/mixing.js (mix
+// problems; docs/glossary.md, "Mix problem").
 //
 // A stage stores each mix as a share of the well (stage-list.md), but each row of the stage worklist
 // takes one mix volume in µL for each end, and Biomek can't work out a volume per well itself
@@ -18,7 +19,7 @@
 // Specification: mix-volumes.md.
 
 import { MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
-import { SHORT_MIX_SHARE } from "../../../config/mixing.js";
+import { SHORT_MIX_SHARE, MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { replay } from "../contents-tracking/contents-tracking.js";
 import { tipGroups } from "../tip-groups/tip-groups.js";
 import { substagesOf } from "../substages/substages.js";
@@ -36,8 +37,9 @@ const THOUSANDTHS_PER_TENTH = 100;
 // `stages` lists each stage with transfers, in stage order, as { stage, rows }: `rows` are its
 // substages in order, each with sourceMixVolume and destinationMixVolume added (µL, or null for an
 // end that doesn't mix), and mixedWells: each well the row mixes, sources first, as { end, labware,
-// well, held, share, short } (mixedWell). `problems` lists each row and end whose mix works out to 0, in stage order,
-// then row order, source before destination, as { stage, end, labware, well, held }.
+// // well, held, share, short } (mixedWell). `problems` lists each row and end whose mix volume is under
+// MIN_MIX_VOLUME, in stage order, then row order, source before destination, as { stage, end,
+// labware, well, held }: the row's emptiest well at that end and what it holds when it's mixed.
 // e.g. a stage mixing its destinations at 90% on BC230 tips, whose emptiest destination holds
 // 20 µL once dispensed into → mixVolumes(plan).stages[0].rows[0].destinationMixVolume is 18.
 export function mixVolumes(plan) {
@@ -70,7 +72,8 @@ export function mixVolumes(plan) {
           const volume = mixVolume(mix.share, emptiest.held, limit);
           row[`${end}MixVolume`] = volume;
           row.mixedWells.push(...wells.map((entry) => mixedWell(end, entry, volume)));
-          if (volume === 0) {
+          // Under the minimum, the mix wouldn't run on the Biomek (mix-volumes.md, section 3).
+          if (volume < MIN_MIX_VOLUME) {
             problems.push({
               stage,
               end,
