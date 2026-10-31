@@ -249,6 +249,10 @@ Last updated: 2026-10-28
   CLAUDE.md's "Who does what" stays unchanged until Andy decides after a longer trial.
 - **Chrome is enough for testing pages** (Andy, 2026-10-30): Edge is tried only if the lab ever
   needs it. CLAUDE.md's requirement ("Edge or Chrome") is met by Chrome.
+- **Mixing is done** (2026-10-30, #106, #109, #110, #112): stages store their mixes, the Biomek
+  files write them, and the page has Mix checkboxes, mix steps, ⟳ badges (yellow for a short mix,
+  red for a mix problem) and the 1 µL minimum. Its specifications stay Draft until the files have
+  run on the Biomek (see each layer's "At the Biomek" above).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -334,6 +338,13 @@ final Biomek runs, so they test the files as they will be:
 - Final concentrations, from each component's stock concentration (such as "Dye is 10 mM").
   Each component's volume fraction of a well is already shown on the page's contents card.
 - Editing the list further: moving a stage, or a transfer within its stage.
+- **Splitting a stage's rows by well volume** (from the mixing work, 2026-10-29): a stage mixes one
+  volume per row, worked out from its emptiest well, so fuller wells mix less than their share. The
+  file writer could split a row's wells by what they hold, so each gets close to its share and
+  short mixes mostly disappear (`mix-volumes.md`).
+- **A short-mix warning in the Stages column** (from the mixing preview, 2026-10-29 and 30): for
+  v0.2.0 a short mix shows only on the deck. Yellow stages, rows, lines and per-well reasons were
+  tried in the preview and set aside as too crowded; a clearer way may come with use.
 - The full technique table, from the Technique Browser.
 - **Smarter staging:** the tool works out which transfers really depend on each other, reorders the
   independent ones, and forms as few stages as possible, so the user no longer builds stages.
