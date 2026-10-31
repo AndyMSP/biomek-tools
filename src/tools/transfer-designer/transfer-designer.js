@@ -215,10 +215,16 @@ export function isMixStep(plan, id) {
 // that it doesn't mix yet, as one edit: each becomes a transfer from the well into itself of
 // MIX_STEP_VOLUME (transfer-designer.md, "Mix steps"). Wells it mixes already, or listed twice, are
 // left out; if that leaves none, the same plan is returned. Throws, in this order, if `id` isn't a
-// mix step, or a well isn't on the deck (the first such well).
+// mix step, `wells` isn't a list, or a well isn't on the deck (the first such well).
 // e.g. mixWells(plan, "2", [{ labware: "Plate1", well: "A1" }, { labware: "Plate1", well: "A2" }]).
 export function mixWells(plan, id, wells) {
   checkMixStep(plan, id);
+  if (!Array.isArray(wells)) {
+    throw new Error(
+      `The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], ` +
+        `but got ${describeValue(wells)}.`,
+    );
+  }
   wells.forEach((well) => checkWell(well));
   const mixed = new Set(transfersIn(plan, id).map((transfer) => wellKey(transfer.source)));
   const toMix = [];
@@ -236,10 +242,16 @@ export function mixWells(plan, id, wells) {
 }
 
 // Returns the plan without mix step `id`'s mixed well `well` ({ labware, well }), so it no longer
-// mixes that well. Throws, in this order, if `id` isn't a mix step, or it doesn't mix `well`,
-// e.g. 'Stage 2, “Mix plate”, doesn't mix Plate1 A2.'
+// mixes that well. Throws, in this order, if `id` isn't a mix step, `well` isn't an object, or the
+// mix step doesn't mix `well`, e.g. 'Stage 2, “Mix plate”, doesn't mix Plate1 A2.'
 export function unmixWell(plan, id, well) {
   checkMixStep(plan, id);
+  if (!isObject(well)) {
+    throw new Error(
+      `The well to stop mixing must be a well, like { labware: "Plate1", well: "A1" }, ` +
+        `but got ${describeValue(well)}.`,
+    );
+  }
   const key = wellKey(well);
   const mixedWell = transfersIn(plan, id).find((transfer) => wellKey(transfer.source) === key);
   if (mixedWell === undefined) {
@@ -256,12 +268,15 @@ export function renameStage(plan, id, name) {
 // Returns the plan with stage `id`'s settings replaced by `settings`. The stage list checks both;
 // then each end's technique must match its mixing, the source's first (checkMixingMatches), so a
 // plan file can't bring in a stage whose technique Biomek would mix with when the plan says not to,
-// or the reverse (transfer-designer.md, section 3, "Mixing").
+// or the reverse (transfer-designer.md, section 3, "Mixing"); then the mix step rules
+// (checkMixStepSettings), so a plan file can't bring in a broken mix step either
+// (transfer-designer.md, "Mix steps").
 export function changeStageSettings(plan, id, settings) {
   const stageList = plan.stageList.changeSettings(id, settings);
   for (const end of ENDS) {
     checkMixingMatches(settings, end);
   }
+  checkMixStepSettings(plan, id, settings);
   return withParts(plan, { stageList });
 }
 
@@ -800,6 +815,37 @@ function checkMixStep(plan, id) {
 // e.g. 'Stage 2, “Mix plate”'.
 function stageNamed(plan, id) {
   return `Stage ${plan.stageOrder.indexOf(id) + 1}, “${plan.stageList.get(id).name}”`;
+}
+
+// Throws if stage `id`'s new `settings` break a mix step rule (transfer-designer.md, "Mix steps"),
+// checked in this order: MIX_STEP_MODE's technique at one end only; a mix step with a source mix;
+// a mix step without a destination mix; a stage with transfers changing kind (a transfer stage
+// becoming a mix step, or the reverse). A stage without transfers may change kind, since a plan
+// file gives its stages their settings before their transfers.
+// e.g. a mix step given a source mix throws 'A mix step mixes after dispensing only, so it can't
+// have a source mix.'
+function checkMixStepSettings(plan, id, settings) {
+  const atEnds = ENDS.filter((end) => settings[`${end}Technique`] === MIX_STEP_MODE.technique);
+  if (atEnds.length === 1) {
+    throw new Error(
+      `${describeValue(MIX_STEP_MODE.technique)} only mixes, so it's used at both ends of a mix ` +
+        `step or at neither.`,
+    );
+  }
+  const becomesMixStep = isMixStepSettings(settings);
+  if (becomesMixStep && settings.sourceMix !== null) {
+    throw new Error("A mix step mixes after dispensing only, so it can't have a source mix.");
+  }
+  if (becomesMixStep && settings.destinationMix === null) {
+    throw new Error("A mix step needs a destination mix: that's what it does.");
+  }
+  if (becomesMixStep !== isMixStep(plan, id) && transfersIn(plan, id).length > 0) {
+    throw new Error(
+      becomesMixStep
+        ? `${stageNamed(plan, id)}, has transfers, so it can't become a mix step.`
+        : `${stageNamed(plan, id)}, has mixed wells, so it can't become a transfer stage.`,
+    );
+  }
 }
 
 // The pipetting mode that a stage's `settings` use at `end`: the mode for that end whose liquid type

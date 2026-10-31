@@ -333,6 +333,18 @@ describe("plan-file", () => {
     );
   });
 
+  test("a plan file whose mix step has a source mix, or no destination mix, is refused with its stage and changeStageSettings's message", () => {
+    const { plan: withMixStep, id } = addMixStep(fullPlan(), "3");
+    const plan = mixWells(withMixStep, id, [{ labware: PLATE, well: "H1" }]);
+    // The mix step is third in the stage order, so it's stage 3 in the file.
+    const withSourceMix = JSON.parse(planToText(plan, SAVED_BY));
+    withSourceMix.stages[2].settings.sourceMix = exampleMix();
+    assertRefused(withSourceMix, "stage 3: A mix step mixes after dispensing only, so it can't have a source mix.");
+    const withoutDestinationMix = JSON.parse(planToText(plan, SAVED_BY));
+    withoutDestinationMix.stages[2].settings.destinationMix = null;
+    assertRefused(withoutDestinationMix, "stage 3: A mix step needs a destination mix: that's what it does.");
+  });
+
   // --- Version 4 files ---
 
   test("a version 4 stage without sourceMix gets the stage list's missing-setting message", () => {

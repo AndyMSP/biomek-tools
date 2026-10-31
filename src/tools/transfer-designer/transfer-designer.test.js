@@ -836,6 +836,106 @@ describe("transfer-designer", () => {
     });
   });
 
+  test("mixWells refuses null, a single well not in a list, and a list holding 5, each with its message", () => {
+    const { plan, id } = addMixStep(planWithStages(1), null);
+    assert.throws(() => mixWells(plan, id, null), {
+      message:
+        'The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], but got null.',
+    });
+    assert.throws(() => mixWells(plan, id, plateWell("A1")), {
+      message: /^The wells to mix must be a list of wells, like \[\{ labware: "Plate1", well: "A1" \}\], but got /,
+    });
+    assert.throws(() => mixWells(plan, id, [5]), {
+      message: /^A well on the deck must be an object like .+, but got 5\.$/,
+    });
+  });
+
+  test("mixWells checks the mix step before the list", () => {
+    const plan = planWithStages(1);
+    assert.throws(() => mixWells(plan, "1", null), { message: /isn't a mix step/ });
+  });
+
+  test("unmixWell refuses undefined and \"A1\", each with its message", () => {
+    let { plan, id } = addMixStep(planWithStages(1), null);
+    plan = mixWells(plan, id, [plateWell("A1")]);
+    assert.throws(() => unmixWell(plan, id, undefined), {
+      message:
+        'The well to stop mixing must be a well, like { labware: "Plate1", well: "A1" }, but got undefined.',
+    });
+    assert.throws(() => unmixWell(plan, id, "A1"), {
+      message:
+        'The well to stop mixing must be a well, like { labware: "Plate1", well: "A1" }, but got "A1".',
+    });
+  });
+
+  test("changeStageSettings refuses MIX_STEP_MODE's technique at the destination only", () => {
+    const plan = planWithStages(1);
+    const settings = { ...defaultSettings(), destinationTechnique: MIX_STEP_MODE.technique };
+    assert.throws(() => changeStageSettings(plan, "1", settings), {
+      message: `"${MIX_STEP_MODE.technique}" only mixes, so it's used at both ends of a mix step or at neither.`,
+    });
+  });
+
+  test("changeStageSettings refuses a mix step with a source mix, and one without a destination mix, leaving the plan unchanged", () => {
+    const { plan, id } = addMixStep(planWithStages(1), null);
+    const before = snapshot(plan);
+    assert.throws(
+      () => changeStageSettings(plan, id, { ...mixStepDefaults(), sourceMix: exampleMix() }),
+      { message: "A mix step mixes after dispensing only, so it can't have a source mix." },
+    );
+    assert.throws(() => changeStageSettings(plan, id, { ...mixStepDefaults(), destinationMix: null }), {
+      message: "A mix step needs a destination mix: that's what it does.",
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("changeStageSettings checks the source mix before the destination mix", () => {
+    const { plan, id } = addMixStep(planWithStages(1), null);
+    const settings = { ...mixStepDefaults(), sourceMix: exampleMix(), destinationMix: null };
+    assert.throws(() => changeStageSettings(plan, id, settings), { message: /can't have a source mix/ });
+  });
+
+  test("changeStageSettings refuses a stage with transfers changing kind, either way, leaving the plan unchanged", () => {
+    let plan = renameStage(withTransfersIn(planWithStages(1), ["1"]), "1", "Drugs");
+    let id;
+    ({ plan, id } = addMixStep(plan, null));
+    plan = renameStage(plan, id, "Mix plate");
+    plan = mixWells(plan, id, [plateWell("B1")]);
+    const before = snapshot(plan);
+    assert.throws(() => changeStageSettings(plan, "1", mixStepDefaults()), {
+      message: "Stage 1, “Drugs”, has transfers, so it can't become a mix step.",
+    });
+    assert.throws(() => changeStageSettings(plan, id, defaultSettings()), {
+      message: "Stage 2, “Mix plate”, has mixed wells, so it can't become a transfer stage.",
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("changeStageSettings checks a mix step's mixes before a change of kind", () => {
+    const plan = withTransfersIn(planWithStages(1), ["1"]);
+    assert.throws(() => changeStageSettings(plan, "1", { ...mixStepDefaults(), destinationMix: null }), {
+      message: /needs a destination mix/,
+    });
+  });
+
+  test("changeStageSettings accepts either change of kind for a stage without transfers", () => {
+    const { plan, id } = addMixStep(planWithStages(1), null);
+    const toMixStep = changeStageSettings(plan, "1", mixStepDefaults());
+    assert.equal(isMixStep(toMixStep, "1"), true);
+    const toTransferStage = changeStageSettings(plan, id, defaultSettings());
+    assert.equal(isMixStep(toTransferStage, id), false);
+  });
+
+  test("own kind, at the start: addStage before a mix step that comes first, with a transfer stage after it, copies that transfer stage", () => {
+    let plan = changeStageSettings(planWithStages(1), "1", otherSettings());
+    let mixStep;
+    ({ plan, id: mixStep } = addMixStep(plan, "1"));
+    assert.deepEqual(stageOrder(plan), [mixStep, "1"]);
+    const { plan: added, id } = addStage(plan, mixStep);
+    assert.deepEqual(stageOrder(added), [id, mixStep, "1"]);
+    assert.deepEqual(added.stageList.get(id).settings, otherSettings());
+  });
+
   test("addTransfer into a mix step refuses a transfer between two wells and a well into itself of any other volume; accepts a well into itself of MIX_STEP_VOLUME", () => {
     let { plan, id } = addMixStep(planWithStages(1), null);
     plan = renameStage(plan, id, "Mix plate");
