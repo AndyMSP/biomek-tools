@@ -1043,7 +1043,9 @@ export function setRandomizations(plan, randomizations) {
   );
   checkRandomizationIdsUnique(copied);
   checkStagesOwnedOnce(copied);
-  return withParts(plan, { randomizations: copied });
+  const updated = withParts(plan, { randomizations: copied });
+  checkStoredPlaces(updated);
+  return updated;
 }
 
 // --- Helpers used only inside this module ---
@@ -1579,9 +1581,17 @@ function checkedStoredRandomization(plan, randomization, number) {
     const values = checkedRandomizationValues(changes, { sources: [], fill: [] });
     checkStoredOrder(randomization, values);
     const stored = { id, beforeId: randomization.beforeId, ...values };
-    checkRandomizationPlace(plan, stored.beforeId, id);
     stored.stages = checkedOwnedStages(plan, randomization.stages, stored);
-    return { ...stored, stages: stored.stages };
+    return stored;
+  });
+}
+
+// Throws if a randomization of `plan` sits where it can't (section 3, "Where it sits"), prefixed
+// "Randomization N: ". Checked against the plan's whole list of randomizations, so one sitting
+// before another's later stage is refused whichever comes first in the list.
+function checkStoredPlaces(plan) {
+  plan.randomizations.forEach(({ id, beforeId }, index) => {
+    withPrefix(`Randomization ${index + 1}: `, () => checkRandomizationPlace(plan, beforeId, id));
   });
 }
 

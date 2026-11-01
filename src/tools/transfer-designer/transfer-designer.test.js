@@ -2747,6 +2747,16 @@ describe("transfer-designer", () => {
     assert.deepEqual(set.randomizations, withSecond.randomizations);
   });
 
+  test("setRandomizations refuses one sitting before another's second stage, even when loading both at once", () => {
+    const { plan, id } = runRandomizationPlan();
+    const owner = JSON.parse(JSON.stringify(randomizationAt(plan, id)));
+    const sitting = { ...owner, id: "r2", beforeId: owner.stages[1].stage, stages: [] };
+    assert.throws(
+      () => setRandomizations({ ...plan, randomizations: [] }, [sitting, owner]),
+      { message: /^Randomization 1: A randomization sits between tip groups, so it can't go before stage / },
+    );
+  });
+
   test("setRandomizations refuses each wrong randomization, prefixed, in its order of checks", () => {
     const { plan, id } = runRandomizationPlan();
     const good = () => JSON.parse(JSON.stringify(randomizationAt(plan, id)));
@@ -2767,8 +2777,6 @@ describe("transfer-designer", () => {
         `Randomization 2: its wells to fill must be in deck order, but ${PLATE} B3 comes before ${PLATE} B2.`,
       ],
       [second({ probes: [2, 1] }), "Randomization 2: its probes must be listed smallest first."],
-      [second({ beforeId: "9" }), `Randomization 2: There's no stage "9" to add a randomization before.`],
-      [second({ beforeId: stageIds[1] }), /^Randomization 2: A randomization sits between tip groups/],
       [
         [{ ...good(), stages: [{ stage: stageIds[0] }] }],
         'Randomization 1: its stages must be a list of objects with exactly "labware", "well" and "stage".',
@@ -2795,6 +2803,8 @@ describe("transfer-designer", () => {
         'Randomizations 2 and 3 both have the ID "r2".',
       ],
       [[good(), { ...good(), id: "r2" }], `Stage "${stageIds[0]}" belongs to two randomizations, 1 and 2.`],
+      [second({ beforeId: "9" }), `Randomization 2: There's no stage "9" to add a randomization before.`],
+      [second({ beforeId: stageIds[1] }), /^Randomization 2: A randomization sits between tip groups/],
     ];
     for (const [randomizations, message] of cases) {
       assert.throws(
