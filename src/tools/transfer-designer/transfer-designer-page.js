@@ -2800,8 +2800,23 @@ function createAllSourcesRow() {
     }
     redrawCard();
   });
-  row.append(createElement("span", "All sources", "all-sources-name"), box);
+  row.append(createElement("span", "All sources", "all-sources-name"), box, ...rowEndPlaceholders());
   return row;
+}
+
+// Invisible stand-ins for a source row's Filler button and ×, so the All sources box lines up with
+// the sources' replicate boxes, in the same column (section 7). They're buttons, so they take
+// exactly a real button's width; hidden (visibility), they take no pointer, focus or screen reader.
+function rowEndPlaceholders() {
+  return [createElement("button", "Filler", "filler-button"), createElement("button", "×", "remove-transfer")].map(
+    (placeholder) => {
+      placeholder.type = "button";
+      placeholder.tabIndex = -1;
+      placeholder.classList.add("row-end-placeholder");
+      placeholder.setAttribute("aria-hidden", "true");
+      return placeholder;
+    },
+  );
 }
 
 // One source's row (section 7): its main component's swatch just before the randomization (gray if

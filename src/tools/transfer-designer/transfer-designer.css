@@ -1600,7 +1600,16 @@ button.entry-row {
 .all-sources-row {
   padding-bottom: 6px;
   border-bottom: 1px solid var(--panel-border);
-  font-weight: 600;
+}
+
+/* The All sources label is quiet: a control for the rows below, not a source or a heading. */
+.all-sources-name {
+  color: var(--muted-text);
+}
+
+/* Stand-ins for a source row's Filler and ×, keeping the All sources box in the replicates column. */
+.row-end-placeholder {
+  visibility: hidden;
 }
 
 .all-sources-name,
