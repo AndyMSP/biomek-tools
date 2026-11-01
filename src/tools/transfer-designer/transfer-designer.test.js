@@ -2449,6 +2449,16 @@ describe("transfer-designer", () => {
     assert.deepEqual(randomizationProblems(ready, "r1"), []);
   });
 
+  test("randomizationProblems leaves out the pool's follow-on problems with no sources or no wells to fill", () => {
+    const { plan, id } = addRandomization(randomizingPlan(), "2", { seed: 37, volume: 10 });
+    const noSources = setRandomization(plan, id, { fill: wellsToFill() });
+    assert.deepEqual(randomizationProblems(noSources, id), ["Pick at least one source."]);
+    const noWells = setRandomization(plan, id, { sources: [source("A1", 8), source("A2", null)] });
+    assert.deepEqual(randomizationProblems(noWells, id), ["Pick the wells to fill."]);
+    const noWellsWithSeedMissing = setRandomization(noWells, id, { seed: null });
+    assert.deepEqual(randomizationProblems(noWellsWithSeedMissing, id), ["Pick the wells to fill.", "Type a seed."]);
+  });
+
   test("sourceName: a well label, the main component, ' +N', the first on a tie, or the labware's label and well", () => {
     let { plan, id } = setUpRandomization();
     assert.equal(sourceName(plan, id, deepWell("A1")), "Drug A");

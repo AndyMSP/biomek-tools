@@ -846,6 +846,10 @@ const RANDOMIZATION_PROPERTIES = ["id", "beforeId", ...RANDOMIZATION_CHANGES, "s
 const SOURCE_PROPERTIES = ["labware", "well", "replicates", "filler"];
 const OWNED_STAGE_PROPERTIES = ["labware", "well", "stage"];
 
+// The pool's problems (random-pool) that only follow from having no sources or no wells to fill,
+// so they aren't listed then (section 3, "Problems").
+const FOLLOW_ON_POOL_PROBLEMS = ["replicates-missing", "replicates-invalid", "too-many", "spare-without-filler"];
+
 // The range of a randomization's seed, as the randomizer's (random-pool.md, "Seeds").
 const LARGEST_SEED = 999999;
 
@@ -938,7 +942,12 @@ export function randomizationProblems(plan, id) {
   if (sources.length > 0 && sources.every((source) => source.filler)) {
     problems.push("Add a source that isn't the filler.");
   }
-  for (const problem of findPoolProblems(poolOf(randomization))) {
+  // With no sources or no wells to fill, the pool's replicate and well-count problems would only
+  // follow from that one, so only its seed problem is listed (section 3, "Problems").
+  const poolProblems = findPoolProblems(poolOf(randomization)).filter(
+    (problem) => (sources.length > 0 && fill.length > 0) || !FOLLOW_ON_POOL_PROBLEMS.includes(problem.kind),
+  );
+  for (const problem of poolProblems) {
     const message = poolProblemMessage(plan, randomization, problem);
     if (message !== null) {
       problems.push(message);
