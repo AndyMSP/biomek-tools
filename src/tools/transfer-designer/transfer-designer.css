@@ -43,6 +43,8 @@
 
   --well-size: 36px;
   --well-gap: 4px;
+  /* A reservoir's trough is as tall as 8 wells and the 7 gaps between them. */
+  --trough-height: calc(8 * var(--well-size) + 7 * var(--well-gap));
   /* A grid's headings: the column numbers' row above and the row letters' column at the left. A
      reservoir has both too (its left column empty), so it's exactly the same size as a plate. */
   --grid-heading-row: 18px;
@@ -272,6 +274,18 @@ input.experiment-name-box {
   min-height: 40px;
   font-size: 26px;
   font-weight: 600;
+}
+
+/* A well's name box (section 6): floating 6px under its well, above everything else, with a
+   shadow; placed by transfer-designer-page.js. Selected as input.name-box so it outweighs the
+   general input[type="text"] rule above. */
+input.name-box {
+  position: fixed;
+  z-index: 50;
+  box-sizing: border-box;
+  width: 140px;
+  min-height: 30px;
+  box-shadow: 0 6px 20px rgba(28, 28, 26, 0.2);
 }
 
 /* While what's typed isn't a valid name. */
@@ -671,7 +685,7 @@ input.experiment-name-box.invalid {
 }
 
 .well-grid.reservoir {
-  grid-template-rows: var(--grid-heading-row) calc(8 * var(--well-size) + 7 * var(--well-gap));
+  grid-template-rows: var(--grid-heading-row) var(--trough-height);
 }
 
 .grid-heading {
@@ -723,6 +737,55 @@ input.experiment-name-box.invalid {
   padding: 2px 3px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.88);
+}
+
+/* A labeled well's label, while Names is on (sections 6 and 15), in the white tag that otherwise
+   holds the volume (white even on an empty well): the page's text font, semibold, 9px, centered,
+   wrapping at spaces onto at most two lines, at most the well's width less 4px; cut with "…" (the
+   line clamp) if it still doesn't fit. */
+.well .well-label.named {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  box-sizing: border-box;
+  max-width: calc(var(--well-size) - 4px);
+  overflow: hidden;
+  padding: 1px 2px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--text);
+  font: 600 9px/1.05 var(--text-font);
+  letter-spacing: 0;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: normal;
+}
+
+/* A single word stays on one line, in slightly smaller type, at most the well's width less 2px,
+   cut with "…". */
+.well .well-label.named.single-word {
+  display: block;
+  max-width: calc(var(--well-size) - 2px);
+  padding: 1px;
+  font-size: 8px;
+  letter-spacing: -0.3px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* On a trough, the label runs along its length, turned 90° counterclockwise (reading bottom to
+   top), 11px, at most the trough's height less 8px: it's laid out level, at that length, and then
+   turned about its center, which sits on the trough's center. A label with spaces wraps into at
+   most two columns. */
+.well.trough .well-label.named {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max-content;
+  max-width: calc(var(--trough-height) - 8px);
+  font-size: 11px;
+  letter-spacing: 0;
+  transform: translate(-50%, -50%) rotate(-90deg);
 }
 
 /* A trough: as tall as 8 wells, with rounded corners; its bands are drawn from the bottom up. */
@@ -1677,6 +1740,27 @@ button.entry-row {
 .contents-card .card-title {
   margin-bottom: 6px;
   font-weight: 600;
+}
+
+/* A labeled well's label heads the card, larger and bold, with the well under it, smaller and
+   quieter (section 6). */
+.contents-card .card-well-label {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.contents-card .card-title.under-label {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+/* The last line, "Right-click to name", quieter than the rest. */
+.contents-card .card-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.6;
 }
 
 /* "Empty", under the well's name, for a well holding nothing (section 6). */
