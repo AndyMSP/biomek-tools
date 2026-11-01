@@ -65,7 +65,7 @@
 
 > **Draft changes (2026-11-01, well labels, the second part of v0.2.0's item 9):** from the
 > randomizer preview Andy shaped on 2026-11-01: right-click a well to name it (its **well label**,
-> `docs/glossary.md`); a `Names` toggle beside `Arrows`; a labelled well shows its label in its
+> `docs/glossary.md`); a `Names` toggle beside `Arrows`; a labeled well shows its label in its
 > volume's place; the contents card shows the label first (sections 4, 6, 15 and 16). The page
 > says "name" (`Right-click to name`, `Names`); the specifications say "well label", since "well
 > name" already means a well's place, such as `A1`. They become Final once built and tested by Andy.
@@ -225,7 +225,7 @@ editing box, clears any source, and picks the plan's first component (or nothing
 ` and `planFromText`'s message (`This file can't be opened: …`); nothing changes.
 
 **Reset** (red outline) opens a small box under it, focused on Cancel: **Reset the whole plan?**
-`This clears the starting contents, every transfer and every stage. Undo can bring them back.` with
+`This clears the starting contents, every transfer, every stage and every well's name. Undo can bring them back.` with
 `Cancel` and `Reset everything` (solid red). Reset everything replaces the plan with `emptyPlan()` as
 one undoable edit, opens Start, puts all labware away, closes any editing box, clears any source,
 and picks no component. Message `Reset. Bring out the labware you need, then fill wells from the
@@ -258,7 +258,7 @@ together). On a narrow window the right side wraps onto its own line.
 
 **Third bar.** `Components:` in gray, then the component colors, from the left, wrapping onto more
 lines under each other. Hidden while the plan has no components. (Andy, 2026-10-26: the colors
-used to sit at the right of the second bar, unlabelled, and wrapped onto a line of their own pushed
+used to sit at the right of the second bar, unlabeled, and wrapped onto a line of their own pushed
 to the right, which looked scattered.)
 - **The tray** has a chip for each labware in the deck description: a tiny outline of its shape
   (dots for a plate, stripes for a reservoir) and its label. They're in two groups, `Used labware:`
@@ -272,7 +272,7 @@ to the right, which looked scattered.)
   deck but in the line, not on a well), in that order, each while that mark is on the deck. Its example wells are drawn as
   the marks on the deck are (below), the X's lines 2px thick. With none, the key is hidden.
 - **The component colors** (third bar): each component's swatch and name, in the plan's order.
-- **`Names`** (pressed while on; on when the page opens) shows each labelled well's label where the
+- **`Names`** (pressed while on; on when the page opens) shows each labeled well's label where the
   well otherwise shows its volume (or, if it's empty, its well name; below); off, every well shows
   its volume or well name as before. Tooltip `Show well names instead of volumes on named wells`. An action button, like
   `Arrows`, just left of it.
@@ -309,13 +309,14 @@ labware above to bring it into the editor.`
   diagonal stripes of the page's background color at 75% opacity (3px stripes, 7px apart, at
   45°), so it reads as liquid that's out of reach; its label is still the total. The same on
   plates and troughs (Andy, 2026-10-30: one rule for every labware). An empty well isn't striped.
-- **Labelled** (`wellLabelOf`), while `Names` is on: its label in place of its volume (or, empty,
+- **Labeled** (`wellLabelOf`), while `Names` is on: its label in place of its volume (or, empty,
   its well name), on the same small white label, in the page's text font, semibold, centered
   (section 15): a label with a space wraps at spaces onto at most two lines; a single word stays on
   one line in slightly smaller type; either is cut with `…` if it still doesn't fit (about 7
   letters fit on a line, e.g. `Vehicle`; `Staurosporine` shows as `Stauro…`). A reservoir trough
-  shows its label upright along its length, reading bottom to top. Its fill, stripes and marks are
-  as for any well; its volume is in the contents card. (Andy, 2026-11-01: in the volume's place,
+  shows its label along its length, turned 90° counterclockwise, reading bottom to top. Its fill, stripes and marks are
+  as for any well; its volume is in the contents card. A trough's label wraps at spaces into at
+  most two columns, and is cut with `…` if it still doesn't fit. (Andy, 2026-11-01: in the volume's place,
   so the deck's look doesn't change, and a toggle to see the volumes again.)
 - Its accessible name is the well and its contents, after its label if it has one (whether `Names`
   is on or not), e.g. `Cond 1, Assay plate A1, 120 µL`, or `Assay plate A1, 120 µL` or `Assay plate
@@ -324,7 +325,7 @@ labware above to bring it into the editor.`
 **Pointing at a well** shows its contents card at once, beside the well: to its left if it fits there
 (the cursor's volume label is to the right), otherwise to its right, and kept inside the window. The
 card (dark, light text) shows:
-- for a labelled well, its label first, on a line of its own, larger and bold (section 15), then
+- for a labeled well, its label first, on a line of its own, larger and bold (section 15), then
   the well under it, smaller and quieter (Andy, 2026-11-01: the label is what's looked for);
 - the well, e.g. `Assay plate A1`; `Empty` if it holds nothing;
 - for each component: its swatch, name, volume in µL and percentage (section 13);
@@ -349,7 +350,7 @@ card (dark, light text) shows:
   problem color: the first such stage, its mix volume, and `MIN_MIX_VOLUME` (today 1 µL).
 
 - last, quieter than the rest (section 15): `Right-click to name`, or `Right-click to rename` for
-  a labelled well, so naming can be found.
+  a labeled well, so naming can be found.
 
 Transfer numbers are positions in the operation list counting from 1. The card hides when the
 pointer leaves the well, the page scrolls, or a drag starts.
@@ -357,19 +358,24 @@ pointer leaves the well, the page scrolls, or a drag starts.
 **Naming a well** (its well label; Andy, 2026-11-01). **Right-clicking a well**, or opening the
 context menu on a focused well from the keyboard (the menu key, or Shift+F10), opens a **name
 box** for it instead of the browser's menu, whatever is open in the Stages column, so wells can be
-named once they're seen to be filled. A normal click still does what it always does. (A right
-click while another text box is open saves and closes that box and does nothing else, as for a
-transfer's volume, section 7; a second right click names the well.)
+named once they're seen to be filled. A normal click still does what it always does, and a chosen
+source (section 9) stays chosen.
+- **Only when nothing else is open.** A right click while a text box (a transfer's volume, a
+  labware's label, the experiment's name), an editing box (section 10) or a header box (section 5)
+  is open acts as any other press outside it would, and doesn't name the well: a text box saves and
+  closes (section 7); an editing box closes if it has no changes, or shakes if it has; a header box
+  closes. A second right click then names the well.
 - The box is a text box 140px wide, floating 6px under the well, centered on it, kept inside the
-  window, above everything else, with a shadow like the contents card's. It holds the well's label,
+  window, above everything else, with a shadow (section 15). It holds the well's label,
   selected, or nothing, with the placeholder `e.g. Cond 1`; its accessible name is `Name of Assay
   plate A1`. The contents card hides while it's open. If the page scrolls, it stays under the well.
 - **Enter**, or **clicking away**, saves it with `setWellLabel`, as one undoable edit: `Named
-  Assay plate A4 “Media stock”.` (green), or, for a blank name on a labelled well, `Assay plate A4
-  has no name now.` (a note). A name that's unchanged after trimming saves nothing. **Escape**
-  closes it and keeps the old label. Clicking away still does what that click would, as for a
-  labware's label (above).
-- Labels show only on the deck and in the contents card (and, later, the randomizer's card). A
+  Assay plate A4 “Media stock”.` (green), or, for a blank name on a labeled well, `Assay plate A4
+  has no name now.` (a note). A name that's unchanged after trimming saves nothing (`setWellLabel`
+  gives the same plan back, so nothing is recorded). **Escape** closes it and keeps the old label.
+  Clicking away still does what that click would, as for a labware's label (above). After Enter
+  or Escape, keyboard focus goes back to the well.
+- Well labels show only on the deck and in the contents card (and, later, a randomization's card). A
   transfer row keeps its locations (`Assay plate A1 → Drug plate B2`; Andy, 2026-11-01: rows are
   for checking exactly where liquid goes, labels can repeat, and a stage's name already says what
   its source is). The Biomek files never hold them.
@@ -467,8 +473,8 @@ holds:
     redraws the list, so the page saves as the press starts, then passes the click on to whatever
     is now under the pointer; the rest of that press is stopped, so nothing acts on it twice.) Only
     a press with the main button (a left click, a touch or a pen) is passed on; any other press,
-    such as a right click, saves and closes the box and does nothing else, as it would with no box
-    open.
+    such as a right click, saves and closes the box and does nothing else (it doesn't name a well,
+    section 6).
   - **A refused volume**: its message is shown. After Enter, the box stays open with what was typed,
     selected, to fix it. After clicking away, the box closes and the click does nothing else, so
     the message saying why stays in view instead of being replaced by the click's own (Andy,
@@ -1005,14 +1011,14 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   the label column is as wide as its widest label, and the two end columns share the rest equally,
   8px apart; the menus there have 4px side padding instead of 10px, so whole mode names fit.
 - **Contents card:** dark (`#1C1C1A`) with light text (`#F6F5F1`), problems in `#FFB4AA`, a short
-  mix's line in `#FFD45C`. A labelled well's label 16px bold (line height 1.25), and the well under
+  mix's line in `#FFD45C`. A labeled well's label 16px bold (line height 1.25), and the well under
   it 12px, normal weight, at 70% opacity; the last line, `Right-click to name`, 12px at 60%
   opacity, 6px below the line before it.
-- **A well's label on the deck** (with `Names` on): the page's text font, semibold (600), 9px with
+- **A well label on the deck** (with `Names` on; in the white tag that otherwise holds the volume): the page's text font, semibold (600), 9px with
   line height 1.05, centered, at most two lines and at most the well's width less 4px, 1px × 2px
   padding; a single word 8px, letter spacing −0.3px, on one line, at most the well's width less
-  2px, 1px padding, cut with `…`; on a trough, 11px, upright (written top to bottom, turned to read
-  bottom to top), at most the trough's height less 8px.
+  2px, 1px padding, cut with `…`; on a trough, 11px, turned 90° counterclockwise (reading bottom to
+  top), at most the trough's height less 8px.
 - **Randomizations:** the box 12px corners, 1px `#9DB7DB` border, 8px padding, the page's
   background; dashed while not set up. The heading 15px, its dice icon 20px; status 13px gray. The
   tabs' counts 11px in a gray pill (`#ECEAE3`), blue on the open tab's. A source row 30px tall, its
@@ -1080,9 +1086,11 @@ page's configuration (ADR 0009):
 - well labels: right-click a plate well and a trough, and the menu key on a focused well, with
   Start, a stage and End open; name one, rename it, Escape, a blank name removes it, unchanged
   saves nothing; each name undone and redone; `Names` off and on; a two-word name on two lines, a
-  long single word cut with `…`, a trough's name upright; an empty labelled well; the contents
+  long single word cut with `…`, a trough's name upright; an empty labeled well; the contents
   card's label, well and hint lines; names kept after reloading, and after saving and opening;
-  transfer rows unchanged;
+  transfer rows unchanged; a right click with a volume box, an editing box and the Reset box open;
+  focus back on the well after Enter and Escape from the keyboard; a plate holding only names is
+  brought out on opening;
 - seams: inside a box, the seams above its first stage, between two stages and below its last
   stage, each with the ⟳ and `+` adding into that box with its tips, and the tip button only
   between two stages, splitting the box; between tip groups, the seams above the first box, between

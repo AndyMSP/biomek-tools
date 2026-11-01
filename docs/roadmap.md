@@ -279,7 +279,10 @@ Last updated: 2026-11-01
   (Andy, 2026-11-01). **Seams are specified** (Draft, 2026-11-01) and **built (#121)**: seams inside a
   tip group add with its tips, new seams between tip groups add with new tips
   (`transfer-designer-page.md`, section 7; `addStageWithNewTips` and `addMixStepWithNewTips` in
-  `transfer-designer.md`; glossary "Seam").
+  `transfer-designer.md`; glossary "Seam"). **Well labels are specified** (Draft, 2026-11-01;
+  branch `well-labels`): names given to wells by right-click, part of the plan and plan files
+  (format version 5), shown on the deck with a Names toggle (`transfer-designer.md`,
+  `plan-file.md`, `transfer-designer-page.md`; glossary "Well label", "Well name").
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -343,7 +346,7 @@ added on 2026-10-28 (Andy).
    specification first, then a build and Andy's test:
    1. **Seams** (specified, Draft, 2026-11-01): see "Where things stand".
    2. **Well labels** (Andy, 2026-11-01: the specifications' term, since "well name" means `A1`;
-      the page still says "name"). **Specified** (Draft, 2026-11-01; branch `well-labels`).
+      the page still says "name"). **Specified** (Draft, 2026-11-01; see "Where things stand").
       Right-click a well (or the menu key, or Shift+F10, on a focused well) to name
       it, whatever card is open; a box under the well: Enter or clicking away saves (`Named Deep1 A4
       “Media stock”.`), Escape keeps the old name, an empty name removes it. A **Names** toggle
@@ -362,7 +365,7 @@ added on 2026-10-28 (Andy).
         opens from the heading at any time; closing it keeps what was set.
       - **The card:** tabs **Sources (n)** and **Wells to fill (n)**, the open tab being what
         clicks and drags on the deck pick (any wells, never guessed from contents; a well can't be
-        both); Sources lists each source (its well's name, else its main component, `Drug A +2`)
+        both); Sources lists each source (its well label, else its main component, `Drug A +2`)
         with a replicates box, a Filler toggle (the filler's row says how many wells it fills) and
         ×, an **All sources** box setting every source's replicates, and only the first 8 sources
         until `Show all N sources ▸` (8 in `config/`); Wells to fill says `60 on Plate1 · 60 on
