@@ -9,16 +9,22 @@
 import { describeValue } from "../../shared/error-messages/error-messages.js";
 import { GRID_96 } from "../../shared/well-grid/well-grid.js";
 import { Layout } from "../../shared/layout/layout.js";
-import { assignPool, randomSeed } from "../../shared/random-pool/random-pool.js";
+import {
+  assignPool,
+  randomSeed,
+  MAX_SEED,
+  isMissing,
+  isValidReplicateCount,
+} from "../../shared/random-pool/random-pool.js";
 import { WellSelection } from "../../shared/well-selection/well-selection.js";
 
 // randomSeed moved to the shared random-pool module, so both tools share it; it's re-exported here
 // so the randomizer's interface doesn't change (section 4).
 export { randomSeed };
 
-// The range of seeds allowed, set by the specification (section 4).
+// The smallest seed allowed, set by the specification (section 4); the largest is random-pool's
+// MAX_SEED.
 const SMALLEST_SEED = 1;
-const LARGEST_SEED = 999999;
 
 // The fixed well type (section 3), as recorded in a result's wellTypes. The other two types,
 // "replicate" and "filler", come from assignPool.
@@ -143,10 +149,13 @@ function seedProblems(seed) {
   if (isMissing(seed)) {
     return ["The seed is missing."];
   }
-  if (Number.isInteger(seed) && seed >= SMALLEST_SEED && seed <= LARGEST_SEED) {
+  if (Number.isInteger(seed) && seed >= SMALLEST_SEED && seed <= MAX_SEED) {
     return [];
   }
-  return [`The seed must be a whole number from 1 to 999,999, but got ${describeValue(seed)}.`];
+  return [
+    `The seed must be a whole number from 1 to ${MAX_SEED.toLocaleString("en-US")}, ` +
+      `but got ${describeValue(seed)}.`,
+  ];
 }
 
 // The safety net (section 7): one message per well that is in more than one entry, in standard
@@ -477,17 +486,6 @@ function isEmptyRow({ name, replicates }) {
 // and placing replicates, so they never change the plate.
 function filledConditions(conditions) {
   return conditions.filter((condition) => !isEmptyRow(condition));
-}
-
-// True if a replicate count or seed is missing (section 7): "", text of only spaces, undefined or
-// null, as when its box is empty. e.g. isMissing("  ") → true, isMissing(0) → false.
-function isMissing(value) {
-  return value === undefined || value === null || (typeof value === "string" && value.trim() === "");
-}
-
-// True if a replicate count is a whole number of at least 1, e.g. 4 → true; 0, 1.5, "four" → false.
-function isValidReplicateCount(replicates) {
-  return Number.isInteger(replicates) && replicates >= 1;
 }
 
 // The total number of replicates in the condition list, e.g. 12 conditions × 4 → 48.

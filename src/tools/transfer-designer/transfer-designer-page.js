@@ -21,7 +21,7 @@ import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
-import { randomSeed, spareWellCount } from "../../shared/random-pool/random-pool.js";
+import { randomSeed, spareWellCount, MAX_SEED } from "../../shared/random-pool/random-pool.js";
 import {
   labwareNames,
   gridOf,
@@ -2600,10 +2600,11 @@ function replicatesValue(text) {
   return /^\d+$/.test(trimmed) && Number(trimmed) >= 1 ? Number(trimmed) : null;
 }
 
-// A seed as typed, as a number if it's a whole number from 1 to 999,999, otherwise null.
+// A seed as typed, as a number if it's a whole number from 1 to random-pool's MAX_SEED, otherwise
+// null, e.g. "37" → 37, "0" → null.
 function seedValue(text) {
   const trimmed = text.trim();
-  return /^\d+$/.test(trimmed) && Number(trimmed) >= 1 && Number(trimmed) <= 999999 ? Number(trimmed) : null;
+  return /^\d+$/.test(trimmed) && Number(trimmed) >= 1 && Number(trimmed) <= MAX_SEED ? Number(trimmed) : null;
 }
 
 // A volume as typed, as a number if it's a number above 0, otherwise null, e.g. "50" → 50.
@@ -2638,7 +2639,7 @@ function cardProblem(plan) {
     }
   }
   if (draft.seedText.trim() !== "" && seedValue(draft.seedText) === null) {
-    return "The seed must be a whole number from 1 to 999,999.";
+    return `The seed must be a whole number from 1 to ${MAX_SEED.toLocaleString("en-US")}.`;
   }
   if (draft.volumeText.trim() !== "" && cardVolumeValue(draft.volumeText) === null) {
     return "The volume must be a number of µL above 0.";

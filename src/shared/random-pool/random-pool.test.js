@@ -2,7 +2,15 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { GRID_96 } from "../well-grid/well-grid.js";
-import { findPoolProblems, assignPool, spareWellCount, randomSeed } from "./random-pool.js";
+import {
+  findPoolProblems,
+  assignPool,
+  spareWellCount,
+  MAX_SEED,
+  randomSeed,
+  isMissing,
+  isValidReplicateCount,
+} from "./random-pool.js";
 import { goldenFileUrl } from "../../../tests/fixtures/randomizer-golden-setups.js";
 
 // A pool of `wellCount` wells "W1", "W2" …, the given items and filler, and a seed,
@@ -322,6 +330,34 @@ describe("random-pool", () => {
     assignPool(pool);
     spareWellCount(pool);
     assert.deepEqual(pool, before);
+  });
+
+  // --- MAX_SEED, isMissing and isValidReplicateCount ---
+
+  test("MAX_SEED is 999999, the largest seed the pool accepts", () => {
+    assert.equal(MAX_SEED, 999999);
+    assert.deepEqual(findPoolProblems(poolOf([], null, 0, MAX_SEED)), []);
+    assert.deepEqual(findPoolProblems(poolOf([], null, 0, MAX_SEED + 1)), [
+      { kind: "seed-invalid", value: MAX_SEED + 1 },
+    ]);
+  });
+
+  test("isMissing is true for empty or blank text, undefined and null, and false otherwise", () => {
+    for (const value of ["", "  ", undefined, null]) {
+      assert.equal(isMissing(value), true, String(value));
+    }
+    for (const value of [0, "0", "four", 4]) {
+      assert.equal(isMissing(value), false, String(value));
+    }
+  });
+
+  test("isValidReplicateCount is true only for a whole number of at least 1", () => {
+    for (const value of [1, 4]) {
+      assert.equal(isValidReplicateCount(value), true, String(value));
+    }
+    for (const value of [0, -1, 1.5, "4", "four", null]) {
+      assert.equal(isValidReplicateCount(value), false, String(value));
+    }
   });
 
   // --- randomSeed ---

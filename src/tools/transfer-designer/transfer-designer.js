@@ -35,7 +35,7 @@ import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
 import { labwareNames, gridOf, checkWell } from "../../shared/deck/deck.js";
 import { START, tipGroups } from "../../shared/tip-groups/tip-groups.js";
 import { checkExperimentName } from "../../shared/file-writer/file-writer.js";
-import { assignPool, findPoolProblems } from "../../shared/random-pool/random-pool.js";
+import { assignPool, findPoolProblems, MAX_SEED } from "../../shared/random-pool/random-pool.js";
 
 // START and tipGroups live in the tip-groups shared module, which the file writer uses too. They're
 // re-exported (passed on under the same names) so the page and plan-file.js can keep importing them
@@ -850,9 +850,6 @@ const OWNED_STAGE_PROPERTIES = ["labware", "well", "stage"];
 // so they aren't listed then (section 3, "Problems").
 const FOLLOW_ON_POOL_PROBLEMS = ["replicates-missing", "replicates-invalid", "too-many", "spare-without-filler"];
 
-// The range of a randomization's seed, as the randomizer's (random-pool.md, "Seeds").
-const LARGEST_SEED = 999999;
-
 // Returns { plan, id }: the plan with a new randomization, last in its randomizations, sitting just
 // before stage `beforeId` (or last, for null), with no sources, wells to fill or stages, the `seed`
 // and `volume` given (each may be null), the default settings, the first tip type and the first
@@ -1105,12 +1102,13 @@ function checkRandomizationPlace(plan, beforeId, ownId) {
   }
 }
 
-// Throws unless `seed` is null or a whole number from 1 to 999,999.
+// Throws unless `seed` is null or a whole number from 1 to random-pool's MAX_SEED (999,999), the
+// randomizer's range (random-pool.md, "Seeds").
 function checkSeed(seed) {
-  if (seed !== null && !(Number.isInteger(seed) && seed >= 1 && seed <= LARGEST_SEED)) {
+  if (seed !== null && !(Number.isInteger(seed) && seed >= 1 && seed <= MAX_SEED)) {
     throw new Error(
-      "A randomization's seed must be a whole number from 1 to 999,999, or null, " +
-        `but got ${describeValue(seed)}.`,
+      "A randomization's seed must be a whole number from 1 to " +
+        `${MAX_SEED.toLocaleString("en-US")}, or null, but got ${describeValue(seed)}.`,
     );
   }
 }

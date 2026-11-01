@@ -16,9 +16,10 @@ import {
 } from "../input-checks/input-checks.js";
 import { SeededRandom } from "../random/random.js";
 
-// The range of seeds allowed (section 3, "Seeds"), the same as the randomizer's.
+// The range of seeds allowed (section 3, "Seeds"), the same as the randomizer's. MAX_SEED is
+// exported so the randomizer and the transfer designer don't write the number again.
 const SMALLEST_SEED = 1;
-const LARGEST_SEED = 999999;
+export const MAX_SEED = 999999;
 
 // The two types an assigned well can have (section 3, "Assignment").
 const REPLICATE = "replicate";
@@ -79,7 +80,7 @@ function seedProblems(seed) {
   if (isMissing(seed)) {
     return [{ kind: "seed-missing" }];
   }
-  if (Number.isInteger(seed) && seed >= SMALLEST_SEED && seed <= LARGEST_SEED) {
+  if (Number.isInteger(seed) && seed >= SMALLEST_SEED && seed <= MAX_SEED) {
     return [];
   }
   return [{ kind: "seed-invalid", value: seed }];
@@ -142,7 +143,7 @@ export function randomSeed(randomNumber) {
         `but got ${describeValue(randomNumber)}.`,
     );
   }
-  const seedCount = LARGEST_SEED - SMALLEST_SEED + 1;
+  const seedCount = MAX_SEED - SMALLEST_SEED + 1;
   return Math.floor(randomNumber * seedCount) + SMALLEST_SEED;
 }
 
@@ -259,12 +260,13 @@ function totalReplicates(pool) {
 }
 
 // True if a replicate count or seed is missing: "", text of only spaces, undefined or null,
-// e.g. isMissing("  ") → true, isMissing(0) → false.
-function isMissing(value) {
+// e.g. isMissing("  ") → true, isMissing(0) → false. Exported so the randomizer shares it.
+export function isMissing(value) {
   return value === undefined || value === null || (typeof value === "string" && value.trim() === "");
 }
 
 // True if a replicate count is a whole number of at least 1, e.g. 4 → true; 0, 1.5, "four" → false.
-function isValidReplicateCount(replicates) {
+// Exported so the randomizer shares it.
+export function isValidReplicateCount(replicates) {
   return Number.isInteger(replicates) && replicates >= 1;
 }
