@@ -44,7 +44,7 @@
           <button id="reset" class="danger-outline" type="button" aria-haspopup="dialog" aria-expanded="false">Reset</button>
           <div id="reset-box" class="confirm-box" role="dialog" aria-labelledby="reset-heading" hidden>
             <h3 id="reset-heading">Reset the whole plan?</h3>
-            <p>This clears the starting contents, every transfer and every stage. Undo can bring them back.</p>
+            <p>This clears the starting contents, every transfer, every stage and every well's name. Undo can bring them back.</p>
             <div class="confirm-buttons">
               <button id="reset-cancel" class="action" type="button">Cancel</button>
               <button id="reset-everything" class="danger" type="button">Reset everything</button>
@@ -75,12 +75,13 @@
           </div>
         </div>
 
-        <!-- Second bar (section 6): the labware tray on the left; the key and the Arrows toggle on
-             the right. -->
+        <!-- Second bar (section 6): the labware tray on the left; the key, then the Names and Arrows
+             toggles, on the right. -->
         <div class="deck-bar tray-bar">
           <div id="labware-tray" class="tray"></div>
           <div class="deck-bar-right">
             <ul id="key" class="key" aria-label="Key"></ul>
+            <button id="names-toggle" class="action" type="button" aria-pressed="true" title="Show well names instead of volumes on named wells">Names</button>
             <button id="arrows-toggle" class="action" type="button" aria-pressed="true">Arrows</button>
           </div>
         </div>

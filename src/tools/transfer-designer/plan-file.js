@@ -6,9 +6,10 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 4, in which each stage's settings hold its mixes and each tip change its
-// probes. It still reads version 3 files (no mixes), version 2 files (also probes in each stage's
-// settings) and version 1 files (also without an experiment name). Their stages get no mixing, since
+// It writes format version 5, which holds the well labels, each stage's settings hold its mixes and
+// each tip change its probes. It still reads version 4 files (no well labels), version 3 files (also
+// no mixes), version 2 files (also probes in each stage's settings) and version 1 files (also
+// without an experiment name). Their stages get no mixing, since
 // plans couldn't mix then; in versions 1 and 2, their tip changes get every probe their stages
 // used, which is where look-ahead loading put tips.
 // Specification: plan-file.md.
@@ -40,6 +41,7 @@ import {
   setTipType,
   setTipProbes,
   setLabels,
+  setWellLabels,
   setExperimentName,
 } from "./transfer-designer.js";
 
@@ -50,13 +52,13 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // release of the tools (ADR 0010). Changing it means changing how files are read, so it isn't in
 // config/. Version 2 (2026-10-28) added the experiment name; version 3 (2026-10-30) moved probes
 // from the stages to the tip changes (ADR 0007, "Tip changes"); version 4 (2026-10-30) added each
-// stage's mixes (ADR 0007, "Mixing").
-export const PLAN_FILE_VERSION = 4;
+// stage's mixes (ADR 0007, "Mixing"); version 5 (2026-11-01) added the well labels.
+export const PLAN_FILE_VERSION = 5;
 
-// The versions this module can read: the one it writes, version 3 (plans saved on 2026-10-30,
-// before mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version 1 (plans saved
-// before 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 3, 2, 1];
+// The versions this module can read: the one it writes, version 4 (plans saved from 2026-10-30 to
+// 2026-11-01, before well labels), version 3 (plans saved on 2026-10-30, before mixing), version 2
+// (plans saved from 2026-10-28 to 2026-10-30) and version 1 (plans saved before 2026-10-28).
+const VERSIONS_READ = [PLAN_FILE_VERSION, 4, 3, 2, 1];
 
 // The versions in which each stage's settings hold its probes, and a tip change is { tipType } only.
 const VERSIONS_WITH_STAGE_PROBES = [1, 2];
@@ -68,8 +70,8 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 // table: an older file's stages can't hold them, and get them as null.
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 2, 3 and
-// 4 have all of them.
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Version 5 has
+// all of them.
 const FILE_PROPERTIES = [
   "format",
   "version",
@@ -81,17 +83,21 @@ const FILE_PROPERTIES = [
   "operations",
   "tipChanges",
   "labwareLabels",
+  "wellLabels",
 ];
 
-// The properties version 2 added. A version 1 file has every other property, and can't have these.
+// The properties version 2 added. A version 1 file has neither these nor version 5's.
 const VERSION_2_PROPERTIES = ["experimentName"];
+
+// The properties version 5 added. A version 1 to 4 file can't have these.
+const VERSION_5_PROPERTIES = ["wellLabels"];
 
 // savedBy is for information only, so a file may leave it out.
 const OPTIONAL_PROPERTIES = ["savedBy"];
 
 // The properties that hold lists, and those that hold objects.
 const LIST_PROPERTIES = ["components", "startingContents", "stages", "operations"];
-const OBJECT_PROPERTIES = ["tipChanges", "labwareLabels"];
+const OBJECT_PROPERTIES = ["tipChanges", "labwareLabels", "wellLabels"];
 
 // How every message from planFromText starts.
 const CANT_OPEN = "This file can't be opened: ";
@@ -118,6 +124,7 @@ export function planToText(plan, savedBy) {
     operations: plan.operationList.listOperations(),
     tipChanges: plan.tipChanges,
     labwareLabels: plan.labwareLabels,
+    wellLabels: plan.wellLabels,
   };
   return JSON.stringify(file, null, 2);
 }
@@ -139,7 +146,8 @@ export function planFromText(text) {
   plan = addStartingContents(plan, file.startingContents, componentNames);
   plan = addTipChanges(plan, file, added.newIds, added.stageProbes);
   plan = withPlace("labels", () => setLabels(plan, file.labwareLabels));
-  return withExperimentName(plan, file);
+  plan = withExperimentName(plan, file);
+  return withWellLabels(plan, file);
 }
 
 // True if a file of `version` (one of VERSIONS_READ) keeps each stage's probes in its settings, and
@@ -186,19 +194,24 @@ function checkFormatAndVersion(file) {
 }
 
 // The properties a plan file of `version` (one of VERSIONS_READ) holds, in the order they are
-// written: a version 1 file has all but the ones version 2 added, e.g. propertiesOfVersion(1) has
-// no "experimentName". Versions 3 and 4 added no property: version 3 moved probes from the stages to
-// the tip changes, and version 4 added mixes inside each stage's settings.
+// written: a version 1 to 4 file has all but the ones version 5 added, and a version 1 file also
+// lacks the ones version 2 added, e.g. propertiesOfVersion(1) has no "experimentName" and no
+// "wellLabels". Versions 3 and 4 added no property: version 3 moved probes from the stages to the
+// tip changes, and version 4 added mixes inside each stage's settings.
 function propertiesOfVersion(version) {
-  if (version === 1) {
-    return FILE_PROPERTIES.filter((property) => !VERSION_2_PROPERTIES.includes(property));
+  let properties = FILE_PROPERTIES;
+  if (version < 5) {
+    properties = properties.filter((property) => !VERSION_5_PROPERTIES.includes(property));
   }
-  return FILE_PROPERTIES;
+  if (version === 1) {
+    properties = properties.filter((property) => !VERSION_2_PROPERTIES.includes(property));
+  }
+  return properties;
 }
 
 // Check 4: throws if `file` is missing a property of its version (all of them are listed), has one
 // a plan file of its version doesn't have (all of them are listed), or has a list or object property
-// of the wrong kind.
+// of its version of the wrong kind.
 function checkProperties(file) {
   const properties = propertiesOfVersion(file.version);
   const required = properties.filter((property) => !OPTIONAL_PROPERTIES.includes(property));
@@ -215,7 +228,8 @@ function checkProperties(file) {
       refuse(`${describeValue(property)} must be a list.`);
     }
   }
-  for (const property of OBJECT_PROPERTIES) {
+  // Only the object properties the file's version has: an older file has no "wellLabels".
+  for (const property of OBJECT_PROPERTIES.filter((name) => properties.includes(name))) {
     if (!isObject(file[property])) {
       refuse(`${describeValue(property)} must be an object.`);
     }
@@ -430,7 +444,7 @@ function addStartingContents(plan, startingContents, componentNames) {
 }
 
 // Check 9: returns the plan with the file's tip changes, each keyed by START or a stage's ID in the
-// file, which `newIds` turns into its new ID. In a version 3 or 4 file each holds its tip type and
+// file, which `newIds` turns into its new ID. In a version 3, 4 or 5 file each holds its tip type and
 // probes; in an older file each holds only its tip type, and gets every probe its stages used
 // (`stageProbes`, from addStages), which is where look-ahead loading put tips. Throws if there's
 // none at START; then, for each tip change in turn, if its key isn't one of the file's stages or is
@@ -511,6 +525,16 @@ function withExperimentName(plan, file) {
     }
     return setExperimentName(plan, name);
   });
+}
+
+// Check 12: returns the plan with the file's well labels, set all at once with setWellLabels, which
+// is strict: a label with spaces at its ends, a blank one, or a labware listed with no wells is
+// refused, not tidied. A version 1 to 4 file has none, so the plan keeps the empty plan's {}.
+function withWellLabels(plan, file) {
+  if (file.version < 5) {
+    return plan;
+  }
+  return withPlace("well labels", () => setWellLabels(plan, file.wellLabels));
 }
 
 // True if `value` is an object with exactly the `properties` named, none missing and none extra,

@@ -73,6 +73,8 @@ import {
   labwareUsed,
   labelOf,
   setLabel,
+  wellLabelOf,
+  setWellLabel,
 } from "./transfer-designer.js";
 
 // --- Constants ---
@@ -132,6 +134,9 @@ const labwareOut = new Set();
 // Whether the transfer arrows are shown.
 let arrowsShown = true;
 
+// Whether labeled wells show their label in place of their volume (the Names toggle, section 6).
+let wellLabelsShown = true;
+
 // The stages showing their transfer list, by ID.
 const expandedStages = new Set();
 
@@ -148,8 +153,8 @@ const transferVolume = newTypedVolume(DEFAULT_TRANSFER_VOLUME);
 // The source well chosen by clicking, { labware, well }, or null.
 let source = null;
 
-// The text box editing something in place, if one is open: a labware's label (section 6) or a
-// transfer's volume (section 7): { box, finish }, where finish("away") saves it as a click away
+// The text box editing something in place, if one is open: a labware's label or a well's name
+// (section 6), or a transfer's volume (section 7): { box, finish }, where finish("away") saves it as a click away
 // would. Null when none is open.
 let inlineBox = null;
 
@@ -166,6 +171,17 @@ let drag = null;
 
 // Where the pointer is while over the labware, { x, y } in window coordinates, or null.
 let pointerPosition = null;
+
+// The name box while it's open (section 6, "Naming a well"): { box, end }, the text box and the
+// well it names. It's also the open inline box (inlineBox), so clicking away saves it.
+let nameBox = null;
+
+// A press with a button other than the main one (a right click), as it started: { foundOpen }, true
+// if a text box, an editing box or a header box was open then. The press closes or saves that box
+// before its context menu event comes, so the event can't tell by itself; such a right click
+// doesn't name the well (section 6). Null when the last press was a main-button one, or once its
+// context menu event has come.
+let secondaryPress = null;
 
 // The "+ New" component box while it's open: { text }, or null.
 let addingComponent = null;
@@ -221,6 +237,7 @@ const elements = {
   key: byId("key"),
   componentsBar: byId("components-bar"),
   componentColors: byId("component-colors"),
+  namesToggle: byId("names-toggle"),
   arrowsToggle: byId("arrows-toggle"),
   labwareArea: byId("labware-area"),
   noLabwareNote: byId("no-labware-note"),
@@ -243,6 +260,8 @@ function setUpPage() {
   connectHeader();
   connectDeckBars();
   connectDeck();
+  // Before the box guards, so it sees what was open before they close it.
+  connectWellNaming();
   connectKeys();
   connectEditingBoxGuard();
   connectInlineBoxGuard();
@@ -294,12 +313,18 @@ function connectHeader() {
   elements.resetEverything.addEventListener("click", resetEverything);
 }
 
-// Connects the deck panel's two bars (sections 6 and 11): the timeline, Undo, Redo and Arrows.
+// Connects the deck panel's two bars (sections 6 and 11): the timeline, Undo, Redo, Names and
+// Arrows.
 function connectDeckBars() {
   elements.previousPoint.addEventListener("click", () => openNeighbour(-1));
   elements.nextPoint.addEventListener("click", () => openNeighbour(1));
   elements.undo.addEventListener("click", undo);
   elements.redo.addEventListener("click", redo);
+  elements.namesToggle.addEventListener("click", () => {
+    wellLabelsShown = !wellLabelsShown;
+    elements.namesToggle.setAttribute("aria-pressed", String(wellLabelsShown));
+    refreshDeck();
+  });
   elements.arrowsToggle.addEventListener("click", () => {
     arrowsShown = !arrowsShown;
     elements.arrowsToggle.setAttribute("aria-pressed", String(arrowsShown));
@@ -1245,7 +1270,8 @@ function createGridHeading(text, gridRow, gridColumn) {
 // One well: a button (so it can be reached with Tab and pressed with Enter or Space) showing what
 // the well holds at the point the deck shows: its name if empty, otherwise its components' colors
 // in proportion and its total volume in short form, under stripes when all of it is dead volume
-// (section 6).
+// (section 6). A labeled well shows its label in place of its volume or name while Names is on, and
+// its accessible name starts with the label either way.
 function createWell(plan, end, isTrough) {
   const wellElement = createElement("button", "", "well");
   wellElement.type = "button";
@@ -1255,21 +1281,29 @@ function createWell(plan, end, isTrough) {
   const components = shownSnapshot.componentsOf(end.labware, end.well);
   const total = shownSnapshot.totalVolumeOf(end.labware, end.well);
   const label = createElement("span", "", "well-label");
+  let name;
   if (total === 0) {
     label.textContent = end.well;
-    wellElement.setAttribute("aria-label", `${wellName(plan, end)}, empty`);
+    name = `${wellName(plan, end)}, empty`;
   } else {
     label.textContent = formatShortVolume(total);
     wellElement.classList.add("holding");
     wellElement.style.setProperty("--well-fill", fillGradient(plan, components, isTrough));
-    let name = `${wellName(plan, end)}, ${formatVolume(total)} µL`;
+    name = `${wellName(plan, end)}, ${formatVolume(total)} µL`;
     // Holding only dead volume: a tip can reach none of it, so it's drawn under stripes.
     if (shownSnapshot.usableVolumeOf(end.labware, end.well) === 0) {
       wellElement.classList.add("dead-volume-only");
       name += ", all dead volume";
     }
-    wellElement.setAttribute("aria-label", name);
   }
+  const wellLabel = wellLabelOf(plan, end);
+  if (wellLabel !== null) {
+    name = `${wellLabel}, ${name}`;
+    if (wellLabelsShown) {
+      showWellLabel(label, wellLabel);
+    }
+  }
+  wellElement.setAttribute("aria-label", name);
   wellElement.append(label);
   const mixed = openStageMixedWells.get(wellKey(end));
   const lastingProblem = lastingMixProblems.get(wellKey(end));
@@ -1280,6 +1314,17 @@ function createWell(plan, end, isTrough) {
   }
   wellElements.set(wellKey(end), wellElement);
   return wellElement;
+}
+
+// Shows a well's label (its well label, `text`) in `label`, the tag that otherwise holds its volume
+// or name (section 6): semibold in the page's text font, wrapping at spaces onto at most two lines,
+// or, for a single word, on one line in slightly smaller type; cut with "…" if it still doesn't fit
+// (transfer-designer.css does the wrapping and cutting). A trough turns it upright.
+function showWellLabel(label, text) {
+  label.textContent = text;
+  label.classList.add("named");
+  // \s matches any space, so "Cond 1" wraps and "Staurosporine" is a single word.
+  label.classList.toggle("single-word", !/\s/.test(text));
 }
 
 // Gives a well the open stage mixes its ⟳ badge at its top right, and adds how it's mixed to its
@@ -2805,6 +2850,10 @@ function updateCursorLabel() {
 // Shows a well's contents card beside it: to its left if it fits there, otherwise to its right, and
 // kept inside the window.
 function showContentsCard(wellElement) {
+  // The card hides while a well's name box is open (section 6).
+  if (nameBox !== null) {
+    return;
+  }
   const end = endOf(wellElement);
   const card = elements.contentsCard;
   card.replaceChildren(...contentsCardLines(currentPlan(), end));
@@ -2824,13 +2873,20 @@ function hideContentsCard() {
   elements.contentsCard.hidden = true;
 }
 
-// The contents card's lines for a well (section 6): its name ("Empty" under it if it holds nothing),
-// each component's swatch, name, volume and share, then only problems and warnings: each contents
-// problem of the well by its kind, whether it's off plan, and how much of it the open stage mixes.
+// The contents card's lines for a well (section 6): its label first if it has one, then its name,
+// smaller under the label ("Empty" under it if it holds nothing), each component's swatch, name,
+// volume and share, then only problems and warnings: each contents problem of the well by its kind,
+// whether it's off plan, and how much of it the open stage mixes; last, a hint that a right click
+// names it ("Right-click to name", or "to rename" for a labeled well).
 // No total, usable-volume or capacity lines (Andy, 2026-10-31): the components add up to the total,
 // the labware's limits are the same for every well of it, and the problem lines carry the numbers.
 function contentsCardLines(plan, end) {
-  const lines = [createElement("div", wellName(plan, end), "card-title")];
+  const wellLabel = wellLabelOf(plan, end);
+  const lines = [];
+  if (wellLabel !== null) {
+    lines.push(createElement("div", wellLabel, "card-well-label"));
+  }
+  lines.push(createElement("div", wellName(plan, end), wellLabel === null ? "card-title" : "card-title under-label"));
   if (shownSnapshot.totalVolumeOf(end.labware, end.well) === 0) {
     lines.push(createElement("div", "Empty", "card-empty"));
   }
@@ -2864,6 +2920,8 @@ function contentsCardLines(plan, end) {
   if (mixed !== undefined) {
     lines.push(mixCardLine(mixed));
   }
+  const hint = wellLabel === null ? "Right-click to name" : "Right-click to rename";
+  lines.push(createElement("div", hint, "card-hint"));
   return lines;
 }
 
@@ -2927,6 +2985,145 @@ function mixCardLine(mixed) {
     return line;
   }
   return createElement("div", "Not mixed until the well in red is fixed.", "card-mix");
+}
+
+// --- Naming a well (section 6) ---
+
+// Connects naming wells: a right click on a well, or the context menu key (or Shift+F10) on a
+// focused well, opens its name box instead of the browser's menu, unless a text box, an editing box
+// or a header box was open. Every press is noted first, before the box guards close what's open.
+// The name box follows its well when the page or a labware scrolls, or the window is resized.
+function connectWellNaming() {
+  document.addEventListener("pointerdown", notePress, true);
+  elements.labwareArea.addEventListener("contextmenu", openNameBoxFromMenu);
+  // A right click anywhere else ends its press here, so it isn't taken for a later one.
+  document.addEventListener("contextmenu", () => {
+    secondaryPress = null;
+  });
+  document.addEventListener("scroll", placeNameBox, true);
+  window.addEventListener("resize", placeNameBox);
+}
+
+// Notes whether a press that isn't with the main button (a right click) found a box open as it
+// started (secondaryPress).
+function notePress(event) {
+  secondaryPress = event.button === 0 ? null : { foundOpen: somethingOpen() };
+}
+
+// True if a text box (a transfer's volume, a labware's label, the experiment's name or a well's
+// name), an editing box or a header box (Biomek files' or Reset's) is open.
+function somethingOpen() {
+  return (
+    inlineBox !== null ||
+    editingBox !== null ||
+    !elements.biomekBox.hidden ||
+    !elements.resetBox.hidden
+  );
+}
+
+// A context menu asked for on the deck: on a well, the browser's menu is held back, and the well's
+// name box opens, unless something was open (section 6: the right click then only closes or saves
+// it, and a second right click names the well). From the keyboard (the menu key, Shift+F10) there's
+// no press, so what's open now decides.
+function openNameBoxFromMenu(event) {
+  const end = endOf(event.target);
+  if (end === null) {
+    return;
+  }
+  event.preventDefault();
+  const foundOpen = secondaryPress !== null ? secondaryPress.foundOpen : somethingOpen();
+  secondaryPress = null;
+  if (!foundOpen) {
+    openNameBox(end);
+  }
+}
+
+// Opens the name box for well `end`: a text box under the well, holding its label, selected, or
+// nothing, with the placeholder "e.g. Cond 1". Enter, or clicking away, saves it (saveWellName);
+// Escape closes it, keeping the old label, and puts keyboard focus back on the well. The contents
+// card hides while it's open.
+function openNameBox(end) {
+  hideContentsCard();
+  const plan = currentPlan();
+  const box = createInlineEditor({
+    value: wellLabelOf(plan, end) ?? "",
+    className: "name-box",
+    accessibleName: `Name of ${wellName(plan, end)}`,
+    onSave: (text, how) => saveWellName(end, text, how),
+    onCancel: () => {
+      closeNameBox();
+      focusWell(end);
+    },
+  });
+  box.placeholder = "e.g. Cond 1";
+  nameBox = { box, end };
+  // On the page itself, not in the labware area, so the deck's own pointer actions never see it.
+  document.body.append(box);
+  placeNameBox();
+  box.focus();
+  box.select();
+}
+
+// Saves the name box's `text` as well `end`'s label with setWellLabel, as one undoable edit, and
+// closes the box: "Named Assay plate A4 “Media stock”." (ok), or, for a blank name on a labeled
+// well, "Assay plate A4 has no name now." (note). An unchanged name gives the same plan back and
+// records nothing. After Enter (`how` "enter"), keyboard focus goes back to the well. Returns what
+// became of the box, for createInlineEditor.
+function saveWellName(end, text, how) {
+  const plan = currentPlan();
+  closeNameBox();
+  const named = tryLogic(() => setWellLabel(plan, end, text));
+  if (named === false) {
+    return "refused";
+  }
+  if (named !== plan) {
+    recordEdit(named);
+    const label = wellLabelOf(named, end);
+    if (label === null) {
+      showMessage(`${wellName(named, end)} has no name now.`, "note");
+    } else {
+      showMessage(`Named ${wellName(named, end)} “${label}”.`, "ok");
+    }
+  }
+  if (how === "enter") {
+    focusWell(end);
+  }
+  return "closed";
+}
+
+// Takes the name box off the page.
+function closeNameBox() {
+  if (nameBox === null) {
+    return;
+  }
+  const { box } = nameBox;
+  nameBox = null;
+  box.remove();
+}
+
+// Places the name box 6px under its well, centered on it, kept inside the window (section 6).
+function placeNameBox() {
+  if (nameBox === null) {
+    return;
+  }
+  const wellElement = wellElements.get(wellKey(nameBox.end));
+  if (wellElement === undefined) {
+    return;
+  }
+  const well = wellElement.getBoundingClientRect();
+  const box = nameBox.box;
+  const margin = 8;
+  const gap = 6;
+  const centeredLeft = well.left + well.width / 2 - box.offsetWidth / 2;
+  const left = Math.min(Math.max(margin, centeredLeft), window.innerWidth - margin - box.offsetWidth);
+  const top = Math.min(Math.max(margin, well.bottom + gap), window.innerHeight - margin - box.offsetHeight);
+  box.style.left = `${left}px`;
+  box.style.top = `${top}px`;
+}
+
+// Puts keyboard focus on well `end`, as drawn now.
+function focusWell(end) {
+  wellElements.get(wellKey(end))?.focus();
 }
 
 // --- Editing boxes (section 10) ---

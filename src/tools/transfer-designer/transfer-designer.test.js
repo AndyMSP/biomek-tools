@@ -72,6 +72,9 @@ import {
   labelOf,
   setLabel,
   setLabels,
+  wellLabelOf,
+  setWellLabel,
+  setWellLabels,
 } from "./transfer-designer.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
@@ -79,6 +82,10 @@ const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_
   (entry) => entry.name,
 );
 const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED).name;
+
+// A 96-well labware other than PLATE and OTHER_PLATE, for well labels on labware that's otherwise
+// unused (the last 96-well labware in DECK).
+const LABELED_ONLY = DECK.filter((entry) => gridOf(entry.name) === GRID_96).at(-1).name;
 
 // The parts every plan has.
 const PLAN_PARTS = [
@@ -89,6 +96,7 @@ const PLAN_PARTS = [
   "stageOrder",
   "tipChanges",
   "labwareLabels",
+  "wellLabels",
   "experimentName",
 ];
 
@@ -365,7 +373,7 @@ describe("transfer-designer", () => {
     });
   });
 
-  test("emptyPlan() gives one stage with default settings, START tips of the first tip type on the first DEFAULT_PROBE_COUNT probes, no experiment name, and nothing else", () => {
+  test("emptyPlan() gives one stage with default settings, START tips of the first tip type on the first DEFAULT_PROBE_COUNT probes, no experiment name, no well labels, and nothing else", () => {
     const { plan, stageId } = emptyPlan();
     assert.deepEqual(Object.keys(plan).sort(), [...PLAN_PARTS].sort());
     assert.deepEqual(plan.stageList.listStages(), [
@@ -380,6 +388,7 @@ describe("transfer-designer", () => {
     assert.deepEqual(plan.operationList.listOperations(), []);
     assert.deepEqual(plan.stageOrder, [stageId]);
     assert.deepEqual(plan.labwareLabels, {});
+    assert.deepEqual(plan.wellLabels, {});
     assert.equal(plan.experimentName, "");
   });
 
@@ -1805,14 +1814,22 @@ describe("transfer-designer", () => {
 
   // --- Labware ---
 
-  test("labwareUsed lists starting contents' and transfers' labware in deck order", () => {
+  test("labwareUsed lists starting contents', transfers' and well labels' labware in deck order", () => {
     let plan = addComponent(planWithStages(1), "Media", "#4e79a7");
     plan = addToWells(plan, [{ labware: OTHER_PLATE, well: "A1" }], "Media", 100);
     plan = addTransfer(plan, transferTo("1", "B2"));
+    plan = setWellLabel(plan, { labware: LABELED_ONLY, well: "A1" }, "Cond 1");
     const deckOrder = DECK.map((entry) => entry.name);
-    const expected = deckOrder.filter((name) => [PLATE, OTHER_PLATE, RESERVOIR].includes(name));
+    const expected = deckOrder.filter((name) =>
+      [PLATE, OTHER_PLATE, RESERVOIR, LABELED_ONLY].includes(name),
+    );
     assert.deepEqual(labwareUsed(plan), expected);
     assert.deepEqual(labwareUsed(planWithStages(1)), []);
+  });
+
+  test("labwareUsed lists a labware with only a well label", () => {
+    const plan = setWellLabel(planWithStages(1), { labware: LABELED_ONLY, well: "B2" }, "Cond 1");
+    assert.deepEqual(labwareUsed(plan), [LABELED_ONLY]);
   });
 
   test("setLabel trims; a blank label, or the labware's own name, removes it; labelOf falls back to the name", () => {
@@ -1947,6 +1964,160 @@ describe("transfer-designer", () => {
     assert.equal(snapshot(plan), before);
   });
 
+  // --- Well labels ---
+
+  test("emptyPlan()'s wellLabels is {}, and wellLabelOf gives null for any of its wells", () => {
+    const { plan } = emptyPlan();
+    assert.deepEqual(plan.wellLabels, {});
+    assert.equal(wellLabelOf(plan, plateWell("A1")), null);
+    assert.equal(wellLabelOf(plan, trough("5")), null);
+  });
+
+  test("setWellLabel labels a plate well and a reservoir trough; wellLabelOf gives the label", () => {
+    const plan = setWellLabel(planWithStages(1), plateWell("A1"), "Cond 1");
+    assert.equal(wellLabelOf(plan, plateWell("A1")), "Cond 1");
+    assert.deepEqual(plan.wellLabels, { [PLATE]: { A1: "Cond 1" } });
+    const withTrough = setWellLabel(plan, trough("5"), "Media");
+    assert.equal(wellLabelOf(withTrough, trough("5")), "Media");
+    assert.deepEqual(withTrough.wellLabels, {
+      [PLATE]: { A1: "Cond 1" },
+      [RESERVOIR]: { 5: "Media" },
+    });
+  });
+
+  test('setWellLabel trims; "" and "   " remove the label, and removing a labware\'s last label removes the labware', () => {
+    const plan = setWellLabel(planWithStages(1), plateWell("A1"), "  Cond 1 ");
+    assert.equal(wellLabelOf(plan, plateWell("A1")), "Cond 1");
+    const two = setWellLabel(plan, plateWell("A2"), "Cond 2");
+    for (const blank of ["", "   "]) {
+      const one = setWellLabel(two, plateWell("A2"), blank);
+      assert.equal(wellLabelOf(one, plateWell("A2")), null);
+      assert.deepEqual(one.wellLabels, { [PLATE]: { A1: "Cond 1" } });
+      assert.deepEqual(setWellLabel(plan, plateWell("A1"), blank).wellLabels, {});
+    }
+  });
+
+  test("setWellLabel gives back the same plan when removing a label the well doesn't have, or giving the label it has", () => {
+    const plan = planWithStages(1);
+    assert.equal(setWellLabel(plan, plateWell("A1"), ""), plan);
+    const labeled = setWellLabel(plan, plateWell("A1"), "Cond 1");
+    assert.equal(setWellLabel(labeled, plateWell("A1"), "Cond 1"), labeled);
+    assert.equal(setWellLabel(labeled, plateWell("A1"), " Cond 1 "), labeled);
+    assert.equal(setWellLabel(labeled, plateWell("A2"), "  "), labeled);
+  });
+
+  test("two wells may share a label; labels with spaces inside and other characters are accepted", () => {
+    let plan = setWellLabel(planWithStages(1), plateWell("A1"), "Cond 1");
+    plan = setWellLabel(plan, plateWell("A2"), "Cond 1");
+    plan = setWellLabel(plan, plateWell("A3"), "Drug A 10 µM");
+    assert.deepEqual(plan.wellLabels, {
+      [PLATE]: { A1: "Cond 1", A2: "Cond 1", A3: "Drug A 10 µM" },
+    });
+  });
+
+  test("setWellLabel refuses a label that isn't text, a well not on the grid and labware not on the deck; wellLabelOf refuses a well not on the deck", () => {
+    const plan = planWithStages(1);
+    const before = snapshot(plan);
+    assert.throws(() => setWellLabel(plan, plateWell("A1"), 5), {
+      message: 'A well\'s label must be text, like "Cond 1", but got 5.',
+    });
+    assert.throws(() => setWellLabel(plan, plateWell("Z99"), "Cond 1"), {
+      message: `"Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`,
+    });
+    assert.throws(() => setWellLabel(plan, { labware: "Bench", well: "A1" }, "Cond 1"), {
+      message: new RegExp(`^There's no labware "Bench" on the deck\\.`),
+    });
+    assert.throws(() => wellLabelOf(plan, plateWell("Z99")), {
+      message: `"Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`,
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("setWellLabels sets the whole table; {} removes every label", () => {
+    const plan = planWithStages(1);
+    const labels = { [PLATE]: { A1: "Cond 1", A2: "Cond 1" }, [RESERVOIR]: { 5: "Media" } };
+    const labeled = setWellLabels(plan, labels);
+    assert.deepEqual(labeled.wellLabels, labels);
+    assert.equal(wellLabelOf(labeled, trough("5")), "Media");
+    assert.deepEqual(setWellLabels(labeled, {}).wellLabels, {});
+  });
+
+  test("changing the table given to setWellLabels afterwards doesn't change the plan", () => {
+    const labels = { [PLATE]: { A1: "Cond 1" } };
+    const plan = setWellLabels(planWithStages(1), labels);
+    labels[PLATE].A1 = "Changed";
+    labels[OTHER_PLATE] = { A1: "New" };
+    assert.deepEqual(plan.wellLabels, { [PLATE]: { A1: "Cond 1" } });
+  });
+
+  test("setWellLabels refuses a table that isn't an object", () => {
+    const plan = planWithStages(1);
+    for (const [labels, got] of [[null, "null"], [[], "a list"], [5, "5"]]) {
+      assert.throws(() => setWellLabels(plan, labels), {
+        message: `The well labels must be an object of labware names, each holding an object of wells and labels, like { Deep: { A1: "Cond 1" } }, but got ${got}.`,
+      });
+    }
+  });
+
+  test("setWellLabels refuses labware not on the deck, wells that aren't an object or are empty, and a well not on the grid", () => {
+    const plan = planWithStages(1);
+    assert.throws(() => setWellLabels(plan, { Bench: { A1: "Cond 1" } }), {
+      message: new RegExp(`^There's no labware "Bench" on the deck\\.`),
+    });
+    for (const [wells, got] of [[5, "5"], [[], "a list"], [null, "null"]]) {
+      assert.throws(() => setWellLabels(plan, { [PLATE]: wells }), {
+        message: `The well labels for ${PLATE} must be an object of wells and labels, like { A1: "Cond 1" }, but got ${got}.`,
+      });
+    }
+    assert.throws(() => setWellLabels(plan, { [PLATE]: {} }), {
+      message: `The well labels for ${PLATE} are empty. A labware without labeled wells is left out of the well labels.`,
+    });
+    assert.throws(() => setWellLabels(plan, { [PLATE]: { Z99: "Cond 1" } }), {
+      message: `"Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`,
+    });
+  });
+
+  test("setWellLabels refuses a label it would otherwise have to tidy, each with its message, leaving the plan unchanged", () => {
+    const plan = setWellLabel(planWithStages(1), plateWell("B1"), "Kept");
+    const before = snapshot(plan);
+    const blank = `The label for ${PLATE} A1 is blank. A well without a label is left out of the well labels.`;
+    const cases = [
+      [5, `The label for ${PLATE} A1 must be text, like "Cond 1", but got 5.`],
+      ["", blank],
+      ["  ", blank],
+      [" Cond 1", `The label for ${PLATE} A1, " Cond 1", has spaces at the start or end. Remove them.`],
+    ];
+    for (const [label, message] of cases) {
+      assert.throws(() => setWellLabels(plan, { [PLATE]: { A1: label } }), { message });
+    }
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("order of checks: setWellLabel reports the well before the label; setWellLabels the labware before its wells, and the well before its label", () => {
+    const plan = planWithStages(1);
+    assert.throws(() => setWellLabel(plan, plateWell("Z99"), 5), {
+      message: new RegExp(`^"Z99" isn't a well on ${PLATE}\\.`),
+    });
+    assert.throws(() => setWellLabels(plan, { Bench: 5 }), {
+      message: new RegExp(`^There's no labware "Bench" on the deck\\.`),
+    });
+    assert.throws(() => setWellLabels(plan, { [PLATE]: { Z99: 5 } }), {
+      message: new RegExp(`^"Z99" isn't a well on ${PLATE}\\.`),
+    });
+    // Labware in the order the table holds them: the first is reported.
+    assert.throws(() => setWellLabels(plan, { [PLATE]: { A1: "" }, Bench: {} }), {
+      message: new RegExp(`^The label for ${PLATE} A1 is blank\\.`),
+    });
+  });
+
+  test("labeling a well leaves its contents, the transfers and everything else as they were", () => {
+    const plan = withTransfersIn(planWithContents(), ["1"]);
+    const labeled = setWellLabel(plan, trough("1"), "Media stock");
+    for (const part of PLAN_PARTS.filter((candidate) => candidate !== "wellLabels")) {
+      assert.equal(labeled[part], plan[part], part);
+    }
+  });
+
   // --- Immutability and sharing ---
 
   // Each edit, made on a plan with something in every part, and the parts it may change.
@@ -1990,11 +2161,13 @@ describe("transfer-designer", () => {
     ["setLabel", (plan) => setLabel(plan, PLATE, "Cells"), ["labwareLabels"]],
     ["setLabels", (plan) => setLabels(plan, { [PLATE]: "Cells" }), ["labwareLabels"]],
     ["setExperimentName", (plan) => setExperimentName(plan, "Exp37"), ["experimentName"]],
+    ["setWellLabel", (plan) => setWellLabel(plan, plateWell("A2"), "Cond 2"), ["wellLabels"]],
+    ["setWellLabels", (plan) => setWellLabels(plan, { [PLATE]: { A3: "Cond 3" } }), ["wellLabels"]],
   ];
 
   // A plan with something in every part: components and starting contents, stages 1 and 2 with
   // transfers, stage 3 without, a mix step last mixing PLATE A1, a tip change before stage 2, a
-  // label and an experiment name.
+  // label, a well label and an experiment name.
   function fullPlan() {
     let plan = withTransfersIn(planWithContents(), ["1"]);
     plan = addStage(plan, null).plan;
@@ -2004,6 +2177,7 @@ describe("transfer-designer", () => {
     plan = mixWells(withMixStep, mixStep, [plateWell("A1")]);
     plan = addTipChange(plan, "2");
     plan = setLabel(plan, OTHER_PLATE, "Drug plate");
+    plan = setWellLabel(plan, plateWell("A1"), "Cond 1");
     return setExperimentName(plan, "Exp36");
   }
 

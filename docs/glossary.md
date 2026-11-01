@@ -71,7 +71,7 @@ pipette. Some pipetting modes suit only one end; Non-Contact, for example, is fo
 **Plan**
 Everything the tools hold about one experiment's liquid handling: its experiment name, its
 components, its starting contents (what each well holds before the run), its operation list, its
-stage list, its tip changes and its labware labels. The transfer designer builds a plan, and the file writer turns it into the
+stage list, its tip changes, its labware labels and its well labels. The transfer designer builds a plan, and the file writer turns it into the
 files the Biomek runs. A plan isn't a Biomek method: the general-purpose method stays the same for
 every plan (ADR 0006, ADR 0007).
 
@@ -118,3 +118,12 @@ type and how many probes get tips, and every stage using its tips uses all those
 A group of stages that run on the same tips: the stages after one tip change, up to the next. For
 example, with tip changes at the start and before stage 4, stages 1 to 3 are one tip group and
 stages 4 and 5 another. Every stage in the group uses all the probes its tip change loads.
+
+**Well label**
+A name the user gives a well, such as "Cond 1", so it's easy to recognize. It belongs to the well's
+place on the deck for the whole run, not to what the well holds; two wells may share a label. Like a
+labware label, it's for people only and never reaches the Biomek. (The transfer designer's page
+calls it the well's name; the specifications say well label, since a well name is something else.)
+
+**Well name**
+A well's place on its labware's grid, such as `A1`, or `5` on a reservoir's numbered grid.
