@@ -1,14 +1,14 @@
 // transfer-designer.js — the transfer designer's rules: what a plan is, and every edit that can be
 // made to one, each checked so that a plan is always valid.
 //
-// A plan holds the components, the starting contents, the operation list, the stage list, the
-// stage order (a list of stage IDs; ADR 0011), the tip changes, the labware labels, the well labels,
-// the randomizations (each owning the stages it made; ADR 0012) and the experiment name. A stage is a transfer stage or a mix step, which only mixes its wells, each a
-// transfer from the well into itself. A plan is never changed after it's made: every edit returns
-// a new plan that shares every part the edit didn't change, so the plan history can keep many
-// plans cheaply. The page
-// shows a plan and passes on what the user does; every rule about what that means lives here, so it
-// can be tested in Node.
+// A plan holds the components, the starting contents, the operation list, the stage list, the stage
+// order (a list of stage IDs; ADR 0011), the tip changes, the labware labels, the well labels, the
+// randomizations (each owning the stages it made; ADR 0012) and the experiment name. A stage is a
+// transfer stage or a mix step, which only mixes its wells, each a transfer from the well into
+// itself. A plan is never changed after it's made: every edit returns a new plan that shares every
+// part the edit didn't change, so the plan history can keep many plans cheaply. The page shows a
+// plan and passes on what the user does; every rule about what that means lives here, so it can be
+// tested in Node.
 // It builds on the shared modules (operation-list, stage-list, contents-tracking, mix-volumes, deck)
 // and doesn't repeat what they do.
 // Specification: transfer-designer.md.

@@ -2097,8 +2097,11 @@ function highlightTransfer(position) {
 // added.
 function columnBlocks(plan) {
   const groups = tipGroups(plan);
+  // The randomizations that haven't run sitting just before stage `beforeId` (or above End, for
+  // null), in the order they were added.
   const notRunAt = (beforeId) =>
     plan.randomizations.filter((randomization) => randomization.stages.length === 0 && randomization.beforeId === beforeId);
+  // A randomization's block, with `its` the tip groups of its stages, e.g. [] for one not run.
   const randomizationBlock = (randomization, its) => ({ kind: "randomization", randomization, groups: its });
   const blocks = [];
   let index = 0;
@@ -2481,6 +2484,8 @@ function createDiceIcon() {
   icon.setAttribute("viewBox", "0 0 24 24");
   icon.setAttribute("class", "dice-icon");
   icon.setAttribute("aria-hidden", "true");
+  // One die: a rounded square `size` wide with its top left corner at (x, y), a pip at each of
+  // `pips`' points, turned by the SVG `transform` if one is given.
   const die = (x, y, size, pips, transform) => {
     const group = document.createElementNS(svg, "g");
     if (transform !== undefined) {

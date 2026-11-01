@@ -8,10 +8,10 @@
 // a file that fails any check isn't opened in part.
 // It writes format version 6, which holds the randomizations and the well labels, each stage's
 // settings hold its mixes and each tip change its probes. It still reads version 5 files (no
-// randomizations), version 4 files (also no well labels), version 3 files (also no mixes), version 2 files (also probes in each stage's settings) and version 1 files (also
-// without an experiment name). Their stages get no mixing, since
-// plans couldn't mix then; in versions 1 and 2, their tip changes get every probe their stages
-// used, which is where look-ahead loading put tips.
+// randomizations), version 4 files (also no well labels), version 3 files (also no mixes), version
+// 2 files (also probes in each stage's settings) and version 1 files (also without an experiment
+// name). Their stages get no mixing, since plans couldn't mix then; in versions 1 and 2, their tip
+// changes get every probe their stages used, which is where look-ahead loading put tips.
 // Specification: plan-file.md.
 
 import { TIP_TYPES } from "../../../config/tip-types.js";
