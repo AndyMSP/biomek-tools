@@ -372,8 +372,12 @@ added on 2026-10-28 (Andy).
         **everywhere** a source is chosen (Andy, 2026-11-01: hard to see on a filled well).
         Numbering the sources was tried and dropped as confusing.
       - **Running it** makes one stage per source, in list order, named as the source is, each with
-        new tips, filling the wells to fill as **one pool** across any number of plates (a
-        several-plates mode in `randomizer.js`). Update makes the stages match the card again: the
+        new tips, filling the wells to fill as **one pool** across any number of plates. **The
+        randomizer's logic does the work** (Andy, 2026-11-01): the designer gives `randomizer.js`
+        the sources, replicates, filler, wells and seed, and turns the assignment it returns into
+        stages, so there's one copy of the randomizing logic. `randomizer.js` gains a several-plates
+        mode for this ("one set of replicates spread across plates, fully random", under "The
+        randomizer"); the preview shuffled directly instead, as a shortcut. Update makes the stages match the card again: the
         same seed and inputs keep the same wells; a new seed shuffles again. One Undo takes a run
         out.
       - **Tips:** a randomization never shares tips with anything outside it; the tool adds tips
