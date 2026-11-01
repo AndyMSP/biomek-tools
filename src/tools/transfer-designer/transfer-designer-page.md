@@ -81,7 +81,7 @@
 > **Draft changes (2026-11-01, constituents and concentrations; ADR 0013):** from the preview Andy
 > shaped on 2026-11-01: a `Contains` field in a component's box, for its constituents; what a
 > component carries after its name on its chip; a `Concentrations` group on the contents card
-> (sections 6, 8, 10, 13, 14, 15 and 16). Written while Andy was driving, so still to review with
+> (sections 2, 6, 8, 13, 14, 15 and 16). Written while Andy was driving, so still to review with
 > him: the choices listed in its pull request. They become Final once built and tested by Andy.
 
 ## 1. Purpose
@@ -786,9 +786,10 @@ the chips below, moved left if needed to stay inside the Start card:
   tint) doesn't apply to swatches (Andy, 2026-10-31: the picked swatch turned pale blue, hiding
   the color chosen).
 - **Contains** (ADR 0013): the component's constituents, one row each: a `Name` box, an `Amount`
-  box (typed as a volume is, section 13: the text is passed on as a number when it's one), a unit
-  menu offering the **offered** units of `config/concentration-units.js` in its order (plus the
-  row's own unit if it isn't offered, from an older plan file, so the row reads as saved), and `×`
+  box (an ordinary text box, like the Name box, not the deck's volume keys; its text is passed on
+  as section 13 passes a typed volume on: as a number when it's one, else as typed), a unit menu
+  offering the **offered** units of `config/concentration-units.js` in its order (plus the row's
+  own unit when it's a configured unit that isn't offered, so the row reads as saved), and `×`
   (tooltip `Take it out`) which takes the row out of the draft; a component carrying nothing shows
   `Contains nothing at a known concentration.` instead of rows. Under them, `+ Add` (plain blue, as
   `More colors`): a new row whose unit is `DEFAULT_CONCENTRATION_UNIT` and whose name is the
@@ -802,9 +803,11 @@ the chips below, moved left if needed to stay inside the Start card:
   first: Undo brings it back (Andy, 2026-10-31; every box's Remove works this way).
   and closes the box. If it was picked, the first component left is picked, or the eraser if none is.
 - **Save** renames, recolors and sets the constituents as one edit (`renameComponent`, then
-  `setComponentColor` if the color changed, then `setConstituents` if the rows differ from what it
-  carries; message `Saved Media.`). If it was picked, the renamed component stays picked. A box
-  counts as changed (section 10) when its name, color or rows differ from the component's.
+  `setComponentColor` if the color changed, then `setConstituents`, under the new name, if the
+  rows, with each amount passed on as above, differ from what the component carries, compared as
+  JSON in order; message `Saved Media.`). If it was picked, the renamed component stays picked. A
+  box counts as changed (section 10) when its name, color or rows (as typed) differ from the
+  component's.
 
 ## 9. Transfers (a stage open)
 While a stage is open, transfers made on the deck go into it, with the next transfer's volume.
@@ -1103,7 +1106,7 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   unit right in the monospace volume style), 12px between.
 - **What a chip carries** (section 8): 12px gray (`#5E5E58`), 2px after the name, never wrapped;
   the same gray when the chip is picked.
-- **A component's Contains rows** (section 10): a grid per row, the name box taking what's left,
+- **A component's Contains rows** (section 8): a grid per row, the name box taking what's left,
   then the amount box 56px, the unit menu 76px (its right padding 2px, so `g/L` and `mM` show
   whole), then `×` 26px; 6px apart; rows 6px apart and 6px above `+ Add`; `×` plain (no border,
   gray, 16px) like a transfer row's.

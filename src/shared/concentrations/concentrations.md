@@ -74,6 +74,10 @@ A component with no constituents, or a share of 0, contributes nothing. A well h
 gives `[]`.
 
 ### The unit to show
+**The units of a family**, as a message or a menu lists them: its offered units in the
+configuration's order, then its display-only ones in the configuration's order, e.g. mass gives
+g/L then mg/L; molar gives mM, µM, then M, nM.
+
 For a value in a family's base unit, the unit to show it in is **the largest unit of its family
 in which the amount is at least 1**, else the family's smallest unit; for a family of one unit,
 that unit. Amounts within 1e-12 of 1 count as 1, so arithmetic leftovers don't push `1 mM` down
@@ -81,17 +85,20 @@ to `999.99… µM`. `offered` doesn't matter here: display may use any unit. E.g
 476 µM; 0.0075 g/L as 7.5 mg/L; 2.5 M as 2.5 M; 0.5 (percent) as 0.5 %.
 
 ## 4. Interface
-The module exports four functions. None changes its inputs.
+The module exports five functions. None changes its inputs; a function that gives a list gives a
+new one each time.
 
 | Function | Takes | Returns |
 |---|---|---|
-| `checkConstituents(constituents)` | a component's constituents | the list, checked: each constituent `{ name, amount, unit }` with its name trimmed. Throws (section 5) if not. |
+| `checkConstituents(constituents)` | a component's constituents | a new list of new objects, each constituent `{ name, amount, unit }` with its name trimmed, in the given order. Throws (section 5) if the list isn't a component's constituents. |
 | `familyOf(unit)` | a unit's symbol | its family, e.g. `familyOf("mM")` → `"molar"`. Throws for a unit not in the configuration. |
+| `unitsOf(family)` | a family | its units' symbols as section 3 lists them (offered first), e.g. `unitsOf("mass")` → `["g/L", "mg/L"]`. Throws for a family not in the configuration. |
 | `wellConcentrations(shares, components)` | a well's shares and the plan's components | the well's concentrations (section 3), e.g. `wellConcentrations({ Stock: 0.2, Media: 0.8 }, [{ name: "Stock", constituents: [{ name: "Dye", amount: 10, unit: "mM" }] }, { name: "Media", constituents: [] }])` → `[{ name: "Dye", family: "molar", value: 0.002 }]`. |
 | `bestUnit(family, value)` | a family and a value in its base unit | `{ amount, unit }` to show (section 3), e.g. `bestUnit("molar", 0.000476)` → `{ amount: 476, unit: "µM" }`. Throws for a family not in the configuration. |
 
 `wellConcentrations` doesn't check its inputs beyond what it reads: a plan's components have been
-checked by the transfer designer, and the shares come from contents tracking. A component without a
+checked by the transfer designer, and the shares come from contents tracking. It goes through
+`components`, so a share whose name is no component's is ignored. A component without a
 `constituents` property counts as carrying nothing.
 
 ## 5. Errors
@@ -103,33 +110,41 @@ from 1, in the list's order.
 |---|---|
 | Not a list | `A component's constituents must be a list, like [{ name: "Dye", amount: 10, unit: "mM" }], but got "Dye".` |
 | An entry isn't an object (`null`, a list, text…) | `Constituent 2 must be an object with a name, an amount and a unit, but got "Dye".` |
-| Missing properties | `Constituent 2 needs name, amount and unit, but is missing "unit".` (all missing listed, in that order) |
-| Extra properties | `Constituent 2 can only have name, amount and unit, but also got "volume".` (all listed, in their order) |
+| Missing properties | `Constituent 2 needs name, amount and unit, but is missing "unit".` (all missing, with `listNames`, in that order) |
+| Extra properties | `Constituent 2 can only have name, amount and unit, but also got "volume".` (all extra, with `listNames`, in their order) |
 | The name isn't a name | `checkName`'s messages, naming `constituent name`; the name is trimmed first |
-| The same name twice | `"Dye" is listed twice. List each constituent once.` |
+| The same name twice | `"Dye" is listed twice. List each constituent once.` The trimmed name; reported at the later entry, after that entry's own checks above. |
 | The amount isn't a number above 0 (including `NaN`, `Infinity`, `0`, text) | `The amount of "Dye" must be a number above 0, like 10, but got "ten".` |
 | The unit isn't in the configuration | `The unit of "Dye" must be one of mM, µM, g/L, %, ×, but got "mg/mL".` (the offered units, in the configuration's order) |
 
 Each constituent's checks run in table order before the next constituent's.
 
-`familyOf` and `bestUnit` throw `"mg/mL" isn't a concentration unit.` and `"volume" isn't a
-family of concentration units.` for an unknown unit or family.
+`familyOf` throws `"mg/mL" isn't a concentration unit.` for an unknown unit; `unitsOf` and
+`bestUnit` throw `"volume" isn't a family of concentration units.` for an unknown family.
 
 ## 6. Test cases
 Each becomes at least one unit test in `concentrations.test.js`. Values are compared allowing a
-difference of up to 1e-12 of the value, as decimal arithmetic leaves leftovers. The tests read the
-units from `config/concentration-units.js` rather than naming them, except the tests of the
-configuration itself (section 7).
+difference of up to 1e-12 of the value, as decimal arithmetic leaves leftovers.
+
+**Tests follow `config/`** (CLAUDE.md): a test may name a unit by its symbol, as the examples
+below do, the way a test names a tip type, but takes everything else about it from the file, found
+by that symbol: its `factor` and `family`, and for a family its base unit (factor 1), its smallest
+unit (the last of the family in the list), its offered units and `unitsOf`'s list. So "0.2 at
+10 mM gives value 0.002" is written as `0.2 × 10 × factor("mM")`, and a message listing units is
+built from the file, never typed out. No test names a factor, and only section 7's tests check what
+the file holds.
 
 **Checking constituents**
 - `[]` gives `[]`.
 - A valid list comes back equal, with names trimmed: `" Dye "` → `"Dye"`.
 - The list isn't changed by the check (immutability).
+- The result is a new list of new objects: changing it doesn't change the input, and vice versa.
 - Each row of section 5 has at least one test: `null`, `{}` and `"Dye"` as the list; `null`, `5`
-  and `[]` as an entry; a missing `unit`, and missing `amount` and `unit`; an extra `volume`; a
-  name `""`, `"   "` and `5`; the same name twice (and `"Dye"` and `" Dye"` count as twice, since
-  names are trimmed); amounts `"10"`, `0`, `-1`, `NaN` and `Infinity`; a unit not in the
-  configuration, and one differing only in case.
+  and `[]` as an entry; a missing `unit`, and missing `amount` and `unit` (listed as `listNames`
+  lists them); an extra `volume`; a name `""`, `"   "` and `5`; the same name twice (and `"Dye"`
+  and `" Dye"` count as twice, since names are trimmed, the message showing `"Dye"`); amounts
+  `"10"`, `0`, `-1`, `NaN` and `Infinity`; a unit not in the configuration, and one differing only
+  in case, the message listing the offered units from the file.
 - Checks run in order: a bad constituent 1 and a bad constituent 2 report constituent 1; a bad name
   and a bad amount in one constituent report the name.
 
@@ -157,8 +172,14 @@ configuration itself (section 7).
   999.99… µM.
 - An unknown family throws.
 
-**`familyOf`**
+**`familyOf` and `unitsOf`**
 - Every configured unit gives its family; an unknown unit throws.
+- Every family gives its units, offered ones first, each group in the file's order; an unknown
+  family throws; the list is a new one each time.
+
+**The REPL**
+- The module has a topic of its own in `scripts/repl.js` (CLAUDE.md, "Keep the REPL complete"):
+  checking a list, a well's concentrations and the best unit.
 
 ## 7. Configuration
 `config/concentration-units.js` (ADR 0009) exports:

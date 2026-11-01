@@ -120,7 +120,9 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   they were added. Each has a `name` (a name: text, not blank, no whitespace at the start or end,
   as `checkName` in `input-checks`) and a `color` (text, e.g. `"#4e79a7"`; which colors are
   offered is up to the tool) and `constituents` (`concentrations.md`, section 3: a list of
-  `{ name, amount, unit }`, in the user's order, possibly empty; "Constituents", below). No two
+  `{ name, amount, unit }`, in the user's order, possibly empty; "Constituents", below), its
+  properties in that order (`name`, `color`, `constituents`), since plan files write them as
+  they are. No two
   components share a name, or a color, so they can always be told apart where colors are drawn. A
   component may be in the list without being in any well yet.
 - **`startingContents`**: what each well holds before the run, in the form `contents-tracking`
@@ -312,7 +314,9 @@ units. A new component carries nothing, `[]`.
 **One family per constituent name**, across the plan: the same name in different components is the
 same thing, whose amounts add up in a well, and adding g/L to mM would need a molecular weight the
 tool doesn't know. So a constituent whose unit's family (`familyOf`, `concentrations.md`) differs
-from the family that name already has in **another** component is refused, naming that component.
+from the family that name already has in **another** component is refused, naming the first
+component in the plan's order (other than the one being set) that carries that name, and the unit
+it carries it in.
 Within the list being set, the first constituent with a name sets the family the plan must agree
 with (names are unique in a list, so no two entries of one list share a name). Changing a
 constituent's family where only this component has that name is fine, since the list replaces the
@@ -325,7 +329,10 @@ constituents with it.
 **Concentrations.** What a well carries after any number of operations: `concentrationsOf` gives
 `wellConcentrations` (`concentrations.md`) of the well's volume fractions in a contents snapshot of
 the plan (`contents-tracking.md`, `volumeFractionsOf`) and the plan's components. A tool makes the
-snapshot (it already has one for the point it shows) and asks per well.
+snapshot (it already has one for the point it shows) and asks per well. The well is checked by the
+snapshot alone (`end?.labware` and `end?.well` are passed to `volumeFractionsOf`, so an `end` that
+isn't an object gets the snapshot's message for a labware of `undefined`); `deck.checkWell` isn't
+used, since a well the snapshot has no record of is simply empty.
 
 ### Contents problems
 `contents-tracking` reports each transfer that asks a well for more than its usable volume (a
@@ -597,7 +604,7 @@ given; "returns the plan with …" means a new plan.
 | `addToWells(plan, wells, name, volume)` | the plan with `volume` µL of the component added to each of `wells`, each a well on the deck (`deck.checkWell`), each once. Throws if the component isn't in the plan, the volume isn't above 0, or a well isn't on the deck. |
 | `emptyWells(plan, wells)` | the plan with `wells` empty at the start. Never throws for a well that's already empty. |
 | `setConstituents(plan, name, constituents)` | the plan with component `name` carrying `constituents` (section 3, "Constituents"), replacing what it carried; names trimmed as `checkConstituents` does. Throws if there's no such component, then as `checkConstituents` does, then if a constituent's family differs from its name's family in another component. |
-| `concentrationsOf(plan, snapshot, end)` | the well's concentrations (section 3, "Constituents"): `wellConcentrations(snapshot.volumeFractionsOf(end.labware, end.well), plan.components)`, a list of `{ name, family, value }` (`concentrations.md`), `[]` for a well carrying nothing. `snapshot` is a `ContentsSnapshot` of this plan; `end` is `{ labware, well }`, checked as `snapshot.volumeFractionsOf` checks it. |
+| `concentrationsOf(plan, snapshot, end)` | the well's concentrations (section 3, "Constituents"): `wellConcentrations(snapshot.volumeFractionsOf(end?.labware, end?.well), plan.components)`, a list of `{ name, family, value }` (`concentrations.md`), `[]` for a well carrying nothing. `snapshot` is a `ContentsSnapshot` of this plan; `end` is `{ labware, well }`, checked by `snapshot.volumeFractionsOf` only. |
 
 `renameComponent`, `setComponentColor`, `removeComponent` and `setConstituents` throw first if
 there's no component with that name.
@@ -684,7 +691,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | A color is used by another component | `Drug_A already has that color. Choose a different one.` |
 | `addToWells`: volume not a number above 0 | `The volume to add must be a number of microliters above 0, like 100, but got 0.` |
 | `setConstituents`: the list, an entry, a name, an amount or a unit is wrong | `checkConstituents`'s messages (`concentrations.md`, section 5). |
-| `setConstituents`: a constituent's family differs from its name's in another component | `Hy-Soy is in g/L in Feeding media. Give it a unit of that kind (g/L, mg/L), or a different name.` The units listed are the family's offered units, in the configuration's order, then any display-only ones. |
+| `setConstituents`: a constituent's family differs from its name's in another component | `Hy-Soy is in g/L in Feeding media. Give it a unit of that kind (g/L, mg/L), or a different name.` The component and unit are the first other component's carrying that name (section 3, "Constituents"); the units listed are `unitsOf` that unit's family (`concentrations.md`), joined by `, `. |
 | `setLabel`: label isn't text | `A label must be text, like "Assay plate", but got 5.` |
 | `setLabel`: another labware has that label | `Deep already has the label "Drug plate". Choose a different one.` |
 | `setLabels`: `labels` isn't an object (including `null` and lists) | `The labels must be an object of labware names and labels, like { Plate: "Assay plate" }, but got a list.` |
@@ -965,28 +972,34 @@ order of checks.
 - `addToWells` adds on top: 500 then 1000 µL gives 1500 µL; other components stay; 0, −5 and
   `"10"` throw; a component not in the plan throws; a well listed twice gets the volume once.
 - `emptyWells` empties only those wells; the components stay; an empty well is left as it is.
-- `addComponent` gives the new component `constituents: []`.
+- `addComponent` gives the new component `constituents: []`, its properties in the order `name`,
+  `color`, `constituents`. (The existing tests that compare a component to `{ name, color }` are
+  updated to this shape: the specification changed, not the tests' purpose.)
 - `setConstituents` replaces the list: setting `[{ Dye 10 mM }]` then `[{ Dye 5 mM }]` leaves one
   constituent at 5; setting `[]` leaves none; names are trimmed; the given list isn't changed, and
   changing it afterwards doesn't change the plan.
 - `setConstituents` throws for a component not in the plan, and passes on `checkConstituents`'s
   messages (a bad amount, a unit not configured) unchanged.
 - One family per name: with Hy-Soy at 4 g/L in "Feeding media", setting Hy-Soy at 10 mM in
-  another component throws the family message naming Feeding media; Hy-Soy at 500 mg/L (the same
-  family) is accepted; in the only component carrying Hy-Soy, changing it from g/L to mM is
-  accepted; two constituents in the list being set, Hy-Soy in g/L then Drug A in mM, are checked
-  each against the other components only.
+  another component throws the family message naming Feeding media and g/L, the units from
+  `unitsOf`; with two other components carrying Hy-Soy, the first in the plan's order is named,
+  with its own unit; Hy-Soy at 500 mg/L (the same family) is accepted; in the only component
+  carrying Hy-Soy, changing it from g/L to mM is accepted; two constituents in the list being set,
+  Hy-Soy in g/L then Drug A in mM, are checked each against the other components only. (Units in
+  these tests are named by symbol and read from `config/concentration-units.js`, as
+  `concentrations.md`, section 6, says.)
 - The order of checks: a component that doesn't exist is reported before a bad list; a bad amount
   (`checkConstituents`) before a family clash in a later entry.
 - `renameComponent` keeps the component's constituents, including one named as the component
   was; `removeComponent` removes them; `setComponentColor` keeps them.
 - `concentrationsOf` with a well 20% from a component carrying Dye at 10 mM gives
-  `[{ name: "Dye", family: "molar", value: 0.002 }]` (within 1e-12); an empty well, or one holding
-  only components without constituents, gives `[]`; after a transfer of 50 µL from a trough of
-  that component into a well holding 1000 µL of Media, the well carries Dye at 10 × 50 / 1050 mM
-  at the snapshot after that transfer, and nothing at the snapshot before it. (The units in these
-  tests are taken from `config/concentration-units.js`.)
-- `concentrationsOf` checks `end` as the snapshot does: a well of `5` throws the snapshot's
+  `[{ name: "Dye", family: family("mM"), value: 0.2 × 10 × factor("mM") }]` (within 1e-12); an
+  empty well, or one holding only components without constituents, gives `[]`; after a transfer of
+  50 µL from a trough of that component into a well holding 1000 µL of Media, the well's value is
+  `10 × factor("mM") × 50 / 1050` at the snapshot after that transfer, and `[]` at the snapshot
+  before it.
+- `concentrationsOf` checks the well through the snapshot only: a well of `5` throws the
+  snapshot's message naming `volumeFractionsOf`; an `end` of `undefined` throws its labware
   message.
 
 **Labware**

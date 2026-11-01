@@ -141,9 +141,15 @@ Opening a file checks, in this order:
    add it: a name and a color, each unique. The name must already be a name (`checkName`): it
    isn't trimmed, so it always matches the names in the starting contents. In a version 7 file, its
    constituents are then set as `setConstituents` would set them (`transfer-designer.md`,
-   "Constituents"): each name must already be a name (not trimmed, as the component's), and the
-   family rule holds across the file's components, in file order, so a file with Hy-Soy in g/L in
-   component 1 and in mM in component 2 is refused at component 2.
+   "Constituents"), with one check first: if `constituents` is a list, each of its entries that is
+   an object with a text `name` has that name checked by `checkName` (subject `constituent name`)
+   **untrimmed**, so `" Dye"` is refused rather than trimmed, as the component's name is; anything
+   else (a list that isn't one, an entry that isn't an object, a name that isn't text) is left to
+   `setConstituents`, whose messages say what's wrong. Then `setConstituents`. The family rule
+   holds across the file's components, in file order, so a file with Hy-Soy in g/L in component 1
+   and in mM in component 2 is refused at component 2. The per-component property list is
+   version-aware (`name` and `color`, plus `constituents` from version 7), as the file-level
+   properties are.
 6. **Stages**: at least one. Each is an object with exactly `id`, `name` and `settings`; `id` is a
    name (`checkName`), not `"start"` (which would be confused with the start tips), and different
    from every other stage's; `name` and `settings` are checked by the
@@ -270,7 +276,11 @@ row of section 5 has at least one test.
 - A plan whose stages have IDs `"2"`, `"5"` and `"7"` opens with IDs `"1"`, `"2"` and `"3"`, its
   transfers and tip changes following them.
 - An `emptyPlan()`, saved and opened, gives a plan with the same contents, and is written as version
-  7, with `"wellLabels": {}` and `"randomizations": []`.
+  7, with `"wellLabels": {}` and `"randomizations": []`. (The existing tests of the version written
+  and of a component's exact properties are updated to version 7 and the three properties: the
+  specification changed, not the tests' purpose.)
+- A component is written with its properties in the order `name`, `color`, `constituents`, and
+  each constituent as `name`, `amount`, `unit`.
 - Constituents: a plan whose components carry `[]`, `[{ Dye 10 mM }]` and two constituents in
   different families (Hy-Soy 4 g/L, Drug A 10 µM), saved and opened, gives the same constituents,
   in order, amounts at full precision (e.g. `0.1`).
@@ -295,7 +305,10 @@ row of section 5 has at least one test.
   component whose `constituents` is `{}`, or whose constituent has an amount of `0` or a unit of
   `"mg/mL"`, is refused with `component N: ` and `checkConstituents`'s message; one with Hy-Soy in
   g/L and, in a later component, Hy-Soy in mM is refused with `component N: ` and the family
-  message naming the earlier component; a constituent named `" Dye"` is refused, not trimmed.
+  message naming the earlier component; a constituent named `" Dye"` is refused with
+  `component N: ` and `checkName`'s message, not trimmed; the untrimmed check runs over the whole
+  list before `setConstituents`, so `[null, { name: " Dye", … }]` reports `" Dye"`, and
+  `[null, { name: "Dye", … }]` reports the `null` through `setConstituents`.
 - **Version 5:** a version 5 file (as saved before randomizations) opens, with none; a version 5
   file *with* `randomizations` is refused as having an extra property; a version 6 or 7 file without it
   is refused as missing it, and one whose `randomizations` is an object gets the wrong-kind message.
