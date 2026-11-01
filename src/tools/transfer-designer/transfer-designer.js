@@ -204,6 +204,23 @@ export function addMixStep(plan, beforeId, { takeTips = false } = {}) {
   });
 }
 
+// Returns { plan, id }: the plan with a new transfer stage just before stage `beforeId` (or last, for
+// null), as addStage adds it without takeTips, in a tip group of its own, and its ID, as one edit
+// (transfer-designer.md, "Tip changes and tip groups"). Throws as addStage does.
+// e.g. addStageWithNewTips(plan, "3"): the new stage, just before stage 3, gets a tip change
+// loading the tips in use there, and so does stage 3 if it had none, keeping the tips it had.
+export function addStageWithNewTips(plan, beforeId) {
+  const { plan: added, id } = addStage(plan, beforeId);
+  return { plan: withOwnTipGroup(added, id, beforeId), id };
+}
+
+// Returns { plan, id }: the same as addStageWithNewTips, for a new mix step (as addMixStep makes it).
+// e.g. addMixStepWithNewTips(plan, null) puts a mix step last, on tips of its own.
+export function addMixStepWithNewTips(plan, beforeId) {
+  const { plan: added, id } = addMixStep(plan, beforeId);
+  return { plan: withOwnTipGroup(added, id, beforeId), id };
+}
+
 // True if stage `id` is a mix step: its technique and liquid type are MIX_STEP_MODE's at both ends
 // (transfer-designer.md, "Mix steps"). False for a transfer stage, or an ID that isn't a stage.
 // e.g. isMixStep(plan, "2") → true.
@@ -747,6 +764,23 @@ function addStageOfKind(plan, beforeId, takeTips, kind) {
     tipChanges,
   });
   return { plan: withStartTipsFirst(added), id };
+}
+
+// Returns the plan with new stage `id` in a tip group of its own: a tip change before it (unless
+// it's the first stage, whose tips are the START ones), and one before `afterId`, the stage just
+// after it (null for none), if that has none, each loading the tips in use there, as addTipChange
+// does. So the new stage shares tips with nothing, and the stage after it keeps the tips it had.
+// The stage after it gets its tip change first, while the tips in use there are still the ones it
+// had (they're the same either way, since the new stage's tip change loads those tips too).
+function withOwnTipGroup(plan, id, afterId) {
+  let withTips = plan;
+  if (afterId !== null && !Object.hasOwn(withTips.tipChanges, afterId)) {
+    withTips = addTipChange(withTips, afterId);
+  }
+  if (stageOrder(withTips)[0] !== id) {
+    withTips = addTipChange(withTips, id);
+  }
+  return withTips;
 }
 
 // The ID of the stage a new stage at `newPlace` in the stage order copies: the nearest stage before
