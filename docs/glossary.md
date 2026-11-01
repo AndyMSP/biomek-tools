@@ -71,7 +71,7 @@ pipette. Some pipetting modes suit only one end; Non-Contact, for example, is fo
 **Plan**
 Everything the tools hold about one experiment's liquid handling: its experiment name, its
 components, its starting contents (what each well holds before the run), its operation list, its
-stage list, its tip changes, its labware labels and its well labels. The transfer designer builds a plan, and the file writer turns it into the
+stage list, its tip changes, its labware labels, its well labels and its randomizations. The transfer designer builds a plan, and the file writer turns it into the
 files the Biomek runs. A plan isn't a Biomek method: the general-purpose method stays the same for
 every plan (ADR 0006, ADR 0007).
 
@@ -80,12 +80,19 @@ A plan saved as a file, so it can be kept with the experiment's records, shared,
 later or on another computer. The file says which format it is and its version, so a later version
 of the tools can still open it, or say why it can't.
 
+**Randomization**
+Part of a plan that spreads replicates of several sources at random over a set of wells to fill, on
+any number of plates, with a seed, and makes one stage per source, each on new tips, moving them.
+It owns those stages: they change only through it. Its **sources** are the wells it moves liquid
+from; its **wells to fill**, the wells it fills; its **filler**, the one source that fills the
+wells the other sources' replicates leave over (ADR 0012).
+
 **Seam**
 A place in the transfer designer's Stages column where a stage, a mix step or a tip change can be
 added. A seam inside a tip group (between two of its stages, or at its top or bottom) adds stages
 and mix steps with that group's tips, and between two stages can split the group with new tips; a
 seam between tip groups (above the first, between two, or above End) adds them with new tips, as a
-tip group of their own.
+tip group of their own, or adds a randomization.
 
 **Stage**
 A group of operations that can run in any order and share one set of settings: the technique and

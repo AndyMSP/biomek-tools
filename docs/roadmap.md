@@ -283,6 +283,11 @@ Last updated: 2026-11-01
   and **built (#122)**: names given to wells by right-click, part of the plan and plan files
   (format version 5), shown on the deck with a Names toggle (`transfer-designer.md`,
   `plan-file.md`, `transfer-designer-page.md`; glossary "Well label", "Well name").
+  **Randomizations are specified** (Draft, 2026-11-01, written while Andy was away; ADR 0012) and
+  **built (#123)**: the shared `random-pool` module (the randomizer's assignment, used
+  by both tools), randomizations in the plan and plan files (format version 6), and the page's
+  dice button, box, card and deck picking (`random-pool.md`, `randomizer.md`,
+  `transfer-designer.md`, `plan-file.md`, `transfer-designer-page.md`; glossary "Randomization").
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -356,8 +361,9 @@ added on 2026-10-28 (Andy).
       then the well, smaller and quieter; its last line says `Right-click to name` (or `to
       rename`). Transfer rows keep locations, not names (names can repeat). Names are part of the
       plan: undone, and saved in plan files.
-   3. **Randomizations**, with an ADR recording why randomizing lives in the designer. Decided so
-      far:
+   3. **Randomizations**, with an ADR recording why randomizing lives in the designer.
+      **Specified** (Draft, 2026-11-01, while Andy was away; ADR 0012; see "Where things stand").
+      Decided so far:
       - **Where:** added with a dice button (a small SVG of two dice) in the right spot of a seam
         between tip groups. A randomization sits in the list before it has run (a dashed box,
         `Randomize`, `not set up yet`) and after (a box around its stages, `Randomized`, `N stages ·
@@ -379,11 +385,11 @@ added on 2026-10-28 (Andy).
         Numbering the sources was tried and dropped as confusing.
       - **Running it** makes one stage per source, in list order, named as the source is, each with
         new tips, filling the wells to fill as **one pool** across any number of plates. **The
-        randomizer's logic does the work** (Andy, 2026-11-01): the designer gives `randomizer.js`
+        randomizer's logic does the work** (Andy, 2026-11-01): the designer gives the shared randomizing logic
         the sources, replicates, filler, wells and seed, and turns the assignment it returns into
-        stages, so there's one copy of the randomizing logic. `randomizer.js` gains a several-plates
-        mode for this ("one set of replicates spread across plates, fully random", under "The
-        randomizer"); the preview shuffled directly instead, as a shortcut. Update makes the stages match the card again: the
+        stages, so there's one copy of the randomizing logic: a shared module, `random-pool`,
+        which `randomizer.js` uses too ("one set of replicates spread across plates, fully random",
+        under "The randomizer"); the preview shuffled directly instead, as a shortcut. Update makes the stages match the card again: the
         same seed and inputs keep the same wells; a new seed shuffles again. One Undo takes a run
         out.
       - **Tips:** a randomization never shares tips with anything outside it; the tool adds tips
@@ -395,7 +401,7 @@ added on 2026-10-28 (Andy).
         back); tips it added stay. A "Turn into ordinary stages" button was tried and dropped for
         now (Andy, 2026-11-01).
       - **Part of the plan:** randomizations and which stages are theirs are saved in plan files
-        (format version 5; versions 1 to 4 still open) and undone like any edit.
+        (format version 6; versions 1 to 5 still open) and undone like any edit.
       - The standalone randomizer page stays for now (Andy, 2026-11-01), for its bench lists, until
         the designer can make them.
 10. **Mixing** (Andy, 2026-10-28, moved from "Later"): in the plan, the plan file, the page and the
@@ -498,6 +504,14 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **A randomization's stages are protected by the page only** (2026-11-01): the transfer
+  designer's ordinary edits (adding or removing a transfer, changing a stage's settings, removing
+  a stage or its tip change) don't refuse an owned stage; the page simply doesn't offer them, and
+  `setRandomizations` checks a plan file's randomizations. Likewise, `addStage` or `addMixStep`
+  without `takeTips`, called directly just after a randomization, would put a stage on its tips (the
+  page never does: there are no seams inside its boxes). Doing it properly: each of those edits
+  refuses an owned stage, or gives a new stage next to one its own tips, with a message pointing to
+  the randomization's card.
 - **Tests that hard-code config values** (2026-10-30): CLAUDE.md now says tests work out their
   numbers from `config/`, but tests written before then may name config values (e.g. default
   volumes, tip types, the experiment name's 40 characters if it moves to `config/`). The mixing

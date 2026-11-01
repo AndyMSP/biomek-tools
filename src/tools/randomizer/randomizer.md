@@ -1,5 +1,10 @@
 # randomizer — specification
 
+> **Draft change (2026-11-01):** the assignment (section 5, steps 1 to 3) is now done by the shared
+> `random-pool` module (`random-pool.md`), with the open wells as the pool, so the randomizer and the
+> transfer designer's randomizations share one copy of the randomizing logic (ADR 0012). The rules,
+> results and golden files don't change. It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 The randomizer assigns an experiment's conditions to random wells on a plate, to spread position
 effects such as edge drying or uneven seeding evenly across conditions. It takes a list of
@@ -109,6 +114,16 @@ records which role put it there.
 3. Create a new, empty layout (`layout` module) on `GRID_96`. Fill the open wells in standard well
    order (A1, A2 … H12, skipping fixed wells), taking the next item from the shuffled list for each.
 4. Each fixed well gets the name of its fixed-contents entry.
+
+Steps 1 to 3 are done by `assignPool` (`random-pool.md`). The pool: an item per condition row that
+isn't completely empty, keyed `"row 1"`, `"row 2"` … by its row number, with its replicates, in
+row order; then, if a filler is named, one more item keyed `"filler"` with `replicates` `null`,
+and `filler` set to `"filler"` (`null` when the filler is `""`); the open wells, in standard order,
+as `wells`; and the seed. (Keys are rows, not names, since a condition may share its name with the
+filler.) `randomize` puts each assigned well's row's condition name, or the filler's name, in the
+well, with the type `assignPool` gives (`replicate` or `filler`). `randomSeed` (section 4) moves to
+`random-pool` too, and `randomizer.js` re-exports it. The golden files (section 9) confirm the
+plates are the same as before.
 
 The inputs are never changed, and each run creates a new layout. The **result** holds three things:
 - **the layout**: what each well contains;
@@ -344,6 +359,8 @@ work even when names are shared.
 - Adding a condition doesn't change any filler or fixed-contents position.
 
 ### Spare wells and random seeds
+(The `randomSeed` cases below move to `random-pool.test.js`, with `randomSeed`; here, a test checks
+that `randomizer.js` re-exports the same function.)
 - `spareWellCount` is 12 for the main example, 0 for the exact fit, 0 when the replicates don't fit,
   and `null` when a replicate count is `"four"` or missing (in a row that isn't completely empty).
   Completely empty rows don't change it.

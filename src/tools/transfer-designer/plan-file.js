@@ -6,12 +6,12 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 5, which holds the well labels, each stage's settings hold its mixes and
-// each tip change its probes. It still reads version 4 files (no well labels), version 3 files (also
-// no mixes), version 2 files (also probes in each stage's settings) and version 1 files (also
-// without an experiment name). Their stages get no mixing, since
-// plans couldn't mix then; in versions 1 and 2, their tip changes get every probe their stages
-// used, which is where look-ahead loading put tips.
+// It writes format version 6, which holds the randomizations and the well labels, each stage's
+// settings hold its mixes and each tip change its probes. It still reads version 5 files (no
+// randomizations), version 4 files (also no well labels), version 3 files (also no mixes), version
+// 2 files (also probes in each stage's settings) and version 1 files (also without an experiment
+// name). Their stages get no mixing, since plans couldn't mix then; in versions 1 and 2, their tip
+// changes get every probe their stages used, which is where look-ahead loading put tips.
 // Specification: plan-file.md.
 
 import { TIP_TYPES } from "../../../config/tip-types.js";
@@ -42,6 +42,7 @@ import {
   setTipProbes,
   setLabels,
   setWellLabels,
+  setRandomizations,
   setExperimentName,
 } from "./transfer-designer.js";
 
@@ -52,13 +53,14 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // release of the tools (ADR 0010). Changing it means changing how files are read, so it isn't in
 // config/. Version 2 (2026-10-28) added the experiment name; version 3 (2026-10-30) moved probes
 // from the stages to the tip changes (ADR 0007, "Tip changes"); version 4 (2026-10-30) added each
-// stage's mixes (ADR 0007, "Mixing"); version 5 (2026-11-01) added the well labels.
-export const PLAN_FILE_VERSION = 5;
+// stage's mixes (ADR 0007, "Mixing"); version 5 (2026-11-01) added the well labels; version 6
+// (2026-11-01) added the randomizations (ADR 0012).
+export const PLAN_FILE_VERSION = 6;
 
-// The versions this module can read: the one it writes, version 4 (plans saved from 2026-10-30 to
-// 2026-11-01, before well labels), version 3 (plans saved on 2026-10-30, before mixing), version 2
+// The versions this module can read: the one it writes, version 5 (plans saved on 2026-11-01, before
+// randomizations), version 4 (plans saved from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved on 2026-10-30, before mixing), version 2
 // (plans saved from 2026-10-28 to 2026-10-30) and version 1 (plans saved before 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 4, 3, 2, 1];
+const VERSIONS_READ = [PLAN_FILE_VERSION, 5, 4, 3, 2, 1];
 
 // The versions in which each stage's settings hold its probes, and a tip change is { tipType } only.
 const VERSIONS_WITH_STAGE_PROBES = [1, 2];
@@ -70,7 +72,7 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 // table: an older file's stages can't hold them, and get them as null.
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3). Version 5 has
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Version 6 has
 // all of them.
 const FILE_PROPERTIES = [
   "format",
@@ -84,6 +86,7 @@ const FILE_PROPERTIES = [
   "tipChanges",
   "labwareLabels",
   "wellLabels",
+  "randomizations",
 ];
 
 // The properties version 2 added. A version 1 file has neither these nor version 5's.
@@ -92,15 +95,33 @@ const VERSION_2_PROPERTIES = ["experimentName"];
 // The properties version 5 added. A version 1 to 4 file can't have these.
 const VERSION_5_PROPERTIES = ["wellLabels"];
 
+// The properties version 6 added. A version 1 to 5 file can't have these.
+const VERSION_6_PROPERTIES = ["randomizations"];
+
 // savedBy is for information only, so a file may leave it out.
 const OPTIONAL_PROPERTIES = ["savedBy"];
 
 // The properties that hold lists, and those that hold objects.
-const LIST_PROPERTIES = ["components", "startingContents", "stages", "operations"];
+const LIST_PROPERTIES = ["components", "startingContents", "stages", "operations", "randomizations"];
 const OBJECT_PROPERTIES = ["tipChanges", "labwareLabels", "wellLabels"];
 
 // How every message from planFromText starts.
 const CANT_OPEN = "This file can't be opened: ";
+
+// Every property of a randomization, as setRandomizations takes them (transfer-designer.md,
+// section 3), so a randomization missing one is refused with setRandomizations' form message.
+const RANDOMIZATION_PROPERTIES = [
+  "id",
+  "beforeId",
+  "sources",
+  "fill",
+  "seed",
+  "volume",
+  "settings",
+  "tipType",
+  "probes",
+  "stages",
+];
 
 // --- Saving ---
 
@@ -125,6 +146,7 @@ export function planToText(plan, savedBy) {
     tipChanges: plan.tipChanges,
     labwareLabels: plan.labwareLabels,
     wellLabels: plan.wellLabels,
+    randomizations: plan.randomizations,
   };
   return JSON.stringify(file, null, 2);
 }
@@ -147,7 +169,8 @@ export function planFromText(text) {
   plan = addTipChanges(plan, file, added.newIds, added.stageProbes);
   plan = withPlace("labels", () => setLabels(plan, file.labwareLabels));
   plan = withExperimentName(plan, file);
-  return withWellLabels(plan, file);
+  plan = withWellLabels(plan, file);
+  return withRandomizations(plan, file, added.newIds);
 }
 
 // True if a file of `version` (one of VERSIONS_READ) keeps each stage's probes in its settings, and
@@ -194,12 +217,16 @@ function checkFormatAndVersion(file) {
 }
 
 // The properties a plan file of `version` (one of VERSIONS_READ) holds, in the order they are
-// written: a version 1 to 4 file has all but the ones version 5 added, and a version 1 file also
-// lacks the ones version 2 added, e.g. propertiesOfVersion(1) has no "experimentName" and no
-// "wellLabels". Versions 3 and 4 added no property: version 3 moved probes from the stages to the
-// tip changes, and version 4 added mixes inside each stage's settings.
+// written: a version 1 to 5 file has all but the ones version 6 added, a version 1 to 4 file also
+// lacks the ones version 5 added, and a version 1 file also lacks the ones version 2 added, e.g.
+// propertiesOfVersion(1) has no "experimentName", "wellLabels" or "randomizations". Versions 3 and 4
+// added no property: version 3 moved probes from the stages to the tip changes, and version 4 added
+// mixes inside each stage's settings.
 function propertiesOfVersion(version) {
   let properties = FILE_PROPERTIES;
+  if (version < 6) {
+    properties = properties.filter((property) => !VERSION_6_PROPERTIES.includes(property));
+  }
   if (version < 5) {
     properties = properties.filter((property) => !VERSION_5_PROPERTIES.includes(property));
   }
@@ -223,7 +250,8 @@ function checkProperties(file) {
   if (extras.length > 0) {
     refuse(`it has ${listNames(extras)}, which a plan file doesn't have.`);
   }
-  for (const property of LIST_PROPERTIES) {
+  // Only the list properties the file's version has: an older file has no "randomizations".
+  for (const property of LIST_PROPERTIES.filter((name) => properties.includes(name))) {
     if (!Array.isArray(file[property])) {
       refuse(`${describeValue(property)} must be a list.`);
     }
@@ -535,6 +563,70 @@ function withWellLabels(plan, file) {
     return plan;
   }
   return withPlace("well labels", () => setWellLabels(plan, file.wellLabels));
+}
+
+// Check 13: returns the plan with the file's randomizations. First just enough of their form to
+// renumber them (checkRenumberableForm); then every stage they name must be
+// one of the file's stages. Their stage IDs are changed to the new ones in `newIds`, and they're
+// checked and set all at once by setRandomizations. A version 1 to 5 file has none, so the plan keeps
+// the empty plan's [].
+function withRandomizations(plan, file, newIds) {
+  if (file.version < 6) {
+    return plan;
+  }
+  const randomizations = file.randomizations;
+  randomizations.forEach(checkRenumberableForm);
+  randomizations.forEach((randomization, index) => {
+    for (const stage of stagesNamedBy(randomization)) {
+      if (!newIds.has(stage)) {
+        refuse(
+          `randomization ${index + 1} names stage ${describeValue(stage)}, which isn't one of the ` +
+            "file's stages.",
+        );
+      }
+    }
+  });
+  const renumbered = randomizations.map((randomization) => ({
+    ...randomization,
+    beforeId: randomization.beforeId === null ? null : newIds.get(randomization.beforeId),
+    stages: randomization.stages.map((owned) => ({ ...owned, stage: newIds.get(owned.stage) })),
+  }));
+  return withPlace("randomizations", () => setRandomizations(plan, renumbered));
+}
+
+// Throws if the randomization at `index` hasn't just enough form for its stage IDs to be renumbered
+// (an object with exactly its properties; its beforeId text or null; its stages a list of objects,
+// each with a stage that's text), with setRandomizations' message for that form, which it would
+// give for the file as it is.
+function checkRenumberableForm(randomization, index) {
+  const number = index + 1;
+  if (!hasExactly(randomization, RANDOMIZATION_PROPERTIES)) {
+    refuse(
+      `randomizations: Randomization ${number} must be an object with exactly ` +
+        `${listNames(RANDOMIZATION_PROPERTIES.slice(0, -1))} and ` +
+        `${describeValue(RANDOMIZATION_PROPERTIES.at(-1))}.`,
+    );
+  }
+  const { beforeId, stages } = randomization;
+  if (beforeId !== null && typeof beforeId !== "string") {
+    refuse(
+      `randomizations: Randomization ${number}: There's no stage ${describeValue(beforeId)} ` +
+        "to add a randomization before.",
+    );
+  }
+  if (!Array.isArray(stages) || !stages.every((owned) => isObject(owned) && typeof owned.stage === "string")) {
+    refuse(
+      `randomizations: Randomization ${number}: its stages must be a list of objects with ` +
+        'exactly "labware", "well" and "stage".',
+    );
+  }
+}
+
+// The stage IDs a randomization in a file names, in order: its beforeId (unless null), then each of
+// its stages', e.g. ["7", "2", "5"].
+function stagesNamedBy(randomization) {
+  const named = randomization.beforeId === null ? [] : [randomization.beforeId];
+  return [...named, ...randomization.stages.map((owned) => owned.stage)];
 }
 
 // True if `value` is an object with exactly the `properties` named, none missing and none extra,
