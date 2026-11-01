@@ -6,6 +6,12 @@
 import repl from "node:repl";
 import { WellGrid, GRID_96 } from "../src/shared/well-grid/well-grid.js";
 import { SeededRandom } from "../src/shared/random/random.js";
+import {
+  findPoolProblems,
+  assignPool,
+  spareWellCount,
+  randomSeed,
+} from "../src/shared/random-pool/random-pool.js";
 import { Layout } from "../src/shared/layout/layout.js";
 import { WellSelection } from "../src/shared/well-selection/well-selection.js";
 import { describeValue } from "../src/shared/error-messages/error-messages.js";
@@ -138,6 +144,20 @@ const TOPICS = {
       "generator.next()",
       'generator.shuffled(["A", "B", "C", "D"])',
       "new SeededRandom(37).shuffled(GRID_96.wellNames())",
+    ],
+  },
+  "random-pool": {
+    loaded: { findPoolProblems, assignPool, spareWellCount, randomSeed },
+    examples: [
+      'const pool = { items: [{ key: "Deep1 A1", replicates: 2 }, { key: "Deep1 A2", replicates: 1 }, { key: "Deep1 A3", replicates: null }], filler: "Deep1 A3", wells: ["Plate1 B2", "Plate1 B3", "Plate1 B4", "Plate2 B2", "Plate2 B3"], seed: 37 }',
+      "findPoolProblems(pool)",
+      "assignPool(pool)",
+      "assignPool({ ...pool, seed: 38 })",
+      "spareWellCount(pool)",
+      "findPoolProblems({ ...pool, filler: null, seed: 0 })",
+      'findPoolProblems({ ...pool, items: [{ key: "Deep1 A1", replicates: 9 }] , filler: null })',
+      "randomSeed(Math.random())",
+      'assignPool({ ...pool, filler: "Deep1 A9" })',
     ],
   },
   layout: {
