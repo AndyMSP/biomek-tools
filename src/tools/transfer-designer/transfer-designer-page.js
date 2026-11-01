@@ -3196,9 +3196,40 @@ function pickWell(end) {
   draftChangedOnDeck();
 }
 
+// Picks a box of wells for the open card by its tab (section 9): sources on Sources, wells to fill
+// on Wells to fill. `wells` are the box's wells in wellsInBox's order; `firstWell` the one the drag
+// started on.
+function pickBox(wells, firstWell) {
+  if (card.draft.tab === "sources") {
+    pickSourceBox(wells, firstWell);
+  } else {
+    pickFillBox(wells, firstWell);
+  }
+}
+
+// Picks a box of sources for the open card (section 9): adds each well that isn't a source yet,
+// last, in the box's order (each then stops being a well to fill), or, if the box's first well was
+// a source, removes every source in the box. Wells to fill in a box of sources removed stay wells
+// to fill, since they never were sources.
+function pickSourceBox(wells, firstWell) {
+  const { draft } = card;
+  const sources = new Set(draft.sources.map(wellKey));
+  const inBox = new Set(wells.map(wellKey));
+  if (sources.has(wellKey(firstWell))) {
+    draft.sources = draft.sources.filter((entry) => !inBox.has(wellKey(entry)));
+  } else {
+    const adding = wells.filter((end) => !sources.has(wellKey(end)));
+    draft.sources.push(
+      ...adding.map(({ labware, well }) => ({ labware, well, replicatesText: "", filler: false })),
+    );
+    draft.fill = draft.fill.filter((end) => !inBox.has(wellKey(end)));
+  }
+  draftChangedOnDeck();
+}
+
 // Picks a box of wells to fill for the open card (section 9): all of them, or, if the box's first
 // well was picked, unpicks them all; sources in the box are left sources.
-function pickBox(wells, firstWell) {
+function pickFillBox(wells, firstWell) {
   const { draft } = card;
   const sources = new Set(draft.sources.map(wellKey));
   const picked = new Set(draft.fill.map(wellKey));
@@ -3698,8 +3729,8 @@ function movePointer(event) {
   pointerPosition = overLabware(event) ? { x: event.clientX, y: event.clientY } : null;
   const moved = press !== null && Math.hypot(event.clientX - press.x, event.clientY - press.y) >= DRAG_START_DISTANCE;
   if (moved && drag === null) {
-    // Dragging does nothing with End open, or on a randomization's Sources tab (section 9).
-    if (currentOpen() === END || (card !== null && card.draft.tab === "sources")) {
+    // Dragging does nothing with End open (section 9).
+    if (currentOpen() === END) {
       press = null;
     } else {
       beginDrag();
