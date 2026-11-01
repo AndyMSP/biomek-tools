@@ -1581,7 +1581,7 @@ function checkedStoredRandomization(plan, randomization, number) {
     const values = checkedRandomizationValues(changes, { sources: [], fill: [] });
     checkStoredOrder(randomization, values);
     const stored = { id, beforeId: randomization.beforeId, ...values };
-    stored.stages = checkedOwnedStages(plan, randomization.stages, stored);
+    stored.stages = checkedOwnedStages(plan, randomization.stages);
     return stored;
   });
 }
@@ -1615,25 +1615,28 @@ function checkStoredOrder(randomization, values) {
 }
 
 // A stored randomization's stages, checked (section 5's order): a list of { labware, well, stage };
-// each stage in the plan, none twice, its well one of the sources; consecutive and in stage order;
-// each the only stage of its tip group; none a mix step. Returns copies.
-function checkedOwnedStages(plan, stages, randomization) {
+// each stage in the plan, none twice, no well twice; consecutive and in stage order; each the only
+// stage of its tip group; none a mix step. Returns copies. A stage's well needn't be one of the
+// sources: setRandomization leaves a dropped source's stage until the next run.
+function checkedOwnedStages(plan, stages) {
   const formMessage = `its stages must be a list of objects with exactly ${listNamesWithAnd(OWNED_STAGE_PROPERTIES)}.`;
   if (!Array.isArray(stages) || !stages.every((owned) => hasExactly(owned, OWNED_STAGE_PROPERTIES))) {
     throw new Error(formMessage);
   }
-  const seen = new Set();
+  const seenStages = new Set();
+  const seenWells = new Set();
   for (const owned of stages) {
     if (!plan.stageList.has(owned.stage)) {
       throw new Error(`its stage ${describeValue(owned.stage)} isn't in the plan.`);
     }
-    if (seen.has(owned.stage)) {
+    if (seenStages.has(owned.stage)) {
       throw new Error(`stage ${describeValue(owned.stage)} is listed twice.`);
     }
-    seen.add(owned.stage);
-    if (sourceIndexOf(randomization, owned) === -1) {
-      throw new Error(`${owned.labware} ${owned.well} has a stage but isn't one of its sources.`);
+    seenStages.add(owned.stage);
+    if (seenWells.has(wellKey(owned))) {
+      throw new Error(`${owned.labware} ${owned.well} has two stages.`);
     }
+    seenWells.add(wellKey(owned));
   }
   const order = plan.stageOrder;
   const places = stages.map((owned) => order.indexOf(owned.stage));

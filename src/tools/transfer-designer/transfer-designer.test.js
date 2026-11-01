@@ -2747,6 +2747,17 @@ describe("transfer-designer", () => {
     assert.deepEqual(set.randomizations, withSecond.randomizations);
   });
 
+  test("setRandomizations accepts a stage whose well was taken out of the sources before a rerun", () => {
+    const { plan, id } = runRandomizationPlan();
+    const dropped = setRandomization(plan, id, {
+      sources: randomizationAt(plan, id).sources.filter((entry) => entry.well !== "A2"),
+    });
+    const copied = JSON.parse(JSON.stringify(dropped.randomizations));
+    assert.ok(copied[0].stages.some((owned) => owned.well === "A2"));
+    const set = setRandomizations({ ...dropped, randomizations: [] }, copied);
+    assert.deepEqual(set.randomizations, dropped.randomizations);
+  });
+
   test("setRandomizations refuses one sitting before another's second stage, even when loading both at once", () => {
     const { plan, id } = runRandomizationPlan();
     const owner = JSON.parse(JSON.stringify(randomizationAt(plan, id)));
@@ -2787,8 +2798,8 @@ describe("transfer-designer", () => {
         `Randomization 1: stage "${stageIds[0]}" is listed twice.`,
       ],
       [
-        [{ ...good(), stages: [{ ...good().stages[0], well: "A9" }] }],
-        `Randomization 1: ${DEEP} A9 has a stage but isn't one of its sources.`,
+        [{ ...good(), stages: [good().stages[0], { ...good().stages[0], stage: stageIds[1] }] }],
+        `Randomization 1: ${DEEP} ${good().stages[0].well} has two stages.`,
       ],
       [
         [{ ...good(), stages: [good().stages[0], good().stages[2]] }],
