@@ -1,12 +1,13 @@
 // Tests for the transfer designer page's configuration (transfer-designer-page.md, section 16).
 // The page itself isn't unit-tested in Node: every rule about plans is in the logic modules, which
-// are. These tests check only the two configuration files the page uses (ADR 0009), so a typo in
+// are. These tests check only the configuration files the page uses (ADR 0009), so a typo in
 // config/ makes npm test fail rather than reaching the lab.
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { COMPONENT_COLORS } from "../../../config/component-colors.js";
 import { DEFAULT_TRANSFER_VOLUME, DEFAULT_FILL_VOLUME } from "../../../config/default-volumes.js";
+import { SOURCES_SHOWN } from "../../../config/randomizations.js";
 
 // How many colors the page offers: "All 30 colors are in use" (transfer-designer-page.md, section 8).
 const COLOR_COUNT = 30;
@@ -42,6 +43,13 @@ describe("transfer-designer-page", () => {
     test("DEFAULT_FILL_VOLUME is a number above 0", () => {
       assert.equal(typeof DEFAULT_FILL_VOLUME, "number");
       assert.ok(DEFAULT_FILL_VOLUME > 0);
+    });
+  });
+
+  describe("config/randomizations.js", () => {
+    test("SOURCES_SHOWN is a whole number of at least 1", () => {
+      assert.ok(Number.isInteger(SOURCES_SHOWN));
+      assert.ok(SOURCES_SHOWN >= 1);
     });
   });
 });

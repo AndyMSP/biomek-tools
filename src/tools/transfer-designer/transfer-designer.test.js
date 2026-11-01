@@ -75,7 +75,19 @@ import {
   wellLabelOf,
   setWellLabel,
   setWellLabels,
+  addRandomization,
+  randomizationAt,
+  randomizationOf,
+  setRandomization,
+  placeRandomization,
+  randomizationProblems,
+  sourceName,
+  runRandomization,
+  removeRandomization,
+  canRemoveRandomization,
+  setRandomizations,
 } from "./transfer-designer.js";
+import { assignPool } from "../../shared/random-pool/random-pool.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
 const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_96).map(
@@ -87,6 +99,12 @@ const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED
 // unused (the last 96-well labware in DECK).
 const LABELED_ONLY = DECK.filter((entry) => gridOf(entry.name) === GRID_96).at(-1).name;
 
+// A 96-well labware of a different labware type from PLATE's (a deep-well plate), for a
+// randomization's sources.
+const DEEP = DECK.find(
+  (entry) => gridOf(entry.name) === GRID_96 && entry.labwareType !== DECK.find((plate) => plate.name === PLATE).labwareType,
+).name;
+
 // The parts every plan has.
 const PLAN_PARTS = [
   "components",
@@ -97,6 +115,7 @@ const PLAN_PARTS = [
   "tipChanges",
   "labwareLabels",
   "wellLabels",
+  "randomizations",
   "experimentName",
 ];
 
@@ -2118,6 +2137,708 @@ describe("transfer-designer", () => {
     }
   });
 
+  // --- Randomizations ---
+
+  // The plan the randomization tests use (transfer-designer.md, section 6): DEEP A1 to A3 holding
+  // Drug A, Drug B and Media; stage 1 with a transfer, then stage 2, on tips of its own, with one;
+  // components Drug A, Drug B and Media.
+  function randomizingPlan() {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Drug A", "#4e79a7");
+    plan = addComponent(plan, "Drug B", "#e15759");
+    plan = addComponent(plan, "Media", "#59a14f");
+    const amount = capacityOf(DEEP);
+    plan = addToWells(plan, [deepWell("A1")], "Drug A", amount);
+    plan = addToWells(plan, [deepWell("A2")], "Drug B", amount);
+    plan = addToWells(plan, [deepWell("A3")], "Media", amount);
+    plan = addToWells(plan, [trough("1")], "Media", capacityOf(RESERVOIR));
+    plan = addTransfer(plan, transferTo("1", "A1"));
+    plan = addStageWithNewTips(plan, null).plan;
+    return addTransfer(plan, transferTo("2", "A2"));
+  }
+
+  // A well on DEEP, e.g. deepWell("A1").
+  function deepWell(well) {
+    return { labware: DEEP, well };
+  }
+
+  // A source, e.g. source("A1", 8) or source("A3", null, true) for the filler.
+  function source(well, replicates, filler = false) {
+    return { labware: DEEP, well, replicates, filler };
+  }
+
+  // The 20 wells to fill: PLATE's B2 to B11 and C2 to C11, in deck order.
+  function wellsToFill() {
+    return [...GRID_96.wellsInBox("B2", "C11")].map(plateWell);
+  }
+
+  // The plan with a randomization before stage 2, set up with A1 and A2 at 8 replicates, A3 the
+  // filler, the 20 wells to fill, seed 37 and a volume of 10 µL: { plan, id }.
+  function setUpRandomization(plan = randomizingPlan(), beforeId = "2") {
+    const { plan: added, id } = addRandomization(plan, beforeId, { seed: 37, volume: 10 });
+    const set = setRandomization(added, id, {
+      sources: [source("A1", 8), source("A2", 8), source("A3", null, true)],
+      fill: wellsToFill(),
+    });
+    return { plan: set, id };
+  }
+
+  // The plan with the set-up randomization run: { plan, id }.
+  function runRandomizationPlan() {
+    const { plan, id } = setUpRandomization();
+    return { plan: runRandomization(plan, id), id };
+  }
+
+  // The wells each of a run randomization's stages fills, as "labware well" text, by stage ID.
+  function destinationsByStage(plan, id) {
+    return Object.fromEntries(
+      randomizationAt(plan, id).stages.map(({ stage }) => [
+        stage,
+        transfersIn(plan, stage).map((transfer) => `${transfer.destination.labware} ${transfer.destination.well}`),
+      ]),
+    );
+  }
+
+  test("emptyPlan() has no randomizations", () => {
+    assert.deepEqual(emptyPlan().plan.randomizations, []);
+  });
+
+  test("addRandomization adds one before a stage with the defaults and the seed and volume given", () => {
+    const plan = randomizingPlan();
+    const { plan: added, id } = addRandomization(plan, "2", { seed: 37, volume: 50 });
+    assert.equal(id, "r1");
+    assert.deepEqual(randomizationAt(added, id), {
+      id: "r1",
+      beforeId: "2",
+      sources: [],
+      fill: [],
+      seed: 37,
+      volume: 50,
+      settings: defaultSettings(),
+      tipType: TIP_TYPES[0],
+      probes: probesFor(DEFAULT_PROBE_COUNT),
+      stages: [],
+    });
+    assert.equal(randomizationAt(added, "r9"), null);
+    const second = addRandomization(added, null, { seed: null, volume: null });
+    assert.equal(second.id, "r2");
+    assert.equal(randomizationAt(second.plan, "r2").beforeId, null);
+    const third = addRandomization(removeRandomization(second.plan, "r1"), "1", {
+      seed: 1,
+      volume: 1,
+    });
+    assert.equal(third.id, "r3");
+  });
+
+  test("addRandomization refuses a stage that isn't one, one inside a tip group, and a bad seed or volume, in that order", () => {
+    const plan = addStage(randomizingPlan(), null).plan;
+    assert.throws(() => addRandomization(plan, "9", { seed: 0, volume: -1 }), {
+      message: `There's no stage "9" to add a randomization before.`,
+    });
+    assert.throws(() => addRandomization(plan, "3", { seed: 0, volume: -1 }), {
+      message: "A randomization sits between tip groups, so it can't go before stage 3, “New stage”.",
+    });
+    assert.throws(() => addRandomization(plan, "2", { seed: 0, volume: -1 }), {
+      message: "A randomization's seed must be a whole number from 1 to 999,999, or null, but got 0.",
+    });
+    for (const seed of [1000000, 1.5, "37"]) {
+      assert.throws(() => addRandomization(plan, "2", { seed, volume: 5 }), /seed must be/);
+    }
+    assert.throws(() => addRandomization(plan, "2", { seed: 37, volume: -1 }), {
+      message: "A randomization's volume must be a number of µL above 0, or null, but got -1.",
+    });
+    assert.throws(() => addRandomization(plan, "2", { seed: 37, volume: 0 }), /volume must be/);
+  });
+
+  test("setRandomization sets sources and wells to fill, the wells in deck order and the probes smallest first", () => {
+    const { plan, id } = addRandomization(randomizingPlan(), "2", { seed: 37, volume: 10 });
+    const fill = [plateWell("C3"), { labware: OTHER_PLATE, well: "A1" }, plateWell("B2")];
+    const set = setRandomization(plan, id, {
+      sources: [source("A1", 4), source("A3", null, true)],
+      fill,
+      probes: [3, 1],
+      tipType: TIP_TYPES.at(-1),
+      seed: 5,
+      volume: 2.5,
+      settings: otherSettings(),
+    });
+    const randomization = randomizationAt(set, id);
+    assert.deepEqual(randomization.sources, [source("A1", 4), source("A3", null, true)]);
+    assert.deepEqual(randomization.fill, [plateWell("B2"), plateWell("C3"), { labware: OTHER_PLATE, well: "A1" }]);
+    assert.deepEqual(randomization.probes, [1, 3]);
+    assert.equal(randomization.tipType, TIP_TYPES.at(-1));
+    assert.equal(randomization.seed, 5);
+    assert.equal(randomization.volume, 2.5);
+    assert.deepEqual(randomization.settings, otherSettings());
+    assert.equal(randomization.beforeId, "2");
+    assert.deepEqual(randomization.stages, []);
+    // Only randomizations change.
+    for (const part of PLAN_PARTS.filter((candidate) => candidate !== "randomizations")) {
+      assert.equal(set[part], plan[part], part);
+    }
+  });
+
+  test("setRandomization with unchanged values gives back the same plan", () => {
+    const { plan, id } = setUpRandomization();
+    assert.equal(setRandomization(plan, id, {}), plan);
+    assert.equal(setRandomization(plan, id, { seed: 37, fill: [...wellsToFill()].reverse() }), plan);
+  });
+
+  test("setRandomization never changes a run randomization's stages or beforeId", () => {
+    const { plan, id } = runRandomizationPlan();
+    const before = randomizationAt(plan, id);
+    const set = randomizationAt(setRandomization(plan, id, { sources: [source("A1", 20)] }), id);
+    assert.deepEqual(set.stages, before.stages);
+    assert.equal(set.beforeId, before.beforeId);
+  });
+
+  test("setRandomization refuses each invalid value with its message, leaving the plan unchanged", () => {
+    const { plan, id } = setUpRandomization();
+    const before = snapshot(plan);
+    const cases = [
+      [
+        { stages: [] },
+        'The changes to a randomization must be an object of "sources", "fill", "seed", "volume", "settings", "tipType" and "probes", but got "stages".',
+      ],
+      [
+        null,
+        'The changes to a randomization must be an object of "sources", "fill", "seed", "volume", "settings", "tipType" and "probes", but got null.',
+      ],
+      [{ sources: 5 }, "A randomization's sources must be a list, but got 5."],
+      [{ fill: 5 }, "A randomization's wells to fill must be a list, but got 5."],
+      [
+        { sources: [source("A1", 1), { labware: DEEP, well: "A2" }] },
+        'Source 2 must be an object with exactly "labware", "well", "replicates" and "filler".',
+      ],
+      [
+        { sources: [source("A1", 1), source("Z9", 1)] },
+        new RegExp(`^Source 2: "Z9" isn't a well on ${DEEP}\\.`),
+      ],
+      [
+        { fill: [plateWell("B2"), plateWell("B3"), plateWell("Z9")] },
+        new RegExp(`^Well to fill 3: "Z9" isn't a well on ${PLATE}\\.`),
+      ],
+      [
+        { sources: [source("A1", 1), source("A1", 2)] },
+        `${DEEP} A1 is a source twice. List each source once.`,
+      ],
+      [
+        { fill: [plateWell("B2"), plateWell("B2")] },
+        `${PLATE} B2 is a well to fill twice. List each once.`,
+      ],
+      [
+        { sources: [source("A1", 1), { ...plateWell("B2"), replicates: 1, filler: false }] },
+        `${PLATE} B2 is both a source and a well to fill. A well can be only one.`,
+      ],
+      [
+        { sources: [source("A1", 1), source("A2", 1.5)] },
+        "Source 2's replicates must be a whole number of at least 1, or null, but got 1.5.",
+      ],
+      [
+        { sources: [source("A1", 1), { ...source("A2", 1), filler: "yes" }] },
+        `Source 2's "filler" must be true or false, but got "yes".`,
+      ],
+      [
+        { sources: [source("A1", null, true), source("A2", 1), source("A3", null, true)] },
+        "Sources 1 and 3 are both the filler. Only one source can be.",
+      ],
+      [
+        { sources: [source("A1", 1), source("A2", 1), source("A3", 4, true)] },
+        "Source 3 is the filler, so its replicates must be null, but got 4.",
+      ],
+      [
+        { seed: 0 },
+        "A randomization's seed must be a whole number from 1 to 999,999, or null, but got 0.",
+      ],
+      [
+        { volume: 0 },
+        "A randomization's volume must be a number of µL above 0, or null, but got 0.",
+      ],
+      [{ settings: { ...defaultSettings(), probes: [1] } }, /probes/],
+      [
+        { settings: { ...defaultSettings(), sourceMix: exampleMix() } },
+        /^The source mixes, so its technique must be/,
+      ],
+      [
+        { settings: mixStepDefaults() },
+        "A randomization's transfers move liquid, so its settings can't be a mix step's.",
+      ],
+      [{ tipType: "BC50" }, `"BC50" isn't a tip type. Choose one of ${TIP_TYPES.map((tip) => `"${tip}"`).join(", ")}.`],
+      [{ probes: [9] }, "Probe numbers must be whole numbers from 1 to 8, but got 9."],
+      [{ probes: [3, 1, 3] }, "Probe 3 is listed more than once. List each probe once."],
+    ];
+    for (const [changes, message] of cases) {
+      assert.throws(
+        () => setRandomization(plan, id, changes),
+        message instanceof RegExp ? { message } : { message },
+        JSON.stringify(changes),
+      );
+    }
+    assert.throws(() => setRandomization(plan, "r9", {}), {
+      message: `There's no randomization "r9" in the plan.`,
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("setRandomization checks in its order: the randomization, the changes, sources, fill, both, seed, volume, settings, tip type, probes", () => {
+    const { plan, id } = setUpRandomization();
+    const allBad = {
+      sources: [source("A1", 1), source("A1", 1)],
+      fill: [plateWell("B2"), plateWell("B2")],
+      seed: 0,
+      volume: 0,
+      settings: mixStepDefaults(),
+      tipType: "BC50",
+      probes: [9],
+    };
+    assert.throws(() => setRandomization(plan, "r9", { ...allBad, stages: [] }), /no randomization/);
+    assert.throws(() => setRandomization(plan, id, { ...allBad, stages: [] }), /changes to a randomization/);
+    const remaining = [/is a source twice/, /is a well to fill twice/];
+    let changes = { ...allBad };
+    assert.throws(() => setRandomization(plan, id, changes), remaining[0]);
+    changes = { ...changes, sources: [source("A1", 1), { ...plateWell("C2"), replicates: 1, filler: false }] };
+    assert.throws(() => setRandomization(plan, id, changes), remaining[1]);
+    changes = { ...changes, fill: [plateWell("B2")] };
+    // The well in both is judged on the result: C2 is still a well to fill until fill is given.
+    assert.throws(() => setRandomization(plan, id, { sources: changes.sources }), /both a source and a well to fill/);
+    for (const [property, good, pattern] of [
+      ["seed", 1, /seed must be/],
+      ["volume", 1, /volume must be/],
+      ["settings", defaultSettings(), /can't be a mix step's/],
+      ["tipType", TIP_TYPES[0], /isn't a tip type/],
+      ["probes", [1], { message: /^Probe numbers/ }],
+    ]) {
+      assert.throws(() => setRandomization(plan, id, changes), pattern, property);
+      changes = { ...changes, [property]: good };
+    }
+    setRandomization(plan, id, changes);
+  });
+
+  test("randomizationProblems gives each problem's message, in order, and [] when it can run", () => {
+    const { plan, id } = addRandomization(randomizingPlan(), "2", { seed: null, volume: null });
+    assert.deepEqual(randomizationProblems(plan, id), [
+      "Pick at least one source.",
+      "Pick the wells to fill.",
+      "Type a seed.",
+      "Set the volume.",
+    ]);
+    const onlyFiller = setRandomization(plan, id, {
+      sources: [source("A3", null, true)],
+      fill: wellsToFill(),
+      seed: 37,
+      volume: 10,
+    });
+    assert.deepEqual(randomizationProblems(onlyFiller, id), ["Add a source that isn't the filler."]);
+    const missing = setRandomization(onlyFiller, id, {
+      sources: [source("A1", null), source("A2", 8)],
+    });
+    assert.deepEqual(randomizationProblems(missing, id), ["Drug A needs a number of replicates."]);
+    const tooMany = setRandomization(missing, id, { sources: [source("A1", 30), source("A2", 34)] });
+    assert.deepEqual(randomizationProblems(tooMany, id), ["64 replicates, but only 20 wells to fill."]);
+    const oneWell = setRandomization(tooMany, id, { fill: [plateWell("B2")] });
+    assert.deepEqual(randomizationProblems(oneWell, id), ["64 replicates, but only 1 well to fill."]);
+    const leftOver = setRandomization(missing, id, { sources: [source("A1", 4), source("A2", 4)] });
+    assert.deepEqual(randomizationProblems(leftOver, id), [
+      "12 wells left over: make a source the filler, or unpick them.",
+    ]);
+    const oneLeft = setRandomization(leftOver, id, { sources: [source("A1", 10), source("A2", 9)] });
+    assert.deepEqual(randomizationProblems(oneLeft, id), [
+      "1 well left over: make a source the filler, or unpick them.",
+    ]);
+    const { plan: ready } = setUpRandomization();
+    assert.deepEqual(randomizationProblems(ready, "r1"), []);
+  });
+
+  test("sourceName: a well label, the main component, ' +N', the first on a tie, or the labware's label and well", () => {
+    let { plan, id } = setUpRandomization();
+    assert.equal(sourceName(plan, id, deepWell("A1")), "Drug A");
+    plan = setWellLabel(plan, deepWell("A1"), "Cond 1");
+    assert.equal(sourceName(plan, id, deepWell("A1")), "Cond 1");
+    plan = addToWells(plan, [deepWell("A4")], "Drug B", 10);
+    plan = addToWells(plan, [deepWell("A4")], "Drug A", 30);
+    plan = addToWells(plan, [deepWell("A4")], "Media", 30);
+    assert.equal(sourceName(plan, id, deepWell("A4")), "Drug A +2");
+    plan = setLabel(plan, DEEP, "Drugs");
+    assert.equal(sourceName(plan, id, deepWell("A5")), "Drugs A5");
+    // Contents just before the randomization: stage 1 fills PLATE A1 with Media first.
+    assert.equal(sourceName(plan, id, plateWell("A1")), "Media");
+    // PLATE A2 is filled by stage 2, after the randomization, so it's still empty then.
+    assert.equal(sourceName(plan, id, plateWell("A2")), `${PLATE} A2`);
+  });
+
+  test("runRandomization makes a stage per source, in source order, named, each on tips of its own, filling every well once", () => {
+    const { plan: setUp, id } = setUpRandomization();
+    const randomization = randomizationAt(setUp, id);
+    const plan = runRandomization(setUp, id);
+    const run = randomizationAt(plan, id);
+    const stageIds = run.stages.map((owned) => owned.stage);
+    assert.equal(stageIds.length, 3);
+    assert.deepEqual(stageOrder(plan), ["1", ...stageIds, "2"]);
+    assert.deepEqual(
+      stageIds.map((stage) => plan.stageList.get(stage).name),
+      ["Drug A", "Drug B", "Media"],
+    );
+    assert.deepEqual(
+      run.stages.map(({ labware, well }) => ({ labware, well })),
+      [deepWell("A1"), deepWell("A2"), deepWell("A3")],
+    );
+    for (const stage of stageIds) {
+      assert.deepEqual(plan.stageList.get(stage).settings, randomization.settings);
+      assert.deepEqual(tipChangeAt(plan, stage), { tipType: randomization.tipType, probes: randomization.probes });
+      assert.equal(randomizationOf(plan, stage), id);
+    }
+    assert.equal(randomizationOf(plan, "1"), null);
+    assert.equal(randomizationOf(plan, "2"), null);
+    // Each the only stage of its tip group, and the stage after keeps its tips.
+    for (const group of tipGroups(plan)) {
+      if (group.stages.some((stage) => stageIds.includes(stage))) {
+        assert.equal(group.stages.length, 1);
+      }
+    }
+    assert.deepEqual(tipChangeAt(plan, "2"), tipChangeAt(setUp, "2"));
+    assert.equal(run.beforeId, "2");
+    const destinations = destinationsByStage(plan, id);
+    assert.deepEqual(
+      stageIds.map((stage) => destinations[stage].length),
+      [8, 8, 4],
+    );
+    const filled = Object.values(destinations).flat();
+    assert.deepEqual([...filled].sort(), wellsToFill().map((end) => `${end.labware} ${end.well}`).sort());
+    for (const stage of stageIds) {
+      for (const transfer of transfersIn(plan, stage)) {
+        assert.equal(transfer.volume, 10);
+      }
+    }
+    // The assignment matches assignPool's with the same pool.
+    const assignment = assignPool({
+      items: [
+        { key: "source 1", replicates: 8 },
+        { key: "source 2", replicates: 8 },
+        { key: "source 3", replicates: null },
+      ],
+      filler: "source 3",
+      wells: wellsToFill().map((_, index) => `well ${index + 1}`),
+      seed: 37,
+    });
+    const expected = { [stageIds[0]]: [], [stageIds[1]]: [], [stageIds[2]]: [] };
+    for (const { well, key } of assignment) {
+      const end = wellsToFill()[Number(well.split(" ")[1]) - 1];
+      expected[stageIds[Number(key.split(" ")[1]) - 1]].push(`${end.labware} ${end.well}`);
+    }
+    assert.deepEqual(destinations, expected);
+  });
+
+  test("runRandomization: on an exact fit, the filler gets no stage", () => {
+    const { plan, id } = setUpRandomization();
+    const exact = setRandomization(plan, id, {
+      sources: [source("A1", 10), source("A2", 10), source("A3", null, true)],
+    });
+    const run = runRandomization(exact, id);
+    assert.equal(randomizationAt(run, id).stages.length, 2);
+  });
+
+  test("running again: nothing changed keeps everything; a new seed shuffles; new settings, tips or volume keep the wells", () => {
+    const { plan, id } = runRandomizationPlan();
+    const again = runRandomization(plan, id);
+    assert.deepEqual(randomizationAt(again, id), randomizationAt(plan, id));
+    assert.deepEqual(again.operationList.listOperations(), plan.operationList.listOperations());
+    assert.deepEqual(again.stageList.listStages(), plan.stageList.listStages());
+
+    const reseeded = runRandomization(setRandomization(plan, id, { seed: 38 }), id);
+    assert.deepEqual(randomizationAt(reseeded, id).stages, randomizationAt(plan, id).stages);
+    assert.notDeepEqual(destinationsByStage(reseeded, id), destinationsByStage(plan, id));
+
+    const changed = runRandomization(
+      setRandomization(plan, id, {
+        settings: otherSettings(),
+        tipType: TIP_TYPES.at(-1),
+        probes: [1],
+        volume: 20,
+      }),
+      id,
+    );
+    assert.deepEqual(destinationsByStage(changed, id), destinationsByStage(plan, id));
+    for (const { stage } of randomizationAt(changed, id).stages) {
+      assert.deepEqual(changed.stageList.get(stage).settings, otherSettings());
+      assert.deepEqual(tipChangeAt(changed, stage), { tipType: TIP_TYPES.at(-1), probes: [1] });
+      assert.ok(transfersIn(changed, stage).every((transfer) => transfer.volume === 20));
+    }
+  });
+
+  test("a source taken out keeps its stage until the next run; a source added gets a new stage last, on new tips", () => {
+    const { plan, id } = runRandomizationPlan();
+    const [first, second, third] = randomizationAt(plan, id).stages;
+    const withoutA2 = setRandomization(plan, id, {
+      sources: [source("A1", 8), source("A3", null, true)],
+    });
+    assert.equal(randomizationOf(withoutA2, second.stage), id);
+    assert.equal(randomizationAt(withoutA2, id).stages.length, 3);
+    const rerun = runRandomization(withoutA2, id);
+    assert.deepEqual(
+      randomizationAt(rerun, id).stages.map((owned) => owned.stage),
+      [first.stage, third.stage],
+    );
+    assert.equal(rerun.stageList.has(second.stage), false);
+
+    const withA4 = setRandomization(rerun, id, {
+      sources: [source("A1", 8), source("A3", null, true), source("A4", 2)],
+    });
+    const added = runRandomization(withA4, id);
+    const stages = randomizationAt(added, id).stages;
+    assert.equal(stages.length, 3);
+    assert.deepEqual(stageOrder(added), ["1", first.stage, third.stage, stages[2].stage, "2"]);
+    assert.deepEqual(tipChangeAt(added, stages[2].stage), tipChangeAt(added, first.stage));
+    assert.equal(added.stageList.get(stages[2].stage).name, `${DEEP} A4`);
+  });
+
+  test("replacing the only source of a randomization whose stage is the plan's only stage runs", () => {
+    let { plan } = emptyPlan();
+    plan = addRandomization(plan, "1", { seed: 37, volume: 10 }).plan;
+    plan = setRandomization(plan, "r1", { sources: [source("A1", 2)], fill: wellsToFill().slice(0, 2) });
+    plan = runRandomization(plan, "r1");
+    plan = removeStage(plan, "1");
+    assert.equal(stageOrder(plan).length, 1);
+    plan = setRandomization(plan, "r1", { sources: [source("A2", 2)] });
+    const run = runRandomization(plan, "r1");
+    assert.equal(stageOrder(run).length, 1);
+    assert.equal(randomizationAt(run, "r1").stages[0].well, "A2");
+  });
+
+  test("added before the run's first stage: its first stage gets START, set to its tips, and the old first stage its own", () => {
+    const plan = setTipProbes(randomizingPlan(), START, [1, 2]);
+    const startBefore = tipChangeAt(plan, START);
+    const { plan: setUp, id } = setUpRandomization(plan, "1");
+    const set = setRandomization(setUp, id, { probes: [1, 2, 3], tipType: TIP_TYPES.at(-1) });
+    const run = runRandomization(set, id);
+    const stages = randomizationAt(run, id).stages.map((owned) => owned.stage);
+    assert.equal(stageOrder(run)[0], stages[0]);
+    assert.deepEqual(tipChangeAt(run, START), { tipType: TIP_TYPES.at(-1), probes: [1, 2, 3] });
+    assert.deepEqual(tipChangeAt(run, "1"), startBefore);
+  });
+
+  test("removeStage moves a randomization sitting before it to the next stage, giving it tips", () => {
+    let plan = addStage(randomizingPlan(), null).plan; // stage 3, in stage 2's tip group
+    plan = addRandomization(plan, "2", { seed: 37, volume: 10 }).plan;
+    const removed = removeStage(plan, "2");
+    assert.equal(randomizationAt(removed, "r1").beforeId, "3");
+    assert.deepEqual(tipChangeAt(removed, "3"), tipChangeAt(plan, "2"));
+    const last = addRandomization(randomizingPlan(), "2", { seed: 37, volume: 10 }).plan;
+    assert.equal(randomizationAt(removeStage(last, "2"), "r1").beforeId, null);
+  });
+
+  test("removing the stage just after a randomization gives the stage after that its own tips; removeTipChange there throws", () => {
+    let plan = addStage(randomizingPlan(), null).plan; // stage 3, in stage 2's tip group
+    const { plan: setUp, id } = setUpRandomization(plan);
+    plan = runRandomization(setUp, id);
+    assert.throws(() => removeTipChange(plan, "2"), {
+      message: "This tip change keeps stage 5, “New stage”, off the randomization's tips. A randomization never shares tips.".replace(
+        "stage 5, “New stage”",
+        `stage ${stageOrder(plan).indexOf("2") + 1}, “${plan.stageList.get("2").name}”`,
+      ),
+    });
+    const removed = removeStage(plan, "2");
+    assert.deepEqual(tipChangeAt(removed, "3"), tipChangeAt(plan, "2"));
+    assert.equal(randomizationAt(removed, id).beforeId, "3");
+  });
+
+  test("removeTipChange refuses the tips of a stage a randomization that hasn't run sits before", () => {
+    const plan = addRandomization(randomizingPlan(), "2", { seed: 37, volume: 10 }).plan;
+    assert.throws(() => removeTipChange(plan, "2"), {
+      message: "A randomization sits before stage 2, “New stage”, between tip groups, so these tips can't be removed.",
+    });
+  });
+
+  test("adding a stage that takes the tips of the stage a randomization sits before moves it onto the new stage", () => {
+    const plan = addRandomization(randomizingPlan(), "2", { seed: 37, volume: 10 }).plan;
+    const { plan: added, id } = addStage(plan, "2", { takeTips: true });
+    assert.equal(randomizationAt(added, "r1").beforeId, id);
+    const withNewTips = addStageWithNewTips(plan, "2");
+    assert.equal(randomizationAt(withNewTips.plan, "r1").beforeId, "2");
+  });
+
+  test("a stage added with new tips just after a run randomization becomes its beforeId", () => {
+    const { plan, id } = runRandomizationPlan();
+    const { plan: added, id: newId } = addStageWithNewTips(plan, "2");
+    assert.equal(randomizationAt(added, id).beforeId, newId);
+    // So its tips are kept: removing stage 2's tips is now allowed, and the new stage's isn't.
+    removeTipChange(added, "2");
+    assert.throws(() => removeTipChange(added, newId), /never shares tips/);
+  });
+
+  test("placeRandomization moves one that hasn't run; one that has throws", () => {
+    let plan = addStageWithNewTips(randomizingPlan(), null).plan;
+    plan = addRandomization(plan, "2", { seed: 37, volume: 10 }).plan;
+    const placed = placeRandomization(plan, "r1", "3");
+    assert.equal(randomizationAt(placed, "r1").beforeId, "3");
+    for (const part of PLAN_PARTS.filter((candidate) => candidate !== "randomizations")) {
+      assert.equal(placed[part], plan[part], part);
+    }
+    assert.equal(placeRandomization(plan, "r1", "2"), plan);
+    assert.throws(() => placeRandomization(plan, "r9", "2"), /no randomization "r9"/);
+    assert.throws(() => placeRandomization(plan, "r1", "9"), {
+      message: `There's no stage "9" to add a randomization before.`,
+    });
+    const run = runRandomizationPlan();
+    assert.throws(() => placeRandomization(run.plan, run.id, "1"), {
+      message: "This randomization has run, so it sits where its stages are.",
+    });
+  });
+
+  test("a randomization can sit before another's first stage, but not before its later stages", () => {
+    const { plan, id } = runRandomizationPlan();
+    const [first, second] = randomizationAt(plan, id).stages;
+    addRandomization(plan, first.stage, { seed: 1, volume: 1 });
+    assert.throws(
+      () => addRandomization(plan, second.stage, { seed: 1, volume: 1 }),
+      /sits between tip groups/,
+    );
+  });
+
+  test("runRandomization with a problem throws its message, leaving the plan unchanged", () => {
+    const { plan, id } = addRandomization(randomizingPlan(), "2", { seed: 37, volume: null });
+    const before = snapshot(plan);
+    assert.throws(() => runRandomization(plan, id), { message: "Pick at least one source." });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("removeRandomization takes out it and its stages; the tips it added stay", () => {
+    const { plan: setUp, id } = setUpRandomization();
+    assert.equal(canRemoveRandomization(setUp, id), true);
+    const unrun = removeRandomization(setUp, id);
+    assert.deepEqual(unrun.randomizations, []);
+    assert.equal(unrun.stageList, setUp.stageList);
+
+    let plan = addStage(randomizingPlan(), null).plan;
+    plan = removeTipChange(plan, "2");
+    const run = runRandomization(setUpRandomization(plan, null).plan, "r1");
+    const lastBefore = stageOrder(run).at(-1);
+    const removed = removeRandomization(run, "r1");
+    assert.deepEqual(stageOrder(removed), ["1", "2", "3"]);
+    assert.deepEqual(removed.randomizations, []);
+    assert.equal(transfersIn(removed, lastBefore).length, 0);
+    assert.equal(canRemoveRandomization(removed, "r1"), false);
+
+    // The tip change a run added on the stage after it stays: before the run's first stage, the old
+    // first stage got one loading the first tips, which become the first tips again.
+    const first = setTipProbes(randomizingPlan(), START, [1, 2]);
+    const { plan: before, id: firstId } = setUpRandomization(first, "1");
+    const runFirst = runRandomization(setRandomization(before, firstId, { probes: [1] }), firstId);
+    assert.deepEqual(tipChangeAt(removeRandomization(runFirst, firstId), START), tipChangeAt(first, START));
+  });
+
+  test("removeRandomization throws when its stages are all the plan's stages", () => {
+    let { plan } = emptyPlan();
+    plan = addRandomization(plan, "1", { seed: 37, volume: 10 }).plan;
+    plan = setRandomization(plan, "r1", { sources: [source("A1", 2)], fill: wellsToFill().slice(0, 2) });
+    plan = removeStage(runRandomization(plan, "r1"), "1");
+    assert.equal(canRemoveRandomization(plan, "r1"), false);
+    assert.throws(() => removeRandomization(plan, "r1"), {
+      message:
+        "This randomization's stages are all the plan's stages, and a plan needs at least one. Add a stage outside it first.",
+    });
+    assert.throws(() => removeRandomization(plan, "r9"), /no randomization "r9"/);
+  });
+
+  test("setRandomizations accepts a plan's own randomizations after running", () => {
+    const { plan } = runRandomizationPlan();
+    const withSecond = addRandomization(plan, null, { seed: 5, volume: null }).plan;
+    const copied = JSON.parse(JSON.stringify(withSecond.randomizations));
+    const set = setRandomizations({ ...withSecond, randomizations: [] }, copied);
+    assert.deepEqual(set.randomizations, withSecond.randomizations);
+  });
+
+  test("setRandomizations refuses each wrong randomization, prefixed, in its order of checks", () => {
+    const { plan, id } = runRandomizationPlan();
+    const good = () => JSON.parse(JSON.stringify(randomizationAt(plan, id)));
+    const stageIds = good().stages.map((owned) => owned.stage);
+    const second = (changes) => [good(), { ...good(), id: "r2", stages: [], beforeId: null, ...changes }];
+    const cases = [
+      [5, "The randomizations must be a list, but got 5."],
+      [
+        [good(), { ...good(), extra: 1 }],
+        'Randomization 2 must be an object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".',
+      ],
+      [second({ id: "x" }), `Randomization 2's ID must be "r" and a whole number, like "r1", but got "x".`],
+      [second({ id: "r0" }), /ID must be "r"/],
+      [second({ seed: 0 }), "Randomization 2: A randomization's seed must be a whole number from 1 to 999,999, or null, but got 0."],
+      [second({ sources: [source("A1", 1), source("A1", 1)] }), `Randomization 2: ${DEEP} A1 is a source twice. List each source once.`],
+      [
+        second({ fill: [plateWell("B3"), plateWell("B2")] }),
+        `Randomization 2: its wells to fill must be in deck order, but ${PLATE} B3 comes before ${PLATE} B2.`,
+      ],
+      [second({ probes: [2, 1] }), "Randomization 2: its probes must be listed smallest first."],
+      [second({ beforeId: "9" }), `Randomization 2: There's no stage "9" to add a randomization before.`],
+      [second({ beforeId: stageIds[1] }), /^Randomization 2: A randomization sits between tip groups/],
+      [
+        [{ ...good(), stages: [{ stage: stageIds[0] }] }],
+        'Randomization 1: its stages must be a list of objects with exactly "labware", "well" and "stage".',
+      ],
+      [[{ ...good(), stages: [{ ...good().stages[0], stage: "9" }] }], `Randomization 1: its stage "9" isn't in the plan.`],
+      [
+        [{ ...good(), stages: [good().stages[0], good().stages[0]] }],
+        `Randomization 1: stage "${stageIds[0]}" is listed twice.`,
+      ],
+      [
+        [{ ...good(), stages: [{ ...good().stages[0], well: "A9" }] }],
+        `Randomization 1: ${DEEP} A9 has a stage but isn't one of its sources.`,
+      ],
+      [
+        [{ ...good(), stages: [good().stages[0], good().stages[2]] }],
+        "Randomization 1: its stages must come one after another, in stage order.",
+      ],
+      [
+        [{ ...good(), stages: [good().stages[1], good().stages[0]] }],
+        "Randomization 1: its stages must come one after another, in stage order.",
+      ],
+      [
+        [good(), { ...good(), id: "r2", beforeId: null, stages: [] }, { ...good(), id: "r2", beforeId: null, stages: [] }],
+        'Randomizations 2 and 3 both have the ID "r2".',
+      ],
+      [[good(), { ...good(), id: "r2" }], `Stage "${stageIds[0]}" belongs to two randomizations, 1 and 2.`],
+    ];
+    for (const [randomizations, message] of cases) {
+      assert.throws(
+        () => setRandomizations(plan, randomizations),
+        { message },
+        JSON.stringify(randomizations).slice(0, 80),
+      );
+    }
+    // Alone in its tip group, and not a mix step.
+    const shared = removeTipChange(addStage(randomizingPlan(), null).plan, "2");
+    const sharedSetUp = setUpRandomization(shared, "1");
+    const sharedRun = runRandomization(sharedSetUp.plan, "r1");
+    const owned = randomizationAt(sharedRun, "r1").stages;
+    const joined = withParts(sharedRun, { tipChanges: { ...sharedRun.tipChanges } });
+    delete joined.tipChanges[owned[1].stage];
+    assert.throws(() => setRandomizations(joined, sharedRun.randomizations), {
+      message: `Randomization 1: stage "${owned[0].stage}" must be the only stage of its tip group.`,
+    });
+    const asMixStep = changeStageSettings(
+      removeTransfersOf(sharedRun, owned[0].stage),
+      owned[0].stage,
+      mixStepDefaults(),
+    );
+    assert.throws(() => setRandomizations(asMixStep, sharedRun.randomizations), {
+      message: `Randomization 1: stage "${owned[0].stage}" is a mix step.`,
+    });
+  });
+
+  // A copy of `plan` with `changes`, made directly, for a test that needs a plan the edits would
+  // never make.
+  function withParts(plan, changes) {
+    return { ...plan, ...changes };
+  }
+
+  // The plan without stage `stage`'s transfers.
+  function removeTransfersOf(plan, stage) {
+    let without = plan;
+    for (const { position } of transfersIn(plan, stage).reverse()) {
+      without = removeTransfer(without, position);
+    }
+    return without;
+  }
+
+
   // --- Immutability and sharing ---
 
   // Each edit, made on a plan with something in every part, and the parts it may change.
@@ -2163,11 +2884,32 @@ describe("transfer-designer", () => {
     ["setExperimentName", (plan) => setExperimentName(plan, "Exp37"), ["experimentName"]],
     ["setWellLabel", (plan) => setWellLabel(plan, plateWell("A2"), "Cond 2"), ["wellLabels"]],
     ["setWellLabels", (plan) => setWellLabels(plan, { [PLATE]: { A3: "Cond 3" } }), ["wellLabels"]],
+    [
+      "addRandomization",
+      (plan) => addRandomization(plan, "2", { seed: 5, volume: 5 }).plan,
+      ["randomizations"],
+    ],
+    ["setRandomization", (plan) => setRandomization(plan, "r1", { seed: 99 }), ["randomizations"]],
+    [
+      "placeRandomization",
+      (plan) => placeRandomization(addRandomization(plan, "2", { seed: 5, volume: 5 }).plan, "r2", "1"),
+      ["randomizations"],
+    ],
+    [
+      "runRandomization",
+      (plan) => runRandomization(setRandomization(plan, "r1", { seed: 99, volume: 7 }), "r1"),
+      ["randomizations", "stageList", "stageOrder", "operationList", "tipChanges"],
+    ],
+    [
+      "removeRandomization",
+      (plan) => removeRandomization(plan, "r1"),
+      ["randomizations", "stageList", "stageOrder", "operationList", "tipChanges"],
+    ],
   ];
 
   // A plan with something in every part: components and starting contents, stages 1 and 2 with
-  // transfers, stage 3 without, a mix step last mixing PLATE A1, a tip change before stage 2, a
-  // label, a well label and an experiment name.
+  // transfers, stage 3 without, a mix step mixing PLATE A1, a tip change before stage 2, a
+  // label, a well label, an experiment name, and, last, a randomization "r1" that has run.
   function fullPlan() {
     let plan = withTransfersIn(planWithContents(), ["1"]);
     plan = addStage(plan, null).plan;
@@ -2178,7 +2920,13 @@ describe("transfer-designer", () => {
     plan = addTipChange(plan, "2");
     plan = setLabel(plan, OTHER_PLATE, "Drug plate");
     plan = setWellLabel(plan, plateWell("A1"), "Cond 1");
-    return setExperimentName(plan, "Exp36");
+    plan = setExperimentName(plan, "Exp36");
+    plan = addRandomization(plan, null, { seed: 37, volume: 5 }).plan;
+    plan = setRandomization(plan, "r1", {
+      sources: [trough("1"), trough("2")].map((end) => ({ ...end, replicates: 2, filler: false })),
+      fill: [...GRID_96.wellsInBox("D1", "D4")].map(plateWell),
+    });
+    return runRandomization(plan, "r1");
   }
 
   // The ID of the mix step in a plan made by fullPlan().
@@ -2231,6 +2979,13 @@ describe("transfer-designer", () => {
     ["removeStage, a mix step", (plan) => removeStage(plan, mixStepOf(plan))],
     ["addStageWithNewTips before the first", (plan) => addStageWithNewTips(plan, "1").plan],
     ["addMixStepWithNewTips, last", (plan) => addMixStepWithNewTips(plan, null).plan],
+    [
+      "runRandomization, a source added and one taken out",
+      (plan) => {
+        const sources = [trough("2"), trough("3")].map((end) => ({ ...end, replicates: 2, filler: false }));
+        return runRandomization(setRandomization(plan, "r1", { sources }), "r1");
+      },
+    ],
   ];
 
   test("after every kind of edit, the stage order holds every stage once, and the operation list's blocks follow it", () => {
