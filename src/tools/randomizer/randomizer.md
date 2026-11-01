@@ -117,7 +117,8 @@ records which role put it there.
 
 Steps 1 to 3 are done by `assignPool` (`random-pool.md`): the conditions as items (keyed by row,
 since names may repeat with the filler's), the filler, the open wells in standard order, and the
-seed; `randomize` places each item's name in its well. The golden files (section 9) confirm the
+seed; `randomize` places each item's name in its well. `randomSeed` (section 4) moves to
+`random-pool` too, and `randomizer.js` re-exports it. The golden files (section 9) confirm the
 plates are the same as before.
 
 The inputs are never changed, and each run creates a new layout. The **result** holds three things:

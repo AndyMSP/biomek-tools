@@ -912,7 +912,7 @@ before, one after, and Plate1's B2 to C11 (20 wells) to fill.
   source kept keeps its `stage`, one removed and added back gets `null`.
 - `randomizationProblems`: each message of section 3, in order, using `sourceName`; `[]` when it can
   run.
-- `sourceName`: a labelled source gives its label; `Drug A` alone gives `Drug A`; a well holding
+- `sourceName`: a labeled source gives its label; `Drug A` alone gives `Drug A`; a well holding
   three components gives the one with most and ` +2`; an empty well gives its labware's label and
   well name; contents are those just before the randomization (a well filled by the first stage
   is named after what it holds then).

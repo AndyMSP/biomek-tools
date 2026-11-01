@@ -582,7 +582,8 @@ gets a tip change of its own loading the same tips. It's added and opened as one
 tips. Click or drag across wells on the deck to mix them.`). The right spot holds the **dice
 button** (white, blue border, the dice icon; tooltip `Add a randomization here`; accessible name
 `Add a randomization before stage 3, “Drugs”`, or `… at the end of the run`), which adds a
-randomization sitting there (`addRandomization`, with a random seed, `randomSeed`, and the next
+randomization sitting there (`addRandomization`, with a random seed, `randomSeed` from
+`random-pool`, and the next
 transfer's volume, section 9) and opens its card, as one undoable edit (message `Added a
 randomization. Pick its sources and the wells to fill.`).
 - Tooltips: `+` `Add a stage here, with new tips`; mix step button `Add a mix step here, with new
@@ -956,6 +957,8 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
   `#17becf`, `#1f3d7a`, `#bcbd22`, `#7b2d8e`, `#a0cbe8`, `#ffbe7d`, `#8cd17d`, `#8b0000`, `#b6992d`,
   `#499894`, `#d4a6c8`, `#c85200`, `#006d2c`, `#ff6f91`, `#6b6ecf`, `#637939`, `#fabfd2`, `#5c3c1b`,
   `#9edae5`, `#ce6dbd`, `#2b2b2b`.
+- **`config/randomizations.js`** exports `SOURCES_SHOWN` (`8`): how many sources a randomization's
+  card lists before `Show all N sources ▸` (Andy, 2026-11-01).
 - **`config/default-volumes.js`** exports `DEFAULT_TRANSFER_VOLUME` (`50`) and `DEFAULT_FILL_VOLUME`
   (`1000`), in µL: the volumes the next transfer and the brush start with when the page opens.
 
@@ -1041,6 +1044,7 @@ are. `transfer-designer-page.test.js`, inside `describe("transfer-designer-page"
 page's configuration (ADR 0009):
 - `COMPONENT_COLORS`: 30 entries, each `#` and six hexadecimal digits, none repeated (ignoring case).
 - `DEFAULT_TRANSFER_VOLUME` and `DEFAULT_FILL_VOLUME`: numbers above 0.
+- `SOURCES_SHOWN`: a whole number of at least 1.
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
 - each item in sections 5 to 13 behaves as described;

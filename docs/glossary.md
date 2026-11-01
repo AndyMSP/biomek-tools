@@ -80,6 +80,12 @@ A plan saved as a file, so it can be kept with the experiment's records, shared,
 later or on another computer. The file says which format it is and its version, so a later version
 of the tools can still open it, or say why it can't.
 
+**Randomization**
+Part of a plan that spreads replicates of several sources at random over a set of wells to fill, on
+any number of plates, with a seed, and makes one stage per source, each on new tips, moving them.
+It owns those stages: they change only through it. The leftover wells get its filler, one of its
+sources (ADR 0012).
+
 **Seam**
 A place in the transfer designer's Stages column where a stage, a mix step or a tip change can be
 added. A seam inside a tip group (between two of its stages, or at its top or bottom) adds stages
