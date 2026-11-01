@@ -262,7 +262,8 @@ Last updated: 2026-11-01
   `page-tweaks`): (1) a picked color swatch in a component's box keeps its color (it turned pale
   blue: a bug); (2) Remove in a stage's box removes at once, without the question, since Undo
   brings it back, and every other Remove works the same way; (3) the tip button on a tip group's
-  last seam adds a new stage there with a tip change on it, the stage copying the one before it;
+  last seam adds a new stage there with a tip change on it, the stage copying the one before it
+  (superseded on 2026-11-01 by the seams between tip groups, #121);
   (4) previews published to the preview artifact say `Preview: …` in the tab and route downloads
   through the artifact's save prompt (a preview habit, in CLAUDE.md); (5) a transfer row with a
   contents problem shows its volume in red, with a tooltip `Only 450 µL is reachable.` or

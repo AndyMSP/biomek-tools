@@ -50,7 +50,8 @@
 
 > **Draft changes (2026-10-31, page tweaks, from Andy's use of the #118 build; branch
 > `page-tweaks`):** a picked color swatch keeps its color; Remove in every box acts at once, with no
-> question; the tip button on a tip group's last seam adds a stage with new tips; a transfer row
+> question; the tip button on a tip group's last seam adds a stage with new tips (superseded on
+> 2026-11-01 by the seams between tip groups, below); a transfer row
 > with a contents problem shows its volume in red, with a short tooltip; the contents card shows
 > only the well, its components and problem or warning lines (sections 6, 7, 10 and 16; the
 > roadmap's "Six page tweaks"). They become Final once built and tested by Andy.
@@ -456,14 +457,18 @@ column where something can be added. There are two kinds, so what a button adds 
 where it is (Andy, 2026-10-31: with every button in one spot, it wasn't clear which used the
 group's tips and which started new ones):
 - **Seams inside a tip group box**: the space between two of its cards (stages in a box sit 10px
-  apart), above its first stage, and below its last stage. What they add uses **this group's
-  tips**.
+  apart), above its first stage, and below its last stage. Their stages and mix steps use **this
+  group's tips**; their tip button (between two stages only) splits the group there.
 - **Seams between tip groups**: in the gap above the first box (below Start), between two boxes, and
-  below the last box (above End). What they add gets **new tips**, as a tip group of its own.
+  below the last box (above End). Their stages and mix steps get **new tips**, as a tip group of
+  their own.
 
 Pointing at a seam, or moving keyboard focus to its buttons, shows its line and buttons, floating
-over the cards. A seam never takes a click meant for a card or a box. Inside a box the line is
-solid blue (2px, 8px in from the box's sides); between tip groups it's **dashed** blue (2px),
+over the cards. A seam never takes a click meant for a card or a box. While a seam's buttons
+show, they sit above every other seam, so a button reaching past its own seam (the 26px buttons of
+a box's last seam reach below the box) can still be pointed at and clicked. Keyboard focus moves
+through a seam's buttons left to right: the mix step button, the `+`, then the right spot's button.
+Inside a box the line is solid blue (2px, 8px in from the cards' sides); between tip groups it's **dashed** blue (2px),
 across the column's whole width, so it reads as "a new group here". Every seam has the same
 **three fixed spots**, each a 26px circle centered on the line: the **mix step button** (white,
 blue border, a blue ⟳) just left of the middle one, 6px from it; the **`+`** (solid blue; two white
@@ -515,8 +520,10 @@ randomizer will add a button there (v0.2.0's item 9).
   naming stage 1), or `Add a stage with new tips at the end of the run` above End; the mix step
   button's say "a mix step" for "a stage".
 - **Spacing**: Start, the boxes and End sit **18px** apart (12px until 2026-11-01), and each seam
-  between tip groups is a 14px band in the middle of its gap, so pointing anywhere between two
-  boxes finds it, and it never reaches into a box or a card.
+  between tip groups is a 14px band in the middle of its gap (2px clear of each side), so pointing
+  almost anywhere between two boxes finds it, and it never reaches into a box or a card.
+- **What glows** after adding here: only the new stage or mix step. A box whose tip change only
+  moved (the old first stage's, after adding above the first box) isn't new, so it doesn't glow.
 
 A new stage or mix step, added at any seam, copies the nearest of its own kind
 (`transfer-designer.md`). (Andy, 2026-10-29: choosing a mix step with the button you press, rather
@@ -904,8 +911,9 @@ page's configuration (ADR 0009):
   stage or mix step in a box of its own (above the first box: the old first stage gets its own new
   tips, same type and probes; above End: last, with the last box's tips), each as one undo; every
   seam's buttons in the same three spots, nothing in the right spot between tip groups; each seam
-  found by pointing anywhere in its gap, with keyboard focus too, and their tooltips and accessible
-  names;
+  between tip groups found by pointing in its gap, and a box's last seam's buttons still clickable
+  where they reach below the box; keyboard focus left to right; only the new stage glowing; their
+  tooltips and accessible names;
 - mix steps: the ⟳ on seams (always just left of the `+`) adds one and opens it; clicking a well
   mixes it, again stops mixing it, and dragging mixes a box; its card's `N wells mixed`, ⟳ after its
   name, its wells' list with `N% of well` and `×`; its box's note and Remove; a new mix step copies

@@ -247,7 +247,7 @@ new for it (`plan-file.md`).
   order becomes the `START` one (its tip type and probes replace the `START` one's), so there's
   never one before the first stage but `START`.
 - **Adding a stage in a tip group of its own** (`addStageWithNewTips`, `addMixStepWithNewTips`;
-  Andy, 2026-10-31, from the preview: a seam between tip groups adds a stage with new tips). The
+  Andy, 2026-10-31), for a caller that starts a new tip group with a new stage. The
   new stage is added as `addStage` (or `addMixStep`) adds it, without `takeTips`; then it gets a tip
   change of its own (none is added when it's the first stage, whose tips are the `START` ones), and
   the stage just after it, if there is one and it has no tip change, gets one too. Each added tip
@@ -585,8 +585,11 @@ order of checks.
   - the new stage's settings are copied as `addStage`'s are, and it has no transfers;
   - before a stage that isn't in the plan throws `addStage`'s error, and the plan given is
     unchanged.
-- `addMixStepWithNewTips` before stage 3 adds a mix step (`isMixStep`), named `NEW_MIX_STEP_NAME`,
-  with a tip change of its own, as `addStageWithNewTips` does.
+- (In these cases "stage 3" and the others name the original stages by ID; their places in the
+  stage order change once the new stage is in.)
+- `addMixStepWithNewTips` adds a mix step (`isMixStep`), named `NEW_MIX_STEP_NAME`, as
+  `addStageWithNewTips` adds a stage, in the same plan: before stage 3, before stage 1 and with
+  `null`, with the same tip changes as the cases above.
 - In the table of which parts of the plan each edit may change, `addStageWithNewTips` and
   `addMixStepWithNewTips` change `stageList`, `stageOrder` and `tipChanges`.
 - `removeStage` removes a stage with transfers, and its transfers, and takes it out of the stage
