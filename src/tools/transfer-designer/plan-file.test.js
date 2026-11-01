@@ -36,8 +36,18 @@ import {
   addRandomization,
   setRandomization,
   runRandomization,
+  setConstituents,
 } from "./transfer-designer.js";
 import { PLAN_FILE_FORMAT, PLAN_FILE_VERSION, planToText, planFromText } from "./plan-file.js";
+import { CONCENTRATION_UNITS } from "../../../config/concentration-units.js";
+import { familyOf, unitsOf } from "../../shared/concentrations/concentrations.js";
+
+// Units for the constituent tests, named by symbol as concentrations.md, section 6, allows, with
+// everything else about them read from config/concentration-units.js: a molar unit, a mass unit,
+// and the offered units in the file's order.
+const MOLAR_UNIT = "mM";
+const MASS_UNIT = "g/L";
+const OFFERED_UNITS = CONCENTRATION_UNITS.filter((entry) => entry.offered).map((entry) => entry.unit);
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK, in the deck's order.
 const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_96).map(
@@ -98,6 +108,18 @@ function fullPlan() {
   return setLabel(plan, PLATE, "Assay plate");
 }
 
+// fullPlan() with a third component, "Feed", and constituents: Media carries [], Dye carries Dye at
+// 10 of the molar unit, and Feed carries two constituents in different families, Hy-Soy at 4 of
+// the mass unit and Drug A at 0.1 of the molar unit.
+function constituentsPlan() {
+  let plan = addComponent(fullPlan(), "Feed", "#59a14f");
+  plan = setConstituents(plan, "Dye", [{ name: "Dye", amount: 10, unit: MOLAR_UNIT }]);
+  return setConstituents(plan, "Feed", [
+    { name: "Hy-Soy", amount: 4, unit: MASS_UNIT },
+    { name: "Drug A", amount: 0.1, unit: MOLAR_UNIT },
+  ]);
+}
+
 // The file fullPlan() saves as, as an object a test can change before opening it. A new object
 // each time.
 function fullFile() {
@@ -118,10 +140,18 @@ function mixingPlan() {
   return setStageMix(plan, "3", "destination", { share: 50, times: 2, speed: 100 });
 }
 
-// fullFile() as a version 5 file, as saved on 2026-11-01, before randomizations: no
+// fullFile() as a version 6 file, as saved on 2026-11-01, before constituents: each component is
+// { name, color } only. Opened, it gives fullPlan(), whose components carry nothing.
+function version6File() {
+  const file = { ...fullFile(), version: 6 };
+  file.components = file.components.map(({ name, color }) => ({ name, color }));
+  return file;
+}
+
+// version6File() as a version 5 file, as saved on 2026-11-01, before randomizations: no
 // randomizations. Opened, it gives fullPlan(), which has none.
 function version5File() {
-  const file = { ...fullFile(), version: 5 };
+  const file = { ...version6File(), version: 5 };
   delete file.randomizations;
   return file;
 }
@@ -235,7 +265,7 @@ describe("plan-file", () => {
 
   test("the format and version are the specification's", () => {
     assert.equal(PLAN_FILE_FORMAT, "biomek-tools transfer plan");
-    assert.equal(PLAN_FILE_VERSION, 6);
+    assert.equal(PLAN_FILE_VERSION, 7);
   });
 
   test("planToText writes each tip change with its probes, and each stage's settings without any", () => {
@@ -291,6 +321,25 @@ describe("plan-file", () => {
     assert.deepEqual(opened.tipChanges["3"].probes, [1]);
   });
 
+  test("a component is written as name, color, constituents, and each constituent as name, amount, unit", () => {
+    const file = JSON.parse(planToText(constituentsPlan(), SAVED_BY));
+    for (const component of file.components) {
+      assert.deepEqual(Object.keys(component), ["name", "color", "constituents"]);
+    }
+    assert.deepEqual(Object.keys(file.components[1].constituents[0]), ["name", "amount", "unit"]);
+  });
+
+  test("constituents, saved and opened, give the same constituents, in order, at full precision", () => {
+    const plan = constituentsPlan();
+    const opened = planFromText(planToText(plan, SAVED_BY));
+    assert.deepEqual(
+      opened.components.map((component) => component.constituents),
+      plan.components.map((component) => component.constituents),
+    );
+    assert.deepEqual(opened.components[2].constituents.map((entry) => entry.name), ["Hy-Soy", "Drug A"]);
+    assert.equal(opened.components[2].constituents[1].amount, 0.1);
+  });
+
   test('a plan with no name saves "experimentName": "" and opens with none', () => {
     const plan = setExperimentName(fullPlan(), "");
     const text = planToText(plan, SAVED_BY);
@@ -332,10 +381,10 @@ describe("plan-file", () => {
     assert.deepEqual(Object.keys(opened.tipChanges).sort(), ["3", START].sort());
   });
 
-  test('an empty plan, saved and opened, has the same contents, and is written as version 6, with "wellLabels": {} and "randomizations": []', () => {
+  test('an empty plan, saved and opened, has the same contents, and is written as version 7, with "wellLabels": {} and "randomizations": []', () => {
     const plan = emptyPlan().plan;
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 6);
+    assert.equal(JSON.parse(text).version, 7);
     assert.deepEqual(JSON.parse(text).wellLabels, {});
     assert.deepEqual(JSON.parse(text).randomizations, []);
     const opened = planFromText(text);
@@ -390,6 +439,76 @@ describe("plan-file", () => {
     const withoutDestinationMix = JSON.parse(planToText(plan, SAVED_BY));
     withoutDestinationMix.stages[2].settings.destinationMix = null;
     assertRefused(withoutDestinationMix, "stage 3: A mix step needs a destination mix: that's what it does.");
+  });
+
+  // --- Version 6 files ---
+
+  test("a version 6 file opens, every component carrying []", () => {
+    const opened = open(version6File());
+    assert.deepEqual(
+      opened.components.map((component) => component.constituents),
+      [[], []],
+    );
+    assert.deepEqual(contentsOf(opened), contentsOf(fullPlan()));
+  });
+
+  test("a version 6 component with constituents is refused as not having exactly its properties", () => {
+    const file = version6File();
+    file.components[1] = { ...file.components[1], constituents: [] };
+    assertRefused(file, 'component 2 must be an object with exactly "name" and "color".');
+  });
+
+  test("a version 7 component without constituents is refused as not having exactly its properties", () => {
+    const file = fullFile();
+    delete file.components[1].constituents;
+    assertRefused(file, 'component 2 must be an object with exactly "name", "color" and "constituents".');
+  });
+
+  test("a version 7 component whose constituents checkConstituents refuses gives its message", () => {
+    const withConstituents = (constituents) => {
+      const file = fullFile();
+      file.components[1].constituents = constituents;
+      return file;
+    };
+    assertRefused(
+      withConstituents({}),
+      'component 2: A component\'s constituents must be a list, like [{ name: "Dye", amount: 10, unit: "mM" }], but got an object.',
+    );
+    assertRefused(
+      withConstituents([{ name: "Dye", amount: 0, unit: MOLAR_UNIT }]),
+      'component 2: The amount of "Dye" must be a number above 0, like 10, but got 0.',
+    );
+    assertRefused(
+      withConstituents([{ name: "Dye", amount: 10, unit: "mg/mL" }]),
+      `component 2: The unit of "Dye" must be one of ${OFFERED_UNITS.join(", ")}, but got "mg/mL".`,
+    );
+  });
+
+  test("the family rule holds across the file's components, in file order", () => {
+    const file = fullFile();
+    file.components[0].constituents = [{ name: "Hy-Soy", amount: 4, unit: MASS_UNIT }];
+    file.components[1].constituents = [{ name: "Hy-Soy", amount: 10, unit: MOLAR_UNIT }];
+    assertRefused(
+      file,
+      `component 2: Hy-Soy is in ${MASS_UNIT} in Media. Give it a unit of that kind (${unitsOf(familyOf(MASS_UNIT)).join(", ")}), or a different name.`,
+    );
+  });
+
+  test('a constituent named " Dye" is refused, not trimmed, over the whole list before setConstituents', () => {
+    const spacesMessage =
+      'component 2: The constituent name " Dye" has spaces at the start or end. Remove them.';
+    const file = fullFile();
+    file.components[1].constituents = [{ name: " Dye", amount: 10, unit: MOLAR_UNIT }];
+    assertRefused(file, spacesMessage);
+    const laterSpaces = fullFile();
+    laterSpaces.components[1].constituents = [null, { name: " Dye", amount: 10, unit: MOLAR_UNIT }];
+    assertRefused(laterSpaces, spacesMessage);
+    const nullFirst = fullFile();
+    nullFirst.components[1].constituents = [null, { name: "Dye", amount: 10, unit: MOLAR_UNIT }];
+    assertRefused(
+      nullFirst,
+      "component 2: Constituent 1 must be an object with a name, an amount and a unit, but got null.",
+    );
   });
 
   // --- Version 5 files ---
@@ -491,13 +610,13 @@ describe("plan-file", () => {
     );
   });
 
-  test("a version 6 file without randomizations is refused as missing it", () => {
+  test("a version 7 file without randomizations is refused as missing it", () => {
     const file = fullFile();
     delete file.randomizations;
     assertRefused(file, 'it\'s missing "randomizations".');
   });
 
-  test("a version 6 file whose randomizations is an object gets the wrong-kind message", () => {
+  test("a version 7 file whose randomizations is an object gets the wrong-kind message", () => {
     assertRefused({ ...fullFile(), randomizations: {} }, '"randomizations" must be a list.');
   });
 
@@ -575,13 +694,13 @@ describe("plan-file", () => {
     );
   });
 
-  test("a version 6 file without wellLabels is refused as missing it", () => {
+  test("a version 7 file without wellLabels is refused as missing it", () => {
     const file = fullFile();
     delete file.wellLabels;
     assertRefused(file, 'it\'s missing "wellLabels".');
   });
 
-  test("a version 6 file whose wellLabels is a list gets the wrong-kind message", () => {
+  test("a version 7 file whose wellLabels is a list gets the wrong-kind message", () => {
     assertRefused({ ...fullFile(), wellLabels: [] }, '"wellLabels" must be an object.');
   });
 
@@ -602,9 +721,9 @@ describe("plan-file", () => {
     assertRefused(file, /the experiment name: /);
   });
 
-  test("saving an opened version 4 file writes version 6, with no well labels", () => {
+  test("saving an opened version 4 file writes version 7, with no well labels", () => {
     const file = JSON.parse(planToText(open(version4File()), SAVED_BY));
-    assert.equal(file.version, 6);
+    assert.equal(file.version, 7);
     assert.deepEqual(file.wellLabels, {});
   });
 
@@ -644,7 +763,7 @@ describe("plan-file", () => {
     assertRefused(file, /stage 2: The stage name is blank\./);
   });
 
-  test("saving an opened version 3 file writes version 6, with the stages' mixes null", () => {
+  test("saving an opened version 3 file writes version 7, with the stages' mixes null", () => {
     const file = JSON.parse(planToText(open(version3File()), SAVED_BY));
     assert.equal(file.version, PLAN_FILE_VERSION);
     for (const stage of file.stages) {
@@ -813,8 +932,8 @@ describe("plan-file", () => {
 
   test("a version above this one was saved by a newer version of the tools", () => {
     assertRefused(
-      { ...fullFile(), version: 7 },
-      "it was saved by a newer version of the tools (plan format 7). Open it with that version or a later one.",
+      { ...fullFile(), version: 8 },
+      "it was saved by a newer version of the tools (plan format 8). Open it with that version or a later one.",
     );
   });
 
@@ -863,11 +982,19 @@ describe("plan-file", () => {
 
   // --- Refusing: components ---
 
-  test("a component that isn't an object with exactly a name and a color is refused", () => {
-    for (const component of [null, { name: "Water" }, { name: "Water", color: "#76b7b2", notes: "" }]) {
+  test("a component that isn't an object with exactly a name, a color and constituents is refused", () => {
+    for (const component of [
+      null,
+      { name: "Water" },
+      { name: "Water", color: "#76b7b2" },
+      { name: "Water", color: "#76b7b2", constituents: [], notes: "" },
+    ]) {
       const file = fullFile();
       file.components[1] = component;
-      assertRefused(file, 'component 2 must be an object with exactly "name" and "color".');
+      assertRefused(
+        file,
+        'component 2 must be an object with exactly "name", "color" and "constituents".',
+      );
     }
   });
 

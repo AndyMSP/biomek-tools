@@ -86,8 +86,12 @@ import {
   removeRandomization,
   canRemoveRandomization,
   setRandomizations,
+  setConstituents,
+  concentrationsOf,
 } from "./transfer-designer.js";
 import { assignPool } from "../../shared/random-pool/random-pool.js";
+import { CONCENTRATION_UNITS } from "../../../config/concentration-units.js";
+import { familyOf, unitsOf } from "../../shared/concentrations/concentrations.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
 const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_96).map(
@@ -243,6 +247,45 @@ function withMixStepMix(plan, id, mix) {
 // The message checkName gives for a component name that isn't text, e.g. for 5.
 function componentNameNotTextMessage(got) {
   return `The component name must be text, but got ${got}.`;
+}
+
+// Units for the constituent tests, named by symbol as concentrations.md, section 6, allows, with
+// everything else about them read from config/concentration-units.js: a molar unit, a mass unit
+// (the base, factor 1) and a mass unit of another scale, and the offered units in the file's order.
+const MOLAR_UNIT = "mM";
+const MASS_UNIT = "g/L";
+const MASS_SUBUNIT = CONCENTRATION_UNITS.find(
+  (entry) => entry.family === familyOf(MASS_UNIT) && entry.unit !== MASS_UNIT,
+).unit;
+const OFFERED_UNITS = CONCENTRATION_UNITS.filter((entry) => entry.offered).map((entry) => entry.unit);
+
+// The factor of the unit with symbol `unit`, from the file.
+function factorOf(unit) {
+  return CONCENTRATION_UNITS.find((entry) => entry.unit === unit).factor;
+}
+
+// A constituent { name, amount, unit }. A new object each time.
+function constituentOf(name, amount, unit) {
+  return { name, amount, unit };
+}
+
+// The family message for `name`, carried in `unit` by component `component`, the units from unitsOf.
+function familyMessage(name, unit, component) {
+  return `${name} is in ${unit} in ${component}. Give it a unit of that kind (${unitsOf(familyOf(unit)).join(", ")}), or a different name.`;
+}
+
+// planWithContents plus a component "Feeding media" carrying Hy-Soy at 4 of the mass unit.
+function planWithFeedingMedia() {
+  let plan = addComponent(planWithContents(), "Feeding media", "#59a14f");
+  return setConstituents(plan, "Feeding media", [constituentOf("Hy-Soy", 4, MASS_UNIT)]);
+}
+
+// Whether `actual` is within 1e-12 of `expected`, relative to the value (concentrations.md).
+function assertWithin(actual, expected) {
+  assert.ok(
+    Math.abs(actual - expected) <= Math.abs(expected) * 1e-12,
+    `${actual} is within 1e-12 of ${expected}`,
+  );
 }
 
 describe("transfer-designer", () => {
@@ -1672,8 +1715,8 @@ describe("transfer-designer", () => {
     plan = addComponent(plan, "Media", "#4e79a7");
     plan = addComponent(plan, "  Drug_A ", "#f28e2b");
     assert.deepEqual(plan.components, [
-      { name: "Media", color: "#4e79a7" },
-      { name: "Drug_A", color: "#f28e2b" },
+      { name: "Media", color: "#4e79a7", constituents: [] },
+      { name: "Drug_A", color: "#f28e2b", constituents: [] },
     ]);
   });
 
@@ -1716,7 +1759,7 @@ describe("transfer-designer", () => {
 
   test("renameComponent renames in every well, keeping each well's components in order", () => {
     const plan = renameComponent(planWithContents(), "Media", "Medium");
-    assert.deepEqual(plan.components[0], { name: "Medium", color: "#4e79a7" });
+    assert.deepEqual(plan.components[0], { name: "Medium", color: "#4e79a7", constituents: [] });
     assert.deepEqual(plan.startingContents, [
       { labware: RESERVOIR, well: "1", components: { Medium: 1000, Dye: 10 } },
       { labware: RESERVOIR, well: "2", components: { Dye: 500 } },
@@ -1744,7 +1787,7 @@ describe("transfer-designer", () => {
   test("setComponentColor recolors; another component's color throws", () => {
     const plan = planWithContents();
     const recolored = setComponentColor(plan, "Dye", "#59a14f");
-    assert.deepEqual(recolored.components[1], { name: "Dye", color: "#59a14f" });
+    assert.deepEqual(recolored.components[1], { name: "Dye", color: "#59a14f", constituents: [] });
     assert.throws(() => setComponentColor(plan, "Dye", "#4e79a7"), {
       message: "Media already has that color. Choose a different one.",
     });
@@ -1753,7 +1796,7 @@ describe("transfer-designer", () => {
 
   test("removeComponent empties wells left with nothing", () => {
     const plan = removeComponent(planWithContents(), "Dye");
-    assert.deepEqual(plan.components, [{ name: "Media", color: "#4e79a7" }]);
+    assert.deepEqual(plan.components, [{ name: "Media", color: "#4e79a7", constituents: [] }]);
     assert.deepEqual(plan.startingContents, [
       { labware: RESERVOIR, well: "1", components: { Media: 1000 } },
     ]);
@@ -1829,6 +1872,166 @@ describe("transfer-designer", () => {
       plan.components.map((component) => component.name),
       ["Media", "Dye"],
     );
+  });
+
+  // --- Constituents ---
+
+  test("addComponent gives the new component constituents: [], after name and color", () => {
+    const plan = addComponent(emptyPlan().plan, "Media", "#4e79a7");
+    assert.deepEqual(Object.keys(plan.components[0]), ["name", "color", "constituents"]);
+    assert.deepEqual(plan.components[0].constituents, []);
+  });
+
+  test("setConstituents replaces the list, trims names, and copies the given list", () => {
+    let plan = planWithContents();
+    plan = setConstituents(plan, "Dye", [constituentOf(" Dye ", 10, MOLAR_UNIT)]);
+    assert.deepEqual(plan.components[1].constituents, [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    plan = setConstituents(plan, "Dye", [constituentOf("Dye", 5, MOLAR_UNIT)]);
+    assert.deepEqual(plan.components[1].constituents, [constituentOf("Dye", 5, MOLAR_UNIT)]);
+    assert.deepEqual(setConstituents(plan, "Dye", []).components[1].constituents, []);
+    const given = [constituentOf("Dye", 7, MOLAR_UNIT)];
+    const before = JSON.stringify(given);
+    const edited = setConstituents(plan, "Dye", given);
+    assert.equal(JSON.stringify(given), before);
+    given[0].amount = 99;
+    given.push(constituentOf("Other", 1, MOLAR_UNIT));
+    assert.deepEqual(edited.components[1].constituents, [constituentOf("Dye", 7, MOLAR_UNIT)]);
+  });
+
+  test("setConstituents throws for a component not in the plan, and passes on checkConstituents' messages", () => {
+    const plan = planWithContents();
+    assert.throws(() => setConstituents(plan, "Water", []), {
+      message: `There's no component called "Water" in this plan. Add it to the plan's components first.`,
+    });
+    assert.throws(() => setConstituents(plan, "Dye", [constituentOf("Dye", 0, MOLAR_UNIT)]), {
+      message: 'The amount of "Dye" must be a number above 0, like 10, but got 0.',
+    });
+    assert.throws(() => setConstituents(plan, "Dye", [constituentOf("Dye", 10, "mg/mL")]), {
+      message: `The unit of "Dye" must be one of ${OFFERED_UNITS.join(", ")}, but got "mg/mL".`,
+    });
+  });
+
+  test("one family per name: a constituent in another component's family is refused, naming that component", () => {
+    const plan = planWithFeedingMedia();
+    assert.throws(
+      () => setConstituents(plan, "Dye", [constituentOf("Hy-Soy", 10, MOLAR_UNIT)]),
+      { message: familyMessage("Hy-Soy", MASS_UNIT, "Feeding media") },
+    );
+  });
+
+  test("one family per name: with two other components carrying the name, the first in the plan is named", () => {
+    // Media comes before Feeding media in the plan's order, and carries Hy-Soy in another unit.
+    let plan = planWithFeedingMedia();
+    plan = setConstituents(plan, "Media", [constituentOf("Hy-Soy", 2, MASS_SUBUNIT)]);
+    assert.throws(
+      () => setConstituents(plan, "Dye", [constituentOf("Hy-Soy", 10, MOLAR_UNIT)]),
+      { message: familyMessage("Hy-Soy", MASS_SUBUNIT, "Media") },
+    );
+    // Removing Media leaves Feeding media as the first carrying Hy-Soy, in its own unit.
+    const withoutMedia = removeComponent(plan, "Media");
+    assert.throws(
+      () => setConstituents(withoutMedia, "Dye", [constituentOf("Hy-Soy", 10, MOLAR_UNIT)]),
+      { message: familyMessage("Hy-Soy", MASS_UNIT, "Feeding media") },
+    );
+  });
+
+  test("one family per name: the same family in another unit is accepted; the only carrier may change family", () => {
+    const plan = planWithFeedingMedia();
+    assert.doesNotThrow(() =>
+      setConstituents(plan, "Dye", [constituentOf("Hy-Soy", 500, MASS_SUBUNIT)]),
+    );
+    const changed = setConstituents(plan, "Feeding media", [
+      constituentOf("Hy-Soy", 10, MOLAR_UNIT),
+    ]);
+    assert.equal(changed.components.at(-1).constituents[0].unit, MOLAR_UNIT);
+  });
+
+  test("one family per name: each constituent of the list being set is checked against the other components only", () => {
+    const plan = planWithFeedingMedia();
+    assert.doesNotThrow(() =>
+      setConstituents(plan, "Dye", [
+        constituentOf("Hy-Soy", 4, MASS_UNIT),
+        constituentOf("Drug A", 1, MOLAR_UNIT),
+      ]),
+    );
+  });
+
+  test("setConstituents checks the component, then the list, then each family in list order", () => {
+    const plan = planWithFeedingMedia();
+    assert.throws(() => setConstituents(plan, "Water", "Dye"), {
+      message: `There's no component called "Water" in this plan. Add it to the plan's components first.`,
+    });
+    assert.throws(
+      () =>
+        setConstituents(plan, "Dye", [
+          constituentOf("Dye", "ten", MOLAR_UNIT),
+          constituentOf("Hy-Soy", 10, MOLAR_UNIT),
+        ]),
+      { message: 'The amount of "Dye" must be a number above 0, like 10, but got "ten".' },
+    );
+  });
+
+  test("renameComponent and setComponentColor keep constituents; removeComponent removes them", () => {
+    let plan = planWithContents();
+    plan = setConstituents(plan, "Dye", [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    const renamed = renameComponent(plan, "Dye", "Dye stock");
+    assert.deepEqual(renamed.components[1].constituents, [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    const recolored = setComponentColor(plan, "Dye", "#59a14f");
+    assert.deepEqual(recolored.components[1].constituents, [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    const removed = removeComponent(plan, "Dye");
+    assert.ok(!removed.components.some((component) => component.name === "Dye"));
+    assert.deepEqual(removed.components.flatMap((component) => component.constituents), []);
+  });
+
+  test("concentrationsOf gives a well's concentrations from a snapshot", () => {
+    let plan = planWithContents();
+    plan = setConstituents(plan, "Dye", [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    // Trough 3: 20% Dye, 80% Media.
+    plan = addToWells(plan, [trough("3")], "Dye", 200);
+    plan = addToWells(plan, [trough("3")], "Media", 800);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = concentrationsOf(plan, start, trough("3"));
+    assert.equal(result.length, 1);
+    assert.equal(result[0].name, "Dye");
+    assert.equal(result[0].family, familyOf(MOLAR_UNIT));
+    assertWithin(result[0].value, 0.2 * 10 * factorOf(MOLAR_UNIT));
+    // An empty well, and a well holding only components without constituents.
+    assert.deepEqual(concentrationsOf(plan, start, trough("9")), []);
+    plan = addToWells(plan, [trough("4")], "Media", 100);
+    const startAgain = replay(plan.startingContents, plan.operationList, 0);
+    assert.deepEqual(concentrationsOf(plan, startAgain, trough("4")), []);
+  });
+
+  test("concentrationsOf follows a transfer: the well's value at the snapshot after it, [] before", () => {
+    let plan = planWithContents();
+    plan = setConstituents(plan, "Dye", [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    plan = addToWells(plan, [{ labware: PLATE, well: "A1" }], "Media", 1000);
+    // A trough of Dye holding well over its dead volume, so the transfer draws the full 50 µL.
+    plan = addToWells(plan, [trough("5")], "Dye", deadVolumeOf(RESERVOIR) + 1000);
+    plan = addTransfer(plan, {
+      type: "transfer",
+      source: trough("5"),
+      destination: { labware: PLATE, well: "A1" },
+      volume: 50,
+      stage: "1",
+    });
+    const before = replay(plan.startingContents, plan.operationList, 0);
+    const after = replay(plan.startingContents, plan.operationList, 1);
+    assert.deepEqual(concentrationsOf(plan, before, { labware: PLATE, well: "A1" }), []);
+    const result = concentrationsOf(plan, after, { labware: PLATE, well: "A1" });
+    assert.equal(result.length, 1);
+    assertWithin(result[0].value, (10 * factorOf(MOLAR_UNIT) * 50) / 1050);
+  });
+
+  test("concentrationsOf checks the well through the snapshot only", () => {
+    const plan = planWithContents();
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    assert.throws(() => concentrationsOf(plan, start, { labware: RESERVOIR, well: 5 }), {
+      message: "The well given to volumeFractionsOf must be text, but got 5.",
+    });
+    assert.throws(() => concentrationsOf(plan, start, undefined), {
+      message: "The labware given to volumeFractionsOf must be text, but got undefined.",
+    });
   });
 
   // --- Labware ---
