@@ -55,6 +55,13 @@
 > only the well, its components and problem or warning lines (sections 6, 7, 10 and 16; the
 > roadmap's "Six page tweaks"). They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-01, seams, the first part of v0.2.0's item 9):** from the randomizer
+> preview Andy shaped on 2026-10-31 (the buttons on a seam mixed what adds to a tip group with what
+> starts a new one, all in one spot): seams inside a tip group add with that group's tips, and new
+> seams between tip groups add with new tips (sections 7, 15 and 16). The tip button on a tip
+> group's last seam, from the page tweaks of 2026-10-31, goes: a seam between tip groups does what
+> it did. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -444,47 +451,76 @@ many tips the tip change loads: one per probe it loads (`tipGroups`' `probes`), 
 next new tips uses all of them.` (The preview showed `2 probes` here until 2026-10-25, when it was
 removed as confusing; it came back, counted as tips, on 2026-10-26, so a user could save tips.)
 
-**Adding stages and tip changes: the seams.** Stages in a box sit 10px apart. The space between two
-cards, above a box's first stage, and below a box's last stage, is a **seam**. Pointing at a seam,
-or moving keyboard focus to its buttons, shows a blue line across it with a `+` in a 26px circle in
-the middle (tooltip `Add a stage here`), floating over the cards; the `+` is two white bars, 2px
-thick and 12px long, crossing at the circle's center, so it's exactly centered (a "+" character
-sits wherever the font puts it; Andy, 2026-10-26). Between two stages of a box, also a
-tip button (tooltip `New tips here`), the same size, **just right of the `+`**, 6px from it; the
-seam below a box's last stage has a tip button too, which adds a stage with new tips (below). Each
-seam button has a **fixed spot**: the `+` always in the exact middle of the line, the tip button
-always just right of it; a seam without a tip button leaves its spot empty, so nothing moves from
-one seam to the next (Andy, 2026-10-30, from the mixing preview: buttons spread along the line
-looked scattered, and buttons that shift when one is missing jump around). **Just left of the
-`+`**, 6px from it, every seam has the **mix step button**: a 26px circle, white with a blue border
-and a blue ⟳, like the tip button (tooltip `Add a mix step here`). A seam never takes room of its own, and never
-takes a click meant for a card. Each `+` adds a stage into the box it's in, and opens it (message
-`Added a stage. New transfers go into it.`):
+**Adding stages and tip changes: the seams.** A **seam** (`docs/glossary.md`) is a place in the
+column where something can be added. There are two kinds, so what a button adds always matches
+where it is (Andy, 2026-10-31: with every button in one spot, it wasn't clear which used the
+group's tips and which started new ones):
+- **Seams inside a tip group box**: the space between two of its cards (stages in a box sit 10px
+  apart), above its first stage, and below its last stage. What they add uses **this group's
+  tips**.
+- **Seams between tip groups**: in the gap above the first box (below Start), between two boxes, and
+  below the last box (above End). What they add gets **new tips**, as a tip group of its own.
 
-| Seam | `+` adds | Accessible name |
+Pointing at a seam, or moving keyboard focus to its buttons, shows its line and buttons, floating
+over the cards. A seam never takes a click meant for a card or a box. Inside a box the line is
+solid blue (2px, 8px in from the box's sides); between tip groups it's **dashed** blue (2px),
+across the column's whole width, so it reads as "a new group here". Every seam has the same
+**three fixed spots**, each a 26px circle centered on the line: the **mix step button** (white,
+blue border, a blue ⟳) just left of the middle one, 6px from it; the **`+`** (solid blue; two white
+bars, 2px thick and 12px long, crossing at the circle's center, so it's exactly centered: a "+"
+character sits wherever the font puts it; Andy, 2026-10-26) in the exact middle; and a **right
+spot** just right of the `+`, 6px from it. A seam with nothing in its right spot leaves it empty,
+so nothing moves from one seam to the next (Andy, 2026-10-30: buttons spread along the line looked
+scattered, and buttons that shift when one is missing jump around).
+
+**Inside a tip group box.** The `+` adds a stage to this box, and the mix step button a mix step
+where the `+` would add a stage, with the same tips (`addMixStep`, with the same `beforeId` and
+`takeTips` as the `+`). Between two stages only, the right spot holds the **tip button** (white,
+blue border, the tip icon), which gives the stages from there on new tips, splitting the box. The
+seams above a box's first stage and below its last leave the right spot empty. These seams take no
+room of their own: they are the 10px spaces between the box's cards.
+
+| Seam | `+` adds | `+`'s accessible name |
 |---|---|---|
 | above a box's first stage | at the top of the box: `addStage(plan, thatStage, { takeTips: true })`, so the new stage takes the box's tips | `Add a stage at the start of these tips` |
 | between two stages | just before the lower one: `addStage(plan, lowerStage)` | `Insert a stage before stage 3, “Drugs”` |
 | below a box's last stage | at the end of the box: `addStage(plan, nextBoxFirstStage)`, or `null` for the last box | `Add a stage at the end of these tips` |
 
-The seam **below a box's last stage** also has a tip button, in the tip button's spot (tooltip `New
-tips, with a new stage`; accessible name `Add a stage with new tips at the end of these tips`): it
-adds a stage where that seam's `+` would, then a tip change on it (`addStage`, then
-`addTipChange(plan, newStage)`), as one undoable edit, and opens it (message `Added a stage with
-new tips. New transfers go into it.`). So a new tip group can be started at the end of a box
-without first adding a stage and then its tips (Andy, 2026-10-31). The new stage copies the stage
-before it, as a new stage does. The seam above a box's first stage keeps no tip button.
+- Tooltips: `+` `Add a stage here, with these tips`; mix step button `Add a mix step here, with
+  these tips`; tip button `New tips from here on`.
+- The mix step button's accessible names are the `+`'s with "a mix step" for "a stage", e.g.
+  `Insert a mix step before stage 3, “Drugs”`; the tip button's is `New tips before stage 3,
+  “Drugs”`.
+- The `+` and the mix step button add and open the new stage, as one undoable edit (messages
+  `Added a stage. New transfers go into it.` and `Added a mix step. Click or drag across wells on
+  the deck to mix them.`). The tip button adds a tip change before the lower stage
+  (`addTipChange`; message `New tips before stage 3, “Drugs”.`), which starts a new box there.
+- (Until 2026-11-01 the seam below a box's last stage also had a tip button, adding a stage with
+  new tips there, from the page tweaks of 2026-10-31. It goes: the seam between tip groups just
+  below does the same, where it belongs.)
 
-The **mix step button** adds a mix step where the `+` would add a stage, with the same tips
-(`addMixStep`, with the same `beforeId` and `takeTips` as the `+` in the table), and opens it
-(message `Added a mix step. Click or drag across wells on the deck to mix them.`), as one undoable
-edit. Its accessible names are the `+`'s with "a mix step" for "a stage", e.g. `Insert a mix step
-before stage 3, “Drugs”`. (Andy, 2026-10-29: choosing a mix step with the button you press, rather
-than a kind in the stage's box, which made two workflows.) A new stage or mix step copies the
-nearest of its own kind (`transfer-designer.md`).
+**Between tip groups.** The `+` adds a stage, and the mix step button a mix step, **with new tips**:
+`addStageWithNewTips(plan, beforeId)` or `addMixStepWithNewTips(plan, beforeId)`, `beforeId` being
+the first stage of the box below the seam, or `null` for the seam above End (`transfer-designer.md`,
+"Tip changes and tip groups"). The new stage or mix step is a tip group of its own, loading the tip
+type and probes in use there, and the stages below keep the tips they had: above the first box, the
+new stage becomes the run's first stage, with the run's first tips, and the stage that was first
+gets a tip change of its own loading the same tips. It's added and opened as one undoable edit
+(messages `Added a stage with new tips. New transfers go into it.` and `Added a mix step with new
+tips. Click or drag across wells on the deck to mix them.`). The right spot stays empty for now: the
+randomizer will add a button there (v0.2.0's item 9).
+- Tooltips: `+` `Add a stage here, with new tips`; mix step button `Add a mix step here, with new
+  tips`.
+- Accessible names: `Add a stage with new tips before stage 3, “Drugs”` (above the first box too,
+  naming stage 1), or `Add a stage with new tips at the end of the run` above End; the mix step
+  button's say "a mix step" for "a stage".
+- **Spacing**: Start, the boxes and End sit **18px** apart (12px until 2026-11-01), and each seam
+  between tip groups is a 14px band in the middle of its gap, so pointing anywhere between two
+  boxes finds it, and it never reaches into a box or a card.
 
-The tip button adds a tip change before the lower stage (`addTipChange`; message `New tips before
-stage 3, “Drugs”.`), which starts a new box there.
+A new stage or mix step, added at any seam, copies the nearest of its own kind
+(`transfer-designer.md`). (Andy, 2026-10-29: choosing a mix step with the button you press, rather
+than a kind in the stage's box, which made two workflows.)
 
 **What changed glows.** When a stage or a tip group box appears that wasn't there at the last
 drawing, it glows soft yellow (`#FFF1BF` background, a 4px `#F3D36B` ring) and fades over 1.2
@@ -804,7 +840,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **Wells:** 36px, 4px apart; an empty well white with a gray border (`#BDBDB5`), its name 10px.
   Grid headings 12px gray.
 - **Tip group boxes:** 12px corners; light blue (`#EEF3FA`, border `#9DB7DB`), alternating with light
-  sand (`#F5F1E8`, border `#D9D2C3`).
+  sand (`#F5F1E8`, border `#D9D2C3`). Start, the boxes and End 18px apart, leaving room for the
+  seams between tip groups (section 7).
 - **Editing boxes:** 280px wide; a stage's 320px (section 10). In a stage's box, the grid's column
   headings and row labels look like the box's other field names (12px, semibold, gray, capitals);
   the label column is as wide as its widest label, and the two end columns share the rest equally,
@@ -849,8 +886,7 @@ page's configuration (ADR 0009):
 - undo and redo with the buttons and the keys, after each kind of edit;
 - a plan with an overdraw shows the marks, the key, the red stage and the problem count;
 - the page tweaks of 2026-10-31: a picked swatch keeps its color; Remove in a component's, a
-  stage's, a mix step's and a tip change's box removes at once and Undo brings it back; the last
-  seam of a box shows a tip button that adds a stage with new tips, as one undo; a problem
+  stage's, a mix step's and a tip change's box removes at once and Undo brings it back; a problem
   transfer's volume is red with its tooltip, for a dead-volume draw, an overdraw and an overfill;
   the card has no total, usable or capacity lines, on a plate and a trough, and a striped well's
   card shows nothing extra;
@@ -861,6 +897,15 @@ page's configuration (ADR 0009):
   at Start, and another taken over it by a transfer: the bar, `Overfill` in the key, the messages,
   the count, the refusal; a well both overdrawn and overfilled shows both marks; the stripes and
   marks on a plate and on a trough alike;
+- seams: inside a box, the seams above its first stage, between two stages and below its last
+  stage, each with the ⟳ and `+` adding into that box with its tips, and the tip button only
+  between two stages, splitting the box; between tip groups, the seams above the first box, between
+  two boxes and above End, each with a dashed line across the column, and its ⟳ and `+` adding a
+  stage or mix step in a box of its own (above the first box: the old first stage gets its own new
+  tips, same type and probes; above End: last, with the last box's tips), each as one undo; every
+  seam's buttons in the same three spots, nothing in the right spot between tip groups; each seam
+  found by pointing anywhere in its gap, with keyboard focus too, and their tooltips and accessible
+  names;
 - mix steps: the ⟳ on seams (always just left of the `+`) adds one and opens it; clicking a well
   mixes it, again stops mixing it, and dragging mixes a box; its card's `N wells mixed`, ⟳ after its
   name, its wells' list with `N% of well` and `×`; its box's note and Remove; a new mix step copies

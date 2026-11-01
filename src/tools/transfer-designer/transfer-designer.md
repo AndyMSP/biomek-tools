@@ -27,6 +27,11 @@
 > **Draft change (2026-10-30, mixing layer (c2)):** mix steps: `addMixStep`, `isMixStep`,
 > `mixWells`, `unmixWell`; a mix step takes only mixed wells; and a new stage copies the nearest
 > stage of its own kind (sections 3 to 6).
+>
+> **Draft change (2026-11-01, seams, the first part of v0.2.0's item 9):** `addStageWithNewTips`
+> and `addMixStepWithNewTips` add a stage or a mix step in a tip group of its own, for the page's
+> seams between tip groups (sections 3, 4 and 6; `transfer-designer-page.md`, section 7). Nothing
+> else changes. It becomes Final once built and tested by Andy.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -241,6 +246,16 @@ new for it (`plan-file.md`).
 - After stages are added or removed, a tip change keyed by the stage that's now first in the stage
   order becomes the `START` one (its tip type and probes replace the `START` one's), so there's
   never one before the first stage but `START`.
+- **Adding a stage in a tip group of its own** (`addStageWithNewTips`, `addMixStepWithNewTips`;
+  Andy, 2026-10-31, from the preview: a seam between tip groups adds a stage with new tips). The
+  new stage is added as `addStage` (or `addMixStep`) adds it, without `takeTips`; then it gets a tip
+  change of its own (none is added when it's the first stage, whose tips are the `START` ones), and
+  the stage just after it, if there is one and it has no tip change, gets one too. Each added tip
+  change loads the tip type and probes in use there, as `addTipChange` does. So the new stage
+  shares tips with nothing, and the stage after it keeps the tips it had. For example, adding
+  before the first stage of a plan whose `START` tips are BC230 on `[1, 2, 3, 4]`: the new stage is
+  first, with the `START` tips, and the old first stage gets a tip change of BC230 on
+  `[1, 2, 3, 4]`.
 
 ### Components and starting contents
 - Components are added by name and color, renamed, recolored and removed. Renaming changes the name
@@ -338,6 +353,8 @@ given; "returns the plan with …" means a new plan.
 | `stageOrder(plan)` | the stage IDs in stage order (the plan's `stageOrder`). |
 | `addStage(plan, beforeId, { takeTips })` | `{ plan, id }`: the plan with a new transfer stage before stage `beforeId` (or last, for `null`), and its ID; its settings copied from the nearest transfer stage (section 3, "Stages"). `takeTips` defaults to `false`. Throws if `beforeId` isn't a stage or `null`. |
 | `addMixStep(plan, beforeId, { takeTips })` | the same for a new mix step called `NEW_MIX_STEP_NAME`, its settings copied from the nearest mix step, or the default mix step settings (section 3, "Mix steps"). |
+| `addStageWithNewTips(plan, beforeId)` | `{ plan, id }`: the plan with a new transfer stage before stage `beforeId` (or last, for `null`) in a tip group of its own, and its ID, as one edit (section 3, "Tip changes and tip groups"). Throws as `addStage` does. |
+| `addMixStepWithNewTips(plan, beforeId)` | the same for a new mix step (as `addMixStep` makes it). |
 | `isMixStep(plan, id)` | `true` if stage `id` is a mix step; `false` for a transfer stage or an ID that isn't a stage. |
 | `mixWells(plan, id, wells)` | the plan with mix step `id` mixing each of `wells` (each `{ labware, well }`, on the deck) it doesn't mix yet, as one edit; the same plan if it mixes them all already. Throws if `id` isn't a mix step, or a well isn't on the deck. |
 | `unmixWell(plan, id, well)` | the plan without mix step `id`'s mixed well `well`. Throws if `id` isn't a mix step, or it doesn't mix `well`. |
@@ -413,6 +430,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setStageMix`: the end isn't one of the modes | `The source's technique and liquid type aren't one of the pipetting modes, so its mixing can't be switched. Choose a mode for it first.` |
 | `setStageMix`: switching mixing on with a mode that can't mix | `Non-Contact can't mix. Choose another mode for the destination first.` |
 | `addStage`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a stage before.` |
+| `addStageWithNewTips`, `addMixStepWithNewTips`: `beforeId` isn't a stage or `null` | as `addStage` (or `addMixStep`): `There's no stage "9" to add a stage before.` |
 | `removeStage`: the only stage | `A plan needs at least one stage, so its only stage can't be removed.` |
 | `addTransfer`: the stage isn't in the plan | `There's no stage "9" in the plan to add this transfer to.` |
 | `addTransfer`, `addTransfers`: a transfer into a mix step that isn't a mixed well (from a well into itself, of `MIX_STEP_VOLUME`) | `Stage 2, “Mix plate”, is a mix step: it only mixes wells. Add this transfer to a transfer stage.` |
@@ -553,6 +571,24 @@ order of checks.
   without it, the new stage joins the tip group before.
 - `addStage` before the first stage keeps the `START` tips first.
 - `addStage` before a stage that isn't in the plan throws.
+- `addStageWithNewTips`, in a plan of three stages with `START` tips on BC230 `[1, 2]` and a tip
+  change of BC1070 `[1, 2, 3, 4]` before stage 3:
+  - before stage 3 (the first of its tip group): the new stage comes just before stage 3, with a
+    tip change of its own loading BC230 `[1, 2]` (the tips in use there); stage 3's tip change is
+    unchanged; the tip groups are stages 1 and 2, the new stage, then stage 3;
+  - before stage 2 (inside a tip group): the new stage gets a tip change of BC230 `[1, 2]`, and so
+    does stage 2, which had none; four tip groups;
+  - before stage 1: the new stage is first, with the `START` tips (BC230 `[1, 2]`), unchanged; old
+    stage 1 gets a tip change of BC230 `[1, 2]`; no tip change is keyed by the new stage;
+  - with `null`: the new stage is last, with a tip change of BC1070 `[1, 2, 3, 4]` (the tips in use
+    at the end), and nothing after it changes;
+  - the new stage's settings are copied as `addStage`'s are, and it has no transfers;
+  - before a stage that isn't in the plan throws `addStage`'s error, and the plan given is
+    unchanged.
+- `addMixStepWithNewTips` before stage 3 adds a mix step (`isMixStep`), named `NEW_MIX_STEP_NAME`,
+  with a tip change of its own, as `addStageWithNewTips` does.
+- In the table of which parts of the plan each edit may change, `addStageWithNewTips` and
+  `addMixStepWithNewTips` change `stageList`, `stageOrder` and `tipChanges`.
 - `removeStage` removes a stage with transfers, and its transfers, and takes it out of the stage
   order, leaving the others in their order; a tip change keyed by it goes; removing the only stage
   throws.
