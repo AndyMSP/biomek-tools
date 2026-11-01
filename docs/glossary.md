@@ -12,6 +12,21 @@ is an overfill.
 A liquid the user names in a plan, such as "Media" or "Drug_A", each with its own color for drawing
 it. A plan's starting contents say how much of each component every well holds; contents tracking
 then follows the components through the transfers. Two components never share a name or a color.
+A component may carry constituents (below); one with none carries nothing at a known concentration.
+
+**Concentration**
+How much of a constituent a well's mixture carries, in the constituent's unit: the sum, over the
+well's components, of each component's share of the well times what it carries (ADR 0013;
+`concentrations.md`). A well 20% from a 10 mM Dye stock carries Dye at 2 mM. Shown in the unit
+that fits the value best (476 µM, not 0.476 mM), on the contents card.
+
+**Constituent**
+Something a component carries at a known concentration: a name, an amount and a unit, such as
+Hy-Soy at 4 g/L in a feeding medium, or Dye at 10 mM in a dye stock (ADR 0013). A component may
+carry any number; "Dye is 10 mM" is a component with one constituent, named Dye. The same
+constituent name in different components is the same thing, so their amounts add up in a well, and
+it keeps one family of units (g/L and mg/L, say; not g/L in one component and mM in another).
+Constituents are part of the plan and saved in plan files.
 
 **Dead volume**
 The liquid a well holds that a tip can't reach, in µL: one value per labware type, in
@@ -70,7 +85,7 @@ pipette. Some pipetting modes suit only one end; Non-Contact, for example, is fo
 
 **Plan**
 Everything the tools hold about one experiment's liquid handling: its experiment name, its
-components, its starting contents (what each well holds before the run), its operation list, its
+components (each with its constituents), its starting contents (what each well holds before the run), its operation list, its
 stage list, its tip changes, its labware labels, its well labels and its randomizations. The transfer designer builds a plan, and the file writer turns it into the
 files the Biomek runs. A plan isn't a Biomek method: the general-purpose method stays the same for
 every plan (ADR 0006, ADR 0007).

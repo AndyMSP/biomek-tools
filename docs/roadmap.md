@@ -288,6 +288,18 @@ Last updated: 2026-11-01
   by both tools), randomizations in the plan and plan files (format version 6), and the page's
   dice button, box, card and deck picking (`random-pool.md`, `randomizer.md`,
   `transfer-designer.md`, `plan-file.md`, `transfer-designer-page.md`; glossary "Randomization").
+- **Constituents and concentrations are specified** (Draft, 2026-11-01; ADR 0013, Proposed), from
+  a preview Andy shaped on 2026-11-01 while not at the Biomek: two "Later" items, final
+  concentrations and constituents of a component, done as one model. Each component carries
+  **constituents** (a name, an amount and a unit; glossary), set in its box's `Contains` field and
+  saved in plan files (format version 7); the contents card shows each well's **concentrations**,
+  from the new shared module `concentrations` (`src/shared/concentrations/concentrations.md`) and
+  `config/concentration-units.js`. Units are the lab's own five, g/L, mM, µM, % and × (Andy,
+  2026-11-01, from the units Exp30 to Exp36 use; U/mL and mg/mL were tried and dropped), with M,
+  nM and mg/L for display. Decided with Andy, 2026-11-01: one family per constituent name across
+  the plan (g/L and mM can't be added without a molecular weight); renaming a component leaves a
+  constituent of the same name alone; concentrations on the card only, not the deck. Written while
+  Andy was driving, so the choices are listed in its pull request. Next, Claude Code builds it.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -454,8 +466,12 @@ final Biomek runs, so they test the files as they will be:
 6. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
-- Final concentrations, from each component's stock concentration (such as "Dye is 10 mM").
-  Each component's volume fraction of a well is already shown on the page's contents card.
+- **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen
+  constituent's concentration in every well. For now they're on the contents card only (ADR 0013),
+  to see whether the card is enough in use.
+- **Converting between unit families** (2026-11-01): a constituent in g/L in one component and mM
+  in another needs its molecular weight; the tool refuses the second family instead (ADR 0013). A
+  molecular weight per constituent would let the two add up.
 - Editing the list further: moving a stage, or a transfer within its stage.
 - **Splitting a stage's rows by well volume** (from the mixing work, 2026-10-29): a stage mixes one
   volume per row, worked out from its emptiest well, so fuller wells mix less than their share. The
@@ -476,8 +492,6 @@ final Biomek runs, so they test the files as they will be:
 - **A guided start** for an empty plan (Andy considered it, 2026-10-26, and chose not now): a
   checklist that ticks itself (bring out labware, fill wells at Start, add transfers), shown while
   the plan is empty. Perhaps once others in the lab use the tool.
-- **Constituents of a component** (Andy, 2026-10-25): a component made of several things, such as a
-  medium with a drug in it. Not designed yet.
 - **Tips only for stages that run** (Andy, 2026-10-28, reviewing #86): a tip group's probes count
   only its stages with transfers, so an empty stage left in the plan with more probes than the rest
   doesn't load extra tips. To keep the page's tip counts and the files agreeing, the change goes in
