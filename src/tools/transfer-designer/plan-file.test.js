@@ -30,6 +30,7 @@ import {
   setTipType,
   setTipProbes,
   setLabel,
+  setWellLabels,
   setExperimentName,
 } from "./transfer-designer.js";
 import { PLAN_FILE_FORMAT, PLAN_FILE_VERSION, planToText, planFromText } from "./plan-file.js";
@@ -65,7 +66,8 @@ function transferTo(stage, well, volume = 50, from = "1") {
 // A plan with something in every part: the experiment name "Exp36"; components Media and Dye in
 // troughs 1 and 2; stages "1" (Seeding), "2" (Wait, without transfers) and "3" (Treatment), in
 // that order; transfers of 2.5 and 50 µL in stage 1 and 0.1 µL in stage 3; START tips on probes 1
-// to 4; a tip change before stage 3 with the last tip type, on probe 1; and a label on PLATE.
+// to 4; a tip change before stage 3 with the last tip type, on probe 1; and a label on PLATE. It
+// has no well labels, so that files of every version open to it.
 function fullPlan() {
   let { plan } = emptyPlan();
   plan = setExperimentName(plan, "Exp36");
@@ -105,10 +107,18 @@ function mixingPlan() {
   return setStageMix(plan, "3", "destination", { share: 50, times: 2, speed: 100 });
 }
 
-// fullFile() as a version 3 file, as saved on 2026-10-30 before mixing: each stage's settings have
-// no sourceMix or destinationMix. Opened, it gives fullPlan(), whose stages don't mix.
+// fullFile() as a version 4 file, as saved from 2026-10-30 to 2026-11-01, before well labels: no
+// wellLabels. Opened, it gives fullPlan(), which has no well labels.
+function version4File() {
+  const file = { ...fullFile(), version: 4 };
+  delete file.wellLabels;
+  return file;
+}
+
+// version4File() as a version 3 file, as saved on 2026-10-30 before mixing: each stage's settings
+// have no sourceMix or destinationMix. Opened, it gives fullPlan(), whose stages don't mix.
 function version3File() {
-  const file = { ...fullFile(), version: 3 };
+  const file = { ...version4File(), version: 3 };
   file.stages = file.stages.map((stage) => {
     const { sourceMix, destinationMix, ...settings } = stage.settings;
     return { ...stage, settings };
@@ -157,6 +167,7 @@ function contentsOf(plan) {
     operations: plan.operationList.listOperations(),
     tipChanges: plan.tipChanges,
     labwareLabels: plan.labwareLabels,
+    wellLabels: plan.wellLabels,
   };
 }
 
@@ -192,6 +203,7 @@ describe("plan-file", () => {
       "operations",
       "tipChanges",
       "labwareLabels",
+      "wellLabels",
     ]);
     assert.equal(file.format, PLAN_FILE_FORMAT);
     assert.equal(file.version, PLAN_FILE_VERSION);
@@ -202,7 +214,7 @@ describe("plan-file", () => {
 
   test("the format and version are the specification's", () => {
     assert.equal(PLAN_FILE_FORMAT, "biomek-tools transfer plan");
-    assert.equal(PLAN_FILE_VERSION, 4);
+    assert.equal(PLAN_FILE_VERSION, 5);
   });
 
   test("planToText writes each tip change with its probes, and each stage's settings without any", () => {
@@ -299,11 +311,22 @@ describe("plan-file", () => {
     assert.deepEqual(Object.keys(opened.tipChanges).sort(), ["3", START].sort());
   });
 
-  test("an empty plan, saved and opened, has the same contents, and is written as version 4", () => {
+  test('an empty plan, saved and opened, has the same contents, and is written as version 5, with "wellLabels": {}', () => {
     const plan = emptyPlan().plan;
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 4);
+    assert.equal(JSON.parse(text).version, 5);
+    assert.deepEqual(JSON.parse(text).wellLabels, {});
     const opened = planFromText(text);
+    assert.deepEqual(contentsOf(opened), contentsOf(plan));
+  });
+
+  test("well labels, saved and opened, give the same well labels", () => {
+    const labels = { [PLATE]: { A1: "Cond 1", A2: "Cond 1" }, [RESERVOIR]: { 5: "Media" } };
+    const plan = setWellLabels(fullPlan(), labels);
+    const text = planToText(plan, SAVED_BY);
+    assert.deepEqual(JSON.parse(text).wellLabels, labels);
+    const opened = planFromText(text);
+    assert.deepEqual(opened.wellLabels, labels);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
   });
 
@@ -347,21 +370,21 @@ describe("plan-file", () => {
     assertRefused(withoutDestinationMix, "stage 3: A mix step needs a destination mix: that's what it does.");
   });
 
-  // --- Version 4 files ---
+  // --- Version 5 files ---
 
-  test("a version 4 stage without sourceMix gets the stage list's missing-setting message", () => {
+  test("a version 5 stage without sourceMix gets the stage list's missing-setting message", () => {
     const file = fullFile();
     delete file.stages[1].settings.sourceMix;
     assertRefused(file, /stage 2: A stage's settings need .+, but are missing "sourceMix"\./);
   });
 
-  test("a version 4 stage whose mix the stage list refuses gives its message", () => {
+  test("a version 5 stage whose mix the stage list refuses gives its message", () => {
     const file = fullFile();
     file.stages[2].settings.destinationMix = { share: 0, times: 3, speed: 400 };
     assertRefused(file, /stage 3: The destination mix's share must be a number above 0 and at most 100/);
   });
 
-  test('mixing must match the technique: a version 4 stage 2 with a sourceMix and sourceTechnique "Operation" is refused; with "OperationMix" it opens', () => {
+  test('mixing must match the technique: a version 5 stage 2 with a sourceMix and sourceTechnique "Operation" is refused; with "OperationMix" it opens', () => {
     const file = fullFile();
     // Stage 2 uses the default mode, Medium, at its source.
     assert.equal(file.stages[1].settings.sourceTechnique, "Operation");
@@ -376,6 +399,54 @@ describe("plan-file", () => {
     const opened = open(file);
     assert.deepEqual(opened.stageList.get("2").settings.sourceMix, exampleMix());
     assert.equal(opened.stageList.get("2").settings.sourceTechnique, "OperationMix");
+  });
+
+  // --- Version 4 files and well labels ---
+
+  test("a version 4 file opens, with no well labels", () => {
+    const opened = open(version4File());
+    assert.deepEqual(opened.wellLabels, {});
+    assert.deepEqual(contentsOf(opened), contentsOf(fullPlan()));
+  });
+
+  test("a version 4 file with wellLabels is refused as having an extra property", () => {
+    assertRefused(
+      { ...version4File(), wellLabels: {} },
+      'it has "wellLabels", which a plan file doesn\'t have.',
+    );
+  });
+
+  test("a version 5 file without wellLabels is refused as missing it", () => {
+    const file = fullFile();
+    delete file.wellLabels;
+    assertRefused(file, 'it\'s missing "wellLabels".');
+  });
+
+  test("a version 5 file whose wellLabels is a list gets the wrong-kind message", () => {
+    assertRefused({ ...fullFile(), wellLabels: [] }, '"wellLabels" must be an object.');
+  });
+
+  test("well labels are strict: a label with spaces at its ends, a blank label, a labware with {}, or a well not on the grid is refused with setWellLabels's message, not tidied", () => {
+    const cases = [
+      [{ [PLATE]: { A1: " Cond 1" } }, `well labels: The label for ${PLATE} A1, " Cond 1", has spaces at the start or end. Remove them.`],
+      [{ [PLATE]: { A1: "" } }, `well labels: The label for ${PLATE} A1 is blank. A well without a label is left out of the well labels.`],
+      [{ [PLATE]: {} }, `well labels: The well labels for ${PLATE} are empty. A labware without labeled wells is left out of the well labels.`],
+      [{ [PLATE]: { Z99: "Cond 1" } }, `well labels: "Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`],
+    ];
+    for (const [wellLabels, problem] of cases) {
+      assertRefused({ ...fullFile(), wellLabels }, problem);
+    }
+  });
+
+  test("the well labels are checked last: a bad experiment name and bad well labels report the name", () => {
+    const file = { ...fullFile(), experimentName: "Exp 36", wellLabels: { [PLATE]: { A1: "" } } };
+    assertRefused(file, /the experiment name: /);
+  });
+
+  test("saving an opened version 4 file writes version 5, with no well labels", () => {
+    const file = JSON.parse(planToText(open(version4File()), SAVED_BY));
+    assert.equal(file.version, 5);
+    assert.deepEqual(file.wellLabels, {});
   });
 
   // --- Version 3 files ---
@@ -414,9 +485,9 @@ describe("plan-file", () => {
     assertRefused(file, /stage 2: The stage name is blank\./);
   });
 
-  test("saving an opened version 3 file writes version 4, with the stages' mixes null", () => {
+  test("saving an opened version 3 file writes version 5, with the stages' mixes null", () => {
     const file = JSON.parse(planToText(open(version3File()), SAVED_BY));
-    assert.equal(file.version, 4);
+    assert.equal(file.version, PLAN_FILE_VERSION);
     for (const stage of file.stages) {
       assert.equal(stage.settings.sourceMix, null, stage.id);
       assert.equal(stage.settings.destinationMix, null, stage.id);
@@ -488,15 +559,15 @@ describe("plan-file", () => {
     assertRefused(file, 'stage 1\'s settings have "destinationMix", which a version 2 file\'s stages don\'t have.');
   });
 
-  test("a version 3 or 4 tip change without probes is refused as not having exactly its properties", () => {
-    for (const file of [version3File(), fullFile()]) {
+  test("a version 3 to 5 tip change without probes is refused as not having exactly its properties", () => {
+    for (const file of [version3File(), version4File(), fullFile()]) {
       file.tipChanges.start = { tipType: TIP_TYPES[0] };
       assertRefused(file, 'the tip change at "start" must be an object with exactly "tipType" and "probes".');
     }
   });
 
-  test("a version 3 or 4 stage with probes is refused by the stage list as an extra setting", () => {
-    for (const file of [version3File(), fullFile()]) {
+  test("a version 3 to 5 stage with probes is refused by the stage list as an extra setting", () => {
+    for (const file of [version3File(), version4File(), fullFile()]) {
       file.stages[0].settings.probes = [1, 2];
       assertRefused(file, /stage 1: A stage's settings can only have .+, but also got "probes"\./);
     }
@@ -562,7 +633,7 @@ describe("plan-file", () => {
     );
   });
 
-  test("the experiment name is checked last: bad labels and a bad name report the labels", () => {
+  test("the experiment name is checked after the labels: bad labels and a bad name report the labels", () => {
     const file = { ...fullFile(), experimentName: "Exp 36", labwareLabels: { [PLATE]: "" } };
     assertRefused(file, /labels: The label for .+ is blank\./);
   });
@@ -583,8 +654,8 @@ describe("plan-file", () => {
 
   test("a version above this one was saved by a newer version of the tools", () => {
     assertRefused(
-      { ...fullFile(), version: 5 },
-      "it was saved by a newer version of the tools (plan format 5). Open it with that version or a later one.",
+      { ...fullFile(), version: 6 },
+      "it was saved by a newer version of the tools (plan format 6). Open it with that version or a later one.",
     );
   });
 

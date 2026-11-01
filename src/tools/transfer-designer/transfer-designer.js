@@ -2,8 +2,8 @@
 // made to one, each checked so that a plan is always valid.
 //
 // A plan holds the components, the starting contents, the operation list, the stage list, the
-// stage order (a list of stage IDs; ADR 0011), the tip changes, the labware labels and the
-// experiment name. A stage is a transfer stage or a mix step, which only mixes its wells, each a
+// stage order (a list of stage IDs; ADR 0011), the tip changes, the labware labels, the well labels
+// and the experiment name. A stage is a transfer stage or a mix step, which only mixes its wells, each a
 // transfer from the well into itself. A plan is never changed after it's made: every edit returns
 // a new plan that shares every part the edit didn't change, so the plan history can keep many
 // plans cheaply. The page
@@ -58,7 +58,7 @@ const ENDS = ["source", "destination"];
 // --- Plans ---
 
 // A new plan, and the ID of its one stage: { plan, stageId }. The plan has no components, starting
-// contents, transfers or labels, and no experiment name (""); its stage is called NEW_STAGE_NAME
+// contents, transfers, labels or well labels, and no experiment name (""); its stage is called NEW_STAGE_NAME
 // and has the default settings; and its first tips are the first tip type in config/tip-types.js,
 // on the first DEFAULT_PROBE_COUNT probes (Andy, 2026-10-30).
 export function emptyPlan() {
@@ -71,6 +71,7 @@ export function emptyPlan() {
     stageOrder: [id],
     tipChanges: { [START]: { tipType: TIP_TYPES[0], probes: probesFor(DEFAULT_PROBE_COUNT) } },
     labwareLabels: {},
+    wellLabels: {},
     experimentName: "",
   });
   return { plan, stageId: id };
@@ -663,13 +664,17 @@ export function emptyWells(plan, wells) {
 
 // --- Labware ---
 
-// The names of the labware the plan uses, in its starting contents or in any transfer, in the
-// deck's order, e.g. ["Plate", "Res"].
+// The names of the labware the plan uses, in its starting contents, in any transfer, or with a
+// well label, in the deck's order, e.g. ["Plate", "Res"]. A labware whose wells are only labeled
+// counts too (Andy, 2026-11-01), so a tool can bring it out.
 export function labwareUsed(plan) {
   const used = new Set(plan.startingContents.map((entry) => entry.labware));
   for (const operation of plan.operationList.listOperations()) {
     used.add(operation.source.labware);
     used.add(operation.destination.labware);
+  }
+  for (const labware of Object.keys(plan.wellLabels)) {
+    used.add(labware);
   }
   return labwareNames().filter((name) => used.has(name));
 }
@@ -736,7 +741,118 @@ export function setLabels(plan, labels) {
   return withParts(plan, { labwareLabels: { ...labels } });
 }
 
+// --- Well labels ---
+
+// The label of well `end` ({ labware, well }), e.g. "Cond 1", or null if it has none.
+// Throws if `end` isn't a well on the deck (deck.checkWell's message).
+export function wellLabelOf(plan, end) {
+  checkWell(end);
+  const labels = plan.wellLabels;
+  if (!Object.hasOwn(labels, end.labware) || !Object.hasOwn(labels[end.labware], end.well)) {
+    return null;
+  }
+  return labels[end.labware][end.well];
+}
+
+// Returns the plan with well `end` ({ labware, well }) labeled `label`, its spaces at the ends
+// removed; a label that's blank after that removes the well's label, and a labware left with no
+// labeled wells is left out of wellLabels. Any other text is a label, and labels may repeat.
+// Giving the well the label it has, or removing a label it doesn't have, returns the same plan, so
+// a caller can tell nothing changed. Throws, in this order, if `end` isn't a well on the deck or
+// `label` isn't text.
+// e.g. setWellLabel(plan, { labware: "Deep1", well: "A1" }, " Cond 1 ") labels Deep1 A1 "Cond 1".
+export function setWellLabel(plan, end, label) {
+  checkWell(end);
+  if (typeof label !== "string") {
+    throw new Error(`A well's label must be text, like "Cond 1", but got ${describeValue(label)}.`);
+  }
+  const trimmed = label.trim();
+  const current = wellLabelOf(plan, end);
+  // A blank label stands for "no label", which is null.
+  if ((trimmed === "" ? null : trimmed) === current) {
+    return plan;
+  }
+  const { labware, well } = end;
+  const labwareWells = plan.wellLabels[labware] ?? {};
+  const newWells =
+    trimmed === "" ? withoutKey(labwareWells, well) : withKey(labwareWells, well, trimmed);
+  const wellLabels =
+    Object.keys(newWells).length === 0
+      ? withoutKey(plan.wellLabels, labware)
+      : withKey(plan.wellLabels, labware, newWells);
+  return withParts(plan, { wellLabels });
+}
+
+// Returns the plan with its well labels replaced by `labels`, in the form of the plan's wellLabels:
+// labware names, each holding well names and labels, e.g. { Deep1: { A1: "Cond 1" } }; {} removes
+// every label. It's strict, for a table already in the plan's own form (such as one read from a
+// plan file): it refuses what setWellLabel would tidy. Throws, in this order, if `labels` isn't an
+// object; then for each labware in turn: it isn't on the deck, its wells aren't an object or are
+// empty; then for each of its wells in turn: it isn't on the grid, or its label is wrong
+// (checkWellLabelAsStored).
+export function setWellLabels(plan, labels) {
+  if (!isObject(labels)) {
+    throw new Error(
+      "The well labels must be an object of labware names, each holding an object of wells and " +
+        `labels, like { Deep: { A1: "Cond 1" } }, but got ${describeValue(labels)}.`,
+    );
+  }
+  const copied = {};
+  for (const [labware, wells] of Object.entries(labels)) {
+    checkLabwareWellLabels(labware, wells);
+    // A copy, so freezing the plan doesn't freeze the caller's objects.
+    copied[labware] = { ...wells };
+  }
+  return withParts(plan, { wellLabels: copied });
+}
+
 // --- Helpers used only inside this module ---
+
+// Throws if `wells`, the well labels for the labware called `labware`, aren't as a plan stores
+// them: the labware on the deck; `wells` an object, not empty; each well on the labware's grid,
+// with a label as a plan stores it, e.g. checkLabwareWellLabels("Deep1", {}) throws 'The well
+// labels for Deep1 are empty. …'.
+function checkLabwareWellLabels(labware, wells) {
+  // gridOf throws the deck's own message for a labware that isn't on the deck.
+  gridOf(labware);
+  if (!isObject(wells)) {
+    throw new Error(
+      `The well labels for ${labware} must be an object of wells and labels, ` +
+        `like { A1: "Cond 1" }, but got ${describeValue(wells)}.`,
+    );
+  }
+  if (Object.keys(wells).length === 0) {
+    throw new Error(
+      `The well labels for ${labware} are empty. ` +
+        "A labware without labeled wells is left out of the well labels.",
+    );
+  }
+  for (const [well, label] of Object.entries(wells)) {
+    checkWell({ labware, well });
+    checkWellLabelAsStored(`${labware} ${well}`, label);
+  }
+}
+
+// Throws if `label`, the label for the well named `where` (e.g. "Deep1 A1"), isn't as a plan stores
+// it: text, not blank, without spaces at its ends, e.g. checkWellLabelAsStored("Deep1 A1", "")
+// throws 'The label for Deep1 A1 is blank. …'.
+function checkWellLabelAsStored(where, label) {
+  if (typeof label !== "string") {
+    throw new Error(
+      `The label for ${where} must be text, like "Cond 1", but got ${describeValue(label)}.`,
+    );
+  }
+  if (label.trim() === "") {
+    throw new Error(
+      `The label for ${where} is blank. A well without a label is left out of the well labels.`,
+    );
+  }
+  if (label !== label.trim()) {
+    throw new Error(
+      `The label for ${where}, ${describeValue(label)}, has spaces at the start or end. Remove them.`,
+    );
+  }
+}
 
 // Returns { plan, id }: the plan with a new stage of one kind (a transfer stage or a mix step) just
 // before stage `beforeId` (or last, for null), as addStage and addMixStep describe. `kind` says
