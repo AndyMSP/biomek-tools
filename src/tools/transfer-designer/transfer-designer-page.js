@@ -41,6 +41,8 @@ import {
   stageOrder,
   addStage,
   addMixStep,
+  addStageWithNewTips,
+  addMixStepWithNewTips,
   isMixStep,
   mixWells,
   unmixWell,
@@ -185,8 +187,8 @@ let lastingMixProblems = new Map();
 // Each drawn well's element, by wellKey, so marks and arrows can find them.
 const wellElements = new Map();
 
-// The stage and tip group keys drawn last time, for the glow (section 7); null before the first
-// drawing, when nothing glows.
+// The stage and tip group keys drawn last time, and the first stage of each box ("box-first:"), for
+// the glow (section 7); null before the first drawing, when nothing glows.
 let lastDrawnKeys = null;
 
 // When each glow started (performance.now()), by key, so it carries on through redrawing.
@@ -1514,8 +1516,8 @@ function createArrow(from, to, color, { insetEnd, dashed }) {
 
 // --- The Stages column (section 7) ---
 
-// Redraws the Stages column from the plan: Start, the tip group boxes with their stages, End, and
-// the open editing box.
+// Redraws the Stages column from the plan: Start, the tip group boxes with their stages, End, a
+// seam between tip groups above each box and above End, and the open editing box.
 function refreshStages() {
   const plan = currentPlan();
   const open = currentOpen();
@@ -1524,8 +1526,10 @@ function refreshStages() {
   const drawnKeys = new Set();
   const items = [createEntry(plan, START, open, problems)];
   groups.forEach((group, index) => {
+    items.push(createSeamBetweenGroups(plan, group.stages[0]));
     items.push(createTipGroupBox(plan, group, index, groups[index + 1], open, problems, drawnKeys));
   });
+  items.push(createSeamBetweenGroups(plan, null));
   items.push(createEntry(plan, END, open, problems));
   elements.stagesList.replaceChildren(...items);
   lastDrawnKeys = drawnKeys;
@@ -1934,7 +1938,7 @@ function createTipGroupBox(plan, group, index, nextGroup, open, problems, drawnK
   const stages = createElement("div", "", "tip-group-stages");
   const firstStage = group.stages[0];
   stages.append(
-    createSeam(plan, {
+    createSeamInBox(plan, {
       addBefore: firstStage,
       takeTips: true,
       accessibleName: "Add a stage at the start of these tips",
@@ -1947,7 +1951,7 @@ function createTipGroupBox(plan, group, index, nextGroup, open, problems, drawnK
     const lower = group.stages[place + 1];
     if (lower !== undefined) {
       stages.append(
-        createSeam(plan, {
+        createSeamInBox(plan, {
           addBefore: lower,
           takeTips: false,
           accessibleName: `Insert a stage before ${stageLabel(plan, lower)}`,
@@ -1957,23 +1961,34 @@ function createTipGroupBox(plan, group, index, nextGroup, open, problems, drawnK
     }
   });
   stages.append(
-    createSeam(plan, {
+    createSeamInBox(plan, {
       addBefore: nextGroup === undefined ? null : nextGroup.stages[0],
       takeTips: false,
       accessibleName: "Add a stage at the end of these tips",
-      tipsWithStage: true,
     }),
   );
   box.append(stages);
-  // A box whose key is a stage that's new itself isn't a new box: its tip change moved onto the new
-  // stage (addStage with takeTips), so only the stage glows.
-  const tipsMovedOntoNewStage = group.key !== START && isNewKey(`stage:${group.key}`);
-  if (!tipsMovedOntoNewStage) {
-    applyGlow(box, `box:${group.key}`, drawnKeys);
-  } else {
-    drawnKeys.add(`box:${group.key}`);
-  }
+  applyBoxGlow(box, group, drawnKeys);
   return box;
+}
+
+// Makes a tip group's box glow if it's new (section 7), but not when only its tip change is new: a
+// box whose first stage is new itself (its tips came with the new stage: addStage with takeTips,
+// or a stage added with new tips), or whose first stage already started a box at the last drawing
+// (its tip change only moved: the old first stage's, after a stage is added with new tips above
+// the first box). Then only the new stage glows.
+function applyBoxGlow(box, group, drawnKeys) {
+  const boxKey = `box:${group.key}`;
+  const firstStage = group.stages[0];
+  const firstKey = `box-first:${firstStage}`;
+  const tipsOnlyMoved =
+    isNewKey(boxKey) && (isNewKey(`stage:${firstStage}`) || !isNewKey(firstKey));
+  if (tipsOnlyMoved) {
+    drawnKeys.add(boxKey);
+  } else {
+    applyGlow(box, boxKey, drawnKeys);
+  }
+  drawnKeys.add(firstKey);
 }
 
 // A tip group's heading: a tip icon, "New tips · BC230 · 2 tips" and the ✎ that opens the tip
@@ -1991,49 +2006,93 @@ function createTipGroupHeading(plan, group) {
   return heading;
 }
 
-// A seam (section 7): the space between two cards, which shows a line, a + for adding a stage, the
-// mix step button just left of it and, on all but a box's first seam, a tip button just right of it,
-// while pointed at or focused. `addBefore` is the stage the new stage goes before (null for last);
-// `accessibleName` the +'s, which says "a stage"; `tipsBefore` the stage a tip change goes before
-// (a seam between two stages); `tipsWithStage` true on a box's last seam, whose tip button adds a
-// stage with new tips instead. A seam above a box's first stage has neither.
-function createSeam(plan, { addBefore, takeTips, accessibleName, tipsBefore, tipsWithStage = false }) {
-  const seam = createElement("div", "", "seam");
+// A seam inside a tip group box (section 7): the space between two of its cards, or above its first
+// or below its last, whose stages and mix steps use this group's tips. `addBefore` is the stage the
+// new stage goes before (null for last); `takeTips` is passed to addStage and addMixStep;
+// `accessibleName` is the +'s, which says "a stage"; `tipsBefore`, given only on a seam between two
+// stages, is the stage the tip button puts new tips before. Other seams leave the right spot empty.
+function createSeamInBox(plan, { addBefore, takeTips, accessibleName, tipsBefore }) {
+  const rightButton =
+    tipsBefore === undefined
+      ? null
+      : createSeamTipButton(
+          "New tips from here on",
+          `New tips before ${stageLabel(plan, tipsBefore)}`,
+          () => addTipChangeBefore(tipsBefore),
+        );
+  return createSeam({
+    className: "seam",
+    tooltips: {
+      stage: "Add a stage here, with these tips",
+      mixStep: "Add a mix step here, with these tips",
+    },
+    accessibleName,
+    addStageHere: () => addStageAt(addBefore, takeTips),
+    addMixStepHere: () => addMixStepAt(addBefore, takeTips),
+    rightButton,
+  });
+}
+
+// A seam between tip groups (section 7): above the first box, between two boxes, or above End,
+// whose stage or mix step gets new tips, as a tip group of its own. `beforeId` is the first stage of
+// the box below it, or null above End. Its right spot is empty (the randomizer will use it).
+// e.g. the seam above End, whose + is named "Add a stage with new tips at the end of the run".
+function createSeamBetweenGroups(plan, beforeId) {
+  const accessibleName =
+    beforeId === null
+      ? "Add a stage with new tips at the end of the run"
+      : `Add a stage with new tips before ${stageLabel(plan, beforeId)}`;
+  return createSeam({
+    className: "seam group-seam",
+    tooltips: {
+      stage: "Add a stage here, with new tips",
+      mixStep: "Add a mix step here, with new tips",
+    },
+    accessibleName,
+    addStageHere: () =>
+      addWithNewTipsAt(
+        () => addStageWithNewTips(currentPlan(), beforeId),
+        "Added a stage with new tips. New transfers go into it.",
+      ),
+    addMixStepHere: () =>
+      addWithNewTipsAt(
+        () => addMixStepWithNewTips(currentPlan(), beforeId),
+        "Added a mix step with new tips. Click or drag across wells on the deck to mix them.",
+      ),
+    rightButton: null,
+  });
+}
+
+// A seam's line and its three fixed spots (section 7), shown while pointed at or focused: the mix
+// step button, the + in the middle, and the right spot, holding `rightButton` or left empty, in
+// that order, so keyboard focus moves through them left to right. `className` is the seam's
+// classes; `tooltips` the +'s and the mix step button's ({ stage, mixStep }); `accessibleName` the
+// +'s, which says "a stage" (the mix step button's says "a mix step" instead); `addStageHere` and
+// `addMixStepHere` what the two buttons do.
+function createSeam({ className, tooltips, accessibleName, addStageHere, addMixStepHere, rightButton }) {
+  const seam = createElement("div", "", className);
   seam.append(createElement("span", "", "seam-line"));
-  // The mix step button adds a mix step where the + would add a stage, with the same tips.
   const mix = createElement("button", "⟳", "seam-button add-mix-step");
   mix.type = "button";
-  mix.title = "Add a mix step here";
+  mix.title = tooltips.mixStep;
   mix.setAttribute("aria-label", accessibleName.replace("a stage", "a mix step"));
-  mix.addEventListener("click", () => addMixStepAt(addBefore, takeTips));
+  mix.addEventListener("click", addMixStepHere);
   seam.append(mix);
   // The + is drawn by the stylesheet, two bars crossing at the circle's center, so it's centered.
   const add = createElement("button", "", "seam-button add-stage");
   add.type = "button";
-  add.title = "Add a stage here";
+  add.title = tooltips.stage;
   add.setAttribute("aria-label", accessibleName);
-  add.addEventListener("click", () => addStageAt(addBefore, takeTips));
+  add.addEventListener("click", addStageHere);
   seam.append(add);
-  if (tipsBefore !== undefined) {
-    seam.append(
-      createSeamTipButton("New tips here", `New tips before ${stageLabel(plan, tipsBefore)}`, () =>
-        addTipChangeBefore(tipsBefore),
-      ),
-    );
-  } else if (tipsWithStage) {
-    seam.append(
-      createSeamTipButton(
-        "New tips, with a new stage",
-        "Add a stage with new tips at the end of these tips",
-        () => addStageWithNewTipsAt(addBefore),
-      ),
-    );
+  if (rightButton !== null) {
+    seam.append(rightButton);
   }
   return seam;
 }
 
-// A seam's tip button (section 7): a circle with the tip icon, in the tip button's fixed spot just
-// right of the +, with `tooltip`, `accessibleName` and `onClick`.
+// A seam's tip button (section 7): a circle with the tip icon, in the right spot just right of the
+// +, with `tooltip`, `accessibleName` and `onClick`.
 function createSeamTipButton(tooltip, accessibleName, onClick) {
   const tips = createElement("button", "", "seam-button add-tips");
   tips.type = "button";
@@ -2061,16 +2120,13 @@ function addMixStepAt(beforeId, takeTips) {
   }
 }
 
-// Adds a stage where a box's last seam would (before `beforeId`, or last, for null), then a tip
-// change on it, as one undoable edit, and opens it (section 7): a new tip group started at the end
-// of a box in one press (Andy, 2026-10-31).
-function addStageWithNewTipsAt(beforeId) {
-  const added = tryLogic(() => {
-    const { plan, id } = addStage(currentPlan(), beforeId);
-    return { plan: addTipChange(plan, id), id };
-  });
+// Adds a stage or mix step with new tips, from a seam between tip groups, and opens it, as one
+// undoable edit, showing `message` (section 7). `add` returns { plan, id }, from
+// addStageWithNewTips or addMixStepWithNewTips.
+function addWithNewTipsAt(add, message) {
+  const added = tryLogic(add);
   if (added !== false) {
-    openAddedStage(added, "Added a stage with new tips. New transfers go into it.");
+    openAddedStage(added, message);
   }
 }
 
