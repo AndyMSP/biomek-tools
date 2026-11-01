@@ -825,7 +825,9 @@ stage to add transfers into it.`, and dragging does nothing.
 **With a randomization's card open** (section 7), clicks and drags on the deck pick wells for it,
 whatever the wells hold (Andy, 2026-11-01: never guessed from contents), by the open tab:
 - **Sources**: clicking a well adds it as a source, last; clicking a source removes it. Dragging
-  does nothing. A well to fill clicked here stops being one.
+  across a box of wells adds each that isn't a source yet, last, in the box's order (`wellsInBox`),
+  or, if the first well was a source, removes every source in the box (Andy, 2026-11-01, as in the
+  preview). A well to fill clicked or dragged over here stops being one.
 - **Wells to fill**: clicking a well picks it, or unpicks it; clicking a source does nothing.
   Dragging across a box of wells picks them all, or, if the first well was picked, unpicks them;
   sources in the box are left sources.
@@ -1111,7 +1113,8 @@ page's configuration (ADR 0009):
   marks on a plate and on a trough alike;
 - randomizations: added at each kind of seam between tip groups (above the first box, between,
   above End); closing with nothing set keeps it, not set up; sources and wells to fill picked by
-  clicks and drags on two plates, each tab picking only its kind, a well never both; the All sources
+  clicks and drags on two plates, each tab picking only its kind, a well never both; dragging on the
+  Sources tab to add and to remove a box of sources; the All sources
   box, a source's own box, `mixed`; the filler's count; more than `SOURCES_SHOWN` sources; Each
   transfer, Tips and Volume; each problem message; Randomize: stages in source order, named, each on
   new tips, the stage after keeping its tips, every well filled once; Update with the same seed (same
