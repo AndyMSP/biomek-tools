@@ -507,8 +507,11 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
 - **A randomization's stages are protected by the page only** (2026-11-01): the transfer
   designer's ordinary edits (adding or removing a transfer, changing a stage's settings, removing
   a stage or its tip change) don't refuse an owned stage; the page simply doesn't offer them, and
-  `setRandomizations` checks a plan file's randomizations. Doing it properly: each of those edits
-  refuses an owned stage, with a message pointing to the randomization's card.
+  `setRandomizations` checks a plan file's randomizations. Likewise, `addStage` or `addMixStep`
+  without `takeTips`, called directly just after a randomization, would put a stage on its tips (the
+  page never does: there are no seams inside its boxes). Doing it properly: each of those edits
+  refuses an owned stage, or gives a new stage next to one its own tips, with a message pointing to
+  the randomization's card.
 - **Tests that hard-code config values** (2026-10-30): CLAUDE.md now says tests work out their
   numbers from `config/`, but tests written before then may name config values (e.g. default
   volumes, tip types, the experiment name's 40 characters if it moves to `config/`). The mixing

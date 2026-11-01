@@ -447,6 +447,9 @@ designer's own, in the designer's words), in this order:
 | no seed | `Type a seed.` |
 | no volume | `Set the volume.` |
 
+With no sources, or no wells to fill, the pool's problems (replicates, too many, left over) aren't
+listed, since they'd only follow from that one.
+
 **Removing** (`removeRandomization`) takes out the randomization and every stage it owns, as one
 edit (Andy, 2026-11-01). Tip changes its runs added elsewhere (on the stage after it) stay: the
 tool never takes tips away or joins tip groups by itself.
@@ -688,7 +691,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setRandomizations`: not a list, or a randomization isn't an object with exactly its ten properties | `The randomizations must be a list, but got 5.` / `Randomization 2 must be an object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".` |
 | `setRandomizations`: an ID isn't `"r"` and a whole number of at least 1, or is repeated | `Randomization 2's ID must be "r" and a whole number, like "r1", but got "x".` / `Randomizations 1 and 3 both have the ID "r2".` |
 | `setRandomizations`: `fill` not in deck order, or `probes` not smallest first | `Randomization 2: its wells to fill must be in deck order, but Plate1 B3 comes before Plate1 B2.` / `Randomization 2: its probes must be listed smallest first.` |
-| `setRandomizations`: `stages` isn't a list of `{ labware, well, stage }`, names a stage not in the plan, names one stage twice, or a well that isn't one of its sources | `Randomization 2: its stages must be a list of objects with exactly "labware", "well" and "stage".` / `Randomization 2: its stage "9" isn't in the plan.` / `Stage "5" belongs to two randomizations, 1 and 2.` (or, in one, `Randomization 2: stage "5" is listed twice.`) / `Randomization 2: Deep A4 has a stage but isn't one of its sources.` |
+| `setRandomizations`: `stages` isn't a list of `{ labware, well, stage }`, names a stage not in the plan, names one stage twice, or gives one well two stages | `Randomization 2: its stages must be a list of objects with exactly "labware", "well" and "stage".` / `Randomization 2: its stage "9" isn't in the plan.` / `Stage "5" belongs to two randomizations, 1 and 2.` (or, in one, `Randomization 2: stage "5" is listed twice.`) / `Randomization 2: Deep A4 has two stages.` (A stage whose well is no longer a source is accepted: `setRandomization` leaves it until the next run, so a plan between those edits saves and opens.) |
 | `setRandomizations`: its stages aren't consecutive, aren't in stage order, aren't each alone in a tip group, or one is a mix step | `Randomization 2: its stages must come one after another, in stage order.` / `Randomization 2: stage "5" must be the only stage of its tip group.` / `Randomization 2: stage "5" is a mix step.` |
 | `setRandomizations`: `beforeId` isn't a place it can sit | `Randomization 2: ` and `addRandomization`'s message |
 
@@ -722,9 +725,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
   it has stages, `beforeId` a stage, then a place it can sit; then `seed`, then `volume`.
 - `setRandomizations`: the list; then each randomization in turn: its form (exactly its
   properties), its ID, the checks of `setRandomization` on its values, `fill`'s order and
-  `probes`' order, `beforeId`, then `stages` (form, each stage in the plan, not twice, its well a
-  source, consecutive and in stage order, each alone in its tip group, not a mix step); then IDs
-  repeated, then stages owned by two randomizations.
+  `probes`' order, then `stages` (form, each stage in the plan, not twice, no well twice,
+  consecutive and in stage order, each alone in its tip group, not a mix step); then IDs repeated,
+  then stages owned by two randomizations; then, against the whole new list, each `beforeId` (a
+  place it can sit, so never inside another randomization's stages).
 - `setWellLabels`: that `labels` is an object; then each labware in turn, in the order it holds
   them: on the deck, its wells an object, not empty, then each of its wells in turn: on the grid,
   then its label is text, not blank, without spaces at its ends.
@@ -998,6 +1002,9 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
 - `setRandomizations` accepts the randomizations of a plan after running (the round trip a plan file
   makes), and refuses each of its rows in section 5, in the order of checks, prefixed
   `Randomization N: `.
+- `setRandomizations` accepts a randomization whose stage's well was taken out of its sources
+  before a rerun; refuses one well with two stages; refuses a randomization sitting before another
+  one's second stage, even when loading both at once (from a plan with none).
 - Every function leaves the plan given unchanged; in the table of which parts each edit may change,
   `addRandomization`, `setRandomization` and `placeRandomization` change only `randomizations`;
   `runRandomization` and `removeRandomization` change `randomizations`, `stageList`, `stageOrder`,

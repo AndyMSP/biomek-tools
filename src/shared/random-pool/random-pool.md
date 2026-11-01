@@ -76,6 +76,7 @@ throw (section 5).
 | `findPoolProblems(pool)` | every problem with `pool`, as a list of problem objects (section 3); `[]` if there are none. Throws if the pool is badly formed. |
 | `assignPool(pool)` | the assignment (section 3). Throws if the pool is badly formed, or `findPoolProblems` finds any problem (`The pool can't be assigned: it has problems, such as "too-many". Check findPoolProblems first.`, naming the first problem's kind). |
 | `spareWellCount(pool)` | the number of spare wells, or `null` while any item's replicates aren't valid; 0 if the replicates don't fit. |
+| `MAX_SEED` | (a constant) `999999`, the largest seed; the smallest is 1. The randomizer and the transfer designer use it rather than writing the number again. |
 | `randomSeed(randomNumber)` | a seed from 1 to 999,999 made from a random number from 0 up to 1, exactly as the randomizer's `randomSeed` (`randomizer.md`, section 4), which moves here so both tools share it; `randomizer.js` re-exports it, so its own interface doesn't change. |
 
 Example:
