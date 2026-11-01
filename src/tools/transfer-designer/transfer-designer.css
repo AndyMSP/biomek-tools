@@ -67,8 +67,12 @@
     2 * var(--widest-labware-width) + var(--labware-gap) + 2 * var(--panel-padding) + 2 * var(--panel-border-width)
   );
   --stage-gap: 10px;
+  /* Start, the tip group boxes and End sit this far apart, and a seam between tip groups is a band
+     this tall in the middle of each gap, clear of both sides (section 7). */
+  --group-gap: 18px;
+  --group-seam-height: 14px;
   --seam-button-size: 26px;
-  /* The space between the seam's + and the tip button just right of it (section 7). */
+  /* The space between the seam's + and the buttons either side of it (section 7). */
   --seam-button-gap: 6px;
   --mix-badge-size: 14px;
 }
@@ -891,7 +895,9 @@ input.experiment-name-box.invalid {
 .stages-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  /* Every two of Start, the boxes and End have a seam between tip groups between them, so this
+     gap either side of the seam's band makes them --group-gap apart. */
+  gap: calc((var(--group-gap) - var(--group-seam-height)) / 2);
 }
 
 /* Rows and cards share one look: a number in a round badge, a name and a count at the right. */
@@ -1265,8 +1271,29 @@ button.entry-row {
   transform: translate(-50%, -50%) rotate(90deg);
 }
 
-/* The tip button has a fixed spot just right of the + (section 7), whether or not other seams have
-   one. */
+/* A seam between tip groups (section 7): a band in the middle of the gap between two of Start, the
+   boxes and End, its line dashed and across the column's whole width. */
+.seam.group-seam {
+  height: var(--group-seam-height);
+}
+
+.group-seam .seam-line {
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px dashed var(--blue);
+  background: none;
+}
+
+/* While a seam's buttons show, they sit above every other seam, so a button reaching past its own
+   seam (a box's last seam's reach below the box) can still be pointed at and clicked. */
+.seam:hover,
+.seam:focus-within {
+  z-index: 3;
+}
+
+/* The tip button sits in the right spot, just right of the + (section 7), whether or not other
+   seams have something there. */
 .seam-button.add-tips {
   left: calc(50% + var(--seam-button-size) / 2 + var(--seam-button-gap));
   background: var(--panel-background);

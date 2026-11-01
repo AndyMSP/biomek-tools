@@ -36,6 +36,8 @@ import {
   stageOrder,
   addStage,
   addMixStep,
+  addStageWithNewTips,
+  addMixStepWithNewTips,
   isMixStep,
   mixWells,
   unmixWell,
@@ -597,6 +599,114 @@ describe("transfer-designer", () => {
     assert.throws(() => addStage(planWithStages(1), "9"), {
       message: `There's no stage "9" to add a stage before.`,
     });
+  });
+
+  // --- Adding in a tip group of its own: addStageWithNewTips and addMixStepWithNewTips ---
+
+  // The specification's plan for these cases: three stages, START tips of the first tip type on
+  // probes [1, 2], and a tip change of the last tip type on probes [1, 2, 3, 4] before stage 3.
+  function planWithTwoTipGroups() {
+    let plan = setTipProbes(planWithStages(3), START, [1, 2]);
+    plan = addTipChange(plan, "3");
+    plan = setTipType(plan, "3", TIP_TYPES.at(-1));
+    return setTipProbes(plan, "3", [1, 2, 3, 4]);
+  }
+
+  // The START tips and stage 3's tips in planWithTwoTipGroups(). New objects each time.
+  function firstTips() {
+    return { tipType: TIP_TYPES[0], probes: [1, 2] };
+  }
+  function laterTips() {
+    return { tipType: TIP_TYPES.at(-1), probes: [1, 2, 3, 4] };
+  }
+
+  // The stages of each tip group in the plan, e.g. [["1", "2"], ["3"]].
+  function groupStages(plan) {
+    return tipGroups(plan).map((group) => group.stages);
+  }
+
+  // The two functions under test, each with the kind of stage it adds, so each case runs for both.
+  const ADD_WITH_NEW_TIPS = [
+    ["addStageWithNewTips", addStageWithNewTips, NEW_STAGE_NAME, false],
+    ["addMixStepWithNewTips", addMixStepWithNewTips, NEW_MIX_STEP_NAME, true],
+  ];
+
+  test("addStageWithNewTips and addMixStepWithNewTips before the first stage of a tip group: the new stage gets a tip change loading the tips in use there; that stage's tip change is unchanged", () => {
+    for (const [name, add, stageName, mixStep] of ADD_WITH_NEW_TIPS) {
+      const { plan, id } = add(planWithTwoTipGroups(), "3");
+      assert.deepEqual(stageOrder(plan), ["1", "2", id, "3"], name);
+      assert.equal(plan.stageList.get(id).name, stageName, name);
+      assert.equal(isMixStep(plan, id), mixStep, name);
+      assert.deepEqual(tipChangeAt(plan, id), firstTips(), name);
+      assert.deepEqual(tipChangeAt(plan, "3"), laterTips(), name);
+      assert.deepEqual(tipChangeAt(plan, START), firstTips(), name);
+      assert.deepEqual(groupStages(plan), [["1", "2"], [id], ["3"]], name);
+    }
+  });
+
+  test("addStageWithNewTips inside a tip group: the new stage and the stage after it each get a tip change loading the tips in use there", () => {
+    const { plan, id } = addStageWithNewTips(planWithTwoTipGroups(), "2");
+    assert.deepEqual(stageOrder(plan), ["1", id, "2", "3"]);
+    assert.deepEqual(tipChangeAt(plan, id), firstTips());
+    assert.deepEqual(tipChangeAt(plan, "2"), firstTips());
+    assert.deepEqual(tipChangeAt(plan, "3"), laterTips());
+    assert.deepEqual(groupStages(plan), [["1"], [id], ["2"], ["3"]]);
+  });
+
+  test("addStageWithNewTips and addMixStepWithNewTips before stage 1: the new stage is first with the START tips, unchanged, and old stage 1 gets a tip change loading them", () => {
+    for (const [name, add, , mixStep] of ADD_WITH_NEW_TIPS) {
+      const { plan, id } = add(planWithTwoTipGroups(), "1");
+      assert.deepEqual(stageOrder(plan), [id, "1", "2", "3"], name);
+      assert.equal(isMixStep(plan, id), mixStep, name);
+      assert.deepEqual(tipChangeAt(plan, START), firstTips(), name);
+      assert.equal(tipChangeAt(plan, id), null, name);
+      assert.deepEqual(tipChangeAt(plan, "1"), firstTips(), name);
+      assert.deepEqual(tipChangeAt(plan, "3"), laterTips(), name);
+      assert.deepEqual(groupStages(plan), [[id], ["1", "2"], ["3"]], name);
+      assert.equal(tipGroups(plan)[0].key, START, name);
+    }
+  });
+
+  test("addStageWithNewTips and addMixStepWithNewTips with null: the new stage is last, with a tip change loading the tips in use at the end, and nothing after it changes", () => {
+    for (const [name, add, , mixStep] of ADD_WITH_NEW_TIPS) {
+      const given = planWithTwoTipGroups();
+      const { plan, id } = add(given, null);
+      assert.deepEqual(stageOrder(plan), ["1", "2", "3", id], name);
+      assert.equal(isMixStep(plan, id), mixStep, name);
+      assert.deepEqual(tipChangeAt(plan, id), laterTips(), name);
+      assert.deepEqual(plan.tipChanges, { ...given.tipChanges, [id]: laterTips() }, name);
+      assert.deepEqual(groupStages(plan), [["1", "2"], ["3"], [id]], name);
+    }
+  });
+
+  test("addStageWithNewTips copies settings as addStage does, and the new stage has no transfers", () => {
+    let given = withTransfersIn(planWithTwoTipGroups(), ["1", "2"]);
+    given = changeStageSettings(given, "2", otherSettings());
+    const expected = addStage(given, "3");
+    const { plan, id } = addStageWithNewTips(given, "3");
+    assert.equal(id, expected.id);
+    assert.deepEqual(plan.stageList.get(id), expected.plan.stageList.get(expected.id));
+    assert.deepEqual(plan.stageList.get(id).settings, otherSettings());
+    assert.deepEqual(transfersIn(plan, id), []);
+  });
+
+  test("addMixStepWithNewTips makes the mix step as addMixStep does", () => {
+    const given = planWithTwoTipGroups();
+    const { plan, id } = addMixStepWithNewTips(given, "3");
+    const expected = addMixStep(given, "3");
+    assert.deepEqual(plan.stageList.get(id), expected.plan.stageList.get(expected.id));
+    assert.deepEqual(plan.stageList.get(id).settings, mixStepDefaults());
+  });
+
+  test("addStageWithNewTips and addMixStepWithNewTips before a stage that isn't in the plan throw addStage's error, and the plan given is unchanged", () => {
+    for (const [name, add] of ADD_WITH_NEW_TIPS) {
+      const given = planWithTwoTipGroups();
+      const before = snapshot(given);
+      assert.throws(() => add(given, "9"), {
+        message: `There's no stage "9" to add a stage before.`,
+      }, name);
+      assert.equal(snapshot(given), before, name);
+    }
   });
 
   test("removeStage removes a stage and its transfers, takes it out of the stage order leaving the others in their order, and its tip change goes", () => {
@@ -1848,6 +1958,16 @@ describe("transfer-designer", () => {
       (plan) => addMixStep(plan, "2", { takeTips: true }).plan,
       ["stageList", "stageOrder", "tipChanges"],
     ],
+    [
+      "addStageWithNewTips",
+      (plan) => addStageWithNewTips(plan, "3").plan,
+      ["stageList", "stageOrder", "tipChanges"],
+    ],
+    [
+      "addMixStepWithNewTips",
+      (plan) => addMixStepWithNewTips(plan, "3").plan,
+      ["stageList", "stageOrder", "tipChanges"],
+    ],
     ["mixWells", (plan) => mixWells(plan, mixStepOf(plan), [plateWell("H1")]), ["operationList"]],
     ["unmixWell", (plan) => unmixWell(plan, mixStepOf(plan), plateWell("A1")), ["operationList"]],
     ["renameStage", (plan) => renameStage(plan, "1", "Seeding"), ["stageList"]],
@@ -1935,6 +2055,8 @@ describe("transfer-designer", () => {
       },
     ],
     ["removeStage, a mix step", (plan) => removeStage(plan, mixStepOf(plan))],
+    ["addStageWithNewTips before the first", (plan) => addStageWithNewTips(plan, "1").plan],
+    ["addMixStepWithNewTips, last", (plan) => addMixStepWithNewTips(plan, null).plan],
   ];
 
   test("after every kind of edit, the stage order holds every stage once, and the operation list's blocks follow it", () => {

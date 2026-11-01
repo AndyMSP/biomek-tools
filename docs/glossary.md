@@ -80,6 +80,13 @@ A plan saved as a file, so it can be kept with the experiment's records, shared,
 later or on another computer. The file says which format it is and its version, so a later version
 of the tools can still open it, or say why it can't.
 
+**Seam**
+A place in the transfer designer's Stages column where a stage, a mix step or a tip change can be
+added. A seam inside a tip group (between two of its stages, or at its top or bottom) adds stages
+and mix steps with that group's tips, and between two stages can split the group with new tips; a
+seam between tip groups (above the first, between two, or above End) adds them with new tips, as a
+tip group of their own.
+
 **Stage**
 A group of operations that can run in any order and share one set of settings: the technique and
 liquid type at the sources and at the destinations (chosen as pipetting modes). Stages run one after
