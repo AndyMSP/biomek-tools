@@ -1,5 +1,10 @@
 # randomizer — specification
 
+> **Draft change (2026-11-01):** the assignment (section 5, steps 1 to 3) is now done by the shared
+> `random-pool` module (`random-pool.md`), with the open wells as the pool, so the randomizer and the
+> transfer designer's randomizations share one copy of the randomizing logic (ADR 0012). The rules,
+> results and golden files don't change. It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 The randomizer assigns an experiment's conditions to random wells on a plate, to spread position
 effects such as edge drying or uneven seeding evenly across conditions. It takes a list of
@@ -109,6 +114,11 @@ records which role put it there.
 3. Create a new, empty layout (`layout` module) on `GRID_96`. Fill the open wells in standard well
    order (A1, A2 … H12, skipping fixed wells), taking the next item from the shuffled list for each.
 4. Each fixed well gets the name of its fixed-contents entry.
+
+Steps 1 to 3 are done by `assignPool` (`random-pool.md`): the conditions as items (keyed by row,
+since names may repeat with the filler's), the filler, the open wells in standard order, and the
+seed; `randomize` places each item's name in its well. The golden files (section 9) confirm the
+plates are the same as before.
 
 The inputs are never changed, and each run creates a new layout. The **result** holds three things:
 - **the layout**: what each well contains;

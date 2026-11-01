@@ -38,6 +38,12 @@
 > `wellLabels`, `wellLabelOf`, `setWellLabel` and `setWellLabels` (sections 3 to 6), from the
 > randomizer preview Andy shaped on 2026-11-01. Plan files hold them from format version 5
 > (`plan-file.md`). It becomes Final once built and tested by Andy.
+>
+> **Draft change (2026-11-01, randomizations, the third part of v0.2.0's item 9; ADR 0012):** a plan
+> holds **randomizations** (`docs/glossary.md`), which own the stages they make (sections 3 to 6),
+> from the randomizer preview Andy shaped on 2026-10-31 and 2026-11-01. Written in one sitting while
+> Andy was away (2026-11-01), so still to review with him: the choices listed in its pull request.
+> It becomes Final once built and tested by Andy.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -95,6 +101,7 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
                       "2": { tipType: "BC230", probes: [1, 2, 3, 4] } },
   labwareLabels:    { Plate: "Assay plate" },
   wellLabels:       { Deep: { A1: "Cond 1", A2: "Cond 2" } },
+  randomizations:   [/* a randomization, below */],
   experimentName:   "Exp36",
 }
 ```
@@ -131,6 +138,8 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   Like the experiment name, labels are part of the plan, so labelling is an edit like any other:
   undone and redone, kept in the browser copy, and saved in the plan file (`plan-file.md`; Andy,
   2026-11-01). They're for people only: the file writer never reads them.
+- **`randomizations`**: the plan's randomizations (section 3, "Randomizations"), in the order they
+  were added. The file writer never reads them: their stages are ordinary stages to it.
 - **`experimentName`**: the experiment's name (`docs/glossary.md`, "Experiment name"), or `""`
   until the user gives one (Andy, 2026-10-28). A name follows the file writer's rule,
   `checkExperimentName` (`file-writer.md`): letters, digits, hyphens and underscores, 1 to 40
@@ -319,6 +328,92 @@ a plate's wells easy to recognize.)
   blank label), and a labware listed with no wells, because it's for a table already in the plan's
   own form, such as one read from a plan file.
 
+### Randomizations
+(Andy, 2026-10-31 and 2026-11-01; ADR 0012.) A **randomization** spreads replicates of several
+**sources** over a set of **wells to fill**, at random, and makes one stage per source moving them.
+It's part of the plan, so it's undone and saved like any edit. Each is:
+
+```js
+{
+  id:        "r1",                 // made by addRandomization: "r" and one more than the largest in use
+  beforeId:  "4",                  // where it sits until it has stages: before this stage, or null for last
+  sources:   [{ labware: "Deep", well: "A1", replicates: 4, filler: false, stage: "5" }, …],
+  fill:      [{ labware: "Plate1", well: "B2" }, …],
+  seed:      37,                   // or null
+  volume:    50,                   // µL per transfer, or null
+  settings:  { /* a stage's six settings */ },
+  tipType:   "BC230",
+  probes:    [1, 2, 3, 4],
+}
+```
+
+- **`sources`**: wells on the deck, each once, in the order given. `replicates` is a whole number of
+  at least 1, or `null` (not given yet). At most one source is the **filler** (`filler: true`): it
+  fills the wells the replicates leave over, and its `replicates` is always `null`. `stage` is the
+  ID of the stage the randomization made for it, or `null` until it has run. Any well may be a
+  source, whatever it holds (Andy, 2026-11-01: never guessed from contents); one that holds nothing
+  at that point just makes overdraws.
+- **`fill`**: the wells to fill, on any labware, each once, none of them a source, kept in the
+  deck's order of labware and each labware's grid order (`wellNames()`), whatever order they were
+  given in, so the same wells always form the same pool.
+- **`seed`**: a whole number from 1 to 999,999, or `null`. **`volume`**: a number above 0, or
+  `null`.
+- **`settings`**: the settings every one of its stages gets (`stage-list.md`; the mixing rule of
+  section 3 applies). **`tipType`** and **`probes`**: the tips every one of its stages' tip changes
+  load (as `setTipType` and `setTipProbes` check them).
+- **Where it sits.** Once it has stages, it sits where they are: they're consecutive in the stage
+  order, each the only stage of its tip group. Until then, it sits just before stage `beforeId`, or
+  last (`null`, or a stage that's been removed since).
+- **It owns its stages** (Andy, 2026-11-01): they're changed only through it, so its settings
+  always describe them. `randomizationOf(plan, stageId)` says which randomization owns a stage. The
+  caller offers no other edit of an owned stage, its transfers or its tip change. (The other
+  edits here don't refuse them; roadmap, "Technical debt".)
+
+**Running** (`runRandomization`), when it has no problems (below):
+1. The pool (`random-pool.md`): an item per source, keyed `"<labware> <well>"`, with its
+   replicates, in `sources`' order; the filler's key, or `null`; `fill`'s wells, keyed the same way,
+   in their order; the seed. `assignPool` gives each well to fill its source.
+2. Each source that no longer has a stage of its own (`stage` `null`, or a stage removed since)
+   gets one: added with `addStageWithNewTips` (section 3, "Tip changes and tip groups") just after
+   the randomization's last stage, or, with none yet, where it sits. So every stage has new tips,
+   and the stage after the randomization keeps the tips it had. A new stage is **named** as its
+   source is (below). Stages of sources no longer in `sources` are removed first (`removeStage`).
+3. Each source's stage: its transfers replaced by one transfer of `volume` from the source to each
+   of its wells, in `fill`'s order; its settings set to `settings` (as `changeStageSettings`), and
+   its tip change set to `tipType` and `probes` (its own, or `START`'s if it's the run's first
+   stage). Its name is kept.
+4. `stage` is set for each source. The whole run is one edit.
+
+With the same sources, replicates, filler, wells to fill and seed, a run gives every well the same
+source as before, so running again only applies changed settings, tips or volume; a new seed
+shuffles again (Andy, 2026-11-01).
+
+**A source's name** (for a new stage, and for the caller to show): its well label if it has one
+(section 3, "Well labels"); otherwise the component it holds most of just before the randomization
+(contents tracking replaying the plan's operations up to the randomization's first stage, or up to
+where it sits), followed by ` +N` when it holds N other components too, e.g. `Drug A +2`;
+otherwise, if it holds nothing then, its labware's label and well name, e.g. `Deep A1`.
+
+**Problems** (`randomizationProblems`), in this order, each a short message, for the caller to
+show (Andy, 2026-11-01: the first one only, in short words):
+
+| Problem | Message |
+|---|---|
+| no sources | `Pick at least one source.` |
+| no wells to fill | `Pick the wells to fill.` |
+| only the filler | `Add a source that isn't the filler.` |
+| a source's replicates are `null` | `Drug A needs a number of replicates.` (the source's name) |
+| too many replicates | `64 replicates, but only 60 wells to fill.` |
+| wells left over, no filler | `12 wells left over: make a source the filler, or unpick them.` |
+| no seed | `Type a seed.` |
+| no volume | `Set the volume.` |
+
+(They're `findPoolProblems`' kinds in the transfer designer's words, then the volume.)
+
+**Removing** (`removeRandomization`) takes out the randomization and every stage it made, as one
+edit (Andy, 2026-11-01). Tip changes the run added elsewhere (on the stage after it) stay: the tool
+never takes tips away or joins tip groups by itself.
+
 ### Configuration
 Two files in `config/` (ADR 0009), which this module's tests check:
 - **`config/pipetting-modes.js`** exports `PIPETTING_MODES`: a list of
@@ -360,7 +455,7 @@ given; "returns the plan with …" means a new plan.
 **Plans**
 | Function | Returns |
 |---|---|
-| `emptyPlan()` | `{ plan, stageId }`: a plan with no components, starting contents, transfers, labels or well labels, no experiment name (`""`), one stage (`NEW_STAGE_NAME`, default settings), and `START` tips of the first tip type; and that stage's ID. |
+| `emptyPlan()` | `{ plan, stageId }`: a plan with no components, starting contents, transfers, labels, well labels or randomizations, no experiment name (`""`), one stage (`NEW_STAGE_NAME`, default settings), and `START` tips of the first tip type; and that stage's ID. |
 | `setExperimentName(plan, name)` | the plan with the experiment called `name`, its spaces at the ends removed; `""` (or only spaces) gives no name. Throws if `name` isn't text, or isn't a valid experiment name (`checkExperimentName`, `file-writer.md`). An unchanged name gives the same plan back. |
 | `defaultSettings()` | a stage's default settings (section 3, "Stages"). |
 | `probesFor(count)` | the first `count` probes, e.g. `4` → `[1, 2, 3, 4]`. Throws unless `count` is a whole number from 1 to 8. |
@@ -445,6 +540,20 @@ with that name.
 | `setWellLabel(plan, end, label)` | the plan with well `end` labelled `label`, or its label removed if `label` is blank (section 3, "Well labels"). Throws if `end` isn't a well on the deck, or `label` isn't text. |
 | `setWellLabels(plan, labels)` | the plan with its well labels replaced by `labels`, in the form of `wellLabels` (section 3), e.g. `{ Deep: { A1: "Cond 1" } }`. Throws if `labels` isn't an object, a labware isn't on the deck, a labware's wells aren't an object or are empty, a well isn't on its labware's grid, or a label isn't text, is blank, or has spaces at its ends. |
 
+
+**Randomizations**
+| Function | Returns |
+|---|---|
+| `addRandomization(plan, beforeId, { seed, volume })` | `{ plan, id }`: the plan with a new randomization last in `randomizations`, sitting before stage `beforeId` (or last, for `null`), with no sources or wells to fill, the `seed` and `volume` given (each may be `null`), `defaultSettings()`, the first tip type, and `probesFor(DEFAULT_PROBE_COUNT)`; and its ID. Throws if `beforeId` isn't a stage or `null`, or `seed` or `volume` isn't valid (section 3). |
+| `randomizationAt(plan, id)` | the randomization with ID `id`, or `null`. |
+| `randomizationOf(plan, stageId)` | the ID of the randomization that owns stage `stageId`, or `null`. |
+| `setRandomization(plan, id, changes)` | the plan with the randomization's `sources`, `fill`, `seed`, `volume`, `settings`, `tipType` and `probes` replaced by those in `changes` (any of them; the others kept), checked as section 3 says, `fill` put in deck order. A source keeps its `stage` when its well is still a source; a new source's is `null`; `changes` can't give `stage`. Throws if there's no such randomization, or anything is invalid (section 5). |
+| `randomizationProblems(plan, id)` | the randomization's problems, as messages, in order (section 3); `[]` if it can run. |
+| `sourceName(plan, id, source)` | a source's name (section 3), e.g. `"Cond 1"`, `"Drug A +2"` or `"Deep A1"`. |
+| `runRandomization(plan, id)` | the plan with the randomization run (section 3). Throws its first problem's message if it has any. |
+| `removeRandomization(plan, id)` | the plan without the randomization and its stages. Throws if there's no such randomization, or its stages are all the plan's stages. |
+| `setRandomizations(plan, randomizations)` | the plan with its randomizations replaced by `randomizations`, in the form of section 3, `stage` included, for a list already in the plan's own form, such as one read from a plan file. Strict: each is checked as `setRandomization` checks it, its `id` must be `"r"` and a whole number of at least 1, unique, `beforeId` a stage or `null`, `fill` already in deck order, each `stage` a stage of the plan or `null`, no stage owned twice, and a randomization's stages consecutive in the stage order and each the only stage of its tip group. Throws, naming the randomization (`randomization 2: …`), if not. |
+
 ## 5. Errors
 Each message says what's wrong and how to fix it, in the plan's own terms. A failed edit changes
 nothing: the plan given is never touched. Messages from the shared modules (`operation-list`,
@@ -511,6 +620,28 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setWellLabels`: a label isn't text | `The label for Deep A1 must be text, like "Cond 1", but got 5.` |
 | `setWellLabels`: a label is blank | `The label for Deep A1 is blank. A well without a label is left out of the well labels.` |
 | `setWellLabels`: a label has spaces at its ends | `The label for Deep A1, " Cond 1", has spaces at the start or end. Remove them.` |
+| A randomization's `id` isn't one of the plan's | `There's no randomization "r9" in the plan.` |
+| `addRandomization`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a randomization before.` |
+| `setRandomization`: `changes` isn't an object, or gives a property a randomization doesn't have (or `stage`) | `The changes to a randomization must be an object of "sources", "fill", "seed", "volume", "settings", "tipType" and "probes", but got "stages".` (naming the first wrong property, or the value) |
+| `setRandomization`: `sources` or `fill` isn't a list | `A randomization's sources must be a list, but got 5.` (or `wells to fill`) |
+| a source isn't `{ labware, well, replicates, filler }` (or with `stage`, in a plan file) | `Source 2 must be an object with "labware", "well", "replicates" and "filler".` |
+| a source or well to fill isn't a well on the deck | `Source 2: ` or `Well to fill 3: `, then `deck.checkWell`'s message |
+| a well is a source twice, or to fill twice | `Deep A1 is a source twice. List each source once.` / `Plate1 B2 is a well to fill twice. List each once.` |
+| a well is both a source and a well to fill | `Deep A1 is both a source and a well to fill. A well can be only one.` |
+| replicates aren't a whole number of at least 1, or `null` | `Source 2's replicates must be a whole number of at least 1, or null, but got 1.5.` |
+| `filler` isn't `true` or `false` | `Source 2's "filler" must be true or false, but got "yes".` |
+| two fillers | `Sources 1 and 3 are both the filler. Only one source can be.` |
+| the filler has replicates | `Source 3 is the filler, so its replicates must be null, but got 4.` |
+| seed not a whole number from 1 to 999,999, or `null` | `A randomization's seed must be a whole number from 1 to 999,999, or null, but got 0.` |
+| volume not a number above 0, or `null` | `A randomization's volume must be a number of µL above 0, or null, but got 0.` |
+| settings refused | the stage list's message, or the mixing rule's (section 3), unchanged |
+| tip type or probes refused | `setTipType`'s or `setTipProbes`' message, unchanged |
+| `runRandomization` with problems | the first problem's message (section 3) |
+| `setRandomizations`: an ID isn't `"r"` and a whole number, or is repeated | `Randomization 2's ID must be "r" and a whole number, like "r1", but got "x".` / `Randomizations 1 and 3 both have the ID "r2".` |
+| `setRandomizations`: `fill` out of deck order | `Randomization 2's wells to fill must be in deck order: Plate1 B3 comes before Plate1 B2.` |
+| `setRandomizations`: a `stage` isn't a stage of the plan, or is owned twice | `Randomization 2's source 1 is in stage "9", which isn't in the plan.` / `Stage "5" belongs to two randomizations, 1 and 2.` |
+| `setRandomizations`: its stages aren't consecutive, or one shares a tip group | `Randomization 2's stages must come one after another in the stage order.` / `Randomization 2's stage "5" must be the only stage of its tip group.` |
+| `removeRandomization`: its stages are all the plan's stages | `This randomization's stages are all the plan's stages, and a plan needs at least one. Add a stage outside it first.` |
 
 **Order of checks.** The first problem found is reported:
 - `addTransfer`: the operation list's checks of the transfer (its form, then the stage rule), then
@@ -533,6 +664,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 - `addToWells`: the component exists, then the volume, then each well in turn.
 - `setLabel`: the labware, then the label is text, then (after trimming) no other labware has it.
 - `setWellLabel`: the well (`deck.checkWell`'s order), then the label is text.
+- `setRandomization`: the randomization, then `changes`' form, then in this order whichever are
+  given: `sources` (the list, then each source's form, well, replicates and filler in turn, then
+  repeats, then two fillers), `fill` (the list, then each well, then repeats), a well in both (on
+  the result), `seed`, `volume`, `settings`, `tipType`, `probes`.
 - `setWellLabels`: that `labels` is an object; then each labware in turn, in the order it holds
   them: on the deck, its wells an object, not empty, then each of its wells in turn: on the grid,
   then its label is text, not blank, without spaces at its ends.
@@ -563,7 +698,7 @@ order of checks.
   `sourceMix` and `destinationMix` `null`, and nothing else (no probes).
 - `emptyPlan()` gives one stage named `NEW_STAGE_NAME` with default settings, `START` tips of the
   first tip type on the first `DEFAULT_PROBE_COUNT` probes (`[1, 2, 3, 4]`), an experiment name of `""`, no
-  well labels (`{}`), and nothing else; its `stageId` is
+  well labels (`{}`), no randomizations (`[]`), and nothing else; its `stageId` is
   that stage.
 - `setExperimentName` sets `"Exp36"`; trims `" Exp36 "` to `"Exp36"`; `""` and `"  "` remove the
   name; giving the name it already has returns the same plan; `5`, `"Exp 36"` and a name of 41
@@ -762,6 +897,46 @@ order of checks.
 - Order of checks: `{ Bench: 5 }` reports the labware, not its wells; `{ Deep: { Z99: 5 } }`
   reports the well, not the label.
 - Labelling a well leaves its contents, the transfers and everything else as they were.
+
+**Randomizations**
+Set up a plan with Deep A1 to A3 holding `Drug A`, `Drug B` and `Media`, one stage with a transfer
+before, one after, and Plate1's B2 to C11 (20 wells) to fill.
+- `addRandomization` before the second stage: `r1`, sitting there, with the defaults and the given
+  seed and volume; a second one is `r2`; after removing `r1`, the next is `r3`. `beforeId`
+  unknown, a seed of `0` and a volume of `-1` each throw.
+- `setRandomization` sets sources and wells; `fill` given in any order comes back in deck order;
+  every row of section 5's randomization errors, with its message, leaving the plan unchanged; a
+  source kept keeps its `stage`, one removed and added back gets `null`.
+- `randomizationProblems`: each message of section 3, in order, using `sourceName`; `[]` when it can
+  run.
+- `sourceName`: a labelled source gives its label; `Drug A` alone gives `Drug A`; a well holding
+  three components gives the one with most and ` +2`; an empty well gives its labware's label and
+  well name; contents are those just before the randomization (a well filled by the first stage
+  is named after what it holds then).
+- `runRandomization` with A1 and A2 at 8 replicates and A3 the filler (4 wells): three stages, in
+  source order, named after their sources, just before the second stage, each the only stage of
+  its tip group, with `settings`, `tipType` and `probes`; 8, 8 and 4 transfers of `volume` from
+  each source, into every well to fill exactly once; the stage after keeps its tips (it gets a tip
+  change loading them if it had none); `randomizationOf` gives `r1` for each new stage and `null`
+  for the others; the assignment matches `assignPool` with the same pool.
+- Run again with nothing changed: the same transfers, the same stage IDs and names. With a new seed:
+  the same stages, different wells (for two chosen seeds). With new settings, tips or volume: the
+  same wells, the new settings on every stage and tip change.
+- Run again after removing source A2: its stage is gone, the others kept; after adding source A4:
+  a new stage after the last, on new tips.
+- A randomization added before the run's first stage: its first stage gets the `START` tips, set to
+  its tips, and the old first stage gets a tip change of its own loading the tips it had.
+- `runRandomization` with a problem throws its message, leaving the plan unchanged.
+- `removeRandomization` takes out the randomization and its stages; the tip change the run added
+  after it stays; with no stages yet, only the randomization; when its stages are all the plan's
+  stages, it throws.
+- Undo-friendly: every function leaves the plan given unchanged; in the table of which parts each
+  edit may change, `addRandomization` and `setRandomization` change only `randomizations`;
+  `runRandomization` and `removeRandomization` change `randomizations`, `stageList`, `stageOrder`,
+  `operationList` and `tipChanges`.
+- `emptyPlan()`'s `randomizations` is `[]`.
+- `setRandomizations` accepts the randomizations of a plan after running (the round trip a plan file
+  makes), and refuses each of its rows in section 5, naming the randomization.
 
 **Immutability and sharing**
 - Every edit leaves the plan it was given unchanged.
