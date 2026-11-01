@@ -545,6 +545,14 @@ describe("plan-file", () => {
       { ...file, randomizations: [first, { ...second, beforeId: 5 }] },
       /randomizations: Randomization 2: There's no stage 5 to add a randomization before\./,
     );
+    for (const property of ["beforeId", "stages", "seed"]) {
+      const missing = { ...second };
+      delete missing[property];
+      assertRefused(
+        { ...file, randomizations: [first, missing] },
+        'randomizations: Randomization 2 must be an object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".',
+      );
+    }
   });
 
   test("the randomizations are checked last: bad well labels and bad randomizations report the well labels", () => {

@@ -108,6 +108,21 @@ const OBJECT_PROPERTIES = ["tipChanges", "labwareLabels", "wellLabels"];
 // How every message from planFromText starts.
 const CANT_OPEN = "This file can't be opened: ";
 
+// Every property of a randomization, as setRandomizations takes them (transfer-designer.md,
+// section 3), so a randomization missing one is refused with setRandomizations' form message.
+const RANDOMIZATION_PROPERTIES = [
+  "id",
+  "beforeId",
+  "sources",
+  "fill",
+  "seed",
+  "volume",
+  "settings",
+  "tipType",
+  "probes",
+  "stages",
+];
+
 // --- Saving ---
 
 // The plan file's text for `plan`: JSON, indented by 2 spaces, with the properties of plan-file.md
@@ -580,14 +595,16 @@ function withRandomizations(plan, file, newIds) {
 }
 
 // Throws if the randomization at `index` hasn't just enough form for its stage IDs to be renumbered
-// (an object; its beforeId text or null; its stages a list of objects, each with a stage that's
-// text), with setRandomizations' message for that form, which it would give for the file as it is.
+// (an object with exactly its properties; its beforeId text or null; its stages a list of objects,
+// each with a stage that's text), with setRandomizations' message for that form, which it would
+// give for the file as it is.
 function checkRenumberableForm(randomization, index) {
   const number = index + 1;
-  if (!isObject(randomization)) {
+  if (!hasExactly(randomization, RANDOMIZATION_PROPERTIES)) {
     refuse(
-      `randomizations: Randomization ${number} must be an object with exactly "id", "beforeId", ` +
-        '"sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".',
+      `randomizations: Randomization ${number} must be an object with exactly ` +
+        `${listNames(RANDOMIZATION_PROPERTIES.slice(0, -1))} and ` +
+        `${describeValue(RANDOMIZATION_PROPERTIES.at(-1))}.`,
     );
   }
   const { beforeId, stages } = randomization;
