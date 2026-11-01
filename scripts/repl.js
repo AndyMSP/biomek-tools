@@ -41,6 +41,13 @@ import { START, tipGroups } from "../src/shared/tip-groups/tip-groups.js";
 import { substagesOf } from "../src/shared/substages/substages.js";
 import { mixVolumes } from "../src/shared/mix-volumes/mix-volumes.js";
 import {
+  checkConstituents,
+  familyOf,
+  unitsOf,
+  wellConcentrations,
+  bestUnit,
+} from "../src/shared/concentrations/concentrations.js";
+import {
   writeRunFiles,
   checkExperimentName,
   folderNameFor,
@@ -341,6 +348,22 @@ const TOPICS = {
       'mixPlan = addTransfer(mixPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "B1" }, volume: 1.1, stage: "1" })',
       "mixVolumes(mixPlan).stages[0].rows[0].destinationMixVolume",
       "mixVolumes(mixPlan).problems",
+    ],
+  },
+  concentrations: {
+    loaded: { checkConstituents, familyOf, unitsOf, wellConcentrations, bestUnit },
+    examples: [
+      'checkConstituents([{ name: " Dye ", amount: 10, unit: "mM" }, { name: "Hy-Soy", amount: 4, unit: "g/L" }])',
+      'checkConstituents([{ name: "Dye", amount: 10, unit: "mg/mL" }])',
+      'checkConstituents([{ name: "Dye", amount: 10, unit: "mM" }, { name: " Dye", amount: 5, unit: "mM" }])',
+      'familyOf("mM")',
+      'unitsOf("molar")',
+      'const stockComponents = [{ name: "Stock", constituents: [{ name: "Dye", amount: 10, unit: "mM" }] }, { name: "Media", constituents: [{ name: "Hy-Soy", amount: 4, unit: "g/L" }] }]',
+      "wellConcentrations({ Stock: 0.2, Media: 0.8 }, stockComponents)",
+      'bestUnit("molar", 0.000476)',
+      'bestUnit("mass", 0.0075)',
+      'bestUnit("percent", 0.5)',
+      'bestUnit("volume", 1)',
     ],
   },
   "file-writer": {
