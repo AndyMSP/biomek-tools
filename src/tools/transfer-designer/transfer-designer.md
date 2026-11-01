@@ -32,6 +32,12 @@
 > and `addMixStepWithNewTips` add a stage or a mix step in a tip group of its own, for the page's
 > seams between tip groups (sections 3, 4 and 6; `transfer-designer-page.md`, section 7). Nothing
 > else changes. It becomes Final once built and tested by Andy.
+>
+> **Draft change (2026-11-01, well labels, the second part of v0.2.0's item 9):** a plan holds
+> **well labels**, the names a user gives wells (`docs/glossary.md`, "Well label"):
+> `wellLabels`, `wellLabelOf`, `setWellLabel` and `setWellLabels` (sections 3 to 6), from the
+> randomizer preview Andy shaped on 2026-11-01. Plan files hold them from format version 5
+> (`plan-file.md`). It becomes Final once built and tested by Andy.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -88,6 +94,7 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   tipChanges:       { start: { tipType: "BC1070", probes: [1, 2, 3, 4, 5, 6, 7, 8] },
                       "2": { tipType: "BC230", probes: [1, 2, 3, 4] } },
   labwareLabels:    { Plate: "Assay plate" },
+  wellLabels:       { Deep: { A1: "Cond 1", A2: "Cond 2" } },
   experimentName:   "Exp36",
 }
 ```
@@ -116,6 +123,14 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
 - **`labwareLabels`**: the label the user gave each labware (`docs/glossary.md`, "Labware label"),
   by the labware's name in the deck description. A labware without one is labelled by that name.
   No two labware have the same label.
+- **`wellLabels`**: the label the user gave each well (`docs/glossary.md`, "Well label"), by the
+  labware's name in the deck description, then the well's name on its grid (`A1`, or `5` on a
+  reservoir). Only labware with at least one labelled well are listed, and only labelled wells.
+  Each label is text, not blank, with no whitespace at the start or end (as `checkName`). Labels
+  may repeat. A label belongs to the well's position for the whole run, not to what the well holds.
+  Like the experiment name, labels are part of the plan, so labelling is an edit like any other:
+  undone and redone, kept in the browser copy, and saved in the plan file (`plan-file.md`; Andy,
+  2026-11-01). They're for people only: the file writer never reads them.
 - **`experimentName`**: the experiment's name (`docs/glossary.md`, "Experiment name"), or `""`
   until the user gives one (Andy, 2026-10-28). A name follows the file writer's rule,
   `checkExperimentName` (`file-writer.md`): letters, digits, hyphens and underscores, 1 to 40
@@ -292,6 +307,18 @@ a transfer asking for more than it can get; in contents tracking's terms that is
   labware's name), because it's for a table already in the plan's own form, such as one read from a
   plan file (`plan-file.md`), not for what someone types.
 
+### Well labels
+(Andy, 2026-11-01, from the randomizer preview: labelling the wells that hold each condition makes
+a plate's wells easy to recognize.)
+- **Labelling a well** (`setWellLabel`): the label's spaces at the ends are removed; a label that's
+  blank after that removes the well's label. Any text is a label, and two wells may share one, so
+  nothing else is checked. Giving a well the label it already has gives a plan whose `wellLabels`
+  is the very same object.
+- **Setting all the well labels at once** (`setWellLabels`) replaces the whole table, and is
+  **strict**, as `setLabels` is: it refuses what `setWellLabel` would tidy (spaces at the ends, a
+  blank label), and a labware listed with no wells, because it's for a table already in the plan's
+  own form, such as one read from a plan file.
+
 ### Configuration
 Two files in `config/` (ADR 0009), which this module's tests check:
 - **`config/pipetting-modes.js`** exports `PIPETTING_MODES`: a list of
@@ -333,7 +360,7 @@ given; "returns the plan with …" means a new plan.
 **Plans**
 | Function | Returns |
 |---|---|
-| `emptyPlan()` | `{ plan, stageId }`: a plan with no components, starting contents, transfers or labels, no experiment name (`""`), one stage (`NEW_STAGE_NAME`, default settings), and `START` tips of the first tip type; and that stage's ID. |
+| `emptyPlan()` | `{ plan, stageId }`: a plan with no components, starting contents, transfers, labels or well labels, no experiment name (`""`), one stage (`NEW_STAGE_NAME`, default settings), and `START` tips of the first tip type; and that stage's ID. |
 | `setExperimentName(plan, name)` | the plan with the experiment called `name`, its spaces at the ends removed; `""` (or only spaces) gives no name. Throws if `name` isn't text, or isn't a valid experiment name (`checkExperimentName`, `file-writer.md`). An unchanged name gives the same plan back. |
 | `defaultSettings()` | a stage's default settings (section 3, "Stages"). |
 | `probesFor(count)` | the first `count` probes, e.g. `4` → `[1, 2, 3, 4]`. Throws unless `count` is a whole number from 1 to 8. |
@@ -411,6 +438,13 @@ with that name.
 | `setLabel(plan, name, label)` | the plan with the labware labelled `label` (section 3). Throws if the labware isn't on the deck, the label isn't text, or another labware has that label. |
 | `setLabels(plan, labels)` | the plan with its labels replaced by `labels`, an object of labware names and labels, e.g. `{ Plate: "Assay plate", Deep: "Drug plate" }` (section 3). Throws if `labels` isn't an object, a labware isn't on the deck, a label isn't text, is blank, has spaces at its ends or is its own labware's name, or two labware would show one label. |
 
+**Well labels**
+| Function | Returns |
+|---|---|
+| `wellLabelOf(plan, end)` | the label of well `end` (`{ labware, well }`), e.g. `"Cond 1"`, or `null` if it has none. Throws if `end` isn't a well on the deck (`deck.checkWell`). |
+| `setWellLabel(plan, end, label)` | the plan with well `end` labelled `label`, or its label removed if `label` is blank (section 3, "Well labels"). Throws if `end` isn't a well on the deck, or `label` isn't text. |
+| `setWellLabels(plan, labels)` | the plan with its well labels replaced by `labels`, in the form of `wellLabels` (section 3), e.g. `{ Deep: { A1: "Cond 1" } }`. Throws if `labels` isn't an object, a labware isn't on the deck, a labware's wells aren't an object or are empty, a well isn't on its labware's grid, or a label isn't text, is blank, or has spaces at its ends. |
+
 ## 5. Errors
 Each message says what's wrong and how to fix it, in the plan's own terms. A failed edit changes
 nothing: the plan given is never touched. Messages from the shared modules (`operation-list`,
@@ -467,6 +501,16 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setLabels`: a label is its own labware's name | `The label for Plate is its own name. A labware without a label is left out of the labels.` |
 | `setExperimentName`: `name` isn't text, or isn't a valid experiment name | `checkExperimentName`'s messages (`file-writer.md`, section 5), unchanged, e.g. `The experiment name can't contain " " (a space). …` |
 | `setLabels`: two labware would show one label | `Plate and Deep would both show as "Drug plate". Give each labware a different label.` (the pair in the deck's order) |
+| `wellLabelOf`, `setWellLabel`: `end` isn't a well on the deck | `deck.checkWell`'s messages, unchanged, e.g. `"Z99" isn't a well on Plate. Its wells are A1 to H12.` |
+| `setWellLabel`: label isn't text | `A well's label must be text, like "Cond 1", but got 5.` |
+| `setWellLabels`: `labels` isn't an object (including `null` and lists) | `The well labels must be an object of labware names, each holding an object of wells and labels, like { Deep: { A1: "Cond 1" } }, but got a list.` |
+| `setWellLabels`: a labware isn't on the deck | the deck's message, e.g. `There's no labware "Bench" on the deck. The deck has "Plate", "Deep", "Res".` |
+| `setWellLabels`: a labware's wells aren't an object (including `null` and lists) | `The well labels for Deep must be an object of wells and labels, like { A1: "Cond 1" }, but got 5.` |
+| `setWellLabels`: a labware's wells are empty | `The well labels for Deep are empty. A labware without labelled wells is left out of the well labels.` |
+| `setWellLabels`: a well isn't on its labware's grid | the deck's message, e.g. `"Z99" isn't a well on Deep. Its wells are A1 to H12.` |
+| `setWellLabels`: a label isn't text | `The label for Deep A1 must be text, like "Cond 1", but got 5.` |
+| `setWellLabels`: a label is blank | `The label for Deep A1 is blank. A well without a label is left out of the well labels.` |
+| `setWellLabels`: a label has spaces at its ends | `The label for Deep A1, " Cond 1", has spaces at the start or end. Remove them.` |
 
 **Order of checks.** The first problem found is reported:
 - `addTransfer`: the operation list's checks of the transfer (its form, then the stage rule), then
@@ -488,6 +532,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 - `setComponentColor`: the component exists, then the color.
 - `addToWells`: the component exists, then the volume, then each well in turn.
 - `setLabel`: the labware, then the label is text, then (after trimming) no other labware has it.
+- `setWellLabel`: the well (`deck.checkWell`'s order), then the label is text.
+- `setWellLabels`: that `labels` is an object; then each labware in turn, in the order it holds
+  them: on the deck, its wells an object, not empty, then each of its wells in turn: on the grid,
+  then its label is text, not blank, without spaces at its ends.
 - `setLabels`: that `labels` is an object; then each entry in turn, in the order it holds them: its
   labware on the deck (`deck`'s message), then its label: text, not blank, no spaces at its ends,
   not its own labware's name; then, on the new table as a whole, that no two labware show one label
@@ -514,7 +562,8 @@ order of checks.
 - `defaultSettings()` gives `DEFAULT_PIPETTING_MODE`'s technique and liquid type at both ends,
   `sourceMix` and `destinationMix` `null`, and nothing else (no probes).
 - `emptyPlan()` gives one stage named `NEW_STAGE_NAME` with default settings, `START` tips of the
-  first tip type on the first `DEFAULT_PROBE_COUNT` probes (`[1, 2, 3, 4]`), an experiment name of `""`, and nothing else; its `stageId` is
+  first tip type on the first `DEFAULT_PROBE_COUNT` probes (`[1, 2, 3, 4]`), an experiment name of `""`, no
+  well labels (`{}`), and nothing else; its `stageId` is
   that stage.
 - `setExperimentName` sets `"Exp36"`; trims `" Exp36 "` to `"Exp36"`; `""` and `"  "` remove the
   name; giving the name it already has returns the same plan; `5`, `"Exp 36"` and a name of 41
@@ -692,6 +741,30 @@ order of checks.
   `" Assay plate"` and `"Plate"` for Plate, and `{ Plate: "Deep" }` while Deep has no label in the
   new table, each with its message; a refused table leaves the plan unchanged.
 
+**Well labels**
+- `emptyPlan()`'s `wellLabels` is `{}`; `wellLabelOf` gives `null` for any well of it.
+- `setWellLabel` labels `{ labware: "Deep", well: "A1" }` `"Cond 1"`, and `wellLabelOf` gives
+  `"Cond 1"`; `wellLabels` is `{ Deep: { A1: "Cond 1" } }`. A reservoir trough (`"5"`) can be
+  labelled.
+- `setWellLabel` trims `"  Cond 1 "` to `"Cond 1"`; `""` and `"   "` remove the label, and removing
+  a labware's last label removes the labware from `wellLabels`; removing a label a well doesn't
+  have gives a plan whose `wellLabels` is the very same object, and so does giving a well the label
+  it has.
+- Two wells may share a label; a label with spaces inside (`"Cond 1"`) and with other characters
+  (`"Drug A 10 µM"`) is accepted.
+- `setWellLabel` with `5` as the label, a well not on the grid, and labware not on the deck, each
+  throws with its message; `wellLabelOf` with a well not on the deck throws.
+- `setWellLabels` sets the whole table: `{ Deep: { A1: "Cond 1", A2: "Cond 1" }, Res: { "5":
+  "Media" } }` is accepted; `{}` removes every label.
+- `setWellLabels` refuses `null` and a list; labware not on the deck; `{ Deep: 5 }`, `{ Deep: [] }`
+  and `{ Deep: {} }`; a well `"Z99"`; and labels of `5`, `""`, `"  "` and `" Cond 1"`, each with its
+  message; a refused table leaves the plan unchanged.
+- Order of checks: `{ Bench: 5 }` reports the labware, not its wells; `{ Deep: { Z99: 5 } }`
+  reports the well, not the label.
+- Labelling a well leaves its contents, the transfers and everything else as they were.
+
 **Immutability and sharing**
 - Every edit leaves the plan it was given unchanged.
 - After any edit, parts it didn't change are the very same objects in the new plan.
+- In the table of which parts of the plan each edit may change, `setWellLabel` and `setWellLabels`
+  change only `wellLabels`; no other edit changes it.

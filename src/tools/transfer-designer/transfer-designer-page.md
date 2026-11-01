@@ -63,6 +63,13 @@
 > group's last seam, from the page tweaks of 2026-10-31, goes: a seam between tip groups does what
 > it did. They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-01, well labels, the second part of v0.2.0's item 9):** from the
+> randomizer preview Andy shaped on 2026-11-01: right-click a well to name it (its **well label**,
+> `docs/glossary.md`); a `Names` toggle beside `Arrows`; a labelled well shows its label in its
+> volume's place; the contents card shows the label first (sections 4, 6, 15 and 16). The page
+> says "name" (`Right-click to name`, `Names`); the specifications say "well label", since "well
+> name" already means a well's place, such as `A1`. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -135,7 +142,7 @@ data everyone has to clear first).
 
 **The page's own state**, which isn't part of the plan, undo, or the files:
 - which labware is **out** (in the editor) and which is put away (section 6);
-- whether arrows are shown (on at first);
+- whether arrows are shown (on at first), and whether well labels are shown (on at first);
 - which stages show their transfer list (none at first);
 - the open editing box, and its unsaved changes (section 10);
 - the **brush**: the component picked, or the eraser, and its volume (section 8);
@@ -143,8 +150,8 @@ data everyone has to clear first).
 - a chosen **source** well, while a transfer is being made (section 9);
 - the **Biomek files box**, while it's open, and the run it will write (section 5).
 
-The experiment's name isn't the page's own: it's part of the plan (`transfer-designer.md`), so it's
-undone, kept in the browser copy and saved like any edit.
+The experiment's name and the well labels aren't the page's own: they're part of the plan
+(`transfer-designer.md`), so they're undone, kept in the browser copy and saved like any edit.
 
 ## 5. The header
 **The experiment's name** is the page's heading, at the left (Andy, 2026-10-28). It works like a
@@ -235,8 +242,9 @@ the dead volume, an overdraw or an overfill, including a well that starts over i
 `contents-tracking.md`) counts as one, and so does each stage with a mix problem
 (`stagesWithMixProblem`).
 
-**Second bar.** On the left, the **labware tray**; on the right, the key and the `Arrows` toggle,
-both about what the deck draws. On a narrow window the right side wraps onto its own line.
+**Second bar.** On the left, the **labware tray**; on the right, the key, then the `Names` and
+`Arrows` toggles, all about what the deck draws (Andy, 2026-11-01: display toggles belong
+together). On a narrow window the right side wraps onto its own line.
 
 **Third bar.** `Components:` in gray, then the component colors, from the left, wrapping onto more
 lines under each other. Hidden while the plan has no components. (Andy, 2026-10-26: the colors
@@ -254,6 +262,10 @@ to the right, which looked scattered.)
   deck but in the line, not on a well), in that order, each while that mark is on the deck. Its example wells are drawn as
   the marks on the deck are (below), the X's lines 2px thick. With none, the key is hidden.
 - **The component colors** (third bar): each component's swatch and name, in the plan's order.
+- **`Names`** (pressed while on; on when the page opens) shows each labelled well's label where the
+  well otherwise shows its volume (or, if it's empty, its well name; below); off, every well shows
+  its volume or well name as before. Tooltip `Show well names instead of volumes on named wells`. An action button, like
+  `Arrows`, just left of it.
 - **`Arrows`** (pressed while on) shows or hides the transfer arrows.
 
 **The labware** that's out, one block each, in the deck's order, **two to a row**: side by side,
@@ -287,12 +299,23 @@ labware above to bring it into the editor.`
   diagonal stripes of the page's background color at 75% opacity (3px stripes, 7px apart, at
   45°), so it reads as liquid that's out of reach; its label is still the total. The same on
   plates and troughs (Andy, 2026-10-30: one rule for every labware). An empty well isn't striped.
-- Its accessible name is the well and its contents, e.g. `Assay plate A1, 120 µL` or `Assay plate
+- **Labelled** (`wellLabelOf`), while `Names` is on: its label in place of its volume (or, empty,
+  its well name), on the same small white label, in the page's text font, semibold, centered
+  (section 15): a label with a space wraps at spaces onto at most two lines; a single word stays on
+  one line in slightly smaller type; either is cut with `…` if it still doesn't fit (about 7
+  letters fit on a line, e.g. `Vehicle`; `Staurosporine` shows as `Stauro…`). A reservoir trough
+  shows its label upright along its length, reading bottom to top. Its fill, stripes and marks are
+  as for any well; its volume is in the contents card. (Andy, 2026-11-01: in the volume's place,
+  so the deck's look doesn't change, and a toggle to see the volumes again.)
+- Its accessible name is the well and its contents, after its label if it has one (whether `Names`
+  is on or not), e.g. `Cond 1, Assay plate A1, 120 µL`, or `Assay plate A1, 120 µL` or `Assay plate
   A2, empty` (holding only dead volume: `Assay plate A1, 20 µL, all dead volume`), then, if the open stage mixes it, how much: `Assay plate A1, 120 µL, mixed 17%`.
 
 **Pointing at a well** shows its contents card at once, beside the well: to its left if it fits there
 (the cursor's volume label is to the right), otherwise to its right, and kept inside the window. The
 card (dark, light text) shows:
+- for a labelled well, its label first, on a line of its own, larger and bold (section 15), then
+  the well under it, smaller and quieter (Andy, 2026-11-01: the label is what's looked for);
 - the well, e.g. `Assay plate A1`; `Empty` if it holds nothing;
 - for each component: its swatch, name, volume in µL and percentage (section 13);
 - (Andy, 2026-10-31: no total, usable-volume or capacity lines. The components add up to the
@@ -315,8 +338,31 @@ card (dark, light text) shows:
   `Stage 1, “Tiny dispense”, can't mix this well: its mix is 0 µL, under 1 µL.`, in the card's
   problem color: the first such stage, its mix volume, and `MIN_MIX_VOLUME` (today 1 µL).
 
+- last, quieter than the rest (section 15): `Right-click to name`, or `Right-click to rename` for
+  a labelled well, so naming can be found.
+
 Transfer numbers are positions in the operation list counting from 1. The card hides when the
 pointer leaves the well, the page scrolls, or a drag starts.
+
+**Naming a well** (its well label; Andy, 2026-11-01). **Right-clicking a well**, or opening the
+context menu on a focused well from the keyboard (the menu key, or Shift+F10), opens a **name
+box** for it instead of the browser's menu, whatever is open in the Stages column, so wells can be
+named once they're seen to be filled. A normal click still does what it always does. (A right
+click while another text box is open saves and closes that box and does nothing else, as for a
+transfer's volume, section 7; a second right click names the well.)
+- The box is a text box 140px wide, floating 6px under the well, centered on it, kept inside the
+  window, above everything else, with a shadow like the contents card's. It holds the well's label,
+  selected, or nothing, with the placeholder `e.g. Cond 1`; its accessible name is `Name of Assay
+  plate A1`. The contents card hides while it's open. If the page scrolls, it stays under the well.
+- **Enter**, or **clicking away**, saves it with `setWellLabel`, as one undoable edit: `Named
+  Assay plate A4 “Media stock”.` (green), or, for a blank name on a labelled well, `Assay plate A4
+  has no name now.` (a note). A name that's unchanged after trimming saves nothing. **Escape**
+  closes it and keeps the old label. Clicking away still does what that click would, as for a
+  labware's label (above).
+- Labels show only on the deck and in the contents card (and, later, the randomizer's card). A
+  transfer row keeps its locations (`Assay plate A1 → Drug plate B2`; Andy, 2026-11-01: rows are
+  for checking exactly where liquid goes, labels can repeat, and a stage's name already says what
+  its source is). The Biomek files never hold them.
 
 **Marks on the wells** (from `contents-tracking` at the point the deck shows):
 - **Overdraw:** a source well a transfer asked for more than its usable volume (a `"dead-volume"`
@@ -854,7 +900,16 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   the label column is as wide as its widest label, and the two end columns share the rest equally,
   8px apart; the menus there have 4px side padding instead of 10px, so whole mode names fit.
 - **Contents card:** dark (`#1C1C1A`) with light text (`#F6F5F1`), problems in `#FFB4AA`, a short
-  mix's line in `#FFD45C`.
+  mix's line in `#FFD45C`. A labelled well's label 16px bold (line height 1.25), and the well under
+  it 12px, normal weight, at 70% opacity; the last line, `Right-click to name`, 12px at 60%
+  opacity, 6px below the line before it.
+- **A well's label on the deck** (with `Names` on): the page's text font, semibold (600), 9px with
+  line height 1.05, centered, at most two lines and at most the well's width less 4px, 1px × 2px
+  padding; a single word 8px, letter spacing −0.3px, on one line, at most the well's width less
+  2px, 1px padding, cut with `…`; on a trough, 11px, upright (written top to bottom, turned to read
+  bottom to top), at most the trough's height less 8px.
+- **The name box:** 140px wide, at least 30px tall, the shadow `0 6px 20px` at 20% of the text
+  color.
 - **⟳ badges** (section 6): a 14px circle centered on the well's top-right edge (at 45° from its
   center; a reservoir trough's top-right corner), with a ⟳ in it, 10px, and a 1px white border so it
   stands out on any fill. Blue: fill `#2F5DA8`, ⟳ white. Short: fill `#FFD45C`, ⟳ `#8A6400`. Mix
@@ -904,6 +959,12 @@ page's configuration (ADR 0009):
   at Start, and another taken over it by a transfer: the bar, `Overfill` in the key, the messages,
   the count, the refusal; a well both overdrawn and overfilled shows both marks; the stripes and
   marks on a plate and on a trough alike;
+- well labels: right-click a plate well and a trough, and the menu key on a focused well, with
+  Start, a stage and End open; name one, rename it, Escape, a blank name removes it, unchanged
+  saves nothing; each name undone and redone; `Names` off and on; a two-word name on two lines, a
+  long single word cut with `…`, a trough's name upright; an empty labelled well; the contents
+  card's label, well and hint lines; names kept after reloading, and after saving and opening;
+  transfer rows unchanged;
 - seams: inside a box, the seams above its first stage, between two stages and below its last
   stage, each with the ⟳ and `+` adding into that box with its tips, and the tip button only
   between two stages, splitting the box; between tip groups, the seams above the first box, between
