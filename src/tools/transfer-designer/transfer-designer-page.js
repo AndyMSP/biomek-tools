@@ -4,8 +4,9 @@
 // The page has no rules of its own about plans (transfer-designer-page.md, section 1). Every edit
 // goes through transfer-designer.js, undo and redo through plan-history.js, saving and opening
 // through plan-file.js, the labware through deck.js, what each well holds through
-// contents-tracking.js, how much each mixed well is mixed through mix-volumes.js, and the Biomek
-// files through file-writer.js and zip.js. When one of them
+// contents-tracking.js, how much each mixed well is mixed through mix-volumes.js, a randomization's
+// seed and spare wells through random-pool.js, and the Biomek files through file-writer.js and
+// zip.js. When one of them
 // refuses an edit, the page shows its message and changes nothing. What this file decides is only
 // how things look and how the user does them: how typing a volume works, how numbers are shown,
 // where boxes float, and what each message says.
@@ -14,11 +15,13 @@
 import packageJson from "../../../package.json" with { type: "json" };
 import { COMPONENT_COLORS } from "../../../config/component-colors.js";
 import { DEFAULT_TRANSFER_VOLUME, DEFAULT_FILL_VOLUME } from "../../../config/default-volumes.js";
+import { SOURCES_SHOWN } from "../../../config/randomizations.js";
 import { TIP_TYPES } from "../../../config/tip-types.js";
 import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
+import { randomSeed, spareWellCount } from "../../shared/random-pool/random-pool.js";
 import {
   labwareNames,
   gridOf,
@@ -75,6 +78,16 @@ import {
   setLabel,
   wellLabelOf,
   setWellLabel,
+  addRandomization,
+  randomizationAt,
+  randomizationOf,
+  setRandomization,
+  placeRandomization,
+  randomizationProblems,
+  sourceName,
+  runRandomization,
+  removeRandomization,
+  canRemoveRandomization,
 } from "./transfer-designer.js";
 
 // --- Constants ---
@@ -185,6 +198,18 @@ let secondaryPress = null;
 
 // The "+ New" component box while it's open: { text }, or null.
 let addingComponent = null;
+
+// The open randomization's card (section 7, "Randomizations"), or null: { id, draft, returnTo,
+// element }. `draft` holds its unsaved changes as the card shows them (draftOf); `returnTo` is the
+// entry that was open before it, which opens again when it closes; `element` is the card as drawn.
+let card = null;
+
+// The tab each randomization's card was last left on ("sources" or "fill"), by its ID (section 7:
+// one opened again opens on the tab it was last left on).
+const cardTabs = new Map();
+
+// The randomizations whose card shows every source, not only the first SOURCES_SHOWN, by ID.
+const sourcesShownInFull = new Set();
 
 // What the deck shows now (section 11), and the plates as the open stage starts (for arrow colors).
 let shownSnapshot = null;
@@ -303,6 +328,10 @@ function connectHeader() {
   elements.writeFiles.addEventListener("click", writeBiomekFiles);
   elements.save.addEventListener("click", savePlanFile);
   elements.open.addEventListener("click", () => {
+    // An open randomization's card closes first, as Close would (section 7).
+    if (!closeRandomizationCard()) {
+      return;
+    }
     // Clearing the value first means choosing the same file again still counts as a change.
     elements.openFile.value = "";
     elements.openFile.click();
@@ -389,25 +418,43 @@ function afterPlanChange() {
   refresh();
 }
 
-// Opens Start, a stage or End (section 7). It replaces the current state rather than recording one,
-// so it isn't an undo of its own (section 4). Closes any editing box and clears any source, since
-// both belong to what was open, then scrolls the column to show the opened entry.
+// Opens Start, a stage, End or a randomization's card (section 7). It replaces the current state
+// rather than recording one, so it isn't an undo of its own (section 4). An open randomization's
+// card closes first, as Close would, and if it can't, nothing else happens. Closes any editing box
+// and clears any source, since both belong to what was open, then scrolls the column to show the
+// opened entry. A card remembers what was open before it, to open again when it closes.
 function openEntry(key) {
   if (key === currentOpen()) {
     return;
   }
+  const before = card === null ? currentOpen() : card.returnTo;
+  if (!closeRandomizationCard()) {
+    return;
+  }
   closeEditingBox();
   source = null;
+  if (isRandomization(currentPlan(), key)) {
+    card = newCard(currentPlan(), key, before);
+  }
   history = history.replacePresent({ plan: currentPlan(), open: key });
   refresh();
   scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(key)}"]`));
 }
 
 // Opens the entry before (`direction` -1) or after (1) the open one, in the order Start, the stages
-// in stage order, End (section 11).
+// in stage order, End (section 11). A randomization isn't a stop: from its card, › opens the entry
+// it sits before (its first stage once run) and ‹ the one before that.
 function openNeighbour(direction) {
-  const entries = allEntries(currentPlan());
-  const next = entries[entries.indexOf(currentOpen()) + direction];
+  const plan = currentPlan();
+  const entries = allEntries(plan);
+  const open = currentOpen();
+  let next;
+  if (isRandomization(plan, open)) {
+    const place = entries.indexOf(randomizationPlace(plan, open) ?? END);
+    next = entries[direction > 0 ? place : place - 1];
+  } else {
+    next = entries[entries.indexOf(open) + direction];
+  }
   if (next !== undefined) {
     openEntry(next);
   }
@@ -418,9 +465,9 @@ function allEntries(plan) {
   return [START, ...stageOrder(plan), END];
 }
 
-// Undoes the last edit (section 6).
+// Undoes the last edit (section 6). Not while a randomization's card is open (section 12).
 function undo() {
-  if (!history.canUndo()) {
+  if (!history.canUndo() || card !== null) {
     return;
   }
   history = history.undo();
@@ -428,9 +475,9 @@ function undo() {
   showMessage("Undone.", "note");
 }
 
-// Redoes the last undone edit (section 6).
+// Redoes the last undone edit (section 6). Not while a randomization's card is open (section 12).
 function redo() {
-  if (!history.canRedo()) {
+  if (!history.canRedo() || card !== null) {
     return;
   }
   history = history.redo();
@@ -442,6 +489,7 @@ function redo() {
 // Stages column and the column's fit.
 function refresh() {
   const plan = currentPlan();
+  syncCard(plan, currentOpen());
   // Undo or redo can take the picked component away (e.g. undoing a rename): then, as when a picked
   // component is removed, the first component is picked, or the eraser if there's none.
   if (brush.pick.kind === "component" && !hasComponent(plan, brush.pick.name)) {
@@ -454,6 +502,16 @@ function refresh() {
   keepVolumeBoxTransferHighlighted();
   updateCursorLabel();
   requestAnimationFrame(fitStagesColumn);
+}
+
+// Keeps the card in step with what's open: a randomization open (after redo, say) has its card,
+// made from the plan if there's none for it yet; anything else open has none.
+function syncCard(plan, open) {
+  if (!isRandomization(plan, open)) {
+    card = null;
+  } else if (card === null || card.id !== open) {
+    card = newCard(plan, open, START);
+  }
 }
 
 // Runs `edit`, which returns a new plan, and records it. If the logic refuses, shows its message as
@@ -481,6 +539,9 @@ function tryLogic(action) {
 
 // Saves the plan as a plan file, suggesting the name "transfer plan YYYY-MM-DD.json".
 async function savePlanFile() {
+  if (!closeRandomizationCard()) {
+    return;
+  }
   const saved = await saveFile({
     contents: planToText(currentPlan(), SAVED_BY),
     fileName: `transfer plan ${localDate()}.json`,
@@ -566,6 +627,7 @@ async function openChosenFile() {
 // labware it uses, closes any editing box, clears any source, and picks its first component.
 function showReplacedPlan(plan, open) {
   closeEditingBox();
+  card = null;
   source = null;
   addingComponent = null;
   bringOutUsedLabware(plan);
@@ -578,6 +640,9 @@ function showReplacedPlan(plan, open) {
 function toggleResetBox() {
   if (!elements.resetBox.hidden) {
     closeResetBox();
+    return;
+  }
+  if (!closeRandomizationCard()) {
     return;
   }
   closeBiomekBox();
@@ -615,6 +680,7 @@ function closeHeaderBoxesPressedOutside(event) {
 function resetEverything() {
   closeResetBox();
   closeEditingBox();
+  card = null;
   source = null;
   addingComponent = null;
   labwareOut.clear();
@@ -757,6 +823,9 @@ function toggleBiomekBox() {
     closeBiomekBox();
     return;
   }
+  if (!closeRandomizationCard()) {
+    return;
+  }
   closeResetBox();
   const now = new Date();
   const summary = elements.biomekSummary;
@@ -873,8 +942,9 @@ function refreshDeck() {
   openStageMixedWells = mixedWellsOf(plan, open);
   lastingMixProblems = lastingMixProblemsOf(plan, open);
   refreshTimeline(plan, open);
-  elements.undo.disabled = !history.canUndo();
-  elements.redo.disabled = !history.canRedo();
+  // Undo and Redo are off while a randomization's card is open: its changes aren't in the plan yet.
+  elements.undo.disabled = !history.canUndo() || card !== null;
+  elements.redo.disabled = !history.canRedo() || card !== null;
   refreshProblemCount(plan);
   drawTray(plan);
   drawComponentColors(plan);
@@ -924,7 +994,9 @@ function mixedWellsOf(plan, key) {
 function lastingMixProblemsOf(plan, open) {
   const lasting = new Map();
   const order = stageOrder(plan);
-  const earlier = open === END ? order : order.slice(0, Math.max(order.indexOf(open), 0));
+  // For a randomization's card, the stages before where it sits.
+  const at = isRandomization(plan, open) ? randomizationPlace(plan, open) ?? END : open;
+  const earlier = at === END ? order : order.slice(0, Math.max(order.indexOf(at), 0));
   const withProblem = stagesWithMixProblem(plan);
   for (const stage of earlier.filter((id) => withProblem.has(id))) {
     for (const [key, mixed] of mixedWellsOf(plan, stage)) {
@@ -972,10 +1044,15 @@ function isStage(plan, key) {
 }
 
 // How many operations have run at the point the deck shows (section 11): none for Start, all for
-// End, and for a stage, those up to the end of the last stage with transfers at or before it.
+// End, for a stage, those up to the end of the last stage with transfers at or before it, and for a
+// randomization's card, those before where it sits.
 function operationCountShown(plan, open) {
   if (open === START) {
     return 0;
+  }
+  if (isRandomization(plan, open)) {
+    const place = randomizationPlace(plan, open);
+    return place === null ? plan.operationList.listOperations().length : operationCountBefore(plan, place);
   }
   if (open === END) {
     return plan.operationList.listOperations().length;
@@ -1006,6 +1083,7 @@ function transfersDoneUpTo(plan, id, including) {
 // Shows the timeline's caption and whether ‹ and › can go anywhere (section 11).
 function refreshTimeline(plan, open) {
   elements.timelineCaption.textContent = timelineCaption(plan, open);
+  // From a randomization's card, both step somewhere: Start is before it and End after it at most.
   elements.previousPoint.disabled = open === START;
   elements.nextPoint.disabled = open === END;
 }
@@ -1017,6 +1095,10 @@ function timelineCaption(plan, open) {
   }
   if (open === END) {
     return "At the end, after all stages";
+  }
+  if (isRandomization(plan, open)) {
+    const place = randomizationPlace(plan, open);
+    return place === null ? "Randomizing, after all stages" : `Randomizing, before ${stageLabel(plan, place)}`;
   }
   const order = stageOrder(plan);
   const place = order.indexOf(open) + 1;
@@ -1432,6 +1514,15 @@ function markWells(plan, open) {
   if (source !== null) {
     wellElements.get(wellKey(source))?.classList.add("source");
   }
+  // A randomization's sources and wells to fill, from its card's draft, while it's open (section 6).
+  if (card !== null) {
+    for (const entry of card.draft.sources) {
+      wellElements.get(wellKey(entry))?.classList.add("source");
+    }
+    for (const end of card.draft.fill) {
+      wellElements.get(wellKey(end))?.classList.add("to-fill");
+    }
+  }
 }
 
 // --- Arrows (section 6) ---
@@ -1561,20 +1652,29 @@ function createArrow(from, to, color, { insetEnd, dashed }) {
 
 // --- The Stages column (section 7) ---
 
-// Redraws the Stages column from the plan: Start, the tip group boxes with their stages, End, a
-// seam between tip groups above each box and above End, and the open editing box.
+// Redraws the Stages column from the plan: Start, the tip group boxes with their stages and each
+// randomization's box where it sits (columnBlocks), End, a seam between tip groups above each box
+// and above End, and the open editing box.
 function refreshStages() {
   const plan = currentPlan();
   const open = currentOpen();
   const problems = stageProblems(plan);
-  const groups = tipGroups(plan);
+  const blocks = columnBlocks(plan);
   const drawnKeys = new Set();
   const items = [createEntry(plan, START, open, problems)];
-  groups.forEach((group, index) => {
-    items.push(createSeamBetweenGroups(plan, group.stages[0]));
-    items.push(createTipGroupBox(plan, group, index, groups[index + 1], open, problems, drawnKeys));
+  // Tip group boxes alternate light blue and light sand, counting those inside randomizations too.
+  let groupIndex = 0;
+  blocks.forEach((block, index) => {
+    items.push(createSeamBetweenGroups(plan, seamPlace(blocks, index)));
+    if (block.kind === "group") {
+      items.push(createTipGroupBox(plan, block, groupIndex, open, problems, drawnKeys, false));
+      groupIndex += 1;
+    } else {
+      items.push(createRandomizationBox(plan, block, groupIndex, open, problems, drawnKeys));
+      groupIndex += block.groups.length;
+    }
   });
-  items.push(createSeamBetweenGroups(plan, null));
+  items.push(createSeamBetweenGroups(plan, seamPlace(blocks, blocks.length)));
   items.push(createEntry(plan, END, open, problems));
   elements.stagesList.replaceChildren(...items);
   lastDrawnKeys = drawnKeys;
@@ -1625,8 +1725,8 @@ function createEntry(plan, key, open, problems) {
     row.append(mark);
   }
   // An open stage's ✎ sits just after its name, so its editing box floats under the heading
-  // (section 10); the count stays at the right.
-  if (isOpen && isStage(plan, key)) {
+  // (section 10); the count stays at the right. A randomization's stage has none (section 7).
+  if (isOpen && isStage(plan, key) && randomizationOf(plan, key) === null) {
     row.classList.add("with-pencil");
     row.append(createPencil("stage", key, `Edit stage ${stageOrder(plan).indexOf(key) + 1}`));
   }
@@ -1684,6 +1784,13 @@ function createEntryBody(plan, key) {
   } else if (isMixStep(plan, key)) {
     // A mix step's card has no settings line: the ⟳ after its name says what it is (section 7).
     body.append(...createMixedWellSection(plan, key));
+  } else if (randomizationOf(plan, key) !== null) {
+    // A randomization's stage is changed only through its card (section 7).
+    body.append(
+      createSettingsLine(plan, key),
+      createElement("p", "Part of a randomization: change it in its card.", "note"),
+      ...createTransferSection(plan, key),
+    );
   } else {
     body.append(createSettingsLine(plan, key), ...createTransferSection(plan, key));
   }
@@ -1806,11 +1913,14 @@ function mixedShareText(mixed) {
   return mixed.share === null ? "–" : `${mixedPercent(mixed.share)}% of well`;
 }
 
-// The open stage's transfer list: one row per transfer.
+// The open stage's transfer list: one row per transfer; read-only for a randomization's stage.
 function createTransferList(plan, id, transfers) {
   const problems = transferProblems(plan);
+  const owned = randomizationOf(plan, id) !== null;
   const list = createElement("ul", "", "transfer-list");
-  list.append(...transfers.map((transfer) => createTransferRow(plan, id, transfer, problems.get(transfer.position))));
+  list.append(
+    ...transfers.map((transfer) => createTransferRow(plan, id, transfer, problems.get(transfer.position), owned)),
+  );
   return list;
 }
 
@@ -1831,29 +1941,36 @@ function transferProblems(plan) {
 // volume is a button that becomes a text box; pointing at the row singles its transfer out on the deck,
 // unless a volume box is open, whose transfer stays singled out until it closes. `problem` is the
 // transfer's contents problem, if it has one: its volume is then red and semibold, with a tooltip
-// saying what's reachable or by how much it overfills (section 7).
-function createTransferRow(plan, id, transfer, problem) {
+// saying what's reachable or by how much it overfills (section 7). A randomization's stage
+// (`owned`) shows its volume as text, not a button, and has no ×.
+function createTransferRow(plan, id, transfer, problem, owned) {
   const row = createElement("li", "", "transfer-row");
   row.dataset.position = String(transfer.position);
   const route = `${wellName(plan, transfer.source)} → ${wellName(plan, transfer.destination)}`;
-  const volumeButton = createElement("button", `${formatVolume(transfer.volume)} µL`, "volume-button");
-  volumeButton.type = "button";
-  volumeButton.setAttribute("aria-label", `Volume of ${route}, ${formatVolume(transfer.volume)} µL. Click to change`);
-  volumeButton.addEventListener("click", () => startEditingVolume(volumeButton, id, transfer));
+  const volumeText = `${formatVolume(transfer.volume)} µL`;
+  const volumeButton = createElement(owned ? "span" : "button", volumeText, owned ? "volume-text" : "volume-button");
+  if (!owned) {
+    volumeButton.type = "button";
+    volumeButton.setAttribute("aria-label", `Volume of ${route}, ${volumeText}. Click to change`);
+    volumeButton.addEventListener("click", () => startEditingVolume(volumeButton, id, transfer));
+  }
   if (problem !== undefined) {
     volumeButton.classList.add("problem");
     volumeButton.title = describeRowProblem(problem);
   }
-  const remove = createElement("button", "×", "remove-transfer");
-  remove.type = "button";
-  remove.setAttribute("aria-label", `Remove ${route}`);
-  remove.addEventListener("click", () => {
-    highlightTransfer(null);
-    if (tryEdit(() => removeTransfer(plan, transfer.position)) !== false) {
-      showMessage(`Removed ${route} from ${stageLabel(plan, id)}.`, "note");
-    }
-  });
-  row.append(createElement("span", route, "transfer-text"), volumeButton, remove);
+  row.append(createElement("span", route, "transfer-text"), volumeButton);
+  if (!owned) {
+    const remove = createElement("button", "×", "remove-transfer");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `Remove ${route}`);
+    remove.addEventListener("click", () => {
+      highlightTransfer(null);
+      if (tryEdit(() => removeTransfer(plan, transfer.position)) !== false) {
+        showMessage(`Removed ${route} from ${stageLabel(plan, id)}.`, "note");
+      }
+    });
+    row.append(remove);
+  }
   row.addEventListener("pointerenter", () => {
     if (volumeBoxOpen === null) {
       highlightTransfer(transfer.position);
@@ -1972,13 +2089,88 @@ function highlightTransfer(position) {
   }
 }
 
+// The column's blocks between Start and End, in order (section 7): each tip group, as
+// { kind: "group", group, nextGroup }, and each randomization, as { kind: "randomization",
+// randomization, groups }, `groups` being its stages' tip groups in that form (none until it has
+// run). A randomization that has run sits where its stages are; one that hasn't, just before the
+// box of the stage it sits before (or above End), several at one place in the order they were
+// added.
+function columnBlocks(plan) {
+  const groups = tipGroups(plan);
+  const notRunAt = (beforeId) =>
+    plan.randomizations.filter((randomization) => randomization.stages.length === 0 && randomization.beforeId === beforeId);
+  const randomizationBlock = (randomization, its) => ({ kind: "randomization", randomization, groups: its });
+  const blocks = [];
+  let index = 0;
+  while (index < groups.length) {
+    const first = groups[index].stages[0];
+    blocks.push(...notRunAt(first).map((randomization) => randomizationBlock(randomization, [])));
+    const owner = randomizationOf(plan, first);
+    if (owner === null) {
+      blocks.push({ kind: "group", group: groups[index], nextGroup: groups[index + 1] });
+      index += 1;
+      continue;
+    }
+    const owned = new Set(randomizationAt(plan, owner).stages.map((entry) => entry.stage));
+    const its = [];
+    while (index < groups.length && owned.has(groups[index].stages[0])) {
+      its.push({ kind: "group", group: groups[index], nextGroup: groups[index + 1] });
+      index += 1;
+    }
+    blocks.push(randomizationBlock(randomizationAt(plan, owner), its));
+  }
+  blocks.push(...notRunAt(null).map((randomization) => randomizationBlock(randomization, [])));
+  return blocks;
+}
+
+// Where the seam between tip groups above `blocks[index]` (above End, past the last) adds
+// (section 7): { beforeId, toPlace }. `beforeId` is the stage a stage added there goes before: the
+// first stage of the block below, or, for a randomization that hasn't run, the stage it sits
+// before; null above End. `toPlace` holds the randomizations that haven't run just above the seam,
+// sitting at the same place, which are moved onto the new stage (placeRandomization) so it lands
+// below them.
+function seamPlace(blocks, index) {
+  const below = blocks[index];
+  let beforeId = null;
+  if (below !== undefined && below.kind === "group") {
+    beforeId = below.group.stages[0];
+  } else if (below !== undefined) {
+    beforeId = below.groups.length > 0 ? below.groups[0].group.stages[0] : below.randomization.beforeId;
+  }
+  const toPlace = [];
+  for (let above = index - 1; above >= 0; above -= 1) {
+    const block = blocks[above];
+    const sitsHere =
+      block.kind === "randomization" && block.groups.length === 0 && block.randomization.beforeId === beforeId;
+    if (!sitsHere) {
+      break;
+    }
+    toPlace.unshift(block.randomization.id);
+  }
+  return { beforeId, toPlace };
+}
+
 // A tip group's box: its heading (the tip change) and its stages, each between two seams. Boxes
-// alternate light blue and light sand. `nextGroup` is the box after it, if any.
-function createTipGroupBox(plan, group, index, nextGroup, open, problems, drawnKeys) {
+// alternate light blue and light sand. `block` is { group, nextGroup }, `nextGroup` being the box
+// after it, if any. A randomization's own tip group (`owned`) has no seams inside it and no ✎ on
+// its heading, since its stages change only through the randomization's card (section 7).
+function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, drawnKeys, owned) {
   const box = createElement("div", "", "tip-group");
   box.classList.toggle("sand", index % 2 === 1);
+  box.classList.toggle("owned", owned);
   box.dataset.group = group.key;
-  box.append(createTipGroupHeading(plan, group));
+  box.append(createTipGroupHeading(plan, group, owned));
+  if (owned) {
+    const stages = createElement("div", "", "tip-group-stages");
+    for (const id of group.stages) {
+      const entry = createEntry(plan, id, open, problems);
+      applyGlow(entry, `stage:${id}`, drawnKeys);
+      stages.append(entry);
+    }
+    box.append(stages);
+    applyBoxGlow(box, group, drawnKeys);
+    return box;
+  }
 
   const stages = createElement("div", "", "tip-group-stages");
   const firstStage = group.stages[0];
@@ -2037,17 +2229,20 @@ function applyBoxGlow(box, group, drawnKeys) {
 }
 
 // A tip group's heading: a tip icon, "New tips · BC230 · 2 tips" and the ✎ that opens the tip
-// change's box. The count is how many tips the tip change loads: one per probe it loads, chosen in
-// its box, and every stage in the group uses all of them (section 7).
-function createTipGroupHeading(plan, group) {
+// change's box (none on a randomization's own tip group, `owned`). The count is how many tips the
+// tip change loads: one per probe it loads, chosen in its box, and every stage in the group uses
+// all of them (section 7).
+function createTipGroupHeading(plan, group, owned) {
   const tips = countOf(group.probes.length, "tip");
   const heading = createElement("div", "", "tip-group-heading");
   heading.title = `Loads ${tips}. Every stage until the next new tips uses all of them.`;
   heading.append(
     createElement("span", "", "tip-icon"),
     createElement("span", `New tips · ${group.tipType} · ${tips}`),
-    createPencil("tip", group.key, "Edit these new tips"),
   );
+  if (!owned) {
+    heading.append(createPencil("tip", group.key, "Edit these new tips"));
+  }
   return heading;
 }
 
@@ -2078,33 +2273,39 @@ function createSeamInBox(plan, { addBefore, takeTips, accessibleName, tipsBefore
   });
 }
 
-// A seam between tip groups (section 7): above the first box, between two boxes, or above End,
-// whose stage or mix step gets new tips, as a tip group of its own. `beforeId` is the first stage of
-// the box below it, or null above End. Its right spot is empty (the randomizer will use it).
+// A seam between tip groups (section 7): above the first box, between two boxes (a randomization's
+// box among them), or above End, whose stage or mix step gets new tips, as a tip group of its own,
+// and whose right spot holds the dice button, adding a randomization there. `place` is
+// { beforeId, toPlace } (seamPlace): the first stage of the box below it, or null above End, and
+// the randomizations that haven't run just above it, which stay above a stage added here.
 // e.g. the seam above End, whose + is named "Add a stage with new tips at the end of the run".
-function createSeamBetweenGroups(plan, beforeId) {
-  const accessibleName =
-    beforeId === null
-      ? "Add a stage with new tips at the end of the run"
-      : `Add a stage with new tips before ${stageLabel(plan, beforeId)}`;
+function createSeamBetweenGroups(plan, { beforeId, toPlace }) {
+  const where = beforeId === null ? "at the end of the run" : `before ${stageLabel(plan, beforeId)}`;
+  // Adds with `add` ({ plan, id } from the plan), then keeps the randomizations above the seam
+  // above the new stage, as one edit.
+  const keepingAbove = (add) => () => {
+    const added = add(currentPlan());
+    const placed = toPlace.reduce((planSoFar, id) => placeRandomization(planSoFar, id, added.id), added.plan);
+    return { plan: placed, id: added.id };
+  };
   return createSeam({
     className: "seam group-seam",
     tooltips: {
       stage: "Add a stage here, with new tips",
       mixStep: "Add a mix step here, with new tips",
     },
-    accessibleName,
+    accessibleName: `Add a stage with new tips ${where}`,
     addStageHere: () =>
       addWithNewTipsAt(
-        () => addStageWithNewTips(currentPlan(), beforeId),
+        keepingAbove((plan) => addStageWithNewTips(plan, beforeId)),
         "Added a stage with new tips. New transfers go into it.",
       ),
     addMixStepHere: () =>
       addWithNewTipsAt(
-        () => addMixStepWithNewTips(currentPlan(), beforeId),
+        keepingAbove((plan) => addMixStepWithNewTips(plan, beforeId)),
         "Added a mix step with new tips. Click or drag across wells on the deck to mix them.",
       ),
-    rightButton: null,
+    rightButton: createSeamDiceButton(`Add a randomization ${where}`, () => addRandomizationAt(beforeId)),
   });
 }
 
@@ -2121,14 +2322,14 @@ function createSeam({ className, tooltips, accessibleName, addStageHere, addMixS
   mix.type = "button";
   mix.title = tooltips.mixStep;
   mix.setAttribute("aria-label", accessibleName.replace("a stage", "a mix step"));
-  mix.addEventListener("click", addMixStepHere);
+  mix.addEventListener("click", () => afterClosingCard(addMixStepHere));
   seam.append(mix);
   // The + is drawn by the stylesheet, two bars crossing at the circle's center, so it's centered.
   const add = createElement("button", "", "seam-button add-stage");
   add.type = "button";
   add.title = tooltips.stage;
   add.setAttribute("aria-label", accessibleName);
-  add.addEventListener("click", addStageHere);
+  add.addEventListener("click", () => afterClosingCard(addStageHere));
   seam.append(add);
   if (rightButton !== null) {
     seam.append(rightButton);
@@ -2144,8 +2345,20 @@ function createSeamTipButton(tooltip, accessibleName, onClick) {
   tips.title = tooltip;
   tips.setAttribute("aria-label", accessibleName);
   tips.append(createElement("span", "", "tip-icon"));
-  tips.addEventListener("click", onClick);
+  tips.addEventListener("click", () => afterClosingCard(onClick));
   return tips;
+}
+
+// A seam's dice button (section 7): a circle with the dice icon, in the right spot just right of
+// the +, with the tooltip "Add a randomization here", `accessibleName` and `onClick`.
+function createSeamDiceButton(accessibleName, onClick) {
+  const dice = createElement("button", "", "seam-button add-randomization");
+  dice.type = "button";
+  dice.title = "Add a randomization here";
+  dice.setAttribute("aria-label", accessibleName);
+  dice.append(createDiceIcon());
+  dice.addEventListener("click", () => afterClosingCard(onClick));
+  return dice;
 }
 
 // Adds a stage before `beforeId` (or last, for null) and opens it (section 7).
@@ -2192,6 +2405,810 @@ function addTipChangeBefore(beforeId) {
   if (tryEdit(() => addTipChange(plan, beforeId)) !== false) {
     showMessage(`New tips before ${stageLabel(plan, beforeId)}.`, "ok");
   }
+}
+
+// --- Randomizations (sections 7 and 9) ---
+
+// A randomization's box in the Stages column (section 7): its heading, then, while its card is
+// open, the card, then, once it has run, its stages' tip group boxes, unless it's collapsed to its
+// heading: it is, unless its card or one of its stages is open. `block` is from columnBlocks;
+// `groupIndex` the place of its first tip group among all of them, for their colors.
+function createRandomizationBox(plan, block, groupIndex, open, problems, drawnKeys) {
+  const { randomization, groups } = block;
+  const hasRun = groups.length > 0;
+  const cardOpen = card !== null && card.id === randomization.id;
+  const box = createElement("div", "", "randomization");
+  box.classList.toggle("not-set-up", !hasRun);
+  box.dataset.entry = randomization.id;
+  box.append(createRandomizationHeading(randomization, cardOpen));
+  if (cardOpen) {
+    card.element = createRandomizationCard(plan, randomization);
+    box.append(card.element);
+  }
+  const expanded = cardOpen || groups.some(({ group }) => group.stages.includes(open));
+  groups.forEach((groupBlock, place) => {
+    if (expanded) {
+      box.append(createTipGroupBox(plan, groupBlock, groupIndex + place, open, problems, drawnKeys, true));
+    } else {
+      noteDrawnWithoutGlow(groupBlock.group, drawnKeys);
+    }
+  });
+  return box;
+}
+
+// Notes a collapsed randomization's tip group and its stages as drawn, so they don't glow as new
+// when the box opens later (section 7: nothing glows when something is only opened).
+function noteDrawnWithoutGlow(group, drawnKeys) {
+  drawnKeys.add(`box:${group.key}`);
+  drawnKeys.add(`box-first:${group.stages[0]}`);
+  for (const id of group.stages) {
+    drawnKeys.add(`stage:${id}`);
+  }
+}
+
+// A randomization's heading (section 7): a button the box's width, with the dice icon, "Randomize"
+// (not set up yet) or "Randomized" (run), and, at the right, "not set up yet" or "68 stages · seed
+// 360310". Clicking it opens its card, or closes it if open.
+function createRandomizationHeading(randomization, cardOpen) {
+  const hasRun = randomization.stages.length > 0;
+  const heading = createElement("button", "", "randomization-heading");
+  heading.type = "button";
+  heading.setAttribute("aria-expanded", String(cardOpen));
+  heading.title = hasRun ? "Open to change it" : "Not set up yet: open it to finish setting it up.";
+  const status = hasRun
+    ? `${countOf(randomization.stages.length, "stage")} · seed ${randomization.seed}`
+    : "not set up yet";
+  heading.append(
+    createDiceIcon(),
+    createElement("span", hasRun ? "Randomized" : "Randomize", "randomization-title"),
+    createElement("span", status, "randomization-status"),
+  );
+  heading.addEventListener("click", () => {
+    if (cardOpen) {
+      closeRandomizationCard();
+    } else {
+      openEntry(randomization.id);
+    }
+  });
+  return heading;
+}
+
+// The dice icon (section 7): two dice, one tilted behind showing three, one in front showing five,
+// drawn in the text's color so it's the same on every PC.
+function createDiceIcon() {
+  const svg = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(svg, "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("class", "dice-icon");
+  icon.setAttribute("aria-hidden", "true");
+  const die = (x, y, size, pips, transform) => {
+    const group = document.createElementNS(svg, "g");
+    if (transform !== undefined) {
+      group.setAttribute("transform", transform);
+    }
+    const face = document.createElementNS(svg, "rect");
+    for (const [name, value] of [["x", x], ["y", y], ["width", size], ["height", size], ["rx", 2.5]]) {
+      face.setAttribute(name, String(value));
+    }
+    face.setAttribute("class", "die-face");
+    group.append(face);
+    for (const [pipX, pipY] of pips) {
+      const pip = document.createElementNS(svg, "circle");
+      pip.setAttribute("cx", String(pipX));
+      pip.setAttribute("cy", String(pipY));
+      pip.setAttribute("r", "1.2");
+      pip.setAttribute("class", "die-pip");
+      group.append(pip);
+    }
+    return group;
+  };
+  icon.append(
+    die(1.5, 1.5, 12, [[4.5, 4.5], [7.5, 7.5], [10.5, 10.5]], "rotate(-14 7.5 7.5)"),
+    die(9.5, 9.5, 13, [[12.6, 12.6], [19.4, 12.6], [16, 16], [12.6, 19.4], [19.4, 19.4]]),
+  );
+  return icon;
+}
+
+// Adds a randomization sitting before stage `beforeId` (or last, for null), with a random seed and
+// the next transfer's volume (null if that isn't a volume), and opens its card on Sources, as one
+// undoable edit (section 7).
+function addRandomizationAt(beforeId) {
+  const plan = currentPlan();
+  const volume = cardVolumeValue(transferVolume.text);
+  const added = tryLogic(() => addRandomization(plan, beforeId, { seed: randomSeed(Math.random()), volume }));
+  if (added === false) {
+    return;
+  }
+  closeEditingBox();
+  source = null;
+  cardTabs.set(added.id, "sources");
+  card = newCard(added.plan, added.id, currentOpen());
+  recordEdit(added.plan, added.id);
+  showMessage("Added a randomization. Pick its sources and the wells to fill.", "ok");
+  scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(added.id)}"]`));
+}
+
+// The card's state for randomization `id`, opening: its draft (draftOf), the modes it had (for the
+// settings grid), and `returnTo`, the entry to open again when it closes.
+function newCard(plan, id, returnTo) {
+  const randomization = randomizationAt(plan, id);
+  const draft = draftOf(randomization, cardTabs.get(id) ?? "sources");
+  const original = {
+    aspirate: draft.aspirate,
+    dispense: draft.dispense,
+    aspirateMix: draft.aspirateMix,
+    dispenseMix: draft.dispenseMix,
+  };
+  return { id, draft, original, returnTo, element: null };
+}
+
+// A randomization as its card shows it, for editing: its sources with their replicates as typed
+// text, its wells to fill, its seed and volume as text, each end's mode and Mix (as a stage's box
+// holds them), its tip type and probes, and the open tab.
+function draftOf(randomization, tab) {
+  const { settings } = randomization;
+  return {
+    tab,
+    sources: randomization.sources.map(({ labware, well, replicates, filler }) => ({
+      labware,
+      well,
+      replicatesText: replicates === null ? "" : String(replicates),
+      filler,
+    })),
+    fill: randomization.fill.map(({ labware, well }) => ({ labware, well })),
+    seedText: randomization.seed === null ? "" : String(randomization.seed),
+    volumeText: randomization.volume === null ? "" : String(randomization.volume),
+    aspirate: modeOf("source", settings),
+    dispense: modeOf("destination", settings),
+    aspirateMix: settings.sourceMix !== null,
+    dispenseMix: settings.destinationMix !== null,
+    tipType: randomization.tipType,
+    probes: [...randomization.probes],
+  };
+}
+
+// The changes the open card's draft makes, as setRandomization takes them (section 7): values the
+// logic would refuse as null, e.g. a replicate count of "four" or a seed of 0, and the settings
+// built end by end from the draft's modes and Mix, as a stage's box builds them.
+function draftChanges(plan) {
+  const { draft } = card;
+  const stored = randomizationAt(plan, card.id).settings;
+  const settings = { ...stored };
+  for (const boxEnd of BOX_ENDS) {
+    Object.assign(settings, stageEndSettings(stored, boxEnd, draft[boxEnd.mode], draft[boxEnd.mix]));
+  }
+  return {
+    sources: draft.sources.map(({ labware, well, replicatesText, filler }) => ({
+      labware,
+      well,
+      replicates: filler ? null : replicatesValue(replicatesText),
+      filler,
+    })),
+    fill: draft.fill.map(({ labware, well }) => ({ labware, well })),
+    seed: seedValue(draft.seedText),
+    volume: cardVolumeValue(draft.volumeText),
+    settings,
+    tipType: draft.tipType,
+    probes: [...draft.probes],
+  };
+}
+
+// A replicate count as typed, as a number if it's a whole number of at least 1, otherwise null,
+// e.g. "4" → 4, "four" → null.
+function replicatesValue(text) {
+  const trimmed = text.trim();
+  return /^\d+$/.test(trimmed) && Number(trimmed) >= 1 ? Number(trimmed) : null;
+}
+
+// A seed as typed, as a number if it's a whole number from 1 to 999,999, otherwise null.
+function seedValue(text) {
+  const trimmed = text.trim();
+  return /^\d+$/.test(trimmed) && Number(trimmed) >= 1 && Number(trimmed) <= 999999 ? Number(trimmed) : null;
+}
+
+// A volume as typed, as a number if it's a number above 0, otherwise null, e.g. "50" → 50.
+function cardVolumeValue(text) {
+  const volume = volumeValue(text.trim());
+  return typeof volume === "number" && Number.isFinite(volume) && volume > 0 ? volume : null;
+}
+
+// The plan with the open card's draft applied (setRandomization), for working out its problems;
+// throws as setRandomization does.
+function draftPlan(plan) {
+  return setRandomization(plan, card.id, draftChanges(plan));
+}
+
+// True if the open card's draft changes the randomization.
+function isCardDirty(plan) {
+  try {
+    return draftPlan(plan) !== plan;
+  } catch {
+    return true;
+  }
+}
+
+// The card's first problem, in short words, or null (section 7): a box's own message while it holds
+// what isn't valid (a source's replicates, the seed, the volume, in that order), otherwise the first
+// of randomizationProblems on the draft.
+function cardProblem(plan) {
+  const { draft } = card;
+  for (const entry of draft.sources) {
+    if (!entry.filler && entry.replicatesText.trim() !== "" && replicatesValue(entry.replicatesText) === null) {
+      return `${sourceName(plan, card.id, entry)}: replicates must be a whole number, 1 or more.`;
+    }
+  }
+  if (draft.seedText.trim() !== "" && seedValue(draft.seedText) === null) {
+    return "The seed must be a whole number from 1 to 999,999.";
+  }
+  if (draft.volumeText.trim() !== "" && cardVolumeValue(draft.volumeText) === null) {
+    return "The volume must be a number of µL above 0.";
+  }
+  try {
+    return randomizationProblems(draftPlan(plan), card.id)[0] ?? null;
+  } catch (error) {
+    return error.message;
+  }
+}
+
+// How many wells the draft's filler fills (section 7): "12 wells", "1 well", "0 wells", or "?"
+// while a replicate count isn't a whole number yet (random-pool's spareWellCount).
+function fillerCountText() {
+  const { draft } = card;
+  const fillerIndex = draft.sources.findIndex((entry) => entry.filler);
+  const pool = {
+    items: draft.sources.map((entry, index) => ({
+      key: `source ${index + 1}`,
+      replicates: replicatesValue(entry.replicatesText),
+    })),
+    filler: fillerIndex === -1 ? null : `source ${fillerIndex + 1}`,
+    wells: draft.fill.map((_, index) => `well ${index + 1}`),
+    seed: null,
+  };
+  const spare = spareWellCount(pool);
+  return spare === null ? "?" : countOf(spare, "well");
+}
+
+// How many stages running the draft makes: one per source taking replicates, and one for the
+// filler if it fills any well (section 7).
+function stagesToMake() {
+  const { draft } = card;
+  const takers = draft.sources.filter((entry) => !entry.filler).length;
+  const fillerFills = draft.sources.some((entry) => entry.filler) && fillerCountText() !== "0 wells";
+  return takers + (fillerFills ? 1 : 0);
+}
+
+// The open randomization's card (section 7): the tabs and the open tab's contents, Each transfer,
+// Seed, and the footer with its first problem and buttons. Escape in it closes it, as on the page.
+function createRandomizationCard(plan, randomization) {
+  const element = createElement("div", "", "randomization-card");
+  element.setAttribute("role", "group");
+  element.setAttribute("aria-label", "Randomization");
+  element.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      closeCardWithEscape();
+    }
+  });
+  element.append(
+    createCardTabs(),
+    ...(card.draft.tab === "sources" ? createSourcesTab(plan) : createFillTab(plan)),
+    createElement("div", "Each transfer", "field-name card-section"),
+    createSettingsGrid({
+      draft: card.draft,
+      original: card.original,
+      redraw: redrawCard,
+      mixTooltip: (boxEnd) => mixTooltipText(boxEnd, randomization.settings[`${boxEnd.end}Mix`], ""),
+    }),
+    createCardTipsField(),
+    createCardVolumeField(),
+    createCardSeedField(),
+    createCardFooter(plan, randomization),
+  );
+  return element;
+}
+
+// The card's two tabs, "Sources" and "Wells to fill", each with its count in a pill; the open one
+// is what clicks on the deck pick (section 9).
+function createCardTabs() {
+  const { draft } = card;
+  const tabs = createElement("div", "", "card-tabs");
+  tabs.setAttribute("role", "tablist");
+  for (const [tab, label, count] of [
+    ["sources", "Sources", draft.sources.length],
+    ["fill", "Wells to fill", draft.fill.length],
+  ]) {
+    const button = createElement("button", label, "card-tab");
+    button.type = "button";
+    button.dataset.focusKey = `tab:${tab}`;
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", String(draft.tab === tab));
+    button.append(createElement("span", String(count), "tab-count"));
+    button.addEventListener("click", () => {
+      draft.tab = tab;
+      cardTabs.set(card.id, tab);
+      redrawCard();
+      updateCursorLabel();
+    });
+    tabs.append(button);
+  }
+  return tabs;
+}
+
+// The Sources tab (section 7): a note with none; otherwise All sources (with two or more sources
+// taking replicates), a row per source (the first SOURCES_SHOWN unless shown in full), and Show all
+// / Show fewer.
+function createSourcesTab(plan) {
+  const { draft } = card;
+  if (draft.sources.length === 0) {
+    return [createElement("p", "Click wells on the deck to add them.", "note")];
+  }
+  const parts = [];
+  if (draft.sources.filter((entry) => !entry.filler).length >= 2) {
+    parts.push(createAllSourcesRow());
+  }
+  const inFull = sourcesShownInFull.has(card.id);
+  const shown = inFull ? draft.sources : draft.sources.slice(0, SOURCES_SHOWN);
+  const list = createElement("ul", "", "source-list");
+  list.append(...shown.map((entry) => createSourceRow(plan, entry)));
+  parts.push(list);
+  if (draft.sources.length > SOURCES_SHOWN) {
+    const toggle = createElement(
+      "button",
+      inFull ? "Show fewer ▾" : `Show all ${draft.sources.length} sources ▸`,
+      "toggle-list",
+    );
+    toggle.type = "button";
+    toggle.dataset.focusKey = "show-all";
+    toggle.setAttribute("aria-expanded", String(inFull));
+    toggle.addEventListener("click", () => {
+      if (inFull) {
+        sourcesShownInFull.delete(card.id);
+      } else {
+        sourcesShownInFull.add(card.id);
+      }
+      redrawCard();
+    });
+    parts.push(toggle);
+  }
+  return parts;
+}
+
+// The All sources row (section 7): one box setting every source's replicates as it's typed (not the
+// filler's), showing their number when they all match, else empty with "mixed" as its placeholder.
+function createAllSourcesRow() {
+  const takers = card.draft.sources.filter((entry) => !entry.filler);
+  const texts = new Set(takers.map((entry) => entry.replicatesText.trim()));
+  const row = createElement("div", "", "all-sources-row");
+  const box = document.createElement("input");
+  box.type = "text";
+  box.inputMode = "numeric";
+  box.className = "replicates-box";
+  box.dataset.focusKey = "all-sources";
+  box.setAttribute("aria-label", "Replicates for every source");
+  box.value = texts.size === 1 ? [...texts][0] : "";
+  box.placeholder = texts.size === 1 ? "" : "mixed";
+  box.addEventListener("input", () => {
+    for (const entry of takers) {
+      entry.replicatesText = box.value;
+    }
+    redrawCard();
+  });
+  row.append(createElement("span", "All sources", "all-sources-name"), box);
+  return row;
+}
+
+// One source's row (section 7): its main component's swatch just before the randomization (gray if
+// it holds nothing then), its name (sourceName), its replicates box, or, for the filler, how many
+// wells it fills; the Filler toggle; and ×.
+function createSourceRow(plan, entry) {
+  const where = wellName(plan, entry);
+  const key = wellKey(entry);
+  const row = createElement("li", "", "source-row");
+  const name = createElement("span", sourceName(plan, card.id, entry), "source-name");
+  name.title = where;
+  row.append(createSwatch(mainComponentColor(plan, shownSnapshot, entry)), name);
+  if (entry.filler) {
+    row.append(createElement("span", fillerCountText(), "filler-count"));
+  } else {
+    const box = document.createElement("input");
+    box.type = "text";
+    box.inputMode = "numeric";
+    box.className = "replicates-box";
+    box.dataset.focusKey = `replicates:${key}`;
+    box.setAttribute("aria-label", `Replicates of ${where}`);
+    box.value = entry.replicatesText;
+    box.addEventListener("input", () => {
+      entry.replicatesText = box.value;
+      redrawCard();
+    });
+    row.append(box);
+  }
+  const filler = createElement("button", "Filler", "filler-button");
+  filler.type = "button";
+  filler.dataset.focusKey = `filler:${key}`;
+  filler.title = "The filler fills the wells the replicates leave over.";
+  filler.setAttribute("aria-pressed", String(entry.filler));
+  filler.addEventListener("click", () => {
+    const making = !entry.filler;
+    for (const other of card.draft.sources) {
+      other.filler = false;
+    }
+    entry.filler = making;
+    redrawCard();
+  });
+  const remove = createElement("button", "×", "remove-transfer");
+  remove.type = "button";
+  remove.setAttribute("aria-label", `Remove source ${where}`);
+  remove.addEventListener("click", () => {
+    card.draft.sources = card.draft.sources.filter((other) => other !== entry);
+    draftChangedOnDeck();
+  });
+  row.append(filler, remove);
+  return row;
+}
+
+// The Wells to fill tab (section 7): a note with none; otherwise how many on each labware, in deck
+// order, e.g. "60 on Plate1 · 60 on Plate2", and Clear, which unpicks them all.
+function createFillTab(plan) {
+  const { draft } = card;
+  if (draft.fill.length === 0) {
+    return [createElement("p", "Click or drag across wells on the deck.", "note")];
+  }
+  const counts = labwareNames()
+    .map((name) => [name, draft.fill.filter((end) => end.labware === name).length])
+    .filter(([, count]) => count > 0)
+    .map(([name, count]) => `${count} on ${labelOf(plan, name)}`);
+  const row = createElement("div", "", "fill-summary");
+  const clear = createElement("button", "Clear", "action");
+  clear.type = "button";
+  clear.dataset.focusKey = "clear";
+  clear.addEventListener("click", () => {
+    card.draft.fill = [];
+    draftChangedOnDeck();
+  });
+  row.append(createElement("span", counts.join(" · ")), clear);
+  return [row];
+}
+
+// The card's Tips (section 7): a menu of tip types and one of probe counts ("1 probe" … "8
+// probes", choosing probesFor), for the new tips before each of its stages.
+function createCardTipsField() {
+  const { draft } = card;
+  const field = createElement("div", "", "card-field");
+  field.append(createElement("span", "Tips", "field-name"));
+  const menus = createElement("div", "", "card-tips");
+  const tipMenu = document.createElement("select");
+  tipMenu.dataset.focusKey = "tip-type";
+  tipMenu.setAttribute("aria-label", "Tip type");
+  for (const tipType of TIP_TYPES) {
+    tipMenu.append(new Option(tipType, tipType));
+  }
+  tipMenu.value = draft.tipType;
+  tipMenu.addEventListener("change", () => {
+    draft.tipType = tipMenu.value;
+    redrawCard();
+  });
+  const probeMenu = document.createElement("select");
+  probeMenu.dataset.focusKey = "probes";
+  probeMenu.setAttribute("aria-label", "Probes");
+  for (let count = 1; count <= PROBE_COUNT; count++) {
+    probeMenu.append(new Option(countOf(count, "probe"), String(count)));
+  }
+  probeMenu.value = String(draft.probes.length);
+  probeMenu.addEventListener("change", () => {
+    draft.probes = probesFor(Number(probeMenu.value));
+    redrawCard();
+  });
+  menus.append(tipMenu, createElement("span", "on", "muted"), probeMenu);
+  field.append(menus);
+  return field;
+}
+
+// The card's Volume (section 7): a button showing the volume per transfer ("50 µL", or "? µL" with
+// none), which turns into a text box when clicked, as a transfer's volume does: Enter or clicking
+// away sets it, Escape keeps the old one.
+function createCardVolumeField() {
+  const { draft } = card;
+  const field = createElement("div", "", "card-field");
+  field.append(createElement("span", "Volume", "field-name"));
+  const shown = draft.volumeText.trim() === "" ? "?" : draft.volumeText.trim();
+  const button = createElement("button", `${shown} µL`, "volume-button card-volume");
+  button.type = "button";
+  button.dataset.focusKey = "volume";
+  button.title = "Volume per transfer. Click to change it.";
+  button.addEventListener("click", () => {
+    const box = createInlineEditor({
+      value: draft.volumeText,
+      className: "volume-box card-volume-box",
+      accessibleName: "Volume per transfer in µL",
+      onSave: (text) => {
+        draft.volumeText = text.trim();
+        redrawCard();
+        return "closed";
+      },
+      onCancel: redrawCard,
+    });
+    button.replaceWith(box);
+    box.focus();
+    box.select();
+  });
+  field.append(button);
+  return field;
+}
+
+// The card's Seed (section 7): a text box, 120px wide.
+function createCardSeedField() {
+  const { draft } = card;
+  const field = createElement("div", "", "card-field");
+  const box = document.createElement("input");
+  box.type = "text";
+  box.inputMode = "numeric";
+  box.id = "card-seed";
+  box.className = "seed-box";
+  box.dataset.focusKey = "seed";
+  box.value = draft.seedText;
+  box.addEventListener("input", () => {
+    draft.seedText = box.value;
+    redrawCard();
+  });
+  const label = createElement("label", "Seed", "field-name");
+  label.htmlFor = box.id;
+  field.append(label, box);
+  return field;
+}
+
+// The card's footer (section 7): its first problem, in red; then Remove at the left (disabled when
+// its stages are all the plan's), Discard (once run, with changes), Close and the main button,
+// Randomize or Update, disabled while there's a problem.
+function createCardFooter(plan, randomization) {
+  const hasRun = randomization.stages.length > 0;
+  const footer = createElement("div", "", "card-footer");
+  const problem = cardProblem(plan);
+  if (problem !== null) {
+    footer.append(createElement("p", problem, "card-problem-line"));
+  }
+  const buttons = createElement("div", "", "box-buttons");
+  const remove = createElement("button", "Remove", "quiet-danger");
+  remove.type = "button";
+  remove.dataset.focusKey = "remove";
+  const stages = countOf(randomization.stages.length, "stage");
+  if (!canRemoveRandomization(plan, randomization.id)) {
+    remove.disabled = true;
+    remove.title = "Its stages are all the plan's stages. Add a stage outside it first.";
+  } else if (hasRun) {
+    remove.title = `Removes it and its ${stages}. Tips it added stay.`;
+  }
+  remove.addEventListener("click", removeOpenRandomization);
+  buttons.append(remove, createElement("span", "", "spacer"));
+  if (hasRun && isCardDirty(plan)) {
+    const discard = createElement("button", "Discard", "action discard");
+    discard.type = "button";
+    discard.dataset.focusKey = "discard";
+    discard.addEventListener("click", () => closeRandomizationCard({ discard: true }));
+    buttons.append(discard);
+  }
+  const close = createElement("button", "Close", "action");
+  close.type = "button";
+  close.dataset.focusKey = "close";
+  close.addEventListener("click", () => closeRandomizationCard());
+  const run = createElement("button", hasRun ? "Update" : "Randomize", "primary run-randomization");
+  run.type = "button";
+  run.dataset.focusKey = "run";
+  run.disabled = problem !== null;
+  if (problem === null) {
+    run.title = hasRun
+      ? "Applies these settings to its stages. The same seed keeps the same wells; a new seed shuffles again."
+      : `Makes ${countOf(stagesToMake(), "stage")}, with new tips before each.`;
+  }
+  run.addEventListener("click", runOpenRandomization);
+  buttons.append(close, run);
+  footer.append(buttons);
+  return footer;
+}
+
+// Redraws the open card in place after a change to its draft, keeping the rest of the column as it
+// is, and keeps the keyboard focus (and a text box's caret) on the same control.
+function redrawCard() {
+  if (card === null || card.element === null || !card.element.isConnected) {
+    return;
+  }
+  const plan = currentPlan();
+  const old = card.element;
+  const active = document.activeElement;
+  const focusKey = old.contains(active) ? active.dataset.focusKey : undefined;
+  const caret =
+    focusKey !== undefined && active instanceof HTMLInputElement
+      ? [active.selectionStart, active.selectionEnd]
+      : null;
+  card.element = createRandomizationCard(plan, randomizationAt(plan, card.id));
+  old.replaceWith(card.element);
+  if (focusKey === undefined) {
+    return;
+  }
+  const again = card.element.querySelector(`[data-focus-key="${cssEscape(focusKey)}"]`);
+  again?.focus({ preventScroll: true });
+  if (again instanceof HTMLInputElement && caret !== null) {
+    again.setSelectionRange(caret[0], caret[1]);
+  }
+}
+
+// After a change to the draft's sources or wells to fill: the deck's marks and the card follow it.
+function draftChangedOnDeck() {
+  refreshDeck();
+  redrawCard();
+}
+
+// Closes the open card (section 7), if one is open, and opens again what was open before it.
+// One that hasn't run saves its draft into the plan first (setRandomization), as one undoable edit
+// (nothing if unchanged); one that has run closes only without changes, or with `discard`;
+// otherwise it shakes and says why, and stays open. Returns true if no card is open afterwards.
+function closeRandomizationCard({ discard = false } = {}) {
+  if (card === null) {
+    return true;
+  }
+  const plan = currentPlan();
+  const randomization = randomizationAt(plan, card.id);
+  const hasRun = randomization.stages.length > 0;
+  const dirty = isCardDirty(plan);
+  if (hasRun && dirty && !discard) {
+    refuseCardClose();
+    return false;
+  }
+  let saved = plan;
+  if (!hasRun && dirty && !discard) {
+    saved = tryLogic(() => draftPlan(plan));
+    if (saved === false) {
+      return false;
+    }
+  }
+  const returnTo = validOpen(saved, card.returnTo);
+  cardTabs.set(card.id, card.draft.tab);
+  card = null;
+  // Undo goes back to the plan as it was with the card closed, not to the card.
+  history = history.replacePresent({ plan, open: returnTo });
+  if (saved === plan) {
+    refresh();
+  } else {
+    recordEdit(saved, returnTo);
+  }
+  return true;
+}
+
+// Escape on the open card (section 12): one that has run is closed without saving (as Discard);
+// one that hasn't saves its draft, as Close does.
+function closeCardWithEscape() {
+  const hasRun = randomizationAt(currentPlan(), card.id).stages.length > 0;
+  closeRandomizationCard({ discard: hasRun });
+}
+
+// Runs `action` once no card is open: the open card closes first, as Close would (section 7); if it
+// can't, nothing happens.
+function afterClosingCard(action) {
+  if (closeRandomizationCard()) {
+    action();
+  }
+}
+
+// Shows that the open card, run and changed, can't close (section 7): it shakes, its main button
+// and Discard pulse, and the message bar says what to do.
+function refuseCardClose() {
+  restartAnimation(card.element, "shake");
+  for (const button of card.element.querySelectorAll(".run-randomization, .discard")) {
+    restartAnimation(button, "pulse");
+  }
+  showMessage("Update or discard your changes first.", "note");
+}
+
+// Randomize or Update (section 7): saves the draft and runs it, as one undoable edit, closes the
+// card and opens its first stage.
+function runOpenRandomization() {
+  const plan = currentPlan();
+  const id = card.id;
+  const hadRun = randomizationAt(plan, id).stages.length > 0;
+  const run = tryLogic(() => runRandomization(draftPlan(plan), id));
+  if (run === false) {
+    return;
+  }
+  const randomization = randomizationAt(run, id);
+  const first = randomization.stages[0].stage;
+  const transfers = randomization.stages.reduce((total, owned) => total + transfersIn(run, owned.stage).length, 0);
+  const returnTo = validOpen(plan, card.returnTo);
+  cardTabs.set(id, card.draft.tab);
+  card = null;
+  history = history.replacePresent({ plan, open: returnTo });
+  recordEdit(run, first);
+  showMessage(
+    `${hadRun ? "Updated" : "Randomized"}: ${countOf(randomization.stages.length, "stage")} with ` +
+      `${countOf(transfers, "transfer")} (seed ${randomization.seed}). Undo takes the change out again.`,
+    "ok",
+  );
+  scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(first)}"]`));
+}
+
+// Remove (section 7): takes the randomization and, once it has run, its stages out at once, as one
+// undoable edit, closing the card.
+function removeOpenRandomization() {
+  const plan = currentPlan();
+  const id = card.id;
+  const stages = randomizationAt(plan, id).stages.length;
+  const removed = tryLogic(() => removeRandomization(plan, id));
+  if (removed === false) {
+    return;
+  }
+  const returnTo = validOpen(removed, card.returnTo);
+  card = null;
+  history = history.replacePresent({ plan, open: returnTo });
+  recordEdit(removed, returnTo);
+  showMessage(
+    stages === 0
+      ? "Removed the randomization."
+      : `Removed the randomization and its ${countOf(stages, "stage")}. Undo brings them back.`,
+    "note",
+  );
+}
+
+// `key` if it can be open in `plan` (Start, End, a stage or a randomization), otherwise Start.
+function validOpen(plan, key) {
+  const exists = key === START || key === END || plan.stageList.has(key) || randomizationAt(plan, key) !== null;
+  return exists ? key : START;
+}
+
+// True if `key` is one of the plan's randomizations.
+function isRandomization(plan, key) {
+  return randomizationAt(plan, key) !== null;
+}
+
+// The stage the deck shows a randomization before (section 11): its first stage once it has run,
+// otherwise the stage it sits before; null when it sits after all stages.
+function randomizationPlace(plan, id) {
+  const randomization = randomizationAt(plan, id);
+  return randomization.stages[0]?.stage ?? randomization.beforeId;
+}
+
+// Picks a well for the open card by its tab (section 9): on Sources, a click adds the well as a
+// source, last (and it stops being a well to fill), or removes it if it's a source; on Wells to
+// fill, a click picks the well or unpicks it, and does nothing on a source.
+function pickWell(end) {
+  const { draft } = card;
+  const key = wellKey(end);
+  const isSource = draft.sources.some((entry) => wellKey(entry) === key);
+  if (draft.tab === "sources") {
+    if (isSource) {
+      draft.sources = draft.sources.filter((entry) => wellKey(entry) !== key);
+    } else {
+      draft.sources.push({ labware: end.labware, well: end.well, replicatesText: "", filler: false });
+      draft.fill = draft.fill.filter((other) => wellKey(other) !== key);
+    }
+  } else if (isSource) {
+    return;
+  } else if (draft.fill.some((other) => wellKey(other) === key)) {
+    draft.fill = draft.fill.filter((other) => wellKey(other) !== key);
+  } else {
+    draft.fill.push({ labware: end.labware, well: end.well });
+  }
+  draftChangedOnDeck();
+}
+
+// Picks a box of wells to fill for the open card (section 9): all of them, or, if the box's first
+// well was picked, unpicks them all; sources in the box are left sources.
+function pickBox(wells, firstWell) {
+  const { draft } = card;
+  const sources = new Set(draft.sources.map(wellKey));
+  const picked = new Set(draft.fill.map(wellKey));
+  const inBox = new Set(wells.map(wellKey));
+  if (picked.has(wellKey(firstWell))) {
+    draft.fill = draft.fill.filter((end) => !inBox.has(wellKey(end)));
+  } else {
+    const adding = wells.filter((end) => !sources.has(wellKey(end)) && !picked.has(wellKey(end)));
+    draft.fill.push(...adding.map(({ labware, well }) => ({ labware, well })));
+  }
+  draftChangedOnDeck();
+}
+
+// The note for a click or drag on the deck while a randomization's stage is open (section 7).
+function showOwnedStageNote() {
+  showMessage("This stage is part of a randomization: change it in its card.", "note");
 }
 
 // --- The glow (section 7) ---
@@ -2429,6 +3446,14 @@ function startingOverfills(plan) {
 // mixing it; while End is open it says nothing can be added.
 function clickWell(end) {
   const open = currentOpen();
+  if (card !== null) {
+    pickWell(end);
+    return;
+  }
+  if (isStage(currentPlan(), open) && randomizationOf(currentPlan(), open) !== null) {
+    showOwnedStageNote();
+    return;
+  }
   if (open === START) {
     fillWells([end]);
     return;
@@ -2667,7 +3692,8 @@ function movePointer(event) {
   pointerPosition = overLabware(event) ? { x: event.clientX, y: event.clientY } : null;
   const moved = press !== null && Math.hypot(event.clientX - press.x, event.clientY - press.y) >= DRAG_START_DISTANCE;
   if (moved && drag === null) {
-    if (currentOpen() === END) {
+    // Dragging does nothing with End open, or on a randomization's Sources tab (section 9).
+    if (currentOpen() === END || (card !== null && card.draft.tab === "sources")) {
       press = null;
     } else {
       beginDrag();
@@ -2689,10 +3715,15 @@ function movePointer(event) {
 function beginDrag() {
   hideContentsCard();
   const open = currentOpen();
+  const plan = currentPlan();
   let kind = source !== null ? "box" : "transfer";
-  if (open === START) {
+  if (card !== null) {
+    kind = "pick";
+  } else if (open === START) {
     kind = "fill";
-  } else if (isMixStep(currentPlan(), open)) {
+  } else if (randomizationOf(plan, open) !== null) {
+    kind = "owned";
+  } else if (isMixStep(plan, open)) {
     kind = "mix";
   }
   drag = { kind, from: press.end, over: press.end };
@@ -2736,6 +3767,17 @@ function clickWellWithKeyboard(event) {
 // source into the box.
 function finishDrag({ kind, from, over }) {
   updateDragMarks();
+  if (kind === "owned") {
+    showOwnedStageNote();
+    return;
+  }
+  if (kind === "pick") {
+    // As when filling, a drag that ends off the labware it started on picks nothing.
+    if (over !== null && over.labware === from.labware) {
+      pickBox(wellsInBox(from, over), from);
+    }
+    return;
+  }
   if (kind === "fill") {
     if (over !== null && over.labware === from.labware) {
       fillWells(wellsInBox(from, over));
@@ -2789,7 +3831,7 @@ function updateDragMarks() {
   if (drag === null || drag.over === null) {
     return;
   }
-  if (drag.kind === "transfer") {
+  if (drag.kind === "transfer" || drag.kind === "owned") {
     wellElements.get(wellKey(drag.over))?.classList.add("drop-target");
     return;
   }
@@ -2827,11 +3869,14 @@ function updateCursorLabel() {
   const label = elements.cursorLabel;
   const open = currentOpen();
   // A mix step has no volume at the cursor (section 9).
-  if (pointerPosition === null || open === END || (open !== START && isMixStep(currentPlan(), open))) {
+  const isMixStepOpen = isStage(currentPlan(), open) && isMixStep(currentPlan(), open);
+  if (pointerPosition === null || open === END || isMixStepOpen) {
     label.hidden = true;
     return;
   }
-  if (open === START) {
+  if (card !== null) {
+    label.textContent = card.draft.tab === "sources" ? "Source" : "Fill";
+  } else if (open === START) {
     if (brush.pick.kind === "component") {
       label.textContent = `+ ${volumeShown(brush.volume)} µL ${brush.pick.name}`;
     } else if (brush.pick.kind === "eraser") {
@@ -3149,6 +4194,10 @@ function createPencil(kind, key, accessibleName) {
 
 // Opens the editing box for `kind` and `key`, with a draft of what it edits.
 function openEditingBox(kind, key) {
+  // An open randomization's card closes first, as Close would (section 7).
+  if (!closeRandomizationCard()) {
+    return;
+  }
   const plan = currentPlan();
   const original = originalFor(plan, kind, key);
   editingBox = { kind, key, original, draft: { ...original, showAllColors: false } };
@@ -3364,9 +4413,14 @@ function colorsOffered(plan, ownName, ownColor, showAll) {
 // A stage's box (section 10): Name and the settings grid. (Probes are chosen in the tip change's
 // box, since every stage uses all its tips' probes.)
 function stageBoxFields(plan) {
-  const { draft } = editingBox;
+  const { draft, original, key } = editingBox;
   const nameField = createNameField(draft.name, "Name");
-  const grid = createSettingsGrid(plan, editingBox.key, draft);
+  const grid = createSettingsGrid({
+    draft,
+    original,
+    redraw: redrawEditingBox,
+    mixTooltip: (boxEnd) => mixTooltip(plan, key, boxEnd),
+  });
   return [nameField, grid];
 }
 
@@ -3393,11 +4447,13 @@ const BOX_ENDS = [
   { end: "destination", mode: "dispense", mix: "dispenseMix", heading: "Dispense", mixName: "Mix after dispensing" },
 ];
 
-// The stage's settings as a grid (section 10): the stage's ends as columns, headed Aspirate and
-// Dispense, and its settings as rows, each labeled once at the left: Mode, a menu per end, and Mix,
-// a checkbox per end. The top left cell is empty: it's above the labels and left of the headings.
-function createSettingsGrid(plan, id, draft) {
-  const original = editingBox.original;
+// The settings as a grid (section 10), for a stage's box and a randomization's Each transfer
+// (section 7): the ends as columns, headed Aspirate and Dispense, and the settings as rows, each
+// labeled once at the left: Mode, a menu per end, and Mix, a checkbox per end. The top left cell is
+// empty: it's above the labels and left of the headings. `draft` holds each end's mode and Mix as
+// they're chosen (the names in BOX_ENDS); `original` the same before any change; `redraw` redraws
+// what holds the grid after a change; `mixTooltip(boxEnd)` gives a Mix checkbox's tooltip.
+function createSettingsGrid({ draft, original, redraw, mixTooltip: tooltipFor }) {
   const grid = createElement("div", "", "settings-grid");
   grid.append(
     createElement("span"),
@@ -3405,27 +4461,27 @@ function createSettingsGrid(plan, id, draft) {
     createElement("span", "Mode", "field-name"),
     ...BOX_ENDS.map((boxEnd) => {
       const offerNotAMode = original[boxEnd.mode] === null;
-      const onChoose = (name) => chooseMode(draft, boxEnd, name);
+      const onChoose = (name) => chooseMode(draft, original, boxEnd, name, redraw);
       return createModeMenu(boxEnd.end, `${boxEnd.heading} mode`, draft[boxEnd.mode], offerNotAMode, onChoose);
     }),
     createElement("span", "Mix", "field-name"),
-    ...BOX_ENDS.map((boxEnd) => createMixCell(plan, id, draft, boxEnd)),
+    ...BOX_ENDS.map((boxEnd) => createMixCell(draft, boxEnd, tooltipFor(boxEnd))),
   );
   return grid;
 }
 
 // Puts the mode called `name` (or null for "(not one of the modes)") in the draft for one end, and
 // keeps that end's Mix as section 10 says: a mode that can't mix unchecks it; going back to "(not
-// one of the modes)" restores whether the stage mixes there; a mode that can mix keeps it as it is
-// (so after a mode that can't mix, the checkbox comes back unchecked). Redraws the box.
-function chooseMode(draft, boxEnd, name) {
+// one of the modes)" restores whether it mixed there (`original`); a mode that can mix keeps it as
+// it is (so after a mode that can't mix, the checkbox comes back unchecked). Then calls `redraw`.
+function chooseMode(draft, original, boxEnd, name, redraw) {
   draft[boxEnd.mode] = name;
   if (name === null) {
-    draft[boxEnd.mix] = editingBox.original[boxEnd.mix];
+    draft[boxEnd.mix] = original[boxEnd.mix];
   } else if (!canMix(boxEnd.end, name)) {
     draft[boxEnd.mix] = false;
   }
-  redrawEditingBox();
+  redraw();
 }
 
 // True if the mode called `name` at `end` can mix (it has a mixing technique), e.g.
@@ -3437,8 +4493,8 @@ function canMix(end, name) {
 
 // One end's Mix cell (section 10): a checkbox, checked while that end mixes in the draft; for a mode
 // that can't mix, "Can't mix" instead; for an end that isn't one of the modes, the checkbox showing
-// whether the stage mixes there, disabled. The cell's tooltip says what the checkbox does.
-function createMixCell(plan, id, draft, boxEnd) {
+// whether it mixes there, disabled. The cell's tooltip, `tooltip`, says what the checkbox does.
+function createMixCell(draft, boxEnd, tooltip) {
   const cell = createElement("span", "", "mix-cell");
   const mode = draft[boxEnd.mode];
   if (mode !== null && !canMix(boxEnd.end, mode)) {
@@ -3452,7 +4508,7 @@ function createMixCell(plan, id, draft, boxEnd) {
   checkbox.checked = draft[boxEnd.mix];
   checkbox.setAttribute("aria-label", boxEnd.mixName);
   // The tooltip is on the cell and the checkbox both, so it shows over a disabled checkbox too.
-  cell.title = mode === null ? "Choose a mode to switch mixing." : mixTooltip(plan, id, boxEnd);
+  cell.title = mode === null ? "Choose a mode to switch mixing." : tooltip;
   checkbox.title = cell.title;
   checkbox.disabled = mode === null;
   checkbox.addEventListener("change", () => {
@@ -3468,8 +4524,15 @@ function createMixCell(plan, id, draft, boxEnd) {
 // such as "(≈ 18–200 µL)" when its rows differ (mixVolumes).
 function mixTooltip(plan, id, boxEnd) {
   const ownMix = plan.stageList.get(id).settings[`${boxEnd.end}Mix`];
-  const mix = ownMix ?? DEFAULT_MIX;
   const volumeText = ownMix === null ? "" : mixVolumeText(plan, id, boxEnd.end);
+  return mixTooltipText(boxEnd, ownMix, volumeText);
+}
+
+// A Mix checkbox's tooltip from an end's own mix (`ownMix`, or null, when DEFAULT_MIX is shown) and
+// the volume it works out to (`volumeText`, or ""), e.g. "Mix after dispensing: 90% of the well,
+// 3 times, at 400 µL/s."
+function mixTooltipText(boxEnd, ownMix, volumeText) {
+  const mix = ownMix ?? DEFAULT_MIX;
   return `${boxEnd.mixName}: ${mix.share}% of the well${volumeText}, ${countOf(mix.times, "time")}, at ${mix.speed} µL/s.`;
 }
 
@@ -3886,6 +4949,7 @@ function handleKey(event) {
   }
   const key = event.key.toLowerCase();
   if (event.ctrlKey || event.metaKey) {
+    // undo and redo do nothing while a randomization's card is open.
     if (key === "z" && !event.shiftKey) {
       event.preventDefault();
       if (editingBox === null) {
@@ -3910,7 +4974,8 @@ function handleKey(event) {
 }
 
 // Escape closes the open editing box without saving, or the open header box (Biomek files' or
-// Reset's), putting the focus back on its button; otherwise it clears a chosen source.
+// Reset's), putting the focus back on its button, or the open randomization's card (saving or
+// discarding, closeCardWithEscape); otherwise it clears a chosen source.
 function pressEscape() {
   if (editingBox !== null) {
     closeEditingBox();
@@ -3920,6 +4985,8 @@ function pressEscape() {
   } else if (!elements.resetBox.hidden) {
     closeResetBox();
     elements.reset.focus();
+  } else if (card !== null) {
+    closeCardWithEscape();
   } else if (source !== null) {
     clearSource();
   }
@@ -3934,7 +5001,8 @@ function isVolumeKey(key) {
 // eraser), the next transfer's while a stage is open; nothing while End is open.
 function typeVolume(key) {
   const open = currentOpen();
-  if (open === END) {
+  // Typed volumes are ignored while a randomization's card is open (section 9).
+  if (open === END || card !== null) {
     return;
   }
   if (open === START) {

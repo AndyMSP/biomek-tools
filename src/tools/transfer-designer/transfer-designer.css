@@ -26,6 +26,7 @@
   --disabled-text: #6b6b66;
 
   --sand-tint: #f5f1e8;
+  --pill-gray: #eceae3;
   --sand-border: #d9d2c3;
   --glow-background: #fff1bf;
   --glow-ring: #f3d36b;
@@ -863,16 +864,29 @@ input.experiment-name-box.invalid {
   opacity: 0.7;
 }
 
-.well.source,
 .well.in-box {
   box-shadow: 0 0 0 3px var(--blue);
 }
 
-/* A singled-out transfer's wells: a 3px blue ring standing 2px outside the well, with a gap, so it
-   stands out from the well's fill. */
+/* A chosen source (and a randomization's sources while its card is open), and a singled-out
+   transfer's wells: a 3px blue ring standing 2px outside the well, with a gap, so it shows on a
+   filled well too (section 6; Andy, 2026-11-01). */
+.well.source,
 .well.highlighted {
   outline: 3px solid var(--blue);
   outline-offset: 2px;
+}
+
+/* A randomization's wells to fill, while its card is open: a 2px dashed blue outline standing 2px
+   outside the well, and, when empty, a light blue fill (section 6), so they look different from
+   its sources. */
+.well.to-fill {
+  outline: 2px dashed var(--blue);
+  outline-offset: 2px;
+}
+
+.well.to-fill:not(.holding) {
+  background: var(--blue-tint);
 }
 
 .well.in-box:not(.holding) {
@@ -1415,6 +1429,299 @@ button.entry-row {
 
 .entry.has-overdraw.glowing {
   --glow-end: var(--red-tint);
+}
+
+/* A randomization's own tip group has no seams inside it, so it keeps its own space below its last
+   stage (section 7). */
+.tip-group.owned {
+  padding-bottom: 8px;
+}
+
+.tip-group.owned .tip-group-stages {
+  gap: var(--stage-gap);
+  margin-top: 6px;
+}
+
+/* --- Randomizations in the Stages column (sections 7 and 15) --- */
+
+/* A randomization's box: like a tip group's, with the page's background inside, so it reads as a
+   group of tip groups; dashed while it's not set up yet. */
+.randomization {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--blue-border);
+  border-radius: 12px;
+  background: var(--page-background);
+}
+
+.randomization.not-set-up {
+  border-style: dashed;
+}
+
+.randomization-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  text-align: left;
+}
+
+.randomization-heading:hover {
+  background: var(--blue-tint);
+}
+
+.randomization-title {
+  font-weight: 600;
+}
+
+.randomization-status {
+  margin-left: auto;
+  color: var(--muted-text);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* The dice icon: two dice drawn in the text's color, their faces filled so the front one hides the
+   back one where they overlap. */
+.dice-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  --dice-face: var(--page-background);
+}
+
+.dice-icon .die-face {
+  fill: var(--dice-face);
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+
+.dice-icon .die-pip {
+  fill: currentColor;
+}
+
+/* The dice button sits in a seam's right spot, just right of the + (section 7), like the tip
+   button. */
+.seam-button.add-randomization {
+  left: calc(50% + var(--seam-button-size) / 2 + var(--seam-button-gap));
+  background: var(--panel-background);
+  color: var(--blue);
+}
+
+.seam-button.add-randomization .dice-icon {
+  width: 16px;
+  height: 16px;
+  --dice-face: var(--panel-background);
+}
+
+/* The open card, under its heading, inside its box: a white panel like an open stage's card. */
+.randomization-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--blue-border);
+  border-radius: 8px;
+  background: var(--panel-background);
+  box-shadow: 0 0 0 1px var(--blue-border);
+  font-size: 14px;
+}
+
+.randomization-card.shake {
+  animation: shake 0.3s ease-in-out;
+}
+
+.card-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.card-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-text);
+}
+
+.card-tab[aria-selected="true"] {
+  border-bottom-color: var(--blue);
+  background: transparent;
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.tab-count {
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--pill-gray);
+  color: var(--muted-text);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.card-tab[aria-selected="true"] .tab-count {
+  background: var(--blue-tint);
+  color: var(--blue);
+}
+
+.source-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-row,
+.all-sources-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+}
+
+.all-sources-row {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--panel-border);
+  font-weight: 600;
+}
+
+.all-sources-name,
+.source-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+input.replicates-box {
+  flex: none;
+  width: 40px;
+  min-height: 26px;
+  padding: 0 4px;
+  text-align: center;
+}
+
+input.replicates-box::placeholder {
+  font-size: 11px;
+}
+
+.filler-count {
+  flex: none;
+  width: 56px;
+  color: var(--muted-text);
+  font-size: 13px;
+  text-align: center;
+}
+
+.filler-button {
+  flex: none;
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.fill-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.fill-summary .action {
+  min-height: 28px;
+}
+
+.card-section {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.card-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-field .field-name {
+  width: 64px;
+  margin-bottom: 0;
+}
+
+.card-tips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-tips select {
+  padding: 0 4px;
+}
+
+input.seed-box {
+  width: 120px;
+}
+
+.card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.card-problem-line {
+  margin: 0;
+  color: var(--red);
+  font-size: 13px;
+}
+
+/* Remove in a randomization's card: quiet red text, at the left (section 7). */
+button.quiet-danger {
+  padding: 0 4px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--red);
+}
+
+button.quiet-danger:hover:not(:disabled) {
+  border-color: var(--red-border);
+}
+
+button.quiet-danger:disabled {
+  border-color: transparent;
+  background: transparent;
+}
+
+/* A randomization's stage shows its transfers' volumes as text (section 7). */
+.volume-text {
+  flex: none;
+  padding: 0 4px;
+  color: var(--muted-text);
+  font: 12px var(--mono-font);
+}
+
+.volume-text.problem {
+  color: var(--red);
+  font-weight: 600;
 }
 
 /* --- Starting contents: the palette in the Start card (section 8) --- */
