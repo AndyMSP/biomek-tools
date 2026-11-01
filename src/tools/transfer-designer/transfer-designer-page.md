@@ -670,7 +670,10 @@ From the top:
     line, with one box (accessible name `Replicates for every source`): typing in it sets every
     source's replicates as you type (not the filler's). It shows their number when they all match,
     and is empty with `mixed` as its placeholder (in smaller type) when they differ (Andy,
-    2026-11-01).
+    2026-11-01). Its box lines up with the sources' replicate boxes, in the same column, and its
+    label is gray and normal weight, so it reads as a control for the rows below, not as a source
+    or a heading (Andy, 2026-11-01, from the first build: a box under the Filler buttons and a bold
+    label were confusing).
   - With more than `SOURCES_SHOWN` sources (`config/`), only the first `SOURCES_SHOWN` show, then
     `Show all 68 sources ▸`, styled as `Show transfers ▸`; shown, it reads `Show fewer ▾`. The All
     sources row always shows. Each randomization remembers this while the page is open.
