@@ -32,6 +32,10 @@ import {
   setLabel,
   setWellLabels,
   setExperimentName,
+  addStageWithNewTips,
+  addRandomization,
+  setRandomization,
+  runRandomization,
 } from "./transfer-designer.js";
 import { PLAN_FILE_FORMAT, PLAN_FILE_VERSION, planToText, planFromText } from "./plan-file.js";
 
@@ -40,6 +44,13 @@ const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_
   (entry) => entry.name,
 );
 const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED).name;
+
+// A 96-well labware of another labware type than PLATE's (a deep-well plate), found in DECK.
+const DEEP = DECK.find(
+  (entry) =>
+    gridOf(entry.name) === GRID_96 &&
+    entry.labwareType !== DECK.find((plate) => plate.name === PLATE).labwareType,
+).name;
 
 const SAVED_BY = "transfer designer v0.2.0";
 
@@ -107,10 +118,18 @@ function mixingPlan() {
   return setStageMix(plan, "3", "destination", { share: 50, times: 2, speed: 100 });
 }
 
-// fullFile() as a version 4 file, as saved from 2026-10-30 to 2026-11-01, before well labels: no
+// fullFile() as a version 5 file, as saved on 2026-11-01, before randomizations: no
+// randomizations. Opened, it gives fullPlan(), which has none.
+function version5File() {
+  const file = { ...fullFile(), version: 5 };
+  delete file.randomizations;
+  return file;
+}
+
+// version5File() as a version 4 file, as saved from 2026-10-30 to 2026-11-01, before well labels: no
 // wellLabels. Opened, it gives fullPlan(), which has no well labels.
 function version4File() {
-  const file = { ...fullFile(), version: 4 };
+  const file = { ...version5File(), version: 4 };
   delete file.wellLabels;
   return file;
 }
@@ -168,6 +187,7 @@ function contentsOf(plan) {
     tipChanges: plan.tipChanges,
     labwareLabels: plan.labwareLabels,
     wellLabels: plan.wellLabels,
+    randomizations: plan.randomizations,
   };
 }
 
@@ -204,6 +224,7 @@ describe("plan-file", () => {
       "tipChanges",
       "labwareLabels",
       "wellLabels",
+      "randomizations",
     ]);
     assert.equal(file.format, PLAN_FILE_FORMAT);
     assert.equal(file.version, PLAN_FILE_VERSION);
@@ -214,7 +235,7 @@ describe("plan-file", () => {
 
   test("the format and version are the specification's", () => {
     assert.equal(PLAN_FILE_FORMAT, "biomek-tools transfer plan");
-    assert.equal(PLAN_FILE_VERSION, 5);
+    assert.equal(PLAN_FILE_VERSION, 6);
   });
 
   test("planToText writes each tip change with its probes, and each stage's settings without any", () => {
@@ -311,11 +332,12 @@ describe("plan-file", () => {
     assert.deepEqual(Object.keys(opened.tipChanges).sort(), ["3", START].sort());
   });
 
-  test('an empty plan, saved and opened, has the same contents, and is written as version 5, with "wellLabels": {}', () => {
+  test('an empty plan, saved and opened, has the same contents, and is written as version 6, with "wellLabels": {} and "randomizations": []', () => {
     const plan = emptyPlan().plan;
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 5);
+    assert.equal(JSON.parse(text).version, 6);
     assert.deepEqual(JSON.parse(text).wellLabels, {});
+    assert.deepEqual(JSON.parse(text).randomizations, []);
     const opened = planFromText(text);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
   });
@@ -401,6 +423,135 @@ describe("plan-file", () => {
     assert.equal(opened.stageList.get("2").settings.sourceTechnique, "OperationMix");
   });
 
+  // --- Randomizations, and version 5 files ---
+
+  // A plan with stages "2", "5" and "7" (stages 1 to 7 made, the others removed), each with tips of
+  // its own; DEEP A1 and A2 holding Drug A and Drug B; a randomization "r1" before stage 5, run; and
+  // a second, "r2", sitting before stage 7, not run. Saved, its stages are "2", "5", "7" and the
+  // run's two stages, "8" and "9", which open as "1" to "5".
+  function randomizingPlan() {
+    let { plan } = emptyPlan();
+    for (let added = 2; added <= 7; added += 1) {
+      plan = addStageWithNewTips(plan, null).plan;
+    }
+    for (const id of ["1", "3", "4", "6"]) {
+      plan = removeStage(plan, id);
+    }
+    plan = addComponent(plan, "Drug A", "#4e79a7");
+    plan = addComponent(plan, "Drug B", "#e15759");
+    plan = addToWells(plan, [deepWell("A1")], "Drug A", 500);
+    plan = addToWells(plan, [deepWell("A2")], "Drug B", 500);
+    plan = addRandomization(plan, "5", { seed: 37, volume: 10 }).plan;
+    plan = setRandomization(plan, "r1", {
+      sources: [
+        { ...deepWell("A1"), replicates: 2, filler: false },
+        { ...deepWell("A2"), replicates: null, filler: true },
+      ],
+      fill: ["B2", "B3", "B4", "B5"].map((well) => ({ labware: PLATE, well })),
+    });
+    plan = runRandomization(plan, "r1");
+    return addRandomization(plan, "7", { seed: null, volume: null }).plan;
+  }
+
+  // A well on the first deep-well labware (a 96-well labware of another type than PLATE's).
+  function deepWell(well) {
+    return { labware: DEEP, well };
+  }
+
+  test("randomizations, saved and opened, are the same, their stage IDs following the renumbered stages", () => {
+    const plan = randomizingPlan();
+    assert.deepEqual(stageOrder(plan), ["2", "8", "9", "5", "7"]);
+    const text = planToText(plan, SAVED_BY);
+    assert.deepEqual(JSON.parse(text).randomizations, plan.randomizations);
+    const opened = planFromText(text);
+    assert.deepEqual(stageOrder(opened), ["1", "2", "3", "4", "5"]);
+    const renumber = { 2: "1", 8: "2", 9: "3", 5: "4", 7: "5" };
+    assert.deepEqual(
+      opened.randomizations,
+      plan.randomizations.map((randomization) => ({
+        ...randomization,
+        beforeId: randomization.beforeId === null ? null : renumber[randomization.beforeId],
+        stages: randomization.stages.map((owned) => ({ ...owned, stage: renumber[owned.stage] })),
+      })),
+    );
+    assert.equal(opened.randomizations[0].beforeId, "4");
+    assert.equal(opened.randomizations[1].beforeId, "5");
+  });
+
+  test("a version 5 file opens, with no randomizations", () => {
+    const opened = open(version5File());
+    assert.deepEqual(opened.randomizations, []);
+    assert.deepEqual(contentsOf(opened), contentsOf(fullPlan()));
+  });
+
+  test("a version 5 file with randomizations is refused as having an extra property", () => {
+    assertRefused(
+      { ...version5File(), randomizations: [] },
+      'it has "randomizations", which a plan file doesn\'t have.',
+    );
+  });
+
+  test("a version 6 file without randomizations is refused as missing it", () => {
+    const file = fullFile();
+    delete file.randomizations;
+    assertRefused(file, 'it\'s missing "randomizations".');
+  });
+
+  test("a version 6 file whose randomizations is an object gets the wrong-kind message", () => {
+    assertRefused({ ...fullFile(), randomizations: {} }, '"randomizations" must be a list.');
+  });
+
+  test("a randomization naming a stage that isn't one of the file's is refused", () => {
+    const file = JSON.parse(planToText(randomizingPlan(), SAVED_BY));
+    assertRefused(
+      { ...file, randomizations: [{ ...file.randomizations[0], beforeId: "1" }] },
+      'randomization 1 names stage "1", which isn\'t one of the file\'s stages.',
+    );
+    const stages = [{ ...file.randomizations[0].stages[0], stage: "9" }, { ...file.randomizations[0].stages[1], stage: "4" }];
+    assertRefused(
+      { ...file, randomizations: [{ ...file.randomizations[0], stages }] },
+      'randomization 1 names stage "4", which isn\'t one of the file\'s stages.',
+    );
+  });
+
+  test("randomizations refused by setRandomizations give its message, after the renumbering", () => {
+    const file = JSON.parse(planToText(randomizingPlan(), SAVED_BY));
+    const [first, second] = file.randomizations;
+    assertRefused(
+      { ...file, randomizations: [{ ...first, stages: [first.stages[1], first.stages[0]] }, second] },
+      "randomizations: Randomization 1: its stages must come one after another, in stage order.",
+    );
+    assertRefused(
+      { ...file, randomizations: [first, { ...second, seed: 0 }] },
+      "randomizations: Randomization 2: A randomization's seed must be a whole number from 1 to 999,999, or null, but got 0.",
+    );
+    // Stage "5" (opening as "5") with its tips, removed, so r2's place is inside a tip group.
+    delete file.tipChanges["7"];
+    assertRefused(file, /randomizations: Randomization 2: A randomization sits between tip groups/);
+  });
+
+  test("randomizations without the form to renumber get setRandomizations' message for it", () => {
+    const file = JSON.parse(planToText(randomizingPlan(), SAVED_BY));
+    const [first, second] = file.randomizations;
+    assertRefused(
+      { ...file, randomizations: [first, 5] },
+      'randomizations: Randomization 2 must be an object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".',
+    );
+    assertRefused(
+      { ...file, randomizations: [{ ...first, stages: 5 }, second] },
+      'randomizations: Randomization 1: its stages must be a list of objects with exactly "labware", "well" and "stage".',
+    );
+    assertRefused(
+      { ...file, randomizations: [first, { ...second, beforeId: 5 }] },
+      /randomizations: Randomization 2: There's no stage 5 to add a randomization before\./,
+    );
+  });
+
+  test("the randomizations are checked last: bad well labels and bad randomizations report the well labels", () => {
+    const file = { ...fullFile(), wellLabels: { [PLATE]: { A1: "" } }, randomizations: [5] };
+    assertRefused(file, /well labels: /);
+  });
+
   // --- Version 4 files and well labels ---
 
   test("a version 4 file opens, with no well labels", () => {
@@ -416,13 +567,13 @@ describe("plan-file", () => {
     );
   });
 
-  test("a version 5 file without wellLabels is refused as missing it", () => {
+  test("a version 6 file without wellLabels is refused as missing it", () => {
     const file = fullFile();
     delete file.wellLabels;
     assertRefused(file, 'it\'s missing "wellLabels".');
   });
 
-  test("a version 5 file whose wellLabels is a list gets the wrong-kind message", () => {
+  test("a version 6 file whose wellLabels is a list gets the wrong-kind message", () => {
     assertRefused({ ...fullFile(), wellLabels: [] }, '"wellLabels" must be an object.');
   });
 
@@ -443,9 +594,9 @@ describe("plan-file", () => {
     assertRefused(file, /the experiment name: /);
   });
 
-  test("saving an opened version 4 file writes version 5, with no well labels", () => {
+  test("saving an opened version 4 file writes version 6, with no well labels", () => {
     const file = JSON.parse(planToText(open(version4File()), SAVED_BY));
-    assert.equal(file.version, 5);
+    assert.equal(file.version, 6);
     assert.deepEqual(file.wellLabels, {});
   });
 
@@ -485,7 +636,7 @@ describe("plan-file", () => {
     assertRefused(file, /stage 2: The stage name is blank\./);
   });
 
-  test("saving an opened version 3 file writes version 5, with the stages' mixes null", () => {
+  test("saving an opened version 3 file writes version 6, with the stages' mixes null", () => {
     const file = JSON.parse(planToText(open(version3File()), SAVED_BY));
     assert.equal(file.version, PLAN_FILE_VERSION);
     for (const stage of file.stages) {
@@ -559,15 +710,15 @@ describe("plan-file", () => {
     assertRefused(file, 'stage 1\'s settings have "destinationMix", which a version 2 file\'s stages don\'t have.');
   });
 
-  test("a version 3 to 5 tip change without probes is refused as not having exactly its properties", () => {
-    for (const file of [version3File(), version4File(), fullFile()]) {
+  test("a version 3 to 6 tip change without probes is refused as not having exactly its properties", () => {
+    for (const file of [version3File(), version4File(), version5File(), fullFile()]) {
       file.tipChanges.start = { tipType: TIP_TYPES[0] };
       assertRefused(file, 'the tip change at "start" must be an object with exactly "tipType" and "probes".');
     }
   });
 
-  test("a version 3 to 5 stage with probes is refused by the stage list as an extra setting", () => {
-    for (const file of [version3File(), version4File(), fullFile()]) {
+  test("a version 3 to 6 stage with probes is refused by the stage list as an extra setting", () => {
+    for (const file of [version3File(), version4File(), version5File(), fullFile()]) {
       file.stages[0].settings.probes = [1, 2];
       assertRefused(file, /stage 1: A stage's settings can only have .+, but also got "probes"\./);
     }
@@ -654,8 +805,8 @@ describe("plan-file", () => {
 
   test("a version above this one was saved by a newer version of the tools", () => {
     assertRefused(
-      { ...fullFile(), version: 6 },
-      "it was saved by a newer version of the tools (plan format 6). Open it with that version or a later one.",
+      { ...fullFile(), version: 7 },
+      "it was saved by a newer version of the tools (plan format 7). Open it with that version or a later one.",
     );
   });
 
