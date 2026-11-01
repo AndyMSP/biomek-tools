@@ -426,8 +426,9 @@ on labware that's put away ends at that labware's chip in the tray instead.
 
 ## 7. The Stages column
 From the top: **Start**, then one **tip group box** per tip group (`tipGroups`), each holding its
-stages in stage order, then **End**. Exactly one of them is **open**, as a card; the others are
-one-line rows. Clicking a row opens it.
+stages in stage order, with each randomization's box where it sits (below), then **End**. Exactly
+one of Start, the stages, End and the randomizations is **open**, as a card; the others are
+one-line rows (or, for a randomization, its heading). Clicking a row opens it.
 
 **Rows and cards share one look.** A row shows a number in a small round badge, a name, and a count
 at the right. A card shows the same at the top, then its contents. (Until 2026-10-30 a card also
@@ -613,9 +614,15 @@ like a tip group's, with seams between tip groups above and below it as for any 
 - **Its heading**, a button the box's width: the **dice icon** (a small SVG of two dice, one tilted
   behind showing three, one in front showing five, in the text's color, so it's the same on every
   PC), then `Randomize` (not set up yet) or `Randomized` (run), semibold, then at the right, in
-  gray, `not set up yet` or `68 stages · seed 360310`. Tooltip, not set up yet: `Not set up yet:
+  gray, `not set up yet` or `68 stages · seed 360310` (the stages it owns; `1 stage`). Tooltip, not set up yet: `Not set up yet:
   open it to finish setting it up.`; run: `Open to change it`. Clicking it opens its card, or, if
   open, closes it (saving, below).
+- **Seams around it**: a seam between tip groups above its box and one below, as for any box, and
+  **none inside it** (not between its stages' boxes, nor inside them). For one that hasn't run,
+  the seam below adds before the same stage as the seam above, then moves the randomization above
+  the new stage (`placeRandomization`), in the same edit, so the new stage lands below it.
+  Several that haven't run at one place are shown in the order they were added, with a seam
+  between them adding before the same stage and placing those below it after the new stage.
 - **Its stages** look like any stage, but can be changed only through its card (Andy, 2026-11-01:
   so the card always matches them): no ✎ on them or on their tip changes, no seams inside their
   tip group boxes, no `×` on their transfers, and their volumes aren't buttons. Each one's card
@@ -624,11 +631,29 @@ like a tip group's, with seams between tip groups above and below it as for any 
   card.` (a note).
 
 **A randomization's card** opens under its heading, inside its box, and is the open entry: the deck
-shows the plates where the randomization sits, as for a stage there, and fades nothing. One card is
-open at a time, among the editing boxes and randomizations. Its changes are a **draft**: **Close**,
-clicking its heading, or opening any other entry saves them into the plan with `setRandomization`
-(one undoable edit, nothing if unchanged) and closes it (Andy, 2026-11-01: closing keeps what was
-set). Escape closes it the same way. From the top:
+shows the plates where the randomization sits (section 11), and fades nothing. It closes when
+anything else is opened, as an open stage does, and opening an editing box (a ✎) or a header box
+first closes it as `Close` would. Its changes are a **draft**, until:
+- **It hasn't run yet** (Andy, 2026-11-01: closing keeps what was set): `Close`, Escape, clicking
+  its heading, or opening anything else saves the draft into the plan with `setRandomization`, as
+  one undoable edit (nothing if unchanged), and closes it.
+- **It has run** (decided while Andy was away, to confirm: so the card always matches its stages):
+  with no changes, those close it. With changes, the footer shows `Discard` beside `Close`;
+  `Discard` (or Escape) closes it without saving; anything else that would close it does nothing
+  else: the card shakes, as an editing box with unsaved changes does (section 10), and the message
+  bar says `Update or discard your changes first.`
+- **Randomize** or **Update** (below).
+- Any value the logic would refuse (a replicate count that isn't a whole number of at least 1, a
+  seed outside 1 to 999,999, a volume of 0 or less, or text) is saved as not given (`null`), so
+  the problem then reads `Drug A needs a number of replicates.`, `Type a seed.` or `Set the
+  volume.`.
+- While the card is open, Undo and Redo are disabled (buttons and keys), since its changes aren't
+  in the plan yet; Save, Open, Reset and Biomek files first close it as `Close` would.
+- The card's problems are worked out on the draft: the page applies it to a copy of the plan
+  (`setRandomization`, with values it would refuse as `null`) and asks `randomizationProblems`,
+  putting a box's own message first while it holds what isn't valid.
+
+From the top:
 - **Two tabs**, `Sources` and `Wells to fill`, each with a count in a small gray pill; the open tab
   is blue and underlined. **The open tab is what clicks on the deck pick** (below), and only its
   contents show. A new randomization opens on Sources; one opened again opens on the tab it was
@@ -638,7 +663,7 @@ set). Escape closes it the same way. From the top:
   (`sourceName`), a 40px **replicates box** (accessible name `Replicates of Deep A1`) and a
   **Filler** toggle button (pressed while it's the filler; tooltip `The filler fills the wells the
   replicates leave over.`), then a `×` (`Remove source Deep A1`). The filler's row shows, in place
-  of its box, how many wells it fills: `12 wells`, `1 well`, `0 wells`, or `?` while a replicate
+  of its box, how many wells it fills (on an exact fit it gets none, and no stage): `12 wells`, `1 well`, `0 wells`, or `?` while a replicate
   count isn't a whole number yet, updating as replicates are typed and wells picked (Andy,
   2026-11-01). Making a source the filler makes any other one not the filler.
   - With two or more sources that take replicates, a first row, **All sources**, set apart by a
@@ -656,8 +681,8 @@ set). Escape closes it the same way. From the top:
   capitals), then the stage box's grid, exactly as in a stage's box (section 10): `Aspirate` and
   `Dispense` columns, a **Mode** row of menus and a **Mix** row of checkboxes (`Can't mix` for a
   mode that can't), mixing with `DEFAULT_MIX`. Then **Tips**: a menu of tip types and a menu of
-  probe counts (`1 probe` … `8 probes`), `BC230 on 4 probes`, for the new tips before each of its
-  stages. Then **Volume**: a button showing `50 µL` (tooltip `Volume per transfer. Click to change
+  probe counts (`1 probe` … `8 probes`, choosing `probesFor`; showing how many `probes` holds),
+  `BC230 on 4 probes`, for the new tips before each of its stages. Then **Volume**: a button showing `50 µL` (tooltip `Volume per transfer. Click to change
   it.`), which turns into a text box when clicked, as a transfer's volume does (Enter or clicking
   away sets it; Escape keeps the old one; Andy, 2026-11-01: never typed at the deck). A refused
   volume is the card's problem (below).
@@ -671,12 +696,13 @@ set). Escape closes it the same way. From the top:
   seed shuffles again.`), disabled while there's a problem. Randomize and Update save the draft and
   run it (`runRandomization`), as one undoable edit, close the card and open its first stage
   (message `Randomized: 12 stages with 96 transfers (seed 37). Undo takes the change out again.`).
-  `Remove` acts at once (`removeRandomization`), as every Remove does: `Removed the randomization.`
-  or, once run, `Removed the randomization and its 12 stages. Undo brings them back.`, with the
-  tooltip `Removes it and its 12 stages. Tips it added stay.`. (A `Turn into ordinary stages`
+  After Update the message is `Updated: 12 stages with 96 transfers (seed 37). Undo takes the change
+  out again.`. `Remove` acts at once (`removeRandomization`), as every Remove does: `Removed the
+  randomization.` or, once run, `Removed the randomization and its 12 stages. Undo brings them
+  back.`, with the tooltip `Removes it and its 12 stages. Tips it added stay.`; disabled when its
+  stages are all the plan's (`canRemoveRandomization`), with the tooltip `Its stages are all the
+  plan's stages. Add a stage outside it first.` (A `Turn into ordinary stages`
   button was tried and dropped for now; Andy, 2026-11-01.)
-- When a box holds what isn't a number as the card closes, it's saved as not given (`null`), so
-  the problem reads `Drug A needs a number of replicates.`, `Type a seed.` or `Set the volume.`.
 
 **What changed glows.** When a stage or a tip group box appears that wasn't there at the last
 drawing, it glows soft yellow (`#FFF1BF` background, a 4px `#F3D36B` ring) and fades over 1.2
@@ -800,8 +826,9 @@ stage to add transfers into it.`, and dragging does nothing.
 whatever the wells hold (Andy, 2026-11-01: never guessed from contents), by the open tab:
 - **Sources**: clicking a well adds it as a source, last; clicking a source removes it. Dragging
   does nothing. A well to fill clicked here stops being one.
-- **Wells to fill**: clicking a well picks it, or unpicks it; dragging across a box of wells picks
-  them all, or, if the first well was picked, unpicks them. A source in a box is left a source.
+- **Wells to fill**: clicking a well picks it, or unpicks it; clicking a source does nothing.
+  Dragging across a box of wells picks them all, or, if the first well was picked, unpicks them;
+  sources in the box are left sources.
 - The cursor's label says `Source` or `Fill`. Typed volumes (section 13) are ignored while the card
   is open.
 
@@ -894,6 +921,7 @@ The deck shows the plates at one point in the run, chosen by what's open:
 | a stage with transfers | the plates after that stage | `After stage 2 of 4, “Drugs”` |
 | a stage without transfers | the plates as it will start: after the stages with transfers before it | `As stage 3, “New stage”, will start (no transfers yet)` |
 | End | the plates after every stage | `At the end, after all stages` |
+| a randomization's card | the plates where it sits: before its first stage (after the stages with transfers before it), or before the stage it sits before | `Randomizing, before stage 3, “Drugs”` or `Randomizing, after all stages` |
 
 Only a stage's end is shown, never part-way through a stage, because within a stage the Biomek
 chooses its own order (B56358AF, 22-25). Stage numbers in captions are places in the stage order,
@@ -902,7 +930,8 @@ and the total is the number of stages.
 The caption sits at the top left of the deck panel, after two small buttons `‹` and `›` (side by
 side, before the caption, so they stay put however long it is). `‹` opens the entry before (Start,
 the stages in stage order, End), and `›` the one after; `‹` is disabled at Start and `›` at End.
-They're the same as clicking that entry in the Stages column.
+They're the same as clicking that entry in the Stages column. A randomization isn't a stop: they
+step from the stage before it to its first stage.
 
 After any edit, what's open stays open (unless the edit opens something else: sections 5, 7 and 10),
 and the deck shows its point again.
@@ -911,14 +940,16 @@ and the deck shows its point again.
 **Keys** (none while typing in a text box or menu, which keep their own keys):
 - **Digits, `.` and Backspace** type a volume (section 13), at any time: the brush's while Start is
   open (not with the eraser), and the next transfer's while a stage is open. Not while End is open.
-- **Escape** closes the open editing box without saving, or the open header box (section 5);
-  otherwise clears a chosen source.
+- **Escape** closes the open editing box without saving, or the open header box (section 5), or
+  the open randomization's card (saving or discarding, section 7); otherwise clears a chosen source.
+  Typed volumes (above) are ignored while a randomization's card is open.
 - **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac). Not while an editing
-  box is open, since its changes aren't in the plan yet.
+  box or a randomization's card is open, since their changes aren't in the plan yet.
 
 **The cursor's label.** While the pointer is over the deck, a small label beside it (14px right,
 26px up) shows what a click does: with a stage open, the next transfer's volume, `50 µL`; with Start
-open, `+ 1000 µL Media`, `Eraser`, or `No component picked`; with End open, nothing.
+open, `+ 1000 µL Media`, `Eraser`, or `No component picked`; with a randomization's card open,
+`Source` or `Fill`, by its tab; with End open, nothing.
 
 **The message bar** floats at the bottom center of the window, at most 720px wide, and shows the
 latest message until the next replaces it; it's hidden when empty. It's announced to screen readers.

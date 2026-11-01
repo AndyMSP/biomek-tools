@@ -385,7 +385,7 @@ added on 2026-10-28 (Andy).
         Numbering the sources was tried and dropped as confusing.
       - **Running it** makes one stage per source, in list order, named as the source is, each with
         new tips, filling the wells to fill as **one pool** across any number of plates. **The
-        randomizer's logic does the work** (Andy, 2026-11-01): the designer gives `randomizer.js`
+        randomizer's logic does the work** (Andy, 2026-11-01): the designer gives the shared randomizing logic
         the sources, replicates, filler, wells and seed, and turns the assignment it returns into
         stages, so there's one copy of the randomizing logic: a shared module, `random-pool`,
         which `randomizer.js` uses too ("one set of replicates spread across plates, fully random",
@@ -401,7 +401,7 @@ added on 2026-10-28 (Andy).
         back); tips it added stay. A "Turn into ordinary stages" button was tried and dropped for
         now (Andy, 2026-11-01).
       - **Part of the plan:** randomizations and which stages are theirs are saved in plan files
-        (format version 5; versions 1 to 4 still open) and undone like any edit.
+        (format version 6; versions 1 to 5 still open) and undone like any edit.
       - The standalone randomizer page stays for now (Andy, 2026-11-01), for its bench lists, until
         the designer can make them.
 10. **Mixing** (Andy, 2026-10-28, moved from "Later"): in the plan, the plan file, the page and the

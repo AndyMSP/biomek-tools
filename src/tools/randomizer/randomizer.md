@@ -115,9 +115,13 @@ records which role put it there.
    order (A1, A2 … H12, skipping fixed wells), taking the next item from the shuffled list for each.
 4. Each fixed well gets the name of its fixed-contents entry.
 
-Steps 1 to 3 are done by `assignPool` (`random-pool.md`): the conditions as items (keyed by row,
-since names may repeat with the filler's), the filler, the open wells in standard order, and the
-seed; `randomize` places each item's name in its well. `randomSeed` (section 4) moves to
+Steps 1 to 3 are done by `assignPool` (`random-pool.md`). The pool: an item per condition row that
+isn't completely empty, keyed `"row 1"`, `"row 2"` … by its row number, with its replicates, in
+row order; then, if a filler is named, one more item keyed `"filler"` with `replicates` `null`,
+and `filler` set to `"filler"` (`null` when the filler is `""`); the open wells, in standard order,
+as `wells`; and the seed. (Keys are rows, not names, since a condition may share its name with the
+filler.) `randomize` puts each assigned well's row's condition name, or the filler's name, in the
+well, with the type `assignPool` gives (`replicate` or `filler`). `randomSeed` (section 4) moves to
 `random-pool` too, and `randomizer.js` re-exports it. The golden files (section 9) confirm the
 plates are the same as before.
 
@@ -355,6 +359,8 @@ work even when names are shared.
 - Adding a condition doesn't change any filler or fixed-contents position.
 
 ### Spare wells and random seeds
+(The `randomSeed` cases below move to `random-pool.test.js`, with `randomSeed`; here, a test checks
+that `randomizer.js` re-exports the same function.)
 - `spareWellCount` is 12 for the main example, 0 for the exact fit, 0 when the replicates don't fit,
   and `null` when a replicate count is `"four"` or missing (in a row that isn't completely empty).
   Completely empty rows don't change it.

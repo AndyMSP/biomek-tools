@@ -53,8 +53,6 @@ own terms. In this order:
 
 | Kind | When | Other properties |
 |---|---|---|
-| `"no-items"` | no items, or only the filler | |
-| `"no-wells"` | `wells` is empty | |
 | `"replicates-missing"` | an item other than the filler has missing replicates | `key`, `index` (from 0) |
 | `"replicates-invalid"` | an item other than the filler has replicates that aren't a whole number of at least 1 | `key`, `index`, `value` (as given) |
 | `"too-many"` | the replicates need more wells than `wells` holds | `needed`, `available` |
@@ -63,7 +61,10 @@ own terms. In this order:
 | `"seed-invalid"` | the seed isn't a whole number from 1 to 999,999 | `value` |
 
 The item problems come item by item, in `items`' order. `"too-many"` and `"spare-without-filler"`
-are checked only when every item's replicates are valid, and not when there are no wells.
+are checked only when every item's replicates are valid. No items, only the filler, or no wells
+aren't problems here: with no replicates, every well gets the filler (as the randomizer's empty
+condition list does), and with no wells the assignment is empty. A caller that needs items or
+wells checks that itself.
 
 ### A badly formed pool
 A pool that isn't well formed is the caller's mistake, not a problem to show, so both functions
@@ -91,8 +92,8 @@ assignPool({
 ## 5. Errors
 | Problem | Message |
 |---|---|
-| `pool` isn't an object, or `items` or `wells` isn't a list | `The pool must be an object with "items", "filler", "wells" and "seed", but got null.` |
-| An item isn't an object with a `key` that's a name (`checkName`) and `replicates` | `Pool item 2 must be an object with a "key" that's a name, and "replicates".` |
+| `pool` isn't an object with exactly `items`, `filler`, `wells` and `seed`, or `items` or `wells` isn't a list | `The pool must be an object with "items", "filler", "wells" and "seed", but got null.` (the pool itself) / `The pool's "items" must be a list, but got 5.` (or `"wells"`) |
+| An item isn't an object with exactly a `key` that's a name (`checkName`) and a `replicates` property (whose value may be anything, even `null`) | `Pool item 2 must be an object with exactly a "key" that's a name, and "replicates".` |
 | Two items with one key | `Pool items 1 and 3 both have the key "Deep A1".` |
 | `filler` isn't `null` or an item's key | `The filler "Deep A9" isn't one of the pool's items.` |
 | A well isn't a name, or is listed twice | `Pool well 4 must be a name, but got 5.` / `Pool wells 2 and 7 are both "Plate1 B1".` |
@@ -110,6 +111,8 @@ In `random-pool.test.js`, inside `describe("random-pool", …)`.
   pool twice gives the same assignment; two chosen seeds give different ones.
 - **Exact fit:** replicates equal to the wells: with a filler, it gets no wells; without one, there's
   no problem.
+- **No replicates:** only the filler, 10 wells: every well gets the filler. No wells: an empty
+  assignment. Neither is a problem.
 - **The filler's place in `items` doesn't matter:** moving it gives the same assignment.
 - **Problems:** each kind with its properties, e.g. `{ kind: "too-many", needed: 64, available: 60 }`
   and `{ kind: "replicates-invalid", key: "A", index: 0, value: "four" }`; several at once in order;
@@ -121,3 +124,6 @@ In `random-pool.test.js`, inside `describe("random-pool", …)`.
 - **Unchanged:** the pool passed in is unchanged.
 - `randomSeed`: the randomizer's test cases for it (`randomizer.md`, section 9) move here; the
   randomizer's tests check that its re-export is the same function.
+
+**The REPL** (`scripts/repl.js`): a topic of its own, `random-pool`, with an example pool on two
+plates.

@@ -109,7 +109,7 @@ precision; JSON keeps numbers exactly, so a plan reads back with the same volume
 ### Stage IDs are renumbered on opening
 The stage list makes its own IDs and can't be given one (`stage-list.md`, "IDs"). So opening a file
 adds its stages afresh, in the file's order, which is the stage order, and they get new IDs, `"1"`,
-`"2"`, `"3"` … The file's IDs are used only to match its transfers and tip changes to its stages,
+`"2"`, `"3"` … The file's IDs are used only to match its transfers, tip changes and randomizations to its stages,
 and are then replaced by the new ones. The plan's `stageOrder` is the stages in the file's order.
 (For example, a file whose stages are `"2"`, `"5"` and `"7"` opens with stages `"1"`, `"2"` and
 `"3"`.)
@@ -166,10 +166,13 @@ Opening a file checks, in this order:
     (`transfer-designer.md`), so strictly: a label with spaces at its ends, a blank one, or a
     labware listed with no wells is refused rather than tidied. A version 1 to 4 file opens with no
     well labels.
-13. **Randomizations** (version 6): all at once, as `setRandomizations` checks and sets them
-    (`transfer-designer.md`), after their stage IDs (`beforeId`, each source's `stage`) are changed
-    to the stages' new IDs (above); an ID that isn't one of the file's stages is refused first. A
-    version 1 to 5 file opens with no randomizations.
+13. **Randomizations** (version 6): first, just enough form to renumber: each is an object, and
+    its `beforeId` is text or `null`, and its `stages` a list of objects whose `stage` is text
+    (else `setRandomizations`' own message for that form, after `randomizations: `); every stage ID
+    named is one of the file's stages. Then their stage IDs (`beforeId`, each of `stages`' `stage`)
+    are changed to the stages' new IDs (above), and they're checked and set all at once by
+    `setRandomizations` (`transfer-designer.md`). A version 1 to 5 file opens with no
+    randomizations.
 The first problem found is reported (section 5).
 
 ## 4. Interface
@@ -217,9 +220,9 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | A starting-contents entry holds nothing | `starting contents, entry 4, holds nothing; a well that holds nothing is left out.` |
 | The starting contents are refused as a whole (`contents-tracking`) | `starting contents: ` and its message, e.g. for a well listed twice. |
 | The labels are refused (`setLabels`) | `labels: ` and its message. |
-| A randomization names a stage that isn't one of the file's (`beforeId` or a source's `stage`) | `randomization 1 names stage "9", which isn't one of the file's stages.` |
-| The randomizations are refused (`setRandomizations`) | `randomizations: ` and its message. |
 | The well labels are refused (`setWellLabels`) | `well labels: ` and its message, e.g. `well labels: The label for Deep A1 is blank. A well without a label is left out of the well labels.` |
+| A randomization names a stage that isn't one of the file's (`beforeId` or one of its `stages`) | `randomization 1 names stage "9", which isn't one of the file's stages.` |
+| The randomizations are refused (`setRandomizations`) | `randomizations: ` and its message, e.g. `randomizations: Randomization 1: its stages must come one after another, in stage order.` |
 | The experiment name is refused (`checkExperimentName`) | `the experiment name: ` and its message. |
 | No tip change at `"start"` | `it has no tips at the start of the run.` |
 | A tip change at a stage that isn't in the file, or at the first stage | `a tip change is before stage "9", which isn't one of the file's stages.` / `a tip change is before stage "1", the first stage, which always starts with the tips at "start".` |
