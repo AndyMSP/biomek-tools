@@ -77,8 +77,9 @@ A plan file is written as one JSON object with these properties, in this order:
   "labwareLabels": { "Plate": "Assay plate" },
   "wellLabels": { "Deep": { "A1": "Cond 1", "A2": "Cond 2" } },
   "randomizations": [{ "id": "r1", "beforeId": null, "sources": [{ "labware": "Deep", "well": "A1",
-                       "replicates": 4, "filler": false, "stage": "2" }], "fill": [ … ], "seed": 37,
-                       "volume": 50, "settings": { … }, "tipType": "BC230", "probes": [1, 2, 3, 4] }]
+                       "replicates": 4, "filler": false }], "fill": [ … ], "seed": 37, "volume": 50,
+                       "settings": { … }, "tipType": "BC230", "probes": [1, 2, 3, 4],
+                       "stages": [{ "labware": "Deep", "well": "A1", "stage": "2" }] }]
 }
 ```
 

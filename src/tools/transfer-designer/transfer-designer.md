@@ -379,8 +379,13 @@ stage, or `null`, and never a stage another randomization owns other than its fi
   the first of a tip group (the tool adds tips where a randomization needs them);
 - `placeRandomization(plan, id, beforeId)` moves one that hasn't run (for a caller adding a stage
   just below it, so it stays above the new stage);
-- each run sets `beforeId` to the stage just after its last stage (or `null`), so it's ready if a
-  later run has no stages.
+- each run sets `beforeId` to the stage just after its last stage (or `null`), and every edit keeps
+  it so while it has stages, so it's ready if a later run has no stages (from the build, 2026-11-01:
+  otherwise a plan could be saved that its file can't open);
+- `addStage` with `takeTips` before the stage a randomization without stages sits before moves the
+  randomization onto the new stage, which now starts the tip group;
+- on a first run, randomizations without stages sitting at the same place and earlier in
+  `randomizations` move onto its first stage, so they stay above it.
 
 **It owns its stages** (Andy, 2026-11-01): they're changed only through it, so they always match
 what it last ran with. `randomizationOf(plan, stageId)` says which randomization owns a stage. The
@@ -392,6 +397,9 @@ whatever else is edited:
   shares tips.`
 - `removeStage`, removing the stage just after a randomization's last stage, gives the next stage
   a tip change loading the tips the removed one used, if it has none.
+- `removeTipChange` also refuses the tip change of a stage a randomization without stages sits
+  before: `A randomization sits before stage 2, “Top up”, between tip groups, so these tips can't
+  be removed.`
 
 **Running** (`runRandomization`), when it has no problems (below), as one edit:
 1. **The pool** (`random-pool.md`): an item per source, keyed `"source 1"`, `"source 2"` … by its
@@ -675,6 +683,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | tip type or probes refused | `setTipType`'s or `setTipProbes`' message, unchanged |
 | `runRandomization` with problems | the first problem's message (section 3) |
 | `removeRandomization`: its stages are all the plan's stages | `This randomization's stages are all the plan's stages, and a plan needs at least one. Add a stage outside it first.` |
+| `removeTipChange`: the tip change of a stage a randomization without stages sits before | `A randomization sits before stage 2, “Top up”, between tip groups, so these tips can't be removed.` |
 | `removeTipChange`: the tip change after a randomization | `This tip change keeps stage 7, “Media”, off the randomization's tips. A randomization never shares tips.` |
 | `setRandomizations`: not a list, or a randomization isn't an object with exactly its ten properties | `The randomizations must be a list, but got 5.` / `Randomization 2 must be an object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".` |
 | `setRandomizations`: an ID isn't `"r"` and a whole number of at least 1, or is repeated | `Randomization 2's ID must be "r" and a whole number, like "r1", but got "x".` / `Randomizations 1 and 3 both have the ID "r2".` |
