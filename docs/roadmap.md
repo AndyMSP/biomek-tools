@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-10-28
+Last updated: 2026-11-01
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -270,6 +270,15 @@ Last updated: 2026-10-28
   lines altogether: the well, its components, then only problem and warning lines (holding only
   dead volume is neither; the problem lines carry the numbers). Tried in one preview (2026-10-31;
   Andy liked it), then specified and **built (#119)**.
+- **Decided: the randomizer link (item 9) is randomizing inside the transfer designer** (Andy,
+  2026-10-31 and 2026-11-01, from a preview he shaped), rather than the randomizer saving a plan file
+  for the designer, writing Biomek files itself, or transfers entered by hand. It goes in as
+  three topics, one pull request each: **seams**, **well names**, then **randomizations** (item 9,
+  below, holds the decisions so far). Exp36 needs it, so it comes before the final Biomek runs
+  (Andy, 2026-11-01). **Seams are specified** (Draft, 2026-11-01; branch `seams`): seams inside a
+  tip group add with its tips, new seams between tip groups add with new tips
+  (`transfer-designer-page.md`, section 7; `addStageWithNewTips` and `addMixStepWithNewTips` in
+  `transfer-designer.md`; glossary "Seam").
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -327,8 +336,58 @@ added on 2026-10-28 (Andy).
    files of a run that worked are kept as the file writer's golden files (`file-writer.md`,
    "Golden files"): a coverage plan first, Exp37 once plans can hold mixing.
 9. **The randomizer link** (Andy, 2026-10-27, moved from "Later"): the randomizer's plates reach
-   the Biomek without anyone editing Biomek files by hand. *What "linking" means isn't decided*
-   (see "Open decisions"); it's decided before work on it starts.
+   the Biomek without anyone editing Biomek files by hand. **Decided (Andy, 2026-10-31 and
+   2026-11-01): randomizing becomes part of the transfer designer**, as a **randomization** in its
+   Stages column, from a preview he shaped (not in the repository). Three topics, in order, each
+   specification first, then a build and Andy's test:
+   1. **Seams** (specified, Draft, 2026-11-01): see "Where things stand".
+   2. **Well names.** Right-click a well (or the menu key, or Shift+F10, on a focused well) to name
+      it, whatever card is open; a box under the well: Enter or clicking away saves (`Named Deep1 A4
+      “Media stock”.`), Escape keeps the old name, an empty name removes it. A **Names** toggle
+      beside Arrows (on by default): a named well shows its name in its volume's spot, wrapping at
+      spaces onto two lines, a single word in slightly smaller type, cut with `…` if it still
+      doesn't fit; a trough shows it upright. The contents card starts with the name (16px, bold),
+      then the well, smaller and quieter; its last line says `Right-click to name` (or `to
+      rename`). Transfer rows keep locations, not names (names can repeat). Names are part of the
+      plan: undone, and saved in plan files.
+   3. **Randomizations**, with an ADR recording why randomizing lives in the designer. Decided so
+      far:
+      - **Where:** added with a dice button (a small SVG of two dice) in the right spot of a seam
+        between tip groups. A randomization sits in the list before it has run (a dashed box,
+        `Randomize`, `not set up yet`) and after (a box around its stages, `Randomized`, `N stages ·
+        seed S`), collapsing to its heading unless its card or one of its stages is open. Its card
+        opens from the heading at any time; closing it keeps what was set.
+      - **The card:** tabs **Sources (n)** and **Wells to fill (n)**, the open tab being what
+        clicks and drags on the deck pick (any wells, never guessed from contents; a well can't be
+        both); Sources lists each source (its well's name, else its main component, `Drug A +2`)
+        with a replicates box, a Filler toggle (the filler's row says how many wells it fills) and
+        ×, an **All sources** box setting every source's replicates, and only the first 8 sources
+        until `Show all N sources ▸` (8 in `config/`); Wells to fill says `60 on Plate1 · 60 on
+        Plate2`, with Clear. Then **Each transfer** (Mode and Mix for Aspirate and Dispense laid out
+        as a stage's box, Tips: tip type and probes, Volume set by clicking it), then Seed (random
+        to start). The footer shows the first problem only, in short words, then Remove, Close and
+        **Randomize**, which reads **Update** once it has run.
+      - **On the deck:** wells to fill get a dashed blue outline and, when empty, a pale tint;
+        sources the chosen-source ring, which now stands 2px off the well with a gap,
+        **everywhere** a source is chosen (Andy, 2026-11-01: hard to see on a filled well).
+        Numbering the sources was tried and dropped as confusing.
+      - **Running it** makes one stage per source, in list order, named as the source is, each with
+        new tips, filling the wells to fill as **one pool** across any number of plates (a
+        several-plates mode in `randomizer.js`). Update makes the stages match the card again: the
+        same seed and inputs keep the same wells; a new seed shuffles again. One Undo takes a run
+        out.
+      - **Tips:** a randomization never shares tips with anything outside it; the tool adds tips
+        where one needs them (the stage after it, or the old first stage, gets its own) and never
+        removes tips or joins tip groups by itself.
+      - **It owns its stages:** they can be looked at but changed only through its card (no ✎, no
+        seams inside, no adding or removing transfers), so the card always matches them. **Remove**
+        takes out the randomization and, once it has run, its stages, at once (Undo brings them
+        back); tips it added stay. A "Turn into ordinary stages" button was tried and dropped for
+        now (Andy, 2026-11-01).
+      - **Part of the plan:** randomizations and which stages are theirs are saved in plan files
+        (format version 5; versions 1 to 4 still open) and undone like any edit.
+      - The standalone randomizer page stays for now (Andy, 2026-11-01), for its bench lists, until
+        the designer can make them.
 10. **Mixing** (Andy, 2026-10-28, moved from "Later"): in the plan, the plan file, the page and the
     file writer. The general-purpose method supports it (ADR 0007: before aspirating, after
     dispensing, and on its own). How it's shown in a plan and on the page is still open ("Open
@@ -373,8 +432,7 @@ final Biomek runs, so they test the files as they will be:
    of the page's files on the Biomek, so a tested version exists before anything else changes.
 2. Mixing (item 10): preview, specifications, then builds.
 3. Well capacities and dead volume (item 11): the facts first, then preview, specification, build.
-4. The randomizer link (item 9), once decided. It comes after mixing in case Exp36's randomized
-   plates need mixing; if they don't, it can move earlier.
+4. The randomizer link (item 9), decided on 2026-11-01: seams, well names, then randomizations.
 5. The final Biomek runs (item 8): simulation, then one real run with water, on the final files;
    then the golden file.
 6. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
@@ -670,12 +728,6 @@ overfilling a well or drawing more than it holds.
   the wells the way contents tracking's `causes` do.
 
 ## Open decisions
-- **What linking the randomizer means** (v0.2.0, item 9; noted 2026-10-28; Andy will decide later,
-  before work on it starts). Options: (A) the randomizer saves its plate as a plan file, which is
-  opened in the transfer designer page and finished there (stage settings, tips, mixing) before
-  writing the Biomek files; (B) the randomizer writes the Biomek files itself, through the file
-  writer, with its own settings for techniques, tips and mixing; (C) no link in v0.2.0, and the
-  randomized transfers are entered in the transfer designer by hand.
 - **Mixing** (v0.2.0, item 10; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
   separate Mix step for the Span-8, so it has to be done another way. Options to look at: a transfer
   from a well back into the same well (the operation list already allows this), or a technique's
