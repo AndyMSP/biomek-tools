@@ -279,8 +279,8 @@ Last updated: 2026-11-01
   (Andy, 2026-11-01). **Seams are specified** (Draft, 2026-11-01) and **built (#121)**: seams inside a
   tip group add with its tips, new seams between tip groups add with new tips
   (`transfer-designer-page.md`, section 7; `addStageWithNewTips` and `addMixStepWithNewTips` in
-  `transfer-designer.md`; glossary "Seam"). **Well labels are specified** (Draft, 2026-11-01;
-  branch `well-labels`): names given to wells by right-click, part of the plan and plan files
+  `transfer-designer.md`; glossary "Seam"). **Well labels are specified** (Draft, 2026-11-01)
+  and **built (#122)**: names given to wells by right-click, part of the plan and plan files
   (format version 5), shown on the deck with a Names toggle (`transfer-designer.md`,
   `plan-file.md`, `transfer-designer-page.md`; glossary "Well label", "Well name").
   **Randomizations are specified** (Draft, 2026-11-01, written while Andy was away; branch
