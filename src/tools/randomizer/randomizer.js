@@ -9,16 +9,19 @@
 import { describeValue } from "../../shared/error-messages/error-messages.js";
 import { GRID_96 } from "../../shared/well-grid/well-grid.js";
 import { Layout } from "../../shared/layout/layout.js";
-import { SeededRandom } from "../../shared/random/random.js";
+import { assignPool, randomSeed } from "../../shared/random-pool/random-pool.js";
 import { WellSelection } from "../../shared/well-selection/well-selection.js";
+
+// randomSeed moved to the shared random-pool module, so both tools share it; it's re-exported here
+// so the randomizer's interface doesn't change (section 4).
+export { randomSeed };
 
 // The range of seeds allowed, set by the specification (section 4).
 const SMALLEST_SEED = 1;
 const LARGEST_SEED = 999999;
 
-// The three well types (section 3), as recorded in a result's wellTypes.
-const REPLICATE = "replicate";
-const FILLER = "filler";
+// The fixed well type (section 3), as recorded in a result's wellTypes. The other two types,
+// "replicate" and "filler", come from assignPool.
 const FIXED = "fixed";
 
 // --- Checking the inputs ---
@@ -246,31 +249,44 @@ export function randomize(inputs) {
   return { layout, wellTypes, inputs: copyInputs(inputs) };
 }
 
-// The open wells' assignments (section 5, steps 1–3): the items to place are shuffled with the
-// seed, then dealt to the open wells in standard order,
-// e.g. [["A2", { name: "Condition 7", type: "replicate" }], ["A3", { name: "Spare", type: "filler" }], …].
-function openWellAssignments({ conditions, fixedContents, filler, seed }) {
-  const openWells = openWellNames(fixedContents);
-  const items = itemsToPlace(conditions, filler, openWells.length);
-  const shuffledItems = new SeededRandom(seed).shuffled(items);
-  return openWells.map((well, index) => [well, shuffledItems[index]]);
+// The pool's key for the filler item (section 5). Condition items are keyed by row ("row 1" …), so
+// this can't clash with one, even when a condition shares its name with the filler.
+const FILLER_KEY = "filler";
+
+// The open wells' assignments (section 5, steps 1–3), done by the shared random-pool module with
+// the open wells as the pool, e.g.
+// [["A2", { name: "Condition 7", type: "replicate" }], ["A3", { name: "Spare", type: "filler" }], …].
+function openWellAssignments(inputs) {
+  const { pool, nameByKey } = poolFor(inputs);
+  return assignPool(pool).map(({ well, key, type }) => [well, { name: nameByKey.get(key), type }]);
 }
 
-// The list of items to place, before shuffling: each condition repeated by its number of
-// replicates, in list order, then the filler once for each spare open well,
-// e.g. 2 replicates of "Condition 1" in 3 open wells → Condition 1, Condition 1, Spare.
-function itemsToPlace(conditions, filler, openWellCount) {
+// The pool for the open wells (section 5) and the name each of its keys stands for: an item per
+// condition row that isn't completely empty, keyed by row number ("row 1" …), in row order; then,
+// if a filler is named, the filler's item; the open wells in standard order; and the seed.
+function poolFor({ conditions, fixedContents, filler, seed }) {
   const items = [];
-  for (const { name, replicates } of filledConditions(conditions)) {
-    for (let copy = 1; copy <= replicates; copy++) {
-      items.push({ name, type: REPLICATE });
+  const nameByKey = new Map();
+  conditions.forEach((condition, index) => {
+    if (isEmptyRow(condition)) {
+      return;
     }
+    const key = `row ${index + 1}`;
+    items.push({ key, replicates: condition.replicates });
+    nameByKey.set(key, condition.name);
+  });
+  const hasFiller = !isBlank(filler);
+  if (hasFiller) {
+    items.push({ key: FILLER_KEY, replicates: null });
+    nameByKey.set(FILLER_KEY, filler);
   }
-  const spareWellCount = openWellCount - items.length;
-  for (let copy = 1; copy <= spareWellCount; copy++) {
-    items.push({ name: filler, type: FILLER });
-  }
-  return items;
+  const pool = {
+    items,
+    filler: hasFiller ? FILLER_KEY : null,
+    wells: openWellNames(fixedContents),
+    seed,
+  };
+  return { pool, nameByKey };
 }
 
 // The fixed wells' assignments (section 5, step 4): each gets the name of its entry,
@@ -348,20 +364,6 @@ export function spareWellCount({ conditions: allConditions, fixedContents }) {
   }
   const spare = openWellNames(fixedContents).length - totalReplicates(conditions);
   return Math.max(spare, 0);
-}
-
-// A seed from 1 to 999,999 made from a random number from 0 up to (not including) 1, such as
-// Math.random() gives (section 4), e.g. randomSeed(0) → 1, randomSeed(0.5) → 500000.
-// It's given the random number rather than calling Math.random() itself, so it can be tested.
-export function randomSeed(randomNumber) {
-  if (typeof randomNumber !== "number" || !(randomNumber >= 0 && randomNumber < 1)) {
-    throw new Error(
-      "randomSeed needs a number from 0 up to 1, like Math.random() gives, " +
-        `but got ${describeValue(randomNumber)}.`,
-    );
-  }
-  const seedCount = LARGEST_SEED - SMALLEST_SEED + 1;
-  return Math.floor(randomNumber * seedCount) + SMALLEST_SEED;
 }
 
 // --- Output lists ---

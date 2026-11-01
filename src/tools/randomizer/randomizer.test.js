@@ -18,6 +18,7 @@ import {
   wellToContentsText,
 } from "./randomizer.js";
 import { GRID_96 } from "../../shared/well-grid/well-grid.js";
+import { randomSeed as poolRandomSeed } from "../../shared/random-pool/random-pool.js";
 import {
   GOLDEN_FILES,
   mainExampleInputs,
@@ -353,29 +354,13 @@ describe("randomizer", () => {
     }
   });
 
-  test("randomSeed turns 0, 0.5 and nearly 1 into 1, 500000 and 999999", () => {
-    assert.equal(randomSeed(0), 1);
-    assert.equal(randomSeed(0.5), 500000);
-    assert.equal(randomSeed(0.9999999999), 999999);
+  test("randomSeed is random-pool's own function, re-exported", () => {
+    assert.equal(randomSeed, poolRandomSeed);
   });
 
-  test("randomSeed always gives a seed findProblems accepts", () => {
+  test("randomSeed's seeds are seeds findProblems accepts", () => {
     for (let step = 0; step < 1000; step++) {
-      const seed = randomSeed(step / 1000);
-      assert.ok(Number.isInteger(seed) && seed >= 1 && seed <= 999999, String(seed));
-      assert.deepEqual(findProblems(mainExampleInputs(seed)), [], String(seed));
-    }
-  });
-
-  test("randomSeed throws for anything but a number from 0 up to 1", () => {
-    for (const [value, shown] of [
-      [1, "1"],
-      [-0.1, "-0.1"],
-      ["0.5", '"0.5"'],
-    ]) {
-      assert.throws(() => randomSeed(value), {
-        message: `randomSeed needs a number from 0 up to 1, like Math.random() gives, but got ${shown}.`,
-      });
+      assert.deepEqual(findProblems(mainExampleInputs(randomSeed(step / 1000))), [], String(step));
     }
   });
 
