@@ -275,7 +275,7 @@ Last updated: 2026-11-01
   for the designer, writing Biomek files itself, or transfers entered by hand. It goes in as
   three topics, one pull request each: **seams**, **well names**, then **randomizations** (item 9,
   below, holds the decisions so far). Exp36 needs it, so it comes before the final Biomek runs
-  (Andy, 2026-11-01). **Seams are specified** (Draft, 2026-11-01; branch `seams`): seams inside a
+  (Andy, 2026-11-01). **Seams are specified** (Draft, 2026-11-01; #121): seams inside a
   tip group add with its tips, new seams between tip groups add with new tips
   (`transfer-designer-page.md`, section 7; `addStageWithNewTips` and `addMixStepWithNewTips` in
   `transfer-designer.md`; glossary "Seam").
