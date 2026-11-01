@@ -3,8 +3,8 @@
 Date: 2026-11-01
 
 ## Status
-Proposed (Andy decided the approach on 2026-10-31 and 2026-11-01, while shaping a preview; accepted
-when he approves this pull request).
+Accepted (Andy, 2026-11-01: decided while shaping a preview on 2026-10-31 and 2026-11-01, and
+accepted by merging #123).
 
 ## Context
 v0.2.0's item 9, the randomizer link, asks that a randomized plate reach the Biomek without anyone
