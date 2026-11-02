@@ -36,14 +36,16 @@ stages in groups (its sections are like tip groups):
 Box selection (dragging a box over things) was considered and set aside: it's standard on a
 two-dimensional surface, rare in a list, and a list has little empty space to start a box from.
 
-**The container rule** decides what happens to tips (Andy, 2026-11-01). **Containers** are tip groups
-and randomizations; **items** are stages, mix steps included:
+**The container rule** decides what happens to tips (Andy, 2026-11-01). **Containers** are ordinary
+tip groups (not a randomization's own) and randomizations; what goes inside them is stages, mix
+steps included. (Anything that can be selected, moved or copied, a stage or a container, is an
+**item**: `docs/glossary.md`.)
 - a container moved or copied **brings everything with it**: its tips and its stages;
 - a container can't go **inside another container**: tip groups and randomizations go only between
   tip groups;
-- an item put **inside a tip group adopts that group's tips**;
-- an item put **between tip groups keeps the tips its old container had**, as a tip group of its own;
-- the container an item leaves **keeps its own tips**; one left with no stages disappears.
+- a stage put **inside a tip group adopts that group's tips**;
+- a stage put **between tip groups keeps the tips its old container had**, as a tip group of its own;
+- the container a stage leaves **keeps its own tips**; one left with no stages disappears.
 
 A randomization's stages can't be moved on their own, since their order and wells come from its card
 (Andy, 2026-11-01). They can be copied: a copy is an ordinary stage.

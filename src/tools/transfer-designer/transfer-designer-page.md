@@ -739,7 +739,9 @@ From the top:
 
 **What changed glows.** When a stage or a tip group box appears that wasn't there at the last
 drawing, it glows soft yellow (`#FFF1BF` background, a 4px `#F3D36B` ring) and fades over 1.2
-seconds. A glow carries on through redrawing. Nothing glows when the page first draws, or when
+seconds. So does whatever a move, copy or paste placed (the logic's `placed`: its stages, and a
+randomization's box), even though a moved stage was drawn before. A glow carries on through
+redrawing. Nothing glows when the page first draws, or when
 something is only opened or edited.
 
 **Moving and copying** (Andy, 2026-11-01; ADR 0014). The column works like PowerPoint's slide
@@ -748,22 +750,37 @@ designer (`transfer-designer.md`, "Moving and copying"), as one undoable edit; t
 is the logic's, and its messages are shown as they come. The column's boxes are drawn in the order
 `columnBoxes` gives (the page doesn't work the order out itself).
 
-*Selecting.* What's **selected** is either a set of things the user picked, or, when none were, what's
-open (a stage, or a randomization whose card is open). The things are stages, tip groups and
-randomizations (the logic's items).
-- **Click** a stage's row opens it, as before, and selects it alone.
-- **Shift-click** a stage's row selects the run of stages from the last thing clicked (or what's
-  open) to this one, in column order, counting stages of ordinary tip groups only; Shift-click a
-  heading selects the run of boxes (tip groups and randomizations) between the two. Nothing opens.
-- **Ctrl-click** (Cmd on a Mac) a stage's row or a heading adds it to the selection, or takes it
-  out. Nothing opens.
-- **Click a tip group's heading** (anywhere but its ✎) selects the whole group, and opens nothing.
-- **Click a randomization's heading** opens or closes its card, as before, and selects it.
-- A stage of a randomization's own tip group (inside its box) is selected by its row, as any stage;
-  its tip group's heading selects that stage.
-- The selection is forgotten when anything else opens (`‹`, `›`, a seam's buttons), after any other
-  edit, after Undo and Redo, and on Escape when nothing else uses Escape (section 12).
+*Selecting.* The things that can be selected are stages, ordinary tip groups and randomizations
+(the logic's **items**, `docs/glossary.md`). The page keeps a **picked set**, or none:
+- With **no picked set**, what's selected is what's open: a stage, or a randomization whose card is
+  open; with Start or End open, nothing.
+- **Click** a stage's row opens it, as before, and forgets the picked set (so it's selected alone).
+- **Click an ordinary tip group's heading** (anywhere but its ✎) makes the picked set that group
+  alone, and opens nothing.
+- **Click a randomization's heading** opens or closes its card, as before, and makes the picked set
+  that randomization alone.
+- **Ctrl-click** (Cmd on a Mac) a stage's row or a heading: with no picked set, one starts, holding
+  what was selected (what's open), and then this thing is added or taken out; with one, this thing
+  is added to it or taken out. Nothing opens. A picked set can be empty: then nothing is selected,
+  the open card included.
+- **Shift-click** selects a run, from the **anchor** (the last thing clicked or Ctrl-clicked in the
+  column, or else what's open) to the thing clicked, as the picked set, and opens nothing. If both
+  are stages, the run is the stages between them in column order, counting the stages of ordinary
+  tip groups only (a randomization's stage at either end counts as its randomization's box, below).
+  If either end is a heading or a randomization, the run is the boxes from the anchor's box to the
+  clicked thing's box, each as a whole (a tip group or a randomization).
+- A stage of a randomization's own tip group is selected by its row as any stage; that tip group's
+  heading counts as that stage's row.
+- The picked set is **forgotten** (so what's open is selected again) when anything else opens
+  (`‹`, `›`, a seam's buttons, a plain click on a stage), after any other edit, after Undo and
+  Redo, and on Escape when nothing else uses Escape (section 12).
 - Start and End are never selected.
+
+*What a press can select or drag.* A stage's **heading row** (its badge, name and count; for a
+closed stage, the whole row), an ordinary tip group's heading, and a randomization's heading.
+Presses on buttons and boxes in them (a ✎, `Show transfers ▸`, a volume, `×`, a text box or menu),
+and anywhere in an open card's contents, keep their own behavior and never select or drag. An
+editing box with unsaved changes still refuses a press outside it (section 10).
 
 *How it looks.* Each selected thing is marked at once, as the button goes down, before a click
 opens it or a drag takes it (Andy, 2026-11-01: in the preview's first try, nothing showed what a
@@ -773,7 +790,7 @@ randomization: a 3px blue ring and border, and its heading's text blue and semib
 and the headings show the grab pointer, and pressing or dragging on them never selects text (Andy,
 2026-11-01: the preview highlighted text under the pointer).
 
-*Dragging.* Pressing on a stage's row or a heading and moving 5px (`DRAG_START_DISTANCE`) starts a
+*Dragging.* Pressing where a press can drag (above) and moving 5px (`DRAG_START_DISTANCE`) starts a
 drag. It takes the selection, if the pressed thing is in it, or else the pressed thing alone (which
 becomes the selection).
 - What's dragged fades to half and gets a 2px dashed blue outline, 2px out.
@@ -793,23 +810,29 @@ becomes the selection).
   (`copyItems`) to it, as one edit. Dropped with nothing marked: `Drop it on a gap between stages or
   tip groups.` (note). Dropped where it already was (the logic gives the same plan back):
   `Dropped where it already was, so nothing moved.` (note), and nothing is recorded.
-- **A randomization's stage dragged without Ctrl**: the label reads `A randomization's stages move
-  with it · hold Ctrl to copy`, on gray (`#8A8A85`), no seam is marked, and the drop shows the
-  logic's message (error).
+- **A drag holding a randomization's stage without its randomization** (alone or with other
+  things), without Ctrl: the label reads `A randomization's stages move with it · hold Ctrl to
+  copy`, on gray (`#8A8A85`), no seam is marked, and the drop shows the logic's message (error).
+  With Ctrl, it copies as any drag.
 - The press that started a drag doesn't also count as a click.
 
 *Copying and pasting.*
-- **Ctrl+C** (Cmd+C) copies what's selected (`copyOf`). The copied items are kept by the page, put
-  on the system clipboard as text (their JSON, through the browser's copy event), and kept in the
-  browser's local storage under `biomek-tools transfer designer: copied items`, so Paste in the
-  right-click menu works in another tab of the designer too. Message: `Copied “Drugs”. Right-click
+- **Ctrl+C** (Cmd+C) copies what's selected (`copyOf`). The copied items are put on the system
+  clipboard as text (their JSON, through the browser's copy event), and kept as **the page's
+  copy**: in the browser's local storage under `biomek-tools transfer designer: copied items`,
+  shared by every tab of the designer, so the latest copy in any tab is the one the menu pastes
+  (and in the page's memory too, for a browser without local storage). Message: `Copied “Drugs”. Right-click
   where it should go and choose Paste, or press Ctrl+V to paste it below the selection.` (note; the
-  copied things described as in the drag's label, without `Move`). With nothing selected:
+  copied things described as in the drag's label, without `Move`). With nothing selected (Start or
+  End open with no picked set, or an empty picked set):
   `Select a stage, a tip group (click its heading) or a randomization to copy it.` (note).
-- **Ctrl+V** (Cmd+V) pastes (`pasteItems`) the copied items on the system clipboard (through the
-  browser's paste event), or, if it doesn't hold copied items, the page's own; just below the last
-  selected thing in column order: inside its tip group, after it, for a stage of an ordinary tip
-  group when nothing pasted is a tip group or randomization; otherwise between boxes, below its box.
+- **Ctrl+V** (Cmd+V) pastes (`pasteItems`) what the system clipboard holds (through the browser's
+  paste event) if it **holds copied items**: text that is JSON with `format` `"biomek-tools copied
+  items"` (anything with that format goes to `pasteItems`, so a damaged one shows its message);
+  otherwise the page's copy. It pastes just below the last selected thing in column order: inside
+  its tip group, after it, for a stage of an ordinary tip group when nothing pasted is a tip group
+  or randomization; otherwise between boxes, below its box (for a randomization's stage, below the
+  randomization's box).
   With nothing selected, below the last box (with Start open, above the first). With nothing copied:
   `Nothing to paste yet: select a stage, tip group or randomization and press Ctrl+C.` (note).
 - Ctrl+C and Ctrl+V keep their usual meaning in text boxes and menus, and Ctrl+C copies text that's
@@ -820,8 +843,8 @@ opens a small menu at the pointer (kept inside the window), instead of the brows
 - **On a stage's row, a tip group's heading or a randomization's heading**: `Copy`, `Paste above`,
   `Paste below`. Right-clicking something not selected selects it first, as in PowerPoint.
   - `Copy` does what Ctrl+C does.
-  - `Paste above` and `Paste below` paste the copied items (the page's own, or, if none, those in
-    local storage) just above or below what was right-clicked: for a stage of an ordinary tip group,
+  - `Paste above` and `Paste below` paste the page's copy (the latest in any tab; the browser's
+    clipboard can't be read until the user pastes) just above or below what was right-clicked: for a stage of an ordinary tip group,
     inside its group, unless what's pasted holds a tip group or randomization; for a heading, or a
     randomization's stage, between boxes, above or below that box.
 - **On a gap** (a seam, anywhere in its band but its buttons): `Paste here`, pasting at that seam.
@@ -843,8 +866,11 @@ opens a small menu at the pointer (kept inside the window), instead of the brows
 do, below), and the column scrolls to show it. The first stage among them opens (for a lone
 randomization, what was open stays open). Messages (ok): `Moved “Drugs”.`, `Copied “Drugs”.` (for
 Ctrl+drag), `Pasted “Drugs”.`, with the same descriptions as the drag's label (`2 stages`, `a tip
-group` …). Any open editing box closes first; an open randomization's card closes first as `Close`
-would, and if it can't (it has run, with changes), nothing happens.
+group` …). Any open editing box without changes closes first (one with changes refuses the press
+that would start a drag, above, or, for Ctrl+V and the menu, shakes as it does for a press outside,
+with `Save or discard your changes first.`, and nothing happens). An open randomization's card
+closes first as `Close` would; if it can't (it has run, with changes), it shakes, the message bar
+says `Update or discard your changes first.`, and nothing moves or is pasted.
 
 **Keeping things in view.** When a different entry opens, the column scrolls just enough to show
 all of it; when an editing box opens, it scrolls just enough to show the box. When `Show
@@ -1359,6 +1385,8 @@ page's configuration (ADR 0009):
   the right-click menu on a stage, a heading and a gap, its greyed-out items and reasons, the
   menu key; closing it with a press outside, Escape and scrolling; each as one undo, with its
   message, the glow, and the pasted things selected; an overdraw after moving a stage before the
-  one that fills its source;
+  one that fills its source; with an editing box with changes open, and with a run randomization's
+  card with changes open (refused, shaking, its message); a picked set made empty by Ctrl-click
+  (nothing selected, Ctrl+C's note);
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels.

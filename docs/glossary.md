@@ -3,6 +3,11 @@
 The project's own terms, each defined once. Use a term here with this meaning only. Biomek's own terms
 (step, method, technique, worklist) keep Biomek's meaning; see `docs/domain/biomek.md`.
 
+**Box**
+One of the parts the transfer designer's Stages column is made of, between Start and End: an
+ordinary tip group, or a randomization with its stages' tip groups (`transfer-designer.md`,
+"Moving and copying"). Moving and copying put things between boxes, or inside a tip group's box.
+
 **Capacity**
 The most one well of a labware type holds, in µL: the type's "Maximum volume per well" in Biomek
 Software, copied into `config/labware-types.js`. One value per labware type. A well filled past it
@@ -20,6 +25,12 @@ well's components, of each component's share of the well times what it carries (
 `concentrations.md`). A well 20% from a 10 mM Dye stock carries Dye at 2 mM. Shown in the unit
 that fits the value best (476 µM, not 0.476 mM), on the contents card.
 
+**Container rule**
+How moving and copying treat tips (Andy, 2026-11-01; ADR 0014). Containers are ordinary tip groups
+and randomizations. A container moved or copied brings its tips and stages with it, and goes only
+between tip groups. A stage put inside a tip group takes that group's tips; one put between tip
+groups keeps the tips it had, as a tip group of its own. A tip group a stage leaves keeps its tips.
+
 **Constituent**
 Something a component carries at a known concentration: a name, an amount and a unit, such as
 Hy-Soy at 4 g/L in a feeding medium, or Dye at 10 mM in a dye stock (ADR 0013). A component may
@@ -27,6 +38,11 @@ carry any number; "Dye is 10 mM" is a component with one constituent, named Dye.
 constituent name in different components is the same thing, so their amounts add up in a well, and
 it keeps one family of units (g/L and mg/L, say; not g/L in one component and mM in another).
 Constituents are part of the plan and saved in plan files.
+
+**Copied items**
+Stages, tip groups or randomizations copied from a plan, as plain data, so they can be pasted into
+the same plan or another one, through the system clipboard or the designer's own copy
+(`transfer-designer.md`, "Moving and copying"). Pasting checks them as opening a plan file does.
 
 **Dead volume**
 The liquid a well holds that a tip can't reach, in µL: one value per labware type, in
@@ -40,6 +56,10 @@ The name the user gives a plan's experiment, such as "Exp36": the transfer desig
 and the end of the name of each run's folder of Biomek files (`file-writer.md`). It's part of the
 plan, saved with it. Letters, digits, hyphens and underscores only, 1 to 40 characters; a new plan
 has none until the user gives one.
+
+**Item**
+Something in the Stages column that can be selected, moved or copied: a stage (a mix step
+included), an ordinary tip group (one not belonging to a randomization) or a randomization.
 
 **Labware label**
 The name the user gives one labware on the deck, such as "Drug plate", shown wherever the page
@@ -120,7 +140,7 @@ stages, and a later version may form them automatically.
 **Stage order**
 The order of all a plan's stages: the order the page shows them in and the order they will run in.
 It includes stages without transfers yet. The plan keeps it as its own list, which changes only when
-a stage is added or removed (ADR 0011). The run order (ADR 0008) is only the stages with transfers,
+a stage is added, removed or moved (ADR 0011, ADR 0014). The run order (ADR 0008) is only the stages with transfers,
 in the operation list's order, which always follows the stage order.
 
 **Substage**

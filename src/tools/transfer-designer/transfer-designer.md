@@ -163,7 +163,8 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   undone and redone, kept in the browser copy, and saved in the plan file (`plan-file.md`; Andy,
   2026-11-01). They're for people only: the file writer never reads them.
 - **`randomizations`**: the plan's randomizations (section 3, "Randomizations"), in the order they
-  were added (so several sitting at one place are in that order). The file writer never reads them: their stages are ordinary stages to it.
+  were added, except that a move or a paste puts the whole list in column order (section 3, "Moving
+  and copying"); several sitting at one place are in this list's order. The file writer never reads them: their stages are ordinary stages to it.
 - **`experimentName`**: the experiment's name (`docs/glossary.md`, "Experiment name"), or `""`
   until the user gives one (Andy, 2026-10-28). A name follows the file writer's rule,
   `checkExperimentName` (`file-writer.md`): letters, digits, hyphens and underscores, 1 to 40
@@ -174,12 +175,13 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
 The **stage order** is the order of all the plan's stages, with or without transfers: the order a
 tool shows them in, and the order they will run in. The plan keeps it as its own list,
 `stageOrder`, the one source of truth for it (ADR 0011). It changes only when a stage is added
-(its ID is inserted) or removed (its ID is taken out). Adding or removing transfers never changes
-it.
+(its ID is inserted), removed (its ID is taken out) or moved (ADR 0014; section 3, "Moving and
+copying"). Adding or removing transfers never changes it.
 
 **The operation list follows it.** Its blocks, one per stage with transfers (ADR 0008), are always
 in the same order as those stages in `stageOrder`: a stage's first transfer is placed to keep it so
-(section 3, "Transfers"). So the **run order** of ADR 0008, the stages with transfers in the
+(section 3, "Transfers"); a move rebuilds the operation list in the new stage order (section 3,
+"Moving and copying"). So the **run order** of ADR 0008, the stages with transfers in the
 operation list's order, is the stage order with the stages without transfers left out. A stage
 without transfers isn't run.
 
@@ -523,10 +525,11 @@ it sits (section 3, "Randomizations"): just before the box whose first stage is 
 last for `null`; several at one place in the order of `randomizations`. (This is the order the
 page's Stages column already shows; the page takes it from here, so there's one copy of the rule.)
 
-**Items**, the things a move or copy takes, each one of:
+**Items** (`docs/glossary.md`), the things a move or copy takes, each one of:
 - `{ kind: "stage", id }`: a stage (a mix step included);
-- `{ kind: "tipGroup", id }`: an ordinary tip group, named by its first stage's ID (an ID, not
-  `START`, so it names the same group however the tips are keyed);
+- `{ kind: "tipGroup", id }`: an **ordinary** tip group (one in a `"tipGroup"` box, not one of a
+  randomization's own), named by its first stage's ID (an ID, not `START`, so it names the same
+  group however the tips are keyed);
 - `{ kind: "randomization", id }`: a randomization.
 
 A list of items is taken in **column order**, whatever order it's given in. A stage in a tip group or
@@ -539,8 +542,15 @@ counts once.
 - `{ kind: "inTipGroup", index, position }`: inside the ordinary tip group that is box `index`,
   just before its stage at `position` (`0` at its top; the number of its stages, at its bottom).
 
-**The container rule** (ADR 0014): **containers** are tip groups and randomizations; **items** in
-the rule's sense are stages.
+A place may point at something that's itself being moved. It then means:
+- `inTipGroup`: just before the first stage of that group, at `position` or after it, that isn't
+  being moved; or at the group's end if there's none.
+- `between`: just before the first box, at `index` or after it, that isn't being moved and isn't
+  left with no stages by the move; or below the last box if there's none. (A randomization that
+  hasn't run is a box with no stages of its own: it stays, and counts.)
+
+**The container rule** (ADR 0014; `docs/glossary.md`): **containers** are ordinary tip groups and
+randomizations; stages (mix steps included) are what goes inside them.
 - A tip group moved or copied brings its tip change (tip type and probes) and its stages, in order.
 - A randomization moved or copied brings all of itself: its sources, wells to fill, seed, volume,
   settings, tips, and its stages, each still on tips of its own.
@@ -555,7 +565,7 @@ the rule's sense are stages.
 - The tip group a stage leaves **keeps its tips**: if its first stage left, its tip change moves
   onto its new first stage. A tip group left with no stages is gone, and its tip change with it.
 - A tip group that's the place stages are put into is never left empty, even if all its own stages
-  are being moved, so it keeps its tips.
+  are being moved, so it keeps its tips: its tip change moves onto its first stage after the edit.
 - After the edit, the first stage's tips are the `START` ones, as always (section 3, "Tip changes
   and tip groups"); so moving a tip group to the top makes its tips the `START` tips, and the group
   that was first gets a tip change of its own loading the tips it had.
@@ -564,8 +574,16 @@ the rule's sense are stages.
 only where things are changes: `stageOrder`, `tipChanges`, the operation list's order (its blocks
 follow the stage order, ADR 0011, each stage's transfers in the same order as before), and the
 randomizations' places. A stage owned by a randomization can't be moved on its own (ADR 0014): a
-list holding one whose randomization isn't listed too is refused. If everything would end where it
-already was, the same plan is given back.
+list holding one whose randomization isn't listed too is refused. **Nothing changes** when the new
+`stageOrder`, `tipChanges` (tip types and probes by key) and `randomizations` would all equal the
+old ones: then the same plan object is given back. (Moving a tip group's last stage between boxes
+just below its group does change something: it becomes a tip group of its own, with the same tips,
+so the group splits.)
+
+**The operation list after a move** is rebuilt: a new operation list holding every stage's
+transfers, stage by stage in the new stage order, each stage's in the order it had, added with the
+operation list's own `add`. So each transfer's position may change, and its stage, source,
+destination and volume don't.
 
 **Copying** (`copyItems(plan, items, place)`) puts copies at the place and leaves the originals.
 It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
@@ -576,7 +594,11 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
   and transfers. A copy of a stage owned by a randomization is an ordinary stage, owned by none.
 - A copied randomization is a **new randomization**: the next free ID (`r` and one more than the
   largest number in use, as `addRandomization` gives), the copied values, and the copies of its
-  stages as its `stages`, each with its source's well. Its `beforeId` follows from where it lands.
+  stages as its `stages`, each with its source's well and in a tip group of its own, loading the
+  tips that stage had (normally the randomization's `tipType` and `probes`). Its `beforeId` follows
+  from where it lands. The box just below it already starts a tip group (it's between boxes), so it
+  keeps its own tips. Stages left over from its last run (section 3, "Randomizations": a source
+  taken out, not run again) are copied too, as the plan holds them.
   It fills the same wells as the original (Andy, 2026-11-01: that's what copying means), so it
   usually makes overfills, shown as any others.
 
@@ -589,7 +611,7 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
   items: [
     { kind: "stage", stage, tips },          // tips: the tip change of the tip group it came from
     { kind: "tipGroup", tips, stages: [stage, …] },
-    { kind: "randomization", randomization, stages: [{ labware, well, stage }, …] },
+    { kind: "randomization", randomization, stages: [{ labware, well, stage, tips }, …] },
   ],
 }
 ```
@@ -597,7 +619,8 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
 where a **stage** is `{ name, settings, transfers: [{ source, destination, volume }, …] }` (its
 transfers in order, each well `{ labware, well }`), **tips** is `{ tipType, probes }`, and a
 randomization's **randomization** holds its `sources`, `fill`, `seed`, `volume`, `settings`,
-`tipType` and `probes`, and its `stages` give each owned stage's source well with the stage itself.
+`tipType` and `probes`, and its `stages` give each owned stage's source well with the stage itself
+and the tips of its own tip group.
 `items` is in column order, as `copyOf` gives it.
 
 **Pasting checks everything**, as opening a plan file does (ADR 0010): copied items may come from
@@ -605,10 +628,11 @@ another plan or the system clipboard, so they're never trusted. `pasteItems` ref
 nothing, anything that isn't copied items in this form (version 1), and checks every value with the
 rules of the edit that would make it: names (`renameStage`), settings (`changeStageSettings`),
 transfers (`addTransfer`: wells on this plan's deck, the stage rule, a mix step's wells), tips
-(`setTipType`, `setTipProbes`) and a randomization's values (`setRandomization`), with their own
-messages, prefixed `Can't paste: ` (e.g. `Can't paste: "Plate9" isn't a well on the deck…`). A
-randomization's stages must be what its sources make: each one's well one of its sources, no well
-twice, and none of them a mix step.
+(`setTipType`, `setTipProbes`), a randomization's values (`setRandomization`) and its stages (as
+`setRandomizations` checks a plan file's: no well twice, none a mix step; a stage's well needn't be
+one of its sources, since a plan may hold a stage left over from the last run), with their own
+messages, prefixed `Can't paste: item 2: ` (e.g. `Can't paste: item 2: "Z99" isn't a well on
+Plate1. Its wells are A1 to H12.`).
 
 **Where randomizations sit afterwards.** After any move or paste, `randomizations` is in column
 order, each one with stages has its `beforeId` set to the stage just after its last stage (or
@@ -878,7 +902,8 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | an item's stage isn't in the plan | `There's no stage "9" in the plan.` |
 | a `tipGroup` item's ID isn't the first stage of an ordinary tip group | `Stage "3" doesn't start a tip group, so it can't name one.` |
 | an item's randomization isn't in the plan | `There's no randomization "r9" in the plan.` (as above) |
-| a place isn't one of the two forms, or its index or position is outside the column | `The place must be between boxes (index 0 to 4) or inside a tip group, but got { kind: "between", index: 9 }.` (the column's real largest index; the place shown as JSON) |
+| a place isn't one of the two forms, or its index is outside the column | `The place must be between boxes (index 0 to 4) or inside a tip group, but got {"kind":"between","index":9}.` (the column's real largest index; the place as JSON) |
+| `inTipGroup`'s position is outside its tip group | `Box 2 has positions 0 to 3, but got 7.` |
 | `inTipGroup` names a randomization's box | `Box 3 is a randomization: nothing can be put inside it.` |
 | a tip group or randomization put inside a tip group | `A tip group or randomization can't go inside another tip group: put it between tip groups.` |
 | `moveItems`: a randomization's stage without its randomization | `Stage 5, “Drug A”, belongs to a randomization, which moves its stages with it: move the whole randomization, or copy the stage.` |
@@ -886,7 +911,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `pasteItems`: a newer version | `Can't paste: these were copied by a newer version of the tools (version 2).` |
 | `pasteItems`: an entry isn't in its form | `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.` |
 | `pasteItems`: a value refused by the edit that would make it | `Can't paste: item 2: ` and that edit's message, e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1. Its wells are A1 to H12.` |
-| `pasteItems`: a randomization's stage whose well isn't one of its sources, or two stages for one well | `Can't paste: item 2: its stage for Deep A9 isn't one of its sources.` / `Can't paste: item 2: Deep A1 has two stages.` |
+| `pasteItems`: two stages for one well, or a stage that's a mix step, in a randomization | `Can't paste: item 2: Deep A1 has two stages.` / `Can't paste: item 2: its stage for Deep A1 is a mix step.` |
 
 **Order of checks.** The first problem found is reported:
 - `addTransfer`: the operation list's checks of the transfer (its form, then the stage rule), then
@@ -1282,7 +1307,7 @@ on BC1070 tips; and a randomization that has run, with two stages, after them.
   and owns the copies of its stages; a copy of a randomization's stage is owned by none and keeps
   its own tips between boxes.
 - **Copied items as JSON**: `copyOf` gives data that survives `JSON.stringify` and `JSON.parse`;
-  pasting it into a different plan (an empty plan) gives the same stages, tips and transfers;
+  pasting it into a different plan gives the same stages, tips and transfers;
   `copyOf` doesn't change the plan.
 - **Items**: listed out of column order, they're placed in column order; a stage inside a listed tip
   group is left out; an item listed twice counts once.
@@ -1291,8 +1316,26 @@ on BC1070 tips; and a randomization that has run, with two stages, after them.
   moved without its randomization (copying it is fine), and a place outside the column.
 - **Pasting checks**: wrong format, a newer version, an entry not in its form, a well not on the
   deck, refused settings, a transfer breaking the stage rule, a transfer into a mix step that isn't
-  a mixed well, an unknown tip type, a randomization's refused value, its stage for a well that
-  isn't a source; each refused with `Can't paste: ` and its message.
+  a mixed well, an unknown tip type, a randomization's refused value, and
+  a randomization with two stages for one well; each refused with `Can't paste: ` and its message.
+- **Places pointing at moved things**: group [A, B, C], A and B moved to position 0 or 1 of their
+  own group: unchanged order, the same plan; A moved to position 1: B, A, C, the tip change on B.
+  A tip group moved `between` at its own index or just below itself: the same plan. A tip group's
+  only stage moved, with the place `between` that group's index: lands where the group was.
+- **Splitting**: a tip group's last stage moved `between` just below its group: a new tip group,
+  same tips; not the same plan.
+- **Randomizations around moves**: moving the box an unrun randomization sits before: the
+  randomization stays at its place in the column (before the next box), its `beforeId` updated;
+  moving away the stage just after a run randomization, and moving a stage into the tip group just
+  after it: the stage after the randomization still has its own tip change.
+- **Pasting at the top**: into `inTipGroup` position 0 of the first box: the pasted stage is first,
+  on the `START` tips (the group's); the old first stage has no tip change of its own.
+- **A copied randomization with a leftover stage** (a source taken out, not run again): `copyOf` and
+  `pasteItems` keep the leftover stage, and the pasted plan's randomizations pass
+  `setRandomizations`.
+- **Pasting into a new plan** (`emptyPlan()`, whose one stage is `New stage`): a copied tip group
+  pasted `between` 0 lands above `New stage`, whose tips become a tip change of its own.
+- **Position out of range** in `inTipGroup`: its message.
 - **Overdraws after a move**: moving `Drug` (drawing from a trough `Media` fills) before a stage
   that fills it gives a contents problem in `Drug`'s stage (`stagesWithContentsProblem`).
 - **`placed`**: the moved items with their IDs; for copies, the new IDs; for a tip group, its first
