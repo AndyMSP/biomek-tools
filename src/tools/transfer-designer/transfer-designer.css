@@ -121,6 +121,12 @@ body {
   text-align: right;
 }
 
+/* The version itself is selected whole by a click or double-click, so it can be copied in one go:
+   a double-click would otherwise stop at its "-", "." and "+" (section 16). */
+#page-version {
+  user-select: all;
+}
+
 .page-header {
   display: flex;
   flex-wrap: wrap;
