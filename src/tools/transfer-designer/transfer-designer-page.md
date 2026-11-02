@@ -701,10 +701,12 @@ From the top:
   `Dispense` columns, a **Mode** row of menus and a **Mix** row of checkboxes (`Can't mix` for a
   mode that can't), mixing with `DEFAULT_MIX`. Then **Tips**: a menu of tip types and a menu of
   probe counts (`1 probe` … `8 probes`, choosing `probesFor`; showing how many `probes` holds),
-  `BC230 on 4 probes`, for the new tips before each of its stages. Then **Volume**: a button showing `50 µL` (tooltip `Volume per transfer. Click to change
-  it.`), which turns into a text box when clicked, as a transfer's volume does (Enter or clicking
-  away sets it; Escape keeps the old one; Andy, 2026-11-01: never typed at the deck). A refused
-  volume is the card's problem (below).
+  `BC230 on 4 probes`, for the new tips before each of its stages. Then **Volume**: a text box
+  like Seed's, 80px wide, then `µL` in gray; its accessible name `Volume per transfer in µL`.
+  What's typed changes the card's draft at once, as Seed's box does (Andy, 2026-11-01: never typed
+  at the deck). (Andy, 2026-11-01: it was a button that turned into a box when clicked, as a
+  transfer's volume does, but alone in the card it didn't look editable; transfer rows keep
+  theirs.) A refused volume is the card's problem (below).
 - **Seed**, a text box 120px wide.
 - **The footer**: the **first problem only**, in red, short (`randomizationProblems`, or, while a
   box holds what isn't a number, its own: `Drug A: replicates must be a whole number, 1 or more.`,

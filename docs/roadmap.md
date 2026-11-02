@@ -302,6 +302,10 @@ Last updated: 2026-11-01
   Andy was driving, so the choices are listed in its pull request. **Built (#125, 2026-11-01)**:
   code, tests and REPL of `concentrations`, the transfer designer, plan files (version 7, versions
   1 to 6 still opening) and the page; checked in headless Chrome. Still to check by Andy.
+- **A randomization's Volume is a text box** (Andy, 2026-11-01, from a preview): like Seed's, with
+  `µL` after it, rather than a volume shown as text that turns into a box when clicked, which
+  didn't look editable alone in the card. Transfer rows keep theirs. A very small change, done in
+  the chat (CLAUDE.md, "Exception"): `transfer-designer-page.md`, section 7; **built (#126)**.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
