@@ -3320,6 +3320,17 @@ describe("transfer-designer", () => {
     }
   });
 
+  test("moveItems: a move that changes nothing on a plan whose randomizations aren't in column order gives the very same plan", () => {
+    let plan = movingPlan();
+    // r2 is added last but sits at the top, so the list ["r1", "r2"] isn't in column order.
+    plan = addRandomization(plan, "1", { seed: 5, volume: 5 }).plan;
+    assert.deepEqual(plan.randomizations.map((randomization) => randomization.id), ["r1", "r2"]);
+    assert.equal(columnBoxes(plan)[0].id, "r2");
+    const result = moveItems(plan, [stageItem("2")], inGroup(1, 2));
+    assert.equal(result.plan, plan);
+    assert.equal(result.plan.randomizations, plan.randomizations);
+  });
+
   test("copyItems: a copied stage is a new stage with the same name, settings and transfers; the original stays", () => {
     const plan = movingPlan();
     const { plan: copied, placed } = copyItems(plan, [stageItem("2")], inGroup(1, 0));
@@ -3576,6 +3587,32 @@ describe("transfer-designer", () => {
     });
   });
 
+  test("pasteItems refuses a randomization whose stage is a mix step", () => {
+    const plan = movingPlan();
+    const copied = copyOf(plan, [randomizationItem("r1")]);
+    // A mix step with no mixed wells, so its settings pass and only the randomization's rule refuses it.
+    copied.items[0].stages[0].stage = {
+      name: "Mix",
+      settings: mixStepDefaults(),
+      transfers: [],
+    };
+    assert.throws(() => pasteItems(plan, copied, between(0)), {
+      message: `Can't paste: item 1: its stage for ${DEEP} A1 is a mix step.`,
+    });
+  });
+
+  test("pasteItems checks the copied items before the place", () => {
+    const plan = movingPlan();
+    const copied = copyOf(plan, [stageItem("2")]);
+    copied.items[0].stage.transfers[0].destination.well = "Z99";
+    assert.throws(() => pasteItems(plan, copied, between(99)), {
+      message: `Can't paste: item 1: "Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`,
+    });
+    assert.throws(() => pasteItems(plan, { format: "other" }, between(99)), {
+      message: "Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.",
+    });
+  });
+
   test("places pointing at moved things: within one tip group", () => {
     let plan = movingPlan();
     plan = addStage(plan, "5").plan; // "7", the third stage of the OTHER_TIPS group: [3, 4, 7]
@@ -3583,6 +3620,8 @@ describe("transfer-designer", () => {
     for (const position of [0, 1, 2]) {
       assert.equal(moveItems(plan, [stageItem("3"), stageItem("4")], inGroup(1, position)).plan, plan, `position ${position}`);
     }
+    // Position 1 is just before "4", the first stage there that isn't moving: where "3" already is.
+    assert.equal(moveItems(plan, [stageItem("3")], inGroup(1, 1)).plan, plan);
     const moved = moveItems(plan, [stageItem("3")], inGroup(1, 2)).plan;
     assert.deepEqual(columnBoxes(moved)[1].stages, ["4", "3", "7"]);
     assert.equal(columnBoxes(moved)[1].key, "4");
