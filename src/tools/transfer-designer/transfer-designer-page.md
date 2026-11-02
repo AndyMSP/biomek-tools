@@ -84,6 +84,12 @@
 > (sections 2, 6, 8, 13, 14, 15 and 16). Written while Andy was driving, so still to review with
 > him: the choices listed in its pull request. They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-01, moving and copying; ADR 0014):** from the preview Andy shaped on
+> 2026-11-01: selecting in the Stages column as in PowerPoint's slide panel, dragging to move,
+> Ctrl+drag to copy, Ctrl+C and Ctrl+V, and right-click menus with Copy and Paste (sections 2, 4, 7,
+> 12, 15 and 16). Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
+> Andy are listed in its pull request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -108,12 +114,14 @@ how typing a volume works and how numbers are shown (section 13), as for the ran
 ## 2. Scope
 Version 1 does everything below: naming the experiment, filling wells with components before the
 run, building stages, adding transfers by clicking and dragging, tip changes, labels, undo and redo,
-saving and opening plans, with a browser copy, and writing the Biomek files as one zip.
+saving and opening plans, with a browser copy, writing the Biomek files as one zip, and moving,
+copying and pasting stages, tip groups and randomizations.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **A guided start** for an empty plan (Andy considered it, 2026-10-26: not now).
 - **Collapsing tip groups** in the Stages column.
-- **Moving** a stage or a transfer (`transfer-designer.md`).
+- **Moving a transfer** to another stage, or within its stage (`transfer-designer.md`).
+- **Cut and Delete** (Ctrl+X, the Delete key) of what's selected (ADR 0014).
 - **Concentrations on the deck.** A well shows its volume (or its label); its concentrations are on
   the contents card only. A toggle showing one constituent's concentration on every well may come
   with use (`docs/roadmap.md`, "Later").
@@ -167,7 +175,10 @@ data everyone has to clear first).
 - a chosen **source** well, while a transfer is being made (section 9);
 - the **open randomization's card** and its unsaved changes (section 7, "Randomizations"), which
   tab it shows, and whether each randomization's source list is shown in full;
-- the **Biomek files box**, while it's open, and the run it will write (section 5).
+- the **Biomek files box**, while it's open, and the run it will write (section 5);
+- the **selection** in the Stages column, the last thing clicked there (for Shift-click), and the
+  **copied items** (section 7, "Moving and copying"); the copied items are also kept in the
+  browser's local storage, for other tabs.
 
 The experiment's name and the well labels aren't the page's own: they're part of the plan
 (`transfer-designer.md`), so they're undone, kept in the browser copy and saved like any edit.
@@ -637,7 +648,8 @@ like a tip group's, with seams between tip groups above and below it as for any 
   **none inside it** (not between its stages' boxes, nor inside them). For one that hasn't run,
   the seam below adds before the same stage as the seam above, then moves the randomization above
   the new stage (`placeRandomization`), in the same edit, so the new stage lands below it.
-  Several that haven't run at one place are shown in the order they were added, with a seam
+  Several that haven't run at one place are shown in the order of the plan's randomizations (the
+  order they were added, unless moved since), with a seam
   between them adding before the same stage and placing those below it after the new stage.
 - **Its stages** look like any stage, but can be changed only through its card (Andy, 2026-11-01:
   so the card always matches them): no ✎ on them or on their tip changes, no seams inside their
@@ -729,6 +741,110 @@ From the top:
 drawing, it glows soft yellow (`#FFF1BF` background, a 4px `#F3D36B` ring) and fades over 1.2
 seconds. A glow carries on through redrawing. Nothing glows when the page first draws, or when
 something is only opened or edited.
+
+**Moving and copying** (Andy, 2026-11-01; ADR 0014). The column works like PowerPoint's slide
+panel, with tip groups as its sections. Every move, copy and paste goes through the transfer
+designer (`transfer-designer.md`, "Moving and copying"), as one undoable edit; the container rule
+is the logic's, and its messages are shown as they come. The column's boxes are drawn in the order
+`columnBoxes` gives (the page doesn't work the order out itself).
+
+*Selecting.* What's **selected** is either a set of things the user picked, or, when none were, what's
+open (a stage, or a randomization whose card is open). The things are stages, tip groups and
+randomizations (the logic's items).
+- **Click** a stage's row opens it, as before, and selects it alone.
+- **Shift-click** a stage's row selects the run of stages from the last thing clicked (or what's
+  open) to this one, in column order, counting stages of ordinary tip groups only; Shift-click a
+  heading selects the run of boxes (tip groups and randomizations) between the two. Nothing opens.
+- **Ctrl-click** (Cmd on a Mac) a stage's row or a heading adds it to the selection, or takes it
+  out. Nothing opens.
+- **Click a tip group's heading** (anywhere but its ✎) selects the whole group, and opens nothing.
+- **Click a randomization's heading** opens or closes its card, as before, and selects it.
+- A stage of a randomization's own tip group (inside its box) is selected by its row, as any stage;
+  its tip group's heading selects that stage.
+- The selection is forgotten when anything else opens (`‹`, `›`, a seam's buttons), after any other
+  edit, after Undo and Redo, and on Escape when nothing else uses Escape (section 12).
+- Start and End are never selected.
+
+*How it looks.* Each selected thing is marked at once, as the button goes down, before a click
+opens it or a drag takes it (Andy, 2026-11-01: in the preview's first try, nothing showed what a
+drag would take). A selected stage: light blue background (`#EEF3FA`), a 2px blue (`#2F5DA8`) ring
+and border, and its number's badge blue with white text, the open card too. A selected tip group or
+randomization: a 3px blue ring and border, and its heading's text blue and semibold. A stage's row
+and the headings show the grab pointer, and pressing or dragging on them never selects text (Andy,
+2026-11-01: the preview highlighted text under the pointer).
+
+*Dragging.* Pressing on a stage's row or a heading and moving 5px (`DRAG_START_DISTANCE`) starts a
+drag. It takes the selection, if the pressed thing is in it, or else the pressed thing alone (which
+becomes the selection).
+- What's dragged fades to half and gets a 2px dashed blue outline, 2px out.
+- A **label** follows the pointer (14px right, 10px down): `Move “Drugs”`, `Move 2 stages`, `Move a
+  tip group`, `Move 2 tip groups`, `Move a randomization`, or `Move 3 items` for a mix; with Ctrl
+  (Cmd) held, `+ Copy` in place of `Move`. White semibold 13px text on blue, 6px corners, a soft
+  shadow.
+- **Where it would land**: the seam nearest the pointer, up and down, while the pointer is over the
+  column (or within 40px of its sides), drawn as a 4px blue line with a 10px dot at each end. Only
+  seams between tip groups qualify when the drag holds a tip group or randomization. Seams' buttons
+  are hidden during a drag. With no such seam (the pointer away from the column), nothing is
+  marked.
+- **Pressing or releasing Ctrl** (Cmd) during the drag switches between moving and copying at once.
+- **Near the column's top or bottom** (within 40px) the column scrolls, 12px per pointer move.
+- **Escape** cancels the drag; nothing changes.
+- **Dropping** on a marked seam moves (`moveItems`) or, with Ctrl (Cmd) held at the drop, copies
+  (`copyItems`) to it, as one edit. Dropped with nothing marked: `Drop it on a gap between stages or
+  tip groups.` (note). Dropped where it already was (the logic gives the same plan back):
+  `Dropped where it already was, so nothing moved.` (note), and nothing is recorded.
+- **A randomization's stage dragged without Ctrl**: the label reads `A randomization's stages move
+  with it · hold Ctrl to copy`, on gray (`#8A8A85`), no seam is marked, and the drop shows the
+  logic's message (error).
+- The press that started a drag doesn't also count as a click.
+
+*Copying and pasting.*
+- **Ctrl+C** (Cmd+C) copies what's selected (`copyOf`). The copied items are kept by the page, put
+  on the system clipboard as text (their JSON, through the browser's copy event), and kept in the
+  browser's local storage under `biomek-tools transfer designer: copied items`, so Paste in the
+  right-click menu works in another tab of the designer too. Message: `Copied “Drugs”. Right-click
+  where it should go and choose Paste, or press Ctrl+V to paste it below the selection.` (note; the
+  copied things described as in the drag's label, without `Move`). With nothing selected:
+  `Select a stage, a tip group (click its heading) or a randomization to copy it.` (note).
+- **Ctrl+V** (Cmd+V) pastes (`pasteItems`) the copied items on the system clipboard (through the
+  browser's paste event), or, if it doesn't hold copied items, the page's own; just below the last
+  selected thing in column order: inside its tip group, after it, for a stage of an ordinary tip
+  group when nothing pasted is a tip group or randomization; otherwise between boxes, below its box.
+  With nothing selected, below the last box (with Start open, above the first). With nothing copied:
+  `Nothing to paste yet: select a stage, tip group or randomization and press Ctrl+C.` (note).
+- Ctrl+C and Ctrl+V keep their usual meaning in text boxes and menus, and Ctrl+C copies text that's
+  selected on the page.
+
+*The right-click menu.* Right-clicking (or the menu key, or Shift+F10, on a focused row or heading)
+opens a small menu at the pointer (kept inside the window), instead of the browser's:
+- **On a stage's row, a tip group's heading or a randomization's heading**: `Copy`, `Paste above`,
+  `Paste below`. Right-clicking something not selected selects it first, as in PowerPoint.
+  - `Copy` does what Ctrl+C does.
+  - `Paste above` and `Paste below` paste the copied items (the page's own, or, if none, those in
+    local storage) just above or below what was right-clicked: for a stage of an ordinary tip group,
+    inside its group, unless what's pasted holds a tip group or randomization; for a heading, or a
+    randomization's stage, between boxes, above or below that box.
+- **On a gap** (a seam, anywhere in its band but its buttons): `Paste here`, pasting at that seam.
+  While the menu is open, the seam's line shows as the drop line does (4px, with dots), without its
+  buttons.
+- A Paste that can't be done is shown greyed out, with the reason under it in 12px gray: `Copy
+  something first.` with nothing copied, or `A tip group or randomization goes between tip groups.`
+  on a gap inside a tip group (or `Paste above`/`below` on such a stage, which then pastes between
+  boxes, so it isn't greyed out).
+- The menu closes on a choice, a press anywhere outside it, Escape, scrolling the column, or
+  resizing the window. Its items are buttons (role `menuitem`); the first one that can be chosen
+  takes the keyboard focus. Not on Start, End, or an open card's contents, which keep the browser's
+  menu.
+- 180px wide at least, 4px padding, white with a 1px `#E2E0D8` border, 8px corners and the shadow
+  `0 6px 24px` at 18% of the text color; items 32px tall, 14px text, light blue with blue text when
+  pointed at or focused.
+
+*After a move, copy or paste.* What was moved or pasted becomes the selection, glows (as new things
+do, below), and the column scrolls to show it. The first stage among them opens (for a lone
+randomization, what was open stays open). Messages (ok): `Moved “Drugs”.`, `Copied “Drugs”.` (for
+Ctrl+drag), `Pasted “Drugs”.`, with the same descriptions as the drag's label (`2 stages`, `a tip
+group` …). Any open editing box closes first; an open randomization's card closes first as `Close`
+would, and if it can't (it has run, with changes), nothing happens.
 
 **Keeping things in view.** When a different entry opens, the column scrolls just enough to show
 all of it; when an editing box opens, it scrolls just enough to show the box. When `Show
@@ -991,6 +1107,10 @@ and the deck shows its point again.
   Typed volumes (above) are ignored while a randomization's card is open.
 - **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac). Not while an editing
   box or a randomization's card is open, since their changes aren't in the plan yet.
+- **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups and randomizations (section 7, "Moving
+  and copying"); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
+  right-click menu. While a drag is on, **Escape** cancels it, and **Ctrl** switches it between
+  moving and copying. Escape, when nothing above uses it, forgets the selection.
 
 **The cursor's label.** While the pointer is over the deck, a small label beside it (14px right,
 26px up) shows what a click does: with a stage open, the next transfer's volume, `50 µL`; with Start
@@ -1002,8 +1122,8 @@ latest message until the next replaces it; it's hidden when empty. It's announce
 Each message has a kind: **ok** (green on pale green), **note** (gray on white, with a border) or
 **error** (dark red on pale red, with a border). Messages are listed with what causes them in
 sections 5 to 10. The kinds: errors from the logic, contents problems after adding or filling, a file that can't be
-opened, a browser copy that can't be read, and `All 30 colors are in use…` are **error**; `Added…`, `Saved…`, `Renamed…`, `Named…`, `Opened…`, `Volume changed…` and `New
-tips…` are **ok**; the rest are **note**.
+opened, a browser copy that can't be read, and `All 30 colors are in use…` are **error**; `Added…`, `Saved…`, `Renamed…`, `Named…`, `Opened…`, `Volume changed…`, `New
+tips…`, `Moved…`, `Copied…` (after Ctrl+drag) and `Pasted…` are **ok**; the rest are **note**.
 
 **Stages in messages** are named by place and name, e.g. `stage 3, “New stage”`, so two stages with
 the same name can't be confused. **Wells** are named by the labware's label and the well, e.g. `Assay
@@ -1130,6 +1250,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   above the well and its label, below arrows; they don't fade with the open stage's other wells
   (they're on the stage's own wells).
 - **The Mix row** in a stage's box: the checkboxes centered in their columns; `Can't mix` 13px gray.
+- **Moving and copying** (section 7): the selection, drag, drop line, label and right-click menu as
+  section 7 gives them.
 - **Motion:** with the system's "reduce motion" setting, no fades, glows or smooth scrolling.
 - **Headings** `Deck` and `Stages` are there for screen readers but not shown.
 
@@ -1225,5 +1347,18 @@ page's configuration (ADR 0009):
   the trough it came from; g/L diluted a hundredfold shown in mg/L; `%` and `×` shown as they are;
   the card at Start, at a stage and at End; a renamed component keeping its rows; a plan saved
   (version 7) and reopened, and reloaded, keeping them, and a version 6 file opening with none;
+- moving and copying: a click, Shift-click (stages, then headings) and Ctrl-click selecting, each
+  marked as the button goes down, and no text selected while pressing or dragging; a stage dragged
+  into another tip group (taking its tips), to the top of one, and between tip groups (keeping its
+  tips); two stages from different tip groups dragged between tip groups (two groups); a tip group
+  and a randomization dragged by their headings (only seams between tip groups marked); a stage
+  dropped where it was (the note, nothing to undo); Ctrl held and released mid-drag; Escape
+  cancelling; the column scrolling near its edges; a randomization's stage refused without Ctrl and
+  copied with it; Ctrl+C and Ctrl+V of a stage, a tip group and a randomization, pasting below the
+  selection; pasting into a second window of the designer with Ctrl+V and with the menu's Paste;
+  the right-click menu on a stage, a heading and a gap, its greyed-out items and reasons, the
+  menu key; closing it with a press outside, Escape and scrolling; each as one undo, with its
+  message, the glow, and the pasted things selected; an overdraw after moving a stage before the
+  one that fills its source;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels.
