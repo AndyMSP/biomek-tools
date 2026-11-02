@@ -561,7 +561,8 @@ randomizations; stages (mix steps included) are what goes inside them.
   (so a group keeps its tips whichever stage is first).
 - Stages put **between** boxes keep the tips they had: each run of consecutive stages (in column
   order) that came from one tip group becomes one new tip group, loading that tip group's tip type
-  and probes. A stage that came from a randomization's tip group is a tip group of its own.
+  and probes. A stage that came from a randomization's tip group is a tip group of its own. When
+  pasting, "came from one tip group" is the copied stages' `group` (below).
 - The tip group a stage leaves **keeps its tips**: if its first stage left, its tip change moves
   onto its new first stage. A tip group left with no stages is gone, and its tip change with it.
 - A tip group that's the place stages are put into is never left empty, even if all its own stages
@@ -609,14 +610,18 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
   format: "biomek-tools copied items",
   version: 1,
   items: [
-    { kind: "stage", stage, tips },          // tips: the tip change of the tip group it came from
+    { kind: "stage", stage, tips, group },   // tips: the tip change of the tip group it came from
     { kind: "tipGroup", tips, stages: [stage, …] },
     { kind: "randomization", randomization, stages: [{ labware, well, stage, tips }, …] },
   ],
 }
 ```
 
-where a **stage** is `{ name, settings, transfers: [{ source, destination, volume }, …] }` (its
+where a stage entry's **`group`** numbers the tip groups its stages came from, from 1, in column
+order, so stages with the same number came from one tip group (from the build, 2026-11-02: without
+it, two stages copied from different tip groups with the same tips couldn't be told apart, and a
+paste would join them where a move keeps them apart); a **stage** is `{ name, settings, transfers:
+[{ source, destination, volume }, …] }` (its
 transfers in order, each well `{ labware, well }`), **tips** is `{ tipType, probes }`, and a
 randomization's **randomization** holds its `sources`, `fill`, `seed`, `volume`, `settings`,
 `tipType` and `probes`, and its `stages` give each owned stage's source well with the stage itself
@@ -910,7 +915,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `pasteItems`: not copied items (not an object, wrong `format`, `items` not a non-empty list) | `Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.` |
 | `pasteItems`: a newer version | `Can't paste: these were copied by a newer version of the tools (version 2).` |
 | `pasteItems`: an entry isn't in its form | `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.` |
-| `pasteItems`: a value refused by the edit that would make it | `Can't paste: item 2: ` and that edit's message, e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1. Its wells are A1 to H12.` |
+| `pasteItems`: a value refused by the edit that would make it | `Can't paste: item 2: ` and that edit's message, e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1. Its wells are A1 to H12.` (Messages pass through unchanged, so the operation list's stage rule names the new stage's ID and an operation number, which the user never sees; roadmap, "Technical debt", "Some messages use internal terms".) |
 | `pasteItems`: two stages for one well, or a stage that's a mix step, in a randomization | `Can't paste: item 2: Deep A1 has two stages.` / `Can't paste: item 2: its stage for Deep A1 is a mix step.` |
 
 **Order of checks.** The first problem found is reported:
@@ -1333,6 +1338,9 @@ on BC1070 tips; and a randomization that has run, with two stages, after them.
 - **A copied randomization with a leftover stage** (a source taken out, not run again): `copyOf` and
   `pasteItems` keep the leftover stage, and the pasted plan's randomizations pass
   `setRandomizations`.
+- **Copies from two tip groups with the same tips**: two BC230 tip groups, one stage copied from
+  each and pasted `between` boxes: two tip groups, as moving them gives; two stages copied from one
+  tip group: one.
 - **Pasting into a new plan** (`emptyPlan()`, whose one stage is `New stage`): a copied tip group
   pasted `between` 0 lands above `New stage`, whose tips become a tip change of its own.
 - **Position out of range** in `inTipGroup`: its message.
