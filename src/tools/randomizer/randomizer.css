@@ -555,6 +555,15 @@ input:focus-visible {
 }
 
 /* --- Results (section 8) --- */
+/* The version line, 12px below the last panel at the right: small gray monospace text
+   (section 10). */
+.version-line {
+  margin: 12px 0 0;
+  color: var(--muted-text);
+  font: 12px/1.4 var(--mono-font);
+  text-align: right;
+}
+
 .results {
   display: flex;
   flex-direction: column;

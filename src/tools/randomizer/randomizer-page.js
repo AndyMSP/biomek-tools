@@ -9,6 +9,7 @@
 // "needs no function", section 4).
 // Specification: randomizer-page.md.
 
+import packageJson from "../../../package.json" with { type: "json" };
 import { GRID_96 } from "../../shared/well-grid/well-grid.js";
 import { WellSelection } from "../../shared/well-selection/well-selection.js";
 import { parsePastedTable, isMultiCell } from "../../shared/pasted-table/pasted-table.js";
@@ -26,6 +27,14 @@ import {
   contentsToWellsText,
   wellToContentsText,
 } from "./randomizer.js";
+
+// The build's version, shown in the version line (section 3; build-version.md, "The page's
+// version"). npm run build replaces BUILD_VERSION with the full version, e.g.
+// "0.2.0-dev.488+3cc65a9". Served unbuilt (npm run serve) there's no BUILD_VERSION, so `typeof` is
+// used to check for it without an error, and the page says package.json's version and "-unbuilt"
+// instead, e.g. "0.2.0-unbuilt".
+const PAGE_VERSION =
+  typeof BUILD_VERSION === "string" ? BUILD_VERSION : `${packageJson.version}-unbuilt`;
 
 // The colors of an entry with no name yet (section 7).
 const UNNAMED_COLOR = { fill: "var(--unnamed-fill)", text: "var(--text-dark)" };
@@ -78,6 +87,7 @@ const elements = {
   wellToContentsBody: byId("well-to-contents-body"),
   copyContentsToWells: byId("copy-contents-to-wells"),
   copyWellToContents: byId("copy-well-to-contents"),
+  pageVersion: byId("page-version"),
 };
 
 setUpPage();
@@ -87,6 +97,7 @@ setUpPage();
 // Draws the empty plates and tables, connects the buttons and the plate to their actions, and shows
 // what is still needed.
 function setUpPage() {
+  elements.pageVersion.textContent = PAGE_VERSION;
   drawPlate(elements.inputPlate, createInputWell);
   drawPlate(elements.resultPlate, createResultWell);
   drawConditionRows();
