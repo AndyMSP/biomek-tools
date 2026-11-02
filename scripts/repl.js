@@ -145,6 +145,7 @@ import {
   planToText,
   planFromText,
 } from "../src/tools/transfer-designer/plan-file.js";
+import { buildVersion, branchLabel, fileNameFor, readGitFacts } from "./build-version.js";
 
 // What the REPL loads, grouped by topic: one topic per module, named like its folder. Each topic
 // holds the names it loads into the session and examples to try with them. The startup message, the
@@ -662,6 +663,21 @@ const TOPICS = {
       `planFromText(text.replace('"version": 7', '"version": 8'))`,
       `planFromText(text.replace('"experimentName": "Exp36"', '"experimentName": "Exp 36"'))`,
       'planFromText("not a plan")',
+    ],
+  },
+  "build-version": {
+    loaded: { buildVersion, branchLabel, fileNameFor, readGitFacts },
+    examples: [
+      'const facts = { packageVersion: "0.2.0", lastRelease: "0.1.0", commitsSince: 488, commit: "3cc65a9", branch: "main", modified: false }',
+      "buildVersion(facts)",
+      'buildVersion({ ...facts, branch: "fix/Mix steps", modified: true })',
+      "buildVersion({ ...facts, branch: null })",
+      'buildVersion({ ...facts, lastRelease: "0.2.0", commitsSince: 0 })',
+      'fileNameFor("transfer-designer", buildVersion(facts))',
+      'branchLabel("dev")',
+      'buildVersion({ ...facts, lastRelease: "0.2.0" })',
+      'readGitFacts(".")',
+      'buildVersion(readGitFacts("."))',
     ],
   },
 };

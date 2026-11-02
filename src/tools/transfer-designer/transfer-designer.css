@@ -111,6 +111,22 @@ body {
   margin: 0 auto;
 }
 
+/* The version line, below the panels at the right: small gray monospace text (section 15). */
+.version-line {
+  width: 100%;
+  max-width: var(--page-width);
+  margin: 12px auto 0;
+  color: var(--muted-text);
+  font: 12px/1.4 var(--mono-font);
+  text-align: right;
+}
+
+/* The version itself is selected whole by a click or double-click, so it can be copied in one go:
+   a double-click would otherwise stop at its "-", "." and "+" (section 16). */
+#page-version {
+  user-select: all;
+}
+
 .page-header {
   display: flex;
   flex-wrap: wrap;

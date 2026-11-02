@@ -318,6 +318,16 @@ Last updated: 2026-11-01
   was tried and dropped (Andy, 2026-11-01). **Built (#128, 2026-11-02)**: code, tests and REPL of the
   five functions, and the page; reviewed by a separate agent and checked in headless Chrome. Still to
   check by Andy.
+- **Builds named by their version is specified** (Draft, 2026-11-02; ADR 0015, Proposed), after a
+  build sent to Andy's manager turned out not to be the latest: each build's file is named by its
+  version, following SemVer (`transfer-designer-v0.2.0-dev.488.html` between releases, the branch's
+  name in place of `dev` off `main`, `.dirty` for changes not committed, `v0.2.0` for a release),
+  the page shows the full version at the bottom right (with the commit), and saved plan files
+  record it. `package.json` goes to 0.2.0, the version being worked towards. New
+  `scripts/build-version.md`; both page specifications; the README's release steps. **Built (#129,
+  2026-11-02)**: `scripts/build-version.js` with its tests and REPL topic, `build.js`, both pages,
+  and `package.json` at 0.2.0; checked by hand in a scratch clone and in headless Chrome. Still to
+  check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36

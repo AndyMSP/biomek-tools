@@ -44,24 +44,34 @@ have to be served this way. Press Ctrl+C to stop the server.
 ```
 npm run build
 ```
-This makes one self-contained HTML file per tool in `dist/` (`dist/randomizer.html` and
-`dist/transfer-designer.html`), with the page's styling and all its code inside. That file is what
+This makes one self-contained HTML file per tool in `dist/`, named by the build's version (ADR 0015;
+`scripts/build-version.md`): `transfer-designer-v0.2.0-dev.488.html` between releases, from `main`,
+and `transfer-designer-v0.2.0.html` for a release; the page shows the same version at the bottom
+right. Each build first clears the earlier builds out of `dist/`, so the newest is the only one
+there. Building needs a git clone with its tags (`git fetch --tags`). The file has the page's
+styling and all its code inside. That file is what
 goes to the lab: it opens in Edge or Chrome with a double-click, with nothing installed and no
 internet needed. `dist/` is not committed. See ADR 0004.
 
 ## Making a release
 Releases follow semantic versioning (MAJOR.MINOR.PATCH); versions starting with 0 may still change.
-1. On a branch, add an entry to `CHANGELOG.md` and set the new version with
-   `npm version <version> --no-git-tag-version` (this updates `package.json` and
-   `package-lock.json`). Open a pull request and merge it.
-2. On `main`, pull, then run `npm ci` and `npm run build`.
-3. On GitHub, under Releases, choose "Create a new release":
-   - Tag: type the new version (e.g. `v0.2.0`) and choose "Create new tag … on publish"; target
-     `main`.
+`package.json` already holds the version being released (it's set to the next planned version
+straight after each release; step 5).
+1. On a branch, add an entry to `CHANGELOG.md`. Open a pull request and merge it.
+2. On `main`, pull, then tag the release and push the tag: `git tag v0.2.0`, then
+   `git push origin v0.2.0`. (The build names a release only at its tag.)
+3. Run `npm ci` and `npm run build`; it makes `dist/transfer-designer-v0.2.0.html` and
+   `dist/randomizer-v0.2.0.html`.
+4. On GitHub, under Releases, choose "Create a new release":
+   - Tag: choose the tag you pushed (e.g. `v0.2.0`).
    - Title: the version. Notes: what changed, written for lab users.
    - Attach each tool's file from `dist/` (not the one in `src/`).
    - Release label: None, unless the release isn't meant for use yet (Pre-release).
    - Publish.
+5. On a branch, set `package.json` to the next planned version with
+   `npm version 0.3.0 --no-git-tag-version` (this updates `package.json` and `package-lock.json`).
+   Open a pull request and merge it. Until then, the build stops, since its builds would otherwise
+   be named as if before the release.
 
 ## Where to find things
 - **What each module does**: its specification, `name.md`, sits next to its code

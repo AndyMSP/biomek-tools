@@ -90,6 +90,10 @@
 > 12, 15 and 16). Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
 > Andy are listed in its pull request. They become Final once built and tested by Andy.
 
+> **Draft change (2026-11-02, build versions; ADR 0015):** the page shows its version at the bottom
+> right, and saved plan files record it (sections 3, 5, 15 and 16), from a preview Andy saw on
+> 2026-11-02. It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -136,6 +140,7 @@ From the top:
 | Header | The experiment's name, as the page's heading; on the right, the buttons `Biomek files`, `Save`, `Open` and `Reset` (section 5). The tool's name isn't shown on the page (Andy, 2026-10-28): the browser tab says `Transfer Designer`. |
 | Deck panel (left) | Three bars, then the labware that's out (section 6). |
 | Stages column (right) | Start, the tip groups with their stages, and End (section 7). |
+| Below both, at the right | The **version line**: `Transfer Designer` and the build's version, e.g. `Transfer Designer 0.2.0-dev.488+3cc65a9` (`scripts/build-version.md`, "The page's version"; `0.2.0-unbuilt` when served unbuilt). It's text, not a control: a click selects the whole version, so it can be copied in one go (a double-click would stop at its `.`, `-` and `+`; from the build, 2026-11-02). |
 | Message bar | Floating at the bottom of the window, centered (section 12). |
 
 When the window is wider than 1000px, the deck panel and the Stages column sit side by side, the
@@ -231,8 +236,8 @@ closes **whenever the plan changes** (including undo and redo by key), so it nev
 worked out before a change.
 
 **Save** saves the plan as a plan file, with `planToText(plan, savedBy)`, where `savedBy` is
-`transfer designer v` and the tools' version from `package.json` (e.g. `transfer designer v0.2.0`;
-the page imports it, and the build bundles it in). The suggested file name is
+`transfer designer v` and the build's version as the version line shows it (e.g. `transfer designer
+v0.2.0-dev.488+3cc65a9`, or `transfer designer v0.2.0-unbuilt` served unbuilt; ADR 0015). The suggested file name is
 `transfer plan YYYY-MM-DD.json`, by the computer's own date (not UTC). Where the browser can ask
 where to save (Edge and Chrome can), it asks; message `Saved the plan as <file name>.` If the user
 closes that dialog, nothing happens. Otherwise, or if the browser refuses, the file goes to the
@@ -1280,6 +1285,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   section 7 gives them.
 - **Motion:** with the system's "reduce motion" setting, no fades, glows or smooth scrolling.
 - **Headings** `Deck` and `Stages` are there for screen readers but not shown.
+- **The version line:** 12px in the monospace font, gray (`--muted-text`), right-aligned across the
+  page's width (at most `--page-width`), 12px below the panels, as in the preview of 2026-11-02.
 
 ## 16. Testing
 The page itself isn't unit-tested in Node: every rule about plans is in the logic modules, which
@@ -1389,4 +1396,7 @@ page's configuration (ADR 0009):
   card with changes open (refused, shaking, its message); a picked set made empty by Ctrl-click
   (nothing selected, Ctrl+C's note);
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
-- a window narrower than 1000px stacks the panels.
+- a window narrower than 1000px stacks the panels;
+- the version line: the built file's name and the line show the same version; a click selects the
+  whole version, and it copies; a plan saved by the built file says the same version in `savedBy`;
+  served unbuilt, the line ends `-unbuilt`.

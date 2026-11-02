@@ -106,8 +106,16 @@ import { isObject } from "../../shared/input-checks/input-checks.js";
 
 // --- Constants ---
 
-// Who saved a plan file: the tool and the tools' version from package.json (section 5).
-const SAVED_BY = `transfer designer v${packageJson.version}`;
+// The build's version, shown in the version line and recorded in saved plan files (sections 3 and 5;
+// build-version.md, "The page's version"). npm run build replaces BUILD_VERSION with the full
+// version, e.g. "0.2.0-dev.488+3cc65a9". Served unbuilt (npm run serve) there's no BUILD_VERSION, so
+// `typeof` is used to check for it without an error, and the page says package.json's version and
+// "-unbuilt" instead, e.g. "0.2.0-unbuilt".
+const PAGE_VERSION =
+  typeof BUILD_VERSION === "string" ? BUILD_VERSION : `${packageJson.version}-unbuilt`;
+
+// Who saved a plan file: the tool and the build's version (section 5).
+const SAVED_BY = `transfer designer v${PAGE_VERSION}`;
 
 // The key the browser copy of the plan is stored under, in the browser's local storage (section 5).
 const STORAGE_KEY = "biomek-tools transfer designer: plan";
@@ -331,6 +339,7 @@ const elements = {
   columnMenu: byId("column-menu"),
   cursorLabel: byId("cursor-label"),
   contentsCard: byId("contents-card"),
+  pageVersion: byId("page-version"),
 };
 
 setUpPage();
@@ -340,6 +349,7 @@ setUpPage();
 // Brings back the browser copy or starts with an empty plan (section 5), connects every control,
 // and draws the page.
 function setUpPage() {
+  elements.pageVersion.textContent = PAGE_VERSION;
   startFromBrowserCopy();
   connectHeader();
   connectDeckBars();

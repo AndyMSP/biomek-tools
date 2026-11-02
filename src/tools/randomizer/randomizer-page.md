@@ -1,5 +1,8 @@
 # randomizer page — specification
 
+> **Draft change (2026-11-02, build versions; ADR 0015):** the page shows its version at the bottom
+> right (sections 3, 9 and 10). It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 The randomizer's page: the screen people use. This specification covers all three page files:
 
@@ -32,6 +35,7 @@ Two columns, with the results below them across the full width:
 | Left column | The randomized-contents table, the fixed-contents table, the seed box, the to-do list and the Randomize button, in that order. |
 | Right column | The input plate (section 5). |
 | Below both | The results (section 8). |
+| At the bottom, at the right | The **version line**: `Plate randomizer` and the build's version, e.g. `Plate randomizer 0.2.0-dev.488+3cc65a9` (`scripts/build-version.md`, "The page's version"; `0.2.0-unbuilt` when served unbuilt), as the transfer designer shows it: a click selects the whole version, so it can be copied. |
 
 In a narrow window the columns stack: the left column first, then the plate, then the results. The
 plates scroll sideways inside their own box rather than shrinking the wells.
@@ -219,7 +223,9 @@ modules, which are. Before each release, check by hand in Edge and Chrome, openi
 - typing a whole condition list using only Enter;
 - the hover box appears at once on both plates, and never twice;
 - pointing at and clicking legend items highlights the right wells, including a name in two
-  roles.
+  roles;
+- the version line shows the same version as the built file's name; a click selects the whole
+  version, and it copies.
 
 ## 10. Visual design
 The page should look calm and be easy to scan. The page's own colors and sizes are defined once,
@@ -236,6 +242,9 @@ Sizes: the page title 28px bold, panel headings 17px semibold, list headings 15p
 text 14–15px, notes and small print 13px. Secondary text is gray (`#5E5E58`).
 
 **Header.** The title `Plate randomizer` with `One 96-well plate` beside it in gray.
+
+**The version line:** 12px in the monospace font, gray (`#5E5E58`), right-aligned across the page's
+width, 12px below the last panel.
 
 **Inputs panel**, top to bottom:
 - Each table's heading, then its column headings in small gray text, then its rows. Text boxes are
