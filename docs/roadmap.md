@@ -324,7 +324,10 @@ Last updated: 2026-11-01
   name in place of `dev` off `main`, `.dirty` for changes not committed, `v0.2.0` for a release),
   the page shows the full version at the bottom right (with the commit), and saved plan files
   record it. `package.json` goes to 0.2.0, the version being worked towards. New
-  `scripts/build-version.md`; both page specifications; the README's release steps.
+  `scripts/build-version.md`; both page specifications; the README's release steps. **Built (#129,
+  2026-11-02)**: `scripts/build-version.js` with its tests and REPL topic, `build.js`, both pages,
+  and `package.json` at 0.2.0; checked by hand in a scratch clone and in headless Chrome. Still to
+  check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
