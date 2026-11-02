@@ -163,8 +163,8 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   undone and redone, kept in the browser copy, and saved in the plan file (`plan-file.md`; Andy,
   2026-11-01). They're for people only: the file writer never reads them.
 - **`randomizations`**: the plan's randomizations (section 3, "Randomizations"), in the order they
-  were added, except that a move or a paste puts the whole list in column order (section 3, "Moving
-  and copying"); several sitting at one place are in this list's order. The file writer never reads them: their stages are ordinary stages to it.
+  were added, except that a move or a paste that changes something puts the whole list in column
+  order (section 3, "Moving and copying"); several sitting at one place are in this list's order. The file writer never reads them: their stages are ordinary stages to it.
 - **`experimentName`**: the experiment's name (`docs/glossary.md`, "Experiment name"), or `""`
   until the user gives one (Andy, 2026-10-28). A name follows the file writer's rule,
   `checkExperimentName` (`file-writer.md`): letters, digits, hyphens and underscores, 1 to 40
@@ -576,8 +576,10 @@ only where things are changes: `stageOrder`, `tipChanges`, the operation list's 
 follow the stage order, ADR 0011, each stage's transfers in the same order as before), and the
 randomizations' places. A stage owned by a randomization can't be moved on its own (ADR 0014): a
 list holding one whose randomization isn't listed too is refused. **Nothing changes** when the new
-`stageOrder`, `tipChanges` (tip types and probes by key) and `randomizations` would all equal the
-old ones: then the same plan object is given back. (Moving a tip group's last stage between boxes
+`stageOrder`, `tipChanges` (tip types and probes by key) and `randomizations` (compared in column
+order) would all equal the old ones: then the same plan object is given back, with `randomizations`
+as it was (from the review of the build, 2026-11-02: a list only out of column order isn't a change
+the user made). (Moving a tip group's last stage between boxes
 just below its group does change something: it becomes a tip group of its own, with the same tips,
 so the group splits.)
 
@@ -1324,7 +1326,8 @@ on BC1070 tips; and a randomization that has run, with two stages, after them.
   a mixed well, an unknown tip type, a randomization's refused value, and
   a randomization with two stages for one well; each refused with `Can't paste: ` and its message.
 - **Places pointing at moved things**: group [A, B, C], A and B moved to position 0 or 1 of their
-  own group: unchanged order, the same plan; A moved to position 1: B, A, C, the tip change on B.
+  own group: unchanged order, the same plan (position 1 means just before B, the first stage there
+that isn't moving); A moved to position 2: B, A, C, the tip change on B.
   A tip group moved `between` at its own index or just below itself: the same plan. A tip group's
   only stage moved, with the place `between` that group's index: lands where the group was.
 - **Splitting**: a tip group's last stage moved `between` just below its group: a new tip group,
