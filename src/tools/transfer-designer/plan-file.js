@@ -6,12 +6,14 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 6, which holds the randomizations and the well labels, each stage's
-// settings hold its mixes and each tip change its probes. It still reads version 5 files (no
+// It writes format version 7, which holds each component's constituents, the randomizations and
+// the well labels, each stage's settings hold its mixes and each tip change its probes. It still
+// reads version 6 files (components without constituents), version 5 files (also no
 // randomizations), version 4 files (also no well labels), version 3 files (also no mixes), version
 // 2 files (also probes in each stage's settings) and version 1 files (also without an experiment
-// name). Their stages get no mixing, since plans couldn't mix then; in versions 1 and 2, their tip
-// changes get every probe their stages used, which is where look-ahead loading put tips.
+// name). Their components carry nothing and their stages get no mixing, since plans couldn't do
+// either then; in versions 1 and 2, their tip changes get every probe their stages used, which is
+// where look-ahead loading put tips.
 // Specification: plan-file.md.
 
 import { TIP_TYPES } from "../../../config/tip-types.js";
@@ -44,6 +46,7 @@ import {
   setWellLabels,
   setRandomizations,
   setExperimentName,
+  setConstituents,
 } from "./transfer-designer.js";
 
 // The format name every plan file holds, so a file can be recognized as one.
@@ -54,13 +57,24 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // config/. Version 2 (2026-10-28) added the experiment name; version 3 (2026-10-30) moved probes
 // from the stages to the tip changes (ADR 0007, "Tip changes"); version 4 (2026-10-30) added each
 // stage's mixes (ADR 0007, "Mixing"); version 5 (2026-11-01) added the well labels; version 6
-// (2026-11-01) added the randomizations (ADR 0012).
-export const PLAN_FILE_VERSION = 6;
+// (2026-11-01) added the randomizations (ADR 0012); version 7 (2026-11-01) added each component's
+// constituents (ADR 0013).
+export const PLAN_FILE_VERSION = 7;
 
-// The versions this module can read: the one it writes, version 5 (plans saved on 2026-11-01, before
-// randomizations), version 4 (plans saved from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved on 2026-10-30, before mixing), version 2
-// (plans saved from 2026-10-28 to 2026-10-30) and version 1 (plans saved before 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 5, 4, 3, 2, 1];
+// The versions this module can read: the one it writes, version 6 (plans saved on 2026-11-01, before
+// constituents), version 5 (plans saved on 2026-11-01, before randomizations), version 4 (plans saved
+// from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved on 2026-10-30, before
+// mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version 1 (plans saved before
+// 2026-10-28).
+const VERSIONS_READ = [PLAN_FILE_VERSION, 6, 5, 4, 3, 2, 1];
+
+// The first version whose components hold their constituents. An older file's components are
+// { name, color } only, and open carrying nothing.
+const FIRST_VERSION_WITH_CONSTITUENTS = 7;
+
+// A component's properties in a file: name and color, plus constituents from version 7.
+const COMPONENT_PROPERTIES = ["name", "color"];
+const COMPONENT_PROPERTIES_WITH_CONSTITUENTS = [...COMPONENT_PROPERTIES, "constituents"];
 
 // The versions in which each stage's settings hold its probes, and a tip change is { tipType } only.
 const VERSIONS_WITH_STAGE_PROBES = [1, 2];
@@ -72,8 +86,8 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 // table: an older file's stages can't hold them, and get them as null.
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3). Version 6 has
-// all of them.
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 6 and
+// 7 have all of them: version 7's change is inside each component.
 const FILE_PROPERTIES = [
   "format",
   "version",
@@ -161,7 +175,7 @@ export function planFromText(text) {
   checkFormatAndVersion(file);
   checkProperties(file);
 
-  let plan = addComponents(emptyPlan().plan, file.components);
+  let plan = addComponents(emptyPlan().plan, file.components, file.version);
   const added = addStages(plan, file.stages, file.version);
   plan = addOperations(added.plan, file.operations, file.stages, added.newIds);
   const componentNames = file.components.map((component) => component.name);
@@ -264,24 +278,58 @@ function checkProperties(file) {
   }
 }
 
-// Check 5: returns the plan with each of `components` added in turn, as addComponent adds it.
-// Throws if one isn't an object with exactly a name and a color, or its name isn't a name, or
-// addComponent refuses it.
-function addComponents(plan, components) {
+// Check 5: returns the plan with each of `components` added in turn, as addComponent adds it, and,
+// in a file of `version` whose components hold constituents, its constituents set as setConstituents
+// sets them. Throws if one isn't an object with exactly its version's properties, or its name isn't
+// a name, or addComponent refuses it, or (from version 7) a constituent's name has spaces at its
+// ends, or setConstituents refuses the constituents.
+function addComponents(plan, components, version) {
+  const withConstituents = version >= FIRST_VERSION_WITH_CONSTITUENTS;
+  const properties = withConstituents ? COMPONENT_PROPERTIES_WITH_CONSTITUENTS : COMPONENT_PROPERTIES;
   let planSoFar = plan;
   for (const [index, component] of components.entries()) {
     const place = `component ${index + 1}`;
-    if (!hasExactly(component, ["name", "color"])) {
-      refuse(`${place} must be an object with exactly "name" and "color".`);
+    if (!hasExactly(component, properties)) {
+      refuse(`${place} must be an object with exactly ${listNamesWithAnd(properties)}.`);
     }
     planSoFar = withPlace(place, () => {
       // addComponent trims a name; checking it first refuses spaces at the ends instead, so the
       // name always matches the names in the starting contents.
       checkName(component.name, "component name");
-      return addComponent(planSoFar, component.name, component.color);
+      const added = addComponent(planSoFar, component.name, component.color);
+      if (!withConstituents) {
+        return added;
+      }
+      checkConstituentNamesUntrimmed(component.constituents);
+      return setConstituents(added, component.name, component.constituents);
     });
   }
   return planSoFar;
+}
+
+// Throws, with checkName's message, if a constituent in `constituents` has a name with spaces at
+// its ends: setConstituents would trim it, and a file is never tidied. Only entries that are
+// objects with a text name are checked, over the whole list first; anything else (a list that isn't
+// one, an entry that isn't an object, a name that isn't text) is left to setConstituents, whose
+// messages say what's wrong.
+function checkConstituentNamesUntrimmed(constituents) {
+  if (!Array.isArray(constituents)) {
+    return;
+  }
+  for (const constituent of constituents) {
+    if (isObject(constituent) && typeof constituent.name === "string") {
+      checkName(constituent.name, "constituent name");
+    }
+  }
+}
+
+// `names` in quotes, separated by commas, with "and" before the last, as a message lists an object's
+// exact properties, e.g. ["name", "color", "constituents"] → '"name", "color" and "constituents"'.
+function listNamesWithAnd(names) {
+  if (names.length === 1) {
+    return listNames(names);
+  }
+  return `${listNames(names.slice(0, -1))} and ${describeValue(names.at(-1))}`;
 }
 
 // Check 6: returns { plan, newIds, stageProbes }: the plan with `stages` in the file's order, each
@@ -472,7 +520,7 @@ function addStartingContents(plan, startingContents, componentNames) {
 }
 
 // Check 9: returns the plan with the file's tip changes, each keyed by START or a stage's ID in the
-// file, which `newIds` turns into its new ID. In a version 3, 4 or 5 file each holds its tip type and
+// file, which `newIds` turns into its new ID. In a version 3 to 7 file each holds its tip type and
 // probes; in an older file each holds only its tip type, and gets every probe its stages used
 // (`stageProbes`, from addStages), which is where look-ahead loading put tips. Throws if there's
 // none at START; then, for each tip change in turn, if its key isn't one of the file's stages or is

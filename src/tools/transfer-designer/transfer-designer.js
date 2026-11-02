@@ -1,7 +1,7 @@
 // transfer-designer.js — the transfer designer's rules: what a plan is, and every edit that can be
 // made to one, each checked so that a plan is always valid.
 //
-// A plan holds the components, the starting contents, the operation list, the stage list, the stage
+// A plan holds the components (each with its constituents; ADR 0013), the starting contents, the operation list, the stage list, the stage
 // order (a list of stage IDs; ADR 0011), the tip changes, the labware labels, the well labels, the
 // randomizations (each owning the stages it made; ADR 0012) and the experiment name. A stage is a
 // transfer stage or a mix step, which only mixes its wells, each a transfer from the well into
@@ -36,6 +36,12 @@ import { labwareNames, gridOf, checkWell } from "../../shared/deck/deck.js";
 import { START, tipGroups } from "../../shared/tip-groups/tip-groups.js";
 import { checkExperimentName } from "../../shared/file-writer/file-writer.js";
 import { assignPool, findPoolProblems, MAX_SEED } from "../../shared/random-pool/random-pool.js";
+import {
+  checkConstituents,
+  familyOf,
+  unitsOf,
+  wellConcentrations,
+} from "../../shared/concentrations/concentrations.js";
 
 // START and tipGroups live in the tip-groups shared module, which the file writer uses too. They're
 // re-exported (passed on under the same names) so the page and plan-file.js can keep importing them
@@ -579,14 +585,42 @@ export function removeTipChange(plan, key) {
 // --- Components and starting contents ---
 
 // Returns the plan with a new component, last, called `name` (spaces at its ends removed) and drawn
-// in `color`, e.g. addComponent(plan, "Media", "#4e79a7"). Throws, in this order, if the name isn't
-// a name or is used, or the color isn't text or is used.
+// in `color`, carrying no constituents yet, e.g. addComponent(plan, "Media", "#4e79a7"). Throws,
+// in this order, if the name isn't a name or is used, or the color isn't text or is used.
 export function addComponent(plan, name, color) {
   const trimmedName = checkNewComponentName(plan, name);
   checkComponentColor(plan, color, null);
   return withParts(plan, {
-    components: [...plan.components, { name: trimmedName, color }],
+    components: [...plan.components, { name: trimmedName, color, constituents: [] }],
   });
+}
+
+// Returns the plan with component `name` carrying `constituents` (a list of { name, amount, unit };
+// concentrations.md), replacing what it carried, names trimmed. Throws, in this order, if there's no
+// such component, then as checkConstituents does, then if a constituent's unit is of a different
+// family from the one its name already has in another component (transfer-designer.md, section 3,
+// "Constituents"): the same name is the same thing across the plan, and families can't be added.
+// e.g. setConstituents(plan, "Dye stock", [{ name: "Dye", amount: 10, unit: "mM" }]).
+export function setConstituents(plan, name, constituents) {
+  checkComponentExists(plan, name);
+  const checked = checkConstituents(constituents);
+  const others = plan.components.filter((component) => component.name !== name);
+  for (const constituent of checked) {
+    checkFamilyAgrees(constituent, others);
+  }
+  return withParts(plan, {
+    components: plan.components.map((component) =>
+      component.name === name ? { ...component, constituents: checked } : component,
+    ),
+  });
+}
+
+// The concentrations the well `end` ({ labware, well }) carries in `snapshot`, a ContentsSnapshot
+// of this plan: a list of { name, family, value } (concentrations.md, wellConcentrations), [] for a
+// well carrying nothing. The well is checked by the snapshot's volumeFractionsOf alone: a well it
+// has no record of is simply empty.
+export function concentrationsOf(plan, snapshot, end) {
+  return wellConcentrations(snapshot.volumeFractionsOf(end?.labware, end?.well), plan.components);
 }
 
 // Returns the plan with component `oldName` called `newName` (spaces at its ends removed), in the
@@ -2089,6 +2123,25 @@ function checkComponentColor(plan, color, ownName) {
   );
   if (other !== undefined) {
     throw new Error(`${other.name} already has that color. Choose a different one.`);
+  }
+}
+
+// Throws if `constituent`'s unit is of a different family from the one its name has in `others`
+// (the plan's other components, in the plan's order), naming the first such component and the unit
+// it carries the name in, e.g. 'Hy-Soy is in g/L in Feeding media. Give it a unit of that kind
+// (g/L, mg/L), or a different name.' A name no other component carries agrees with anything.
+function checkFamilyAgrees(constituent, others) {
+  for (const other of others) {
+    const carried = (other.constituents ?? []).find((entry) => entry.name === constituent.name);
+    if (carried !== undefined) {
+      const family = familyOf(carried.unit);
+      if (familyOf(constituent.unit) !== family) {
+        throw new Error(
+          `${constituent.name} is in ${carried.unit} in ${other.name}. Give it a unit of that kind (${unitsOf(family).join(", ")}), or a different name.`,
+        );
+      }
+      return;
+    }
   }
 }
 

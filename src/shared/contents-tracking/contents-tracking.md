@@ -34,9 +34,10 @@ doesn't know has neither, so only its arithmetic is tracked.
 Other operation types, when they're added, are skipped unless they change what's in a well.
 
 Not in version 1 (see `docs/roadmap.md`):
-- **Final concentrations** in units such as mM. These need each component's stock concentration,
-  such as "Dye is 10 mM." Version 1 gives each component's volume fraction of a well (e.g. 10%); a
-  later version multiplies that by the stock concentration (10% × 10 mM = 1 mM final).
+- **Concentrations** in units such as mM. Version 1 gives each component's volume fraction of a
+  well (e.g. 10%); the `concentrations` shared module turns the fractions into the well's
+  concentration of each constituent its components carry (ADR 0013; `concentrations.md`), so this
+  module stays about volumes.
 - **Spilling.** A well filled over its capacity is reported, but its contents are tracked as if
   the liquid had fit, since what spills can't be known.
 - **A working maximum** below the capacity, such as headroom for mixing (roadmap, item 11).

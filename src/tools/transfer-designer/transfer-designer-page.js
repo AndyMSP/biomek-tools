@@ -88,7 +88,14 @@ import {
   runRandomization,
   removeRandomization,
   canRemoveRandomization,
+  setConstituents,
+  concentrationsOf,
 } from "./transfer-designer.js";
+import {
+  CONCENTRATION_UNITS,
+  DEFAULT_CONCENTRATION_UNIT,
+} from "../../../config/concentration-units.js";
+import { bestUnit } from "../../shared/concentrations/concentrations.js";
 
 // --- Constants ---
 
@@ -3305,6 +3312,10 @@ function createPalette(plan) {
     chip.classList.toggle("picked", brush.pick.kind === "component" && brush.pick.name === component.name);
     chip.setAttribute("aria-pressed", String(chip.classList.contains("picked")));
     chip.append(createSwatch(component.color), createElement("span", component.name));
+    if (component.constituents.length > 0) {
+      chip.append(createElement("span", chipCarriesText(component), "chip-carries"));
+      chip.title = `Contains ${component.constituents.map(constituentText).join(", ")}`;
+    }
     chip.addEventListener("click", () => pickBrush({ kind: "component", name: component.name }));
     holder.append(chip, createPencil("component", component.name, `Edit ${component.name}`));
     palette.append(holder);
@@ -3317,6 +3328,21 @@ function createPalette(plan) {
   eraser.addEventListener("click", () => pickBrush({ kind: "eraser" }));
   palette.append(eraser);
   return palette;
+}
+
+// What a chip says a component carries (section 8): its first constituent's amount and unit, with
+// the constituent's name first unless it's the component's own name, then " +N" for the rest,
+// e.g. "10 mM" for Dye stock carrying Dye at 10 mM; "Hy-Soy 4 g/L +2" for a medium carrying three.
+function chipCarriesText(component) {
+  const [first, ...rest] = component.constituents;
+  const amount = `${formatAmount(first.amount)} ${first.unit}`;
+  const named = first.name === component.name ? amount : `${first.name} ${amount}`;
+  return rest.length === 0 ? named : `${named} +${rest.length}`;
+}
+
+// A constituent as a tooltip lists it: its name, amount and unit, e.g. "Hy-Soy 4 g/L".
+function constituentText(constituent) {
+  return `${constituent.name} ${formatAmount(constituent.amount)} ${constituent.unit}`;
 }
 
 // Picks a component or the eraser for the brush. Not an edit: only the palette and the cursor's
@@ -3999,6 +4025,10 @@ function contentsCardLines(plan, end) {
     list.append(item);
   }
   lines.push(list);
+  const concentrations = concentrationsOf(plan, shownSnapshot, end);
+  if (concentrations.length > 0) {
+    lines.push(createConcentrationsGroup(concentrations));
+  }
   for (const problem of shownSnapshot.listProblems()) {
     if (problem.labware === end.labware && problem.well === end.well) {
       lines.push(createElement("div", describeCardProblem(problem), "card-problem"));
@@ -4020,6 +4050,27 @@ function contentsCardLines(plan, end) {
   const hint = wellLabel === null ? "Right-click to name" : "Right-click to rename";
   lines.push(createElement("div", hint, "card-hint"));
   return lines;
+}
+
+// The contents card's Concentrations group (section 6): under a thin rule, the heading, then one
+// line per entry of `concentrations` (concentrationsOf, in its order): the constituent's name at the
+// left and, at the right in the volume's style, its amount and unit in the unit that fits it best
+// (bestUnit), e.g. "Dye" … "476 µM".
+function createConcentrationsGroup(concentrations) {
+  const group = createElement("div", "", "card-concentrations");
+  group.append(createElement("div", "Concentrations", "card-group-heading"));
+  const list = document.createElement("ul");
+  for (const entry of concentrations) {
+    const { amount, unit } = bestUnit(entry.family, entry.value);
+    const item = document.createElement("li");
+    item.append(
+      createElement("span", entry.name),
+      createElement("span", `${formatAmount(amount)} ${unit}`, "card-volume"),
+    );
+    list.append(item);
+  }
+  group.append(list);
+  return group;
 }
 
 // A contents problem of the well, in words for the contents card (section 6), by its kind: a draw
@@ -4252,17 +4303,35 @@ function openEditingBox(kind, key) {
   }
   const plan = currentPlan();
   const original = originalFor(plan, kind, key);
-  editingBox = { kind, key, original, draft: { ...original, showAllColors: false } };
+  const draft = { ...original, showAllColors: false };
+  if (kind === "component") {
+    // The rows are edited in place, so the draft gets its own copies.
+    draft.rows = original.rows.map((row) => ({ ...row }));
+  }
+  editingBox = { kind, key, original, draft };
   refreshStages();
   focusEditingBox();
 }
 
-// What a box edits, before any changes: a component's name and color; a stage's name, modes and
-// whether each end mixes; a mix step's name; a tip change's tip type and probes.
+// A constituent as a component's box holds it (section 8): its name, its amount as text, and its
+// unit, e.g. { name: "Dye", amount: "10", unit: "mM" }. A new object each time.
+function rowOf(constituent) {
+  return { name: constituent.name, amount: String(constituent.amount), unit: constituent.unit };
+}
+
+// A row of a component's box as it's passed on to setConstituents: its amount as a number when the
+// text is one, else as typed (section 13), so the logic's message says what's wrong.
+function constituentOfRow(row) {
+  return { name: row.name, amount: volumeValue(row.amount), unit: row.unit };
+}
+
+// What a box edits, before any changes: a component's name, color and constituents (as rows of
+// text, section 8); a stage's name, modes and whether each end mixes; a mix step's name; a tip
+// change's tip type and probes.
 function originalFor(plan, kind, key) {
   if (kind === "component") {
     const component = plan.components.find((candidate) => candidate.name === key);
-    return { name: component.name, color: component.color };
+    return { name: component.name, color: component.color, rows: component.constituents.map(rowOf) };
   }
   if (kind === "stage" && isMixStep(plan, key)) {
     // A mix step's box edits only its name (section 10).
@@ -4297,7 +4366,11 @@ function closeEditingBox() {
 function isBoxDirty() {
   const { kind, original, draft } = editingBox;
   if (kind === "component") {
-    return draft.name !== original.name || draft.color !== original.color;
+    return (
+      draft.name !== original.name ||
+      draft.color !== original.color ||
+      JSON.stringify(draft.rows) !== JSON.stringify(original.rows)
+    );
   }
   if (kind === "stage") {
     return (
@@ -4441,7 +4514,91 @@ function componentBoxFields(plan) {
     redrawEditingBox();
   });
   colorField.append(swatches, more);
-  return [nameField, colorField];
+  return [nameField, colorField, createContainsField(draft)];
+}
+
+// A component's Contains field (section 8; ADR 0013): the draft's constituent rows, each a Name
+// box, an Amount box, a unit menu and ×, or "Contains nothing at a known concentration." while
+// there are none; then + Add, which adds a row and focuses its name box.
+function createContainsField(draft) {
+  const field = createElement("div", "", "contains-field");
+  field.append(createElement("span", "Contains", "field-name"));
+  if (draft.rows.length === 0) {
+    field.append(createElement("p", "Contains nothing at a known concentration.", "note contains-nothing"));
+  } else {
+    const rows = createElement("div", "", "contains-rows");
+    draft.rows.forEach((row, index) => rows.append(createConstituentRow(draft, row, index)));
+    field.append(rows);
+  }
+  const add = createElement("button", "+ Add", "more-colors add-constituent");
+  add.type = "button";
+  add.addEventListener("click", () => {
+    // The first row starts with the component's own name, so "Dye is 10 mM" is an amount away.
+    const name = draft.rows.length === 0 ? draft.name.trim() : "";
+    draft.rows.push({ name, amount: "", unit: DEFAULT_CONCENTRATION_UNIT });
+    redrawEditingBox();
+    editingBox.element.querySelector(`.constituent-row:nth-child(${draft.rows.length}) .constituent-name`)?.focus({ preventScroll: true });
+  });
+  field.append(add);
+  return field;
+}
+
+// One row of a component's Contains field (section 8): a Name box and an Amount box (ordinary text
+// boxes, updating the draft as typed in), a unit menu of the offered units (plus the row's own unit
+// when it's configured but not offered, so the row reads as saved), and × to take the row out.
+function createConstituentRow(draft, row, index) {
+  const element = createElement("div", "", "constituent-row");
+  const number = index + 1;
+  const name = document.createElement("input");
+  name.type = "text";
+  name.className = "constituent-name";
+  name.value = row.name;
+  name.placeholder = "Name";
+  name.setAttribute("aria-label", `Constituent ${number} name`);
+  name.addEventListener("input", () => {
+    row.name = name.value;
+  });
+  const amount = document.createElement("input");
+  amount.type = "text";
+  amount.className = "constituent-amount";
+  amount.value = row.amount;
+  amount.placeholder = "Amount";
+  amount.setAttribute("aria-label", `Constituent ${number} amount`);
+  amount.addEventListener("input", () => {
+    row.amount = amount.value;
+  });
+  const unit = document.createElement("select");
+  unit.className = "constituent-unit";
+  unit.setAttribute("aria-label", `Constituent ${number} unit`);
+  for (const symbol of unitsOfferedFor(row.unit)) {
+    const option = document.createElement("option");
+    option.value = symbol;
+    option.textContent = symbol;
+    option.selected = symbol === row.unit;
+    unit.append(option);
+  }
+  unit.addEventListener("change", () => {
+    row.unit = unit.value;
+  });
+  const remove = createElement("button", "×", "remove-constituent");
+  remove.type = "button";
+  remove.title = "Take it out";
+  remove.setAttribute("aria-label", `Take out constituent ${number}`);
+  remove.addEventListener("click", () => {
+    draft.rows.splice(index, 1);
+    redrawEditingBox();
+  });
+  element.append(name, amount, unit, remove);
+  return element;
+}
+
+// The units a row's menu offers: the offered units of config/concentration-units.js in its order,
+// plus `ownUnit` when it's a configured unit that isn't offered (a display-only unit a file could
+// hold), in its place in the configuration's order, e.g. a row in nM offers mM, µM, nM, g/L, %, ×.
+function unitsOfferedFor(ownUnit) {
+  return CONCENTRATION_UNITS.filter((entry) => entry.offered || entry.unit === ownUnit).map(
+    (entry) => entry.unit,
+  );
 }
 
 // The colors a component's box offers: all of COMPONENT_COLORS (plus its own color, if that's not
@@ -4805,13 +4962,20 @@ function saveEditingBox() {
   showMessage(saved.message, "ok");
 }
 
-// A component's Save: renames it and recolors it, as one edit, returning { plan, message }. If it
-// was picked, it stays picked. Throws as renameComponent and setComponentColor do.
+// A component's Save: renames it, recolors it and sets its constituents (when the rows, with each
+// amount passed on as section 13 does, differ from what it carries, compared as JSON in order), as
+// one edit, returning { plan, message }. If it was picked, it stays picked. Throws as
+// renameComponent, setComponentColor and setConstituents do.
 function saveComponentDraft(plan, name, draft) {
   let saved = renameComponent(plan, name, draft.name);
   const newName = draft.name.trim();
-  if (draft.color !== plan.components.find((component) => component.name === name).color) {
+  const component = plan.components.find((candidate) => candidate.name === name);
+  if (draft.color !== component.color) {
     saved = setComponentColor(saved, newName, draft.color);
+  }
+  const constituents = draft.rows.map(constituentOfRow);
+  if (JSON.stringify(constituents) !== JSON.stringify(component.constituents)) {
+    saved = setConstituents(saved, newName, constituents);
   }
   // Both edits passed, so the picked component can follow the new name.
   if (brush.pick.kind === "component" && brush.pick.name === name) {
@@ -5133,6 +5297,18 @@ function formatShortVolume(volume) {
 // not 0, in exponent form, e.g. "4.0e-3%".
 function formatPercent(percent) {
   return `${formatVolume(percent)}%`;
+}
+
+// An amount (a constituent's on a chip, a concentration's on the contents card; section 13): to 3
+// significant figures with trailing zeros dropped, e.g. 2.5, 333, 0.0417; below 0.001 but not 0, in
+// exponent form with one decimal, e.g. "4.0e-4". The unit is added by the caller.
+function formatAmount(amount) {
+  if (amount !== 0 && Math.abs(amount) < 0.001) {
+    return amount.toExponential(1);
+  }
+  // toPrecision gives 3 significant figures, possibly in exponent form for large values; Number()
+  // then String() drops trailing zeros and writes it plainly.
+  return String(Number(amount.toPrecision(3)));
 }
 
 // A count with its noun, plural except for 1, e.g. countOf(1, "well") → "1 well", (3) → "3 wells".

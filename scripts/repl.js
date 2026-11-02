@@ -41,6 +41,13 @@ import { START, tipGroups } from "../src/shared/tip-groups/tip-groups.js";
 import { substagesOf } from "../src/shared/substages/substages.js";
 import { mixVolumes } from "../src/shared/mix-volumes/mix-volumes.js";
 import {
+  checkConstituents,
+  familyOf,
+  unitsOf,
+  wellConcentrations,
+  bestUnit,
+} from "../src/shared/concentrations/concentrations.js";
+import {
   writeRunFiles,
   checkExperimentName,
   folderNameFor,
@@ -122,6 +129,8 @@ import {
   removeRandomization,
   canRemoveRandomization,
   setRandomizations,
+  setConstituents,
+  concentrationsOf,
 } from "../src/tools/transfer-designer/transfer-designer.js";
 import {
   PLAN_FILE_FORMAT,
@@ -343,6 +352,22 @@ const TOPICS = {
       "mixVolumes(mixPlan).problems",
     ],
   },
+  concentrations: {
+    loaded: { checkConstituents, familyOf, unitsOf, wellConcentrations, bestUnit },
+    examples: [
+      'checkConstituents([{ name: " Dye ", amount: 10, unit: "mM" }, { name: "Hy-Soy", amount: 4, unit: "g/L" }])',
+      'checkConstituents([{ name: "Dye", amount: 10, unit: "mg/mL" }])',
+      'checkConstituents([{ name: "Dye", amount: 10, unit: "mM" }, { name: " Dye", amount: 5, unit: "mM" }])',
+      'familyOf("mM")',
+      'unitsOf("molar")',
+      'const stockComponents = [{ name: "Stock", constituents: [{ name: "Dye", amount: 10, unit: "mM" }] }, { name: "Media", constituents: [{ name: "Hy-Soy", amount: 4, unit: "g/L" }] }]',
+      "wellConcentrations({ Stock: 0.2, Media: 0.8 }, stockComponents)",
+      'bestUnit("molar", 0.000476)',
+      'bestUnit("mass", 0.0075)',
+      'bestUnit("percent", 0.5)',
+      'bestUnit("volume", 1)',
+    ],
+  },
   "file-writer": {
     loaded: { writeRunFiles, checkExperimentName, folderNameFor },
     examples: [
@@ -483,6 +508,8 @@ const TOPICS = {
       removeRandomization,
       canRemoveRandomization,
       setRandomizations,
+      setConstituents,
+      concentrationsOf,
     },
     examples: [
       "let plan = emptyPlan().plan",
@@ -565,6 +592,15 @@ const TOPICS = {
       'canRemoveRandomization(randomized, "r1")',
       'placeRandomization(randomized, "r1", "1")',
       "setRandomizations(randomized, JSON.parse(JSON.stringify(randomized.randomizations))).randomizations.length",
+      'let dyed = addComponent(addComponent(emptyPlan().plan, "Media", "#4e79a7"), "Dye stock", "#f28e2b")',
+      'dyed = setConstituents(dyed, "Dye stock", [{ name: "Dye", amount: 10, unit: "mM" }])',
+      'dyed = setConstituents(dyed, "Media", [{ name: "Hy-Soy", amount: 4, unit: "g/L" }])',
+      "dyed.components",
+      'setConstituents(dyed, "Dye stock", [{ name: "Hy-Soy", amount: 1, unit: "mM" }])',
+      'dyed = addToWells(dyed, [{ labware: "Plate1", well: "A1" }], "Media", 80)',
+      'dyed = addToWells(dyed, [{ labware: "Plate1", well: "A1" }], "Dye stock", 20)',
+      'concentrationsOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A1" })',
+      'concentrationsOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A2" })',
     ],
   },
   "plan-file": {
@@ -584,13 +620,20 @@ const TOPICS = {
       "planFromText(text).wellLabels",
       'planFromText(text).stageList.get("2").settings',
       "planFromText(text).randomizations",
-      `const version5 = JSON.stringify({ ...JSON.parse(text), version: 5, randomizations: undefined })`,
+      'saved = addComponent(saved, "Dye stock", "#f28e2b")',
+      'saved = setConstituents(saved, "Dye stock", [{ name: "Dye", amount: 10, unit: "mM" }])',
+      'const withDye = planToText(saved, "transfer designer v0.2.0")',
+      "planFromText(withDye).components",
+      `const version6 = JSON.stringify({ ...JSON.parse(withDye), version: 6, components: JSON.parse(withDye).components.map(({ name, color }) => ({ name, color })) })`,
+      "planFromText(version6).components",
+      `planFromText(withDye.replace('"version": 7', '"version": 6'))`,
+      `const version5 = JSON.stringify({ ...JSON.parse(version6), version: 5, randomizations: undefined })`,
       "planFromText(version5).wellLabels",
-      `planFromText(text.replace('"version": 6', '"version": 5'))`,
+      `planFromText(version6.replace('"version":6', '"version":5'))`,
       `const version4 = JSON.stringify({ ...JSON.parse(version5), version: 4, wellLabels: undefined })`,
       "planFromText(version4).wellLabels",
       `planFromText(version5.replace('"version":5', '"version":4'))`,
-      `planFromText(text.replace('"version": 6', '"version": 7'))`,
+      `planFromText(text.replace('"version": 7', '"version": 8'))`,
       `planFromText(text.replace('"experimentName": "Exp36"', '"experimentName": "Exp 36"'))`,
       'planFromText("not a plan")',
     ],

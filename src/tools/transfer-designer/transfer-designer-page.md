@@ -78,6 +78,12 @@
 > while Andy was away, so still to review with him: the choices listed in its pull request. They
 > become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-01, constituents and concentrations; ADR 0013):** from the preview Andy
+> shaped on 2026-11-01: a `Contains` field in a component's box, for its constituents; what a
+> component carries after its name on its chip; a `Concentrations` group on the contents card
+> (sections 2, 6, 8, 13, 14, 15 and 16). Written while Andy was driving, so still to review with
+> him: the choices listed in its pull request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -107,7 +113,10 @@ saving and opening plans, with a browser copy, and writing the Biomek files as o
 Not in version 1 (see `docs/roadmap.md`):
 - **A guided start** for an empty plan (Andy considered it, 2026-10-26: not now).
 - **Collapsing tip groups** in the Stages column.
-- **Moving** a stage or a transfer, **mixing**, **final concentrations** (`transfer-designer.md`).
+- **Moving** a stage or a transfer (`transfer-designer.md`).
+- **Concentrations on the deck.** A well shows its volume (or its label); its concentrations are on
+  the contents card only. A toggle showing one constituent's concentration on every well may come
+  with use (`docs/roadmap.md`, "Later").
 - **Messages in the page's own terms everywhere.** Some messages from the shared modules use
   internal terms, such as "starting contents entry 3" (roadmap, "Technical debt").
 
@@ -329,6 +338,13 @@ card (dark, light text) shows:
   the well under it, smaller and quieter (Andy, 2026-11-01: the label is what's looked for);
 - the well, e.g. `Assay plate A1`; `Empty` if it holds nothing;
 - for each component: its swatch, name, volume in µL and percentage (section 13);
+- if the well carries any constituent (`concentrationsOf`, `transfer-designer.md`): after the
+  components, under a thin rule, a group headed `Concentrations` (small capitals, quiet), then one
+  line per entry: the constituent's name at the left and, at the right in the volume's monospace
+  style, its amount and unit in the unit that fits it best (`bestUnit`, `concentrations.md`; the
+  amount as section 13 shows amounts), e.g. `Dye` … `476 µM`, `Hy-Soy` … `2.5 g/L`. In the order
+  `concentrationsOf` gives. Nothing of this for a well carrying nothing, so a plan without
+  constituents sees no change;
 - (Andy, 2026-10-31: no total, usable-volume or capacity lines. The components add up to the
   total, the labware's limits are the same for every well of it, and holding only dead volume is
   neither a problem nor a warning: the stripes say it. The card shows only problems and warnings
@@ -745,6 +761,12 @@ nothing.
 **The brush's volume** starts at `DEFAULT_FILL_VOLUME` (section 14) and is typed (section 13). It
 stays while the page is open.
 
+A chip's text is the component's name and, after it, **what it carries**, small and gray, when it
+has constituents: the first constituent's amount and unit (section 13), with the constituent's name
+first unless it's the component's own name, then ` +N` for the rest, e.g. `Dye stock` `10 mM`,
+`Feeding media` `Hy-Soy 4 g/L +2`; on one line, never wrapped. The chip's tooltip lists them all:
+`Contains Hy-Soy 4 g/L, Yeast 0.5 g/L, Glutamine 1 g/L`. A component carrying nothing has neither.
+
 **Adding components.** `+ New` becomes a text box (`Component name`). Enter adds the typed name
 (spaces at the ends removed) with `addComponent`, picks it, and opens a fresh box for the next name,
 so several can be added in a row. Enter on an empty box, Escape, or clicking away ends; clicking away
@@ -763,12 +785,29 @@ the chips below, moved left if needed to stay inside the Start card:
   component's own color is outlined, and keeps its color: the general pressed-button look (a blue
   tint) doesn't apply to swatches (Andy, 2026-10-31: the picked swatch turned pale blue, hiding
   the color chosen).
+- **Contains** (ADR 0013): the component's constituents, one row each: a `Name` box, an `Amount`
+  box (an ordinary text box, like the Name box, not the deck's volume keys; its text is passed on
+  as section 13 passes a typed volume on: as a number when it's one, else as typed), a unit menu
+  offering the **offered** units of `config/concentration-units.js` in its order (plus the row's
+  own unit when it's a configured unit that isn't offered, so the row reads as saved), and `×`
+  (tooltip `Take it out`) which takes the row out of the draft; a component carrying nothing shows
+  `Contains nothing at a known concentration.` instead of rows. Under them, `+ Add` (plain blue, as
+  `More colors`): a new row whose unit is `DEFAULT_CONCENTRATION_UNIT` and whose name is the
+  component's own name (as typed in the Name box, trimmed) when the draft has no rows yet, so "Dye
+  is 10 mM" is an amount away, else blank; the keyboard focus goes to the new row's name box.
+  Enter in any of the row's boxes saves the box, as in a name box. The rows are a draft until Save,
+  like the rest of the box, so a row with a bad amount is reported then, by `setConstituents`'s
+  message, and the box stays open.
 - **Remove**: takes the component out at once with `removeComponent` (message `Removed Media from
   4 wells. Undo can bring it back.`, or `Removed Media. Undo can bring it back.`). No question
   first: Undo brings it back (Andy, 2026-10-31; every box's Remove works this way).
   and closes the box. If it was picked, the first component left is picked, or the eraser if none is.
-- **Save** renames and recolors as one edit (`renameComponent`, then `setComponentColor` if the color
-  changed; message `Saved Media.`). If it was picked, the renamed component stays picked.
+- **Save** renames, recolors and sets the constituents as one edit (`renameComponent`, then
+  `setComponentColor` if the color changed, then `setConstituents`, under the new name, if the
+  rows, with each amount passed on as above, differ from what the component carries, compared as
+  JSON in order; message `Saved Media.`). If it was picked, the renamed component stays picked. A
+  box counts as changed (section 10) when its name, color or rows (as typed) differ from the
+  component's.
 
 ## 9. Transfers (a stage open)
 While a stage is open, transfers made on the deck go into it, with the next transfer's volume.
@@ -982,6 +1021,11 @@ anything else is passed on as typed, so the logic's message says what's wrong.
   e.g. `12k`; otherwise rounded to a whole number.
 - **Percentages** (contents card): rounded to 2 decimal places, e.g. `16.67%`; below 0.01% but not
   0, in exponent form, e.g. `4.0e-3%`.
+- **Amounts** (a constituent's amount on a chip, and a concentration on the contents card): to 3
+  significant figures with trailing zeros dropped, e.g. `2.5`, `333`, `0.0417`, then a space and
+  the unit; below 0.001 but not 0, in exponent form with one decimal, e.g. `4.0e-4`. (On the card
+  the unit is chosen to fit the value, so an amount below 1 appears only in a family's smallest
+  unit or a one-unit family.)
 - **Counts** take a plural `s` except for 1: `1 well`, `3 wells`.
 
 ## 14. Configuration
@@ -995,6 +1039,9 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
   `#9edae5`, `#ce6dbd`, `#2b2b2b`.
 - **`config/randomizations.js`** exports `SOURCES_SHOWN` (`8`): how many sources a randomization's
   card lists before `Show all N sources ▸` (Andy, 2026-11-01).
+- **`config/concentration-units.js`** (`concentrations.md`, section 7) gives the unit menu its
+  offered units and `DEFAULT_CONCENTRATION_UNIT` for a new row; the page doesn't check it (the
+  concentrations module's tests do).
 - **`config/default-volumes.js`** exports `DEFAULT_TRANSFER_VOLUME` (`50`) and `DEFAULT_FILL_VOLUME`
   (`1000`), in µL: the volumes the next transfer and the brush start with when the page opens.
 
@@ -1053,6 +1100,16 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   mix's line in `#FFD45C`. A labeled well's label 16px bold (line height 1.25), and the well under
   it 12px, normal weight, at 70% opacity; the last line, `Right-click to name`, 12px at 60%
   opacity, 6px below the line before it.
+  The `Concentrations` group: 6px below the components, above a 1px rule in the light text at 20%
+  opacity, 6px of space under the rule; its heading 11px semibold, uppercase with 0.3px letter
+  spacing, at 60% opacity, 2px above its lines; each line as a component's (name left, amount and
+  unit right in the monospace volume style), 12px between.
+- **What a chip carries** (section 8): 12px gray (`#5E5E58`), 2px after the name, never wrapped;
+  the same gray when the chip is picked.
+- **A component's Contains rows** (section 8): a grid per row, the name box taking what's left,
+  then the amount box 56px, the unit menu 76px (its right padding 2px, so `g/L` and `mM` show
+  whole), then `×` 26px; 6px apart; rows 6px apart and 6px above `+ Add`; `×` plain (no border,
+  gray, 16px) like a transfer row's.
 - **A well label on the deck** (with `Names` on; in the white tag that otherwise holds the volume): the page's text font, semibold (600), 9px with
   line height 1.05, centered, at most two lines and at most the well's width less 4px, 1px × 2px
   padding; a single word 8px, letter spacing −0.3px, on one line, at most the well's width less
@@ -1155,5 +1212,16 @@ page's configuration (ADR 0009):
   key), yellow for a short mix (e.g. BC230 tips mixing a deep well holding
   1000 µL), and `Mixed N% of well` in the contents card; a short mix isn't counted as a problem;
   a saved plan reopens with the same mixing, and its Biomek files have the mix columns;
+- constituents: a component's box with no rows (`Contains nothing at a known concentration.`),
+  `+ Add` pre-filling the component's name, a second row blank; name, amount and unit typed and
+  chosen, Enter in the amount box saving; `×` taking a row out; Save, then Undo and Redo of the
+  rows; a bad amount (`ten`, blank, `0`) refused with the message and the box kept open; a unit of
+  another family for a name another component carries refused, naming that component; the chip's
+  text (`10 mM`; `Hy-Soy 4 g/L +2`) and tooltip; the contents card: no group for a well carrying
+  nothing; one constituent at 25% of the well (10 mM → `2.5 mM`); the same constituent from two
+  components adding up; a 50 µL transfer of a 10 mM stock into 1000 µL (`476 µM`), and `10 mM` in
+  the trough it came from; g/L diluted a hundredfold shown in mg/L; `%` and `×` shown as they are;
+  the card at Start, at a stage and at End; a renamed component keeping its rows; a plan saved
+  (version 7) and reopened, and reloaded, keeping them, and a version 6 file opening with none;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels.
