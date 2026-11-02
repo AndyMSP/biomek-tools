@@ -281,7 +281,8 @@ let copiedInMemory = null;
 // or null.
 let columnPress = null;
 
-// The drag in the Stages column, while one is on: { items, copying, refused, place, seam }, or null.
+// The drag in the Stages column, while one is on: { items, copying, refused, before, place, pointer },
+// `before` being the selection when it started ({ pickedSet, selectionAnchor }), or null.
 let columnDrag = null;
 
 // The right-click menu, while it's open: { element, seam }, or null.
@@ -3499,9 +3500,14 @@ function forgetPickedSet() {
 
 // The item handle a press or click on `target` is on (a stage's heading row, a tip group's heading
 // or a randomization's heading), or null if it's elsewhere, or on a button or box inside a handle
-// (a ✎), which keeps its own behavior.
+// (a ✎), which keeps its own behavior. Anything inside an open editing box keeps its own behavior
+// too: the box floats inside the handle it was opened from (section 7, "What a press can select or
+// drag").
 function itemHandleOf(target) {
   if (!(target instanceof Element) || !elements.stagesList.contains(target)) {
+    return null;
+  }
+  if (target.closest(".editing-box") !== null) {
     return null;
   }
   const handle = target.closest("[data-item-handle]");
@@ -3652,6 +3658,8 @@ function moveInColumn(event) {
 function beginColumnDrag(event) {
   const { item, inSelection } = columnPress;
   const items = inSelection ? selectedItems() : [item];
+  // Noted so that cancelling the drag gives the selection back as it was.
+  const before = { pickedSet, selectionAnchor };
   pickedSet = items;
   selectionAnchor = item;
   markSelection(items);
@@ -3659,6 +3667,7 @@ function beginColumnDrag(event) {
     items,
     copying: event.ctrlKey || event.metaKey,
     refused: false,
+    before,
     place: null,
     pointer: { x: event.clientX, y: event.clientY },
   };
@@ -3782,8 +3791,8 @@ function releaseInColumn() {
   if (columnDrag !== null) {
     const finished = columnDrag;
     endColumnDrag();
+    // This is the release: the click that comes right after it, if any, is ignored.
     swallowNextClick = true;
-    // A click comes right after the release, if at all; one that doesn't come mustn't eat the next.
     setTimeout(() => {
       swallowNextClick = false;
     }, 0);
@@ -3797,12 +3806,34 @@ function releaseInColumn() {
 }
 
 // Cancels a press or drag in the column (Escape, or the browser interrupting it): nothing changes.
+// The click that follows the release of a cancelled press is ignored too, so it doesn't open or
+// select the item (section 7: "Escape cancels the drag; nothing changes").
 function cancelColumnDrag() {
   if (columnPress === null && columnDrag === null) {
     return;
   }
+  if (columnDrag !== null) {
+    ({ pickedSet, selectionAnchor } = columnDrag.before);
+  }
   endColumnDrag();
   markSelection(selectedItems());
+  swallowClickAfterRelease();
+}
+
+// Ignores the click that comes with the pointer's next release, if one comes: the flag is set now
+// and cleared a moment after that release (a click comes right after it, if at all), so a release
+// without a click doesn't eat a later click.
+function swallowClickAfterRelease() {
+  swallowNextClick = true;
+  document.addEventListener(
+    "pointerup",
+    () => {
+      setTimeout(() => {
+        swallowNextClick = false;
+      }, 0);
+    },
+    { once: true, capture: true },
+  );
 }
 
 // Takes away the drag's label, drop line and fading, and forgets the press and drag.
@@ -4040,6 +4071,10 @@ function pastePlaceBeside(plan, item, side, holdsContainer) {
 // a seam's band (not its buttons), Paste here. Anywhere else (Start, End, an open card's
 // contents), the browser's menu.
 function openColumnMenuFrom(event) {
+  // Inside an editing box, the browser's own menu, as for any text box.
+  if (event.target instanceof Element && event.target.closest(".editing-box") !== null) {
+    return;
+  }
   if (editingBox !== null && isBoxDirty()) {
     event.preventDefault();
     return;

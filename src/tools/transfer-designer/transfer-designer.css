@@ -2224,6 +2224,13 @@ button.quiet-danger:disabled {
   border-radius: 6px;
 }
 
+/* An editing box floats inside the handle it was opened from, but keeps the page's own pointer and
+   text selection, so its text and boxes work as usual. */
+.stages-list [data-item-handle] .editing-box {
+  cursor: auto;
+  user-select: text;
+}
+
 /* While dragging, nothing on the page is selected as text, and the pointer is the grabbing hand. */
 body.column-dragging,
 body.column-dragging * {
