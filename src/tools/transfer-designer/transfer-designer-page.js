@@ -90,12 +90,19 @@ import {
   canRemoveRandomization,
   setConstituents,
   concentrationsOf,
+  columnBoxes,
+  moveItems,
+  copyOf,
+  copyItems,
+  pasteItems,
+  COPIED_ITEMS_FORMAT,
 } from "./transfer-designer.js";
 import {
   CONCENTRATION_UNITS,
   DEFAULT_CONCENTRATION_UNIT,
 } from "../../../config/concentration-units.js";
 import { bestUnit } from "../../shared/concentrations/concentrations.js";
+import { isObject } from "../../shared/input-checks/input-checks.js";
 
 // --- Constants ---
 
@@ -104,6 +111,19 @@ const SAVED_BY = `transfer designer v${packageJson.version}`;
 
 // The key the browser copy of the plan is stored under, in the browser's local storage (section 5).
 const STORAGE_KEY = "biomek-tools transfer designer: plan";
+
+// The key the page's copy of copied items is stored under, in the browser's local storage, shared
+// by every tab of the designer (section 7, "Moving and copying").
+const COPIED_ITEMS_KEY = "biomek-tools transfer designer: copied items";
+
+// While dragging in the Stages column: the drop line looks for seams while the pointer is within
+// this far (in pixels) of the column's sides, and the column scrolls when it's within this far of
+// its top or bottom, by COLUMN_SCROLL_STEP per pointer move (section 7).
+const COLUMN_DROP_MARGIN = 40;
+const COLUMN_SCROLL_STEP = 12;
+
+// The drag's label sits this far from the pointer (section 7).
+const DRAG_LABEL_OFFSET = { x: 14, y: 10 };
 
 // What's open in the Stages column is START, a stage's ID, or END (section 4).
 const END = "end";
@@ -242,6 +262,35 @@ let lastDrawnKeys = null;
 // When each glow started (performance.now()), by key, so it carries on through redrawing.
 const glows = new Map();
 
+// The keys ("stage:5", "randomization:r2") a move, copy or paste just placed, which glow at the
+// next drawing even though they were drawn before (section 7, "What changed glows").
+const glowsToStart = new Set();
+
+// The picked set in the Stages column (section 7, "Moving and copying"): a list of items, each
+// { kind, id }, or null, when what's selected is what's open.
+let pickedSet = null;
+
+// The last item clicked or Ctrl-clicked in the column, the anchor for Shift-click, or null.
+let selectionAnchor = null;
+
+// The page's copy of copied items, for a browser without local storage (section 4); the latest copy
+// in any tab is read from local storage first (COPIED_ITEMS_KEY).
+let copiedInMemory = null;
+
+// A press on an item's handle in the Stages column that may become a drag: { item, x, y, pointerId },
+// or null.
+let columnPress = null;
+
+// The drag in the Stages column, while one is on: { items, copying, refused, before, place, pointer },
+// `before` being the selection when it started ({ pickedSet, selectionAnchor }), or null.
+let columnDrag = null;
+
+// The right-click menu, while it's open: { element, seam }, or null.
+let columnMenu = null;
+
+// True when a press in the Stages column became a drag, so the click that follows it is ignored.
+let swallowNextClick = false;
+
 // The page's elements that transfer-designer.html gives an id, looked up once.
 const elements = {
   experimentHeading: byId("experiment-heading"),
@@ -277,6 +326,9 @@ const elements = {
   stagesColumn: byId("stages-column"),
   stagesList: byId("stages-list"),
   messageBar: byId("message-bar"),
+  dragLabel: byId("drag-label"),
+  dropLine: byId("drop-line"),
+  columnMenu: byId("column-menu"),
   cursorLabel: byId("cursor-label"),
   contentsCard: byId("contents-card"),
 };
@@ -295,6 +347,7 @@ function setUpPage() {
   // Before the box guards, so it sees what was open before they close it.
   connectWellNaming();
   connectKeys();
+  connectMovingAndCopying();
   connectEditingBoxGuard();
   connectInlineBoxGuard();
   connectHeaderBoxGuard();
@@ -418,6 +471,9 @@ function recordEdit(plan, open = currentOpen()) {
 // number (section 13), the Biomek files box closes, so it never saves files worked out before the
 // change (section 5), the browser copy is stored (section 5), and the page is redrawn.
 function afterPlanChange() {
+  // After any edit, Undo or Redo, what's open is selected again (section 7, "Selecting"); a move,
+  // copy or paste selects what it placed afterwards.
+  forgetPickedSet();
   brush.volume.startsNew = true;
   transferVolume.startsNew = true;
   closeBiomekBox();
@@ -440,6 +496,8 @@ function openEntry(key) {
   }
   closeEditingBox();
   source = null;
+  // Opening anything forgets the picked set, so what's open is selected (section 7, "Selecting").
+  forgetPickedSet();
   if (isRandomization(currentPlan(), key)) {
     card = newCard(currentPlan(), key, before);
   }
@@ -1672,19 +1730,22 @@ function refreshStages() {
   // Tip group boxes alternate light blue and light sand, counting those inside randomizations too.
   let groupIndex = 0;
   blocks.forEach((block, index) => {
-    items.push(createSeamBetweenGroups(plan, seamPlace(blocks, index)));
+    items.push(withDropPlace(createSeamBetweenGroups(plan, seamPlace(blocks, index)), betweenBoxes(index)));
     if (block.kind === "group") {
-      items.push(createTipGroupBox(plan, block, groupIndex, open, problems, drawnKeys, false));
+      items.push(createTipGroupBox(plan, block, groupIndex, open, problems, drawnKeys, false, index));
       groupIndex += 1;
     } else {
       items.push(createRandomizationBox(plan, block, groupIndex, open, problems, drawnKeys));
       groupIndex += block.groups.length;
     }
   });
-  items.push(createSeamBetweenGroups(plan, seamPlace(blocks, blocks.length)));
+  const lastSeam = createSeamBetweenGroups(plan, seamPlace(blocks, blocks.length));
+  items.push(withDropPlace(lastSeam, betweenBoxes(blocks.length)));
   items.push(createEntry(plan, END, open, problems));
   elements.stagesList.replaceChildren(...items);
   lastDrawnKeys = drawnKeys;
+  glowsToStart.clear();
+  markSelection(selectedItems());
   placeEditingBox();
   // The box for a new component's name keeps the keyboard focus while it's open (section 8).
   elements.stagesList.querySelector(".new-component-box")?.focus();
@@ -1722,6 +1783,13 @@ function createEntry(plan, key, open, problems) {
   if (!isOpen) {
     row.type = "button";
     row.addEventListener("click", () => openEntry(key));
+  }
+  if (isStage(plan, key)) {
+    // A stage is an item (section 7, "Moving and copying"): its row selects and drags it.
+    entry.dataset.item = itemKey({ kind: "stage", id: key });
+    row.dataset.itemHandle = entry.dataset.item;
+    // An open card's row isn't a button, so it's made focusable for the menu key and Shift+F10.
+    row.tabIndex = 0;
   }
   row.append(createElement("span", badge, "entry-badge"), createElement("span", name, "entry-name"));
   // A mix step has a gray ⟳ after its name (section 7), so the names line up.
@@ -2096,41 +2164,27 @@ function highlightTransfer(position) {
   }
 }
 
-// The column's blocks between Start and End, in order (section 7): each tip group, as
-// { kind: "group", group, nextGroup }, and each randomization, as { kind: "randomization",
-// randomization, groups }, `groups` being its stages' tip groups in that form (none until it has
-// run). A randomization that has run sits where its stages are; one that hasn't, just before the
-// box of the stage it sits before (or above End), several at one place in the order they were
-// added.
+// The column's blocks between Start and End, in the order the logic's columnBoxes gives (section
+// 7: the page doesn't work the order out itself): each ordinary tip group, as { kind: "group",
+// group, nextGroup }, and each randomization, as { kind: "randomization", randomization, groups },
+// `groups` being its stages' tip groups in that form (none until it has run). `nextGroup` is the
+// tip group just after, in stage order, if any.
 function columnBlocks(plan) {
   const groups = tipGroups(plan);
-  // The randomizations that haven't run sitting just before stage `beforeId` (or above End, for
-  // null), in the order they were added.
-  const notRunAt = (beforeId) =>
-    plan.randomizations.filter((randomization) => randomization.stages.length === 0 && randomization.beforeId === beforeId);
-  // A randomization's block, with `its` the tip groups of its stages, e.g. [] for one not run.
-  const randomizationBlock = (randomization, its) => ({ kind: "randomization", randomization, groups: its });
-  const blocks = [];
-  let index = 0;
-  while (index < groups.length) {
-    const first = groups[index].stages[0];
-    blocks.push(...notRunAt(first).map((randomization) => randomizationBlock(randomization, [])));
-    const owner = randomizationOf(plan, first);
-    if (owner === null) {
-      blocks.push({ kind: "group", group: groups[index], nextGroup: groups[index + 1] });
-      index += 1;
-      continue;
-    }
-    const owned = new Set(randomizationAt(plan, owner).stages.map((entry) => entry.stage));
-    const its = [];
-    while (index < groups.length && owned.has(groups[index].stages[0])) {
-      its.push({ kind: "group", group: groups[index], nextGroup: groups[index + 1] });
-      index += 1;
-    }
-    blocks.push(randomizationBlock(randomizationAt(plan, owner), its));
-  }
-  blocks.push(...notRunAt(null).map((randomization) => randomizationBlock(randomization, [])));
-  return blocks;
+  // A tip group's block, from its place in `groups`, found by its key.
+  const groupBlock = (key) => {
+    const index = groups.findIndex((group) => group.key === key);
+    return { kind: "group", group: groups[index], nextGroup: groups[index + 1] };
+  };
+  return columnBoxes(plan).map((box) =>
+    box.kind === "tipGroup"
+      ? groupBlock(box.key)
+      : {
+          kind: "randomization",
+          randomization: randomizationAt(plan, box.id),
+          groups: box.tipGroups.map((group) => groupBlock(group.key)),
+        },
+  );
 }
 
 // Where the seam between tip groups above `blocks[index]` (above End, past the last) adds
@@ -2164,12 +2218,23 @@ function seamPlace(blocks, index) {
 // alternate light blue and light sand. `block` is { group, nextGroup }, `nextGroup` being the box
 // after it, if any. A randomization's own tip group (`owned`) has no seams inside it and no ✎ on
 // its heading, since its stages change only through the randomization's card (section 7).
-function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, drawnKeys, owned) {
+// `boxIndex` is its box's index in the column (columnBoxes), for an ordinary tip group: its seams
+// are the places inside it where moved or pasted stages can go.
+function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, drawnKeys, owned, boxIndex) {
   const box = createElement("div", "", "tip-group");
   box.classList.toggle("sand", index % 2 === 1);
   box.classList.toggle("owned", owned);
   box.dataset.group = group.key;
-  box.append(createTipGroupHeading(plan, group, owned));
+  const heading = createTipGroupHeading(plan, group, owned);
+  // An ordinary tip group is an item, selected and dragged by its heading; a randomization's own
+  // tip group's heading counts as its one stage's row (section 7, "Moving and copying").
+  const item = owned ? { kind: "stage", id: group.stages[0] } : { kind: "tipGroup", id: group.stages[0] };
+  heading.dataset.itemHandle = itemKey(item);
+  heading.tabIndex = 0;
+  if (!owned) {
+    box.dataset.item = itemKey(item);
+  }
+  box.append(heading);
   if (owned) {
     const stages = createElement("div", "", "tip-group-stages");
     for (const id of group.stages) {
@@ -2184,8 +2249,12 @@ function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, dr
 
   const stages = createElement("div", "", "tip-group-stages");
   const firstStage = group.stages[0];
+  // A seam inside this box (createSeamInBox with `seamOptions`), noted as the place just before
+  // its stage at `position`, for dropping and pasting.
+  const seamInBox = (position, seamOptions) =>
+    withDropPlace(createSeamInBox(plan, seamOptions), { kind: "inTipGroup", index: boxIndex, position });
   stages.append(
-    createSeamInBox(plan, {
+    seamInBox(0, {
       addBefore: firstStage,
       takeTips: true,
       accessibleName: "Add a stage at the start of these tips",
@@ -2198,7 +2267,7 @@ function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, dr
     const lower = group.stages[place + 1];
     if (lower !== undefined) {
       stages.append(
-        createSeamInBox(plan, {
+        seamInBox(place + 1, {
           addBefore: lower,
           takeTips: false,
           accessibleName: `Insert a stage before ${stageLabel(plan, lower)}`,
@@ -2208,7 +2277,7 @@ function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, dr
     }
   });
   stages.append(
-    createSeamInBox(plan, {
+    seamInBox(group.stages.length, {
       addBefore: nextGroup === undefined ? null : nextGroup.stages[0],
       takeTips: false,
       accessibleName: "Add a stage at the end of these tips",
@@ -2430,7 +2499,13 @@ function createRandomizationBox(plan, block, groupIndex, open, problems, drawnKe
   const box = createElement("div", "", "randomization");
   box.classList.toggle("not-set-up", !hasRun);
   box.dataset.entry = randomization.id;
-  box.append(createRandomizationHeading(randomization, cardOpen));
+  // A randomization is an item, selected and dragged by its heading (section 7, "Moving and
+  // copying"). Its box glows when a move, copy or paste placed it.
+  box.dataset.item = itemKey({ kind: "randomization", id: randomization.id });
+  applyGlow(box, `randomization:${randomization.id}`, drawnKeys, { whenNew: false });
+  const heading = createRandomizationHeading(randomization, cardOpen);
+  heading.dataset.itemHandle = box.dataset.item;
+  box.append(heading);
   if (cardOpen) {
     card.element = createRandomizationCard(plan, randomization);
     box.append(card.element);
@@ -3265,12 +3340,17 @@ function showOwnedStageNote() {
 
 // --- The glow (section 7) ---
 
-// Makes `element` glow if `key` (a stage or box) wasn't drawn last time, or is still glowing from
-// an earlier drawing, and notes the key as drawn. Nothing glows at the first drawing.
-function applyGlow(element, key, drawnKeys) {
+// Makes `element` glow if `key` (a stage or box) wasn't drawn last time (unless `whenNew` is
+// false, for a randomization's box, which glows only when placed), or was just placed by a move,
+// copy or paste (glowsToStart), or is still glowing from an earlier drawing, and notes the key as
+// drawn. Nothing glows at the first drawing.
+function applyGlow(element, key, drawnKeys, { whenNew = true } = {}) {
   drawnKeys.add(key);
   const now = performance.now();
-  if (isNewKey(key)) {
+  // After a move, copy or paste, only what it placed glows: a box whose tip change only moved onto
+  // a new first stage isn't new (section 7).
+  const placing = glowsToStart.size > 0;
+  if ((whenNew && !placing && isNewKey(key)) || glowsToStart.has(key)) {
     glows.set(key, now);
   }
   const started = glows.get(key);
@@ -3290,6 +3370,885 @@ function applyGlow(element, key, drawnKeys) {
 // True if `key` wasn't among the keys drawn at the last drawing (and this isn't the first).
 function isNewKey(key) {
   return lastDrawnKeys !== null && !lastDrawnKeys.has(key);
+}
+
+// --- Moving and copying (section 7) ---
+
+// Connects selecting, dragging, copying, pasting and the right-click menu in the Stages column.
+// Moving and releasing are watched on the whole document, so a drag that leaves the column still
+// ends; the click after a drag is caught first, so it doesn't also count as a click.
+function connectMovingAndCopying() {
+  elements.stagesList.addEventListener("pointerdown", pressInColumn);
+  document.addEventListener("pointermove", moveInColumn);
+  document.addEventListener("pointerup", releaseInColumn);
+  document.addEventListener("pointercancel", cancelColumnDrag);
+  document.addEventListener("click", clickInColumn, true);
+  document.addEventListener("keyup", (event) => {
+    if (columnDrag !== null && (event.key === "Control" || event.key === "Meta")) {
+      setDragCopying(false);
+    }
+  });
+  document.addEventListener("copy", copyFromClipboardEvent);
+  document.addEventListener("paste", pasteFromClipboardEvent);
+  elements.stagesList.addEventListener("contextmenu", openColumnMenuFrom);
+  document.addEventListener("pointerdown", closeColumnMenuPressedOutside, true);
+  elements.stagesColumn.addEventListener("scroll", closeColumnMenu);
+  window.addEventListener("resize", closeColumnMenu);
+}
+
+// One text key for an item, as the column's elements carry it in data-item, e.g. "stage:5",
+// "tipGroup:3" or "randomization:r1". A stage's and a randomization's are also their glow keys.
+function itemKey(item) {
+  return `${item.kind}:${item.id}`;
+}
+
+// The item an itemKey names, e.g. "stage:5" → { kind: "stage", id: "5" }.
+function itemFromKey(key) {
+  const colon = key.indexOf(":");
+  return { kind: key.slice(0, colon), id: key.slice(colon + 1) };
+}
+
+// The seam `seam` with `place` (a place as moveItems takes it) noted on it, so a drag, the menu's
+// Paste here, and the drop line can find where it puts things. Returns the seam.
+function withDropPlace(seam, place) {
+  seam.dataset.dropPlace = JSON.stringify(place);
+  return seam;
+}
+
+// The place between boxes just before box `index`, e.g. betweenBoxes(0) → above the first box.
+function betweenBoxes(index) {
+  return { kind: "between", index };
+}
+
+// --- Moving and copying: where items are ---
+
+// Where `item` is in the column (columnBoxes of `plan`): { boxIndex, position, owned }, `position`
+// being a stage's place in its tip group (null for a box, or for a randomization's stage, `owned`),
+// or null if the item isn't in the plan.
+function locateItem(plan, item) {
+  const boxes = columnBoxes(plan);
+  for (const [boxIndex, box] of boxes.entries()) {
+    if (box.kind === "tipGroup") {
+      if (item.kind === "tipGroup" && box.stages[0] === item.id) {
+        return { boxIndex, position: null, owned: false };
+      }
+      if (item.kind === "stage" && box.stages.includes(item.id)) {
+        return { boxIndex, position: box.stages.indexOf(item.id), owned: false };
+      }
+    } else if (item.kind === "randomization" && box.id === item.id) {
+      return { boxIndex, position: null, owned: false };
+    } else if (item.kind === "stage" && box.tipGroups.some((group) => group.stages.includes(item.id))) {
+      return { boxIndex, position: null, owned: true };
+    }
+  }
+  return null;
+}
+
+// `items` that are in the plan, in column order, each once, without stages inside a tip group or
+// randomization also listed, as the logic takes them (transfer-designer.md, "Items"), e.g. for the
+// drag's label and the Ctrl+C message.
+function itemsInColumnOrder(plan, items) {
+  const located = [];
+  const seen = new Set();
+  for (const item of items) {
+    const where = locateItem(plan, item);
+    if (where !== null && !seen.has(itemKey(item))) {
+      seen.add(itemKey(item));
+      located.push({ item, ...where });
+    }
+  }
+  const boxesTaken = new Set(located.filter(({ item }) => item.kind !== "stage").map(({ boxIndex }) => boxIndex));
+  return located
+    .filter(({ item, boxIndex }) => item.kind !== "stage" || !boxesTaken.has(boxIndex))
+    .sort((first, second) => first.boxIndex - second.boxIndex || (first.position ?? -1) - (second.position ?? -1))
+    .map(({ item }) => item);
+}
+
+// What's open, as items: the open stage, or the randomization whose card is open; [] with Start or
+// End open.
+function openItems() {
+  if (card !== null) {
+    return [{ kind: "randomization", id: card.id }];
+  }
+  const open = currentOpen();
+  return isStage(currentPlan(), open) ? [{ kind: "stage", id: open }] : [];
+}
+
+// What's selected: the picked set, or, with none, what's open (section 7, "Selecting"), leaving
+// out anything no longer in the plan.
+function selectedItems() {
+  const plan = currentPlan();
+  return (pickedSet ?? openItems()).filter((item) => locateItem(plan, item) !== null);
+}
+
+// Marks `items` as selected in the column, and nothing else.
+function markSelection(items) {
+  const keys = new Set(items.map(itemKey));
+  for (const element of elements.stagesList.querySelectorAll("[data-item]")) {
+    element.classList.toggle("selected", keys.has(element.dataset.item));
+  }
+}
+
+// Forgets the picked set, so what's open is selected again (section 7, "Selecting"), and the
+// anchor for Shift-click, which is then what's open.
+function forgetPickedSet() {
+  pickedSet = null;
+  selectionAnchor = null;
+}
+
+// --- Moving and copying: selecting ---
+
+// The item handle a press or click on `target` is on (a stage's heading row, a tip group's heading
+// or a randomization's heading), or null if it's elsewhere, or on a button or box inside a handle
+// (a ✎), which keeps its own behavior. Anything inside an open editing box keeps its own behavior
+// too: the box floats inside the handle it was opened from (section 7, "What a press can select or
+// drag").
+function itemHandleOf(target) {
+  if (!(target instanceof Element) || !elements.stagesList.contains(target)) {
+    return null;
+  }
+  if (target.closest(".editing-box") !== null) {
+    return null;
+  }
+  const handle = target.closest("[data-item-handle]");
+  if (handle === null) {
+    return null;
+  }
+  const control = target.closest("button, input, select, textarea, a");
+  return control !== null && control !== handle && handle.contains(control) ? null : handle;
+}
+
+// What a click with these keys (`withCtrl`, `withShift`) on `item` would select: for Ctrl, the
+// selection with the item added or taken out; for Shift, the run from the anchor to it; otherwise
+// the item alone.
+function selectionAfterClick(item, { withCtrl, withShift }) {
+  if (withCtrl) {
+    const base = selectedItems();
+    const has = base.some((other) => itemKey(other) === itemKey(item));
+    return has ? base.filter((other) => itemKey(other) !== itemKey(item)) : [...base, item];
+  }
+  if (withShift) {
+    const plan = currentPlan();
+    const anchorInPlan = selectionAnchor !== null && locateItem(plan, selectionAnchor) !== null;
+    const anchor = anchorInPlan ? selectionAnchor : openItems()[0] ?? null;
+    return anchor === null ? [item] : runBetween(plan, anchor, item);
+  }
+  return [item];
+}
+
+// The run Shift-click selects, from `anchor` to `item` (section 7, "Selecting"): the stages of
+// ordinary tip groups between them in column order when both are such stages; otherwise every box
+// from the anchor's box to the item's, each as a whole (a tip group or a randomization).
+function runBetween(plan, anchor, item) {
+  const from = locateItem(plan, anchor);
+  const to = locateItem(plan, item);
+  if (from === null || to === null) {
+    return [item];
+  }
+  const boxes = columnBoxes(plan);
+  const bothStages = anchor.kind === "stage" && item.kind === "stage" && !from.owned && !to.owned;
+  if (bothStages) {
+    const stages = boxes.filter((box) => box.kind === "tipGroup").flatMap((box) => box.stages);
+    const [first, last] = [stages.indexOf(anchor.id), stages.indexOf(item.id)].sort((a, b) => a - b);
+    return stages.slice(first, last + 1).map((id) => ({ kind: "stage", id }));
+  }
+  const [first, last] = [from.boxIndex, to.boxIndex].sort((a, b) => a - b);
+  return boxes.slice(first, last + 1).map((box) =>
+    box.kind === "tipGroup" ? { kind: "tipGroup", id: box.stages[0] } : { kind: "randomization", id: box.id },
+  );
+}
+
+// Acts on a click on an item's handle (section 7, "Selecting"): Ctrl (Cmd) adds or takes it out of
+// the selection, Shift selects a run, opening nothing; a plain click opens a stage (forgetting the
+// picked set), selects a tip group alone, or opens or closes a randomization's card, selecting it.
+function clickItem(item, keys) {
+  if (keys.withCtrl || keys.withShift) {
+    pickedSet = selectionAfterClick(item, keys);
+    if (keys.withCtrl) {
+      selectionAnchor = item;
+    }
+    markSelection(selectedItems());
+    return;
+  }
+  if (item.kind === "stage") {
+    openEntry(item.id);
+    forgetPickedSet();
+  } else if (item.kind === "tipGroup") {
+    pickedSet = [item];
+  } else if (card !== null && card.id === item.id) {
+    if (closeRandomizationCard()) {
+      pickedSet = [item];
+    }
+  } else {
+    openEntry(item.id);
+    if (card !== null && card.id === item.id) {
+      pickedSet = [item];
+    }
+  }
+  // Set after opening, which forgets the anchor of whatever opened before.
+  selectionAnchor = item;
+  markSelection(selectedItems());
+}
+
+// Every click on the page, caught first: the click a drag ends with is ignored; a click on an
+// item's handle in the column is handled here (clickItem) instead of by the handle itself.
+function clickInColumn(event) {
+  if (swallowNextClick) {
+    swallowNextClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  const handle = itemHandleOf(event.target);
+  // A press an open text box passed on, or one an editing box with changes refuses, is left to
+  // their guards (sections 7 and 10).
+  const refusedByBox = editingBox !== null && editingBox.element !== undefined && isBoxDirty();
+  if (handle === null || pressPassedOn || refusedByBox) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  clickItem(itemFromKey(handle.dataset.itemHandle), {
+    withCtrl: event.ctrlKey || event.metaKey,
+    withShift: event.shiftKey,
+  });
+}
+
+// --- Moving and copying: dragging ---
+
+// A press on an item's handle with the main button: marks what the click would select, or what a
+// drag would take, at once (section 7, "How it looks"), and notes the press, which becomes a drag
+// once it moves DRAG_START_DISTANCE.
+function pressInColumn(event) {
+  swallowNextClick = false;
+  const handle = event.button === 0 ? itemHandleOf(event.target) : null;
+  if (handle === null) {
+    return;
+  }
+  const item = itemFromKey(handle.dataset.itemHandle);
+  const keys = { withCtrl: event.ctrlKey || event.metaKey, withShift: event.shiftKey };
+  const selection = selectedItems();
+  const inSelection = selection.some((other) => itemKey(other) === itemKey(item));
+  // A plain press on something selected keeps the selection marked, since a drag would take it.
+  const marked = !keys.withCtrl && !keys.withShift && inSelection ? selection : selectionAfterClick(item, keys);
+  markSelection(marked);
+  columnPress = { item, inSelection, x: event.clientX, y: event.clientY };
+}
+
+// Follows the pointer: a press that has moved far enough becomes a drag; a drag moves its label,
+// finds where it would land, and scrolls the column near its top or bottom.
+function moveInColumn(event) {
+  if (columnPress !== null && columnDrag === null) {
+    const distance = Math.hypot(event.clientX - columnPress.x, event.clientY - columnPress.y);
+    if (distance >= DRAG_START_DISTANCE) {
+      beginColumnDrag(event);
+    }
+  }
+  if (columnDrag === null) {
+    return;
+  }
+  columnDrag.pointer = { x: event.clientX, y: event.clientY };
+  columnDrag.copying = event.ctrlKey || event.metaKey;
+  scrollColumnNearEdges(event.clientY);
+  updateColumnDrag();
+}
+
+// Starts a drag from the press: it takes the selection, if the pressed thing is in it, or else the
+// pressed thing alone, which becomes the selection (section 7, "Dragging").
+function beginColumnDrag(event) {
+  const { item, inSelection } = columnPress;
+  const items = inSelection ? selectedItems() : [item];
+  // Noted so that cancelling the drag gives the selection back as it was.
+  const before = { pickedSet, selectionAnchor };
+  pickedSet = items;
+  selectionAnchor = item;
+  markSelection(items);
+  columnDrag = {
+    items,
+    copying: event.ctrlKey || event.metaKey,
+    refused: false,
+    before,
+    place: null,
+    pointer: { x: event.clientX, y: event.clientY },
+  };
+  hideContentsCard();
+  document.body.classList.add("column-dragging");
+  elements.stagesList.classList.add("dragging");
+  for (const key of items.map(itemKey)) {
+    for (const element of elements.stagesList.querySelectorAll(`[data-item="${cssEscape(key)}"]`)) {
+      element.classList.add("dragged");
+    }
+  }
+  updateColumnDrag();
+}
+
+// Switches the drag between moving and copying, as Ctrl (Cmd) is pressed or released.
+function setDragCopying(copying) {
+  if (columnDrag.copying !== copying) {
+    columnDrag.copying = copying;
+    updateColumnDrag();
+  }
+}
+
+// True if the drag can't move what it holds: a randomization's stage without its randomization,
+// while not copying (section 7, "Dragging").
+function dragIsRefused() {
+  if (columnDrag.copying) {
+    return false;
+  }
+  const plan = currentPlan();
+  const takenRandomizations = new Set(
+    columnDrag.items.filter((item) => item.kind === "randomization").map((item) => item.id),
+  );
+  return columnDrag.items.some((item) => {
+    const owner = item.kind === "stage" ? randomizationOf(plan, item.id) : null;
+    return owner !== null && !takenRandomizations.has(owner);
+  });
+}
+
+// Redraws the drag's label and drop line for where the pointer is now.
+function updateColumnDrag() {
+  const refused = dragIsRefused();
+  columnDrag.refused = refused;
+  const seam = refused ? null : seamNearestPointer(columnDrag.pointer, holdsContainerItem(columnDrag.items));
+  columnDrag.place = seam === null ? null : JSON.parse(seam.dataset.dropPlace);
+  showDropLine(seam);
+  const label = elements.dragLabel;
+  label.textContent = refused
+    ? "A randomization's stages move with it · hold Ctrl to copy"
+    : `${columnDrag.copying ? "+ Copy" : "Move"} ${describeItems(currentPlan(), columnDrag.items)}`;
+  label.classList.toggle("refused", refused);
+  label.style.left = `${columnDrag.pointer.x + DRAG_LABEL_OFFSET.x}px`;
+  label.style.top = `${columnDrag.pointer.y + DRAG_LABEL_OFFSET.y}px`;
+  label.hidden = false;
+}
+
+// True if `items` hold a tip group or a randomization, which go only between tip groups.
+function holdsContainerItem(items) {
+  return items.some((item) => item.kind !== "stage");
+}
+
+// The seam nearest the pointer, up and down, while the pointer is over the column or within
+// COLUMN_DROP_MARGIN of its sides; only seams between tip groups when `betweenOnly`; null if the
+// pointer is away from the column.
+function seamNearestPointer(pointer, betweenOnly) {
+  const column = elements.stagesColumn.getBoundingClientRect();
+  const nearColumn =
+    pointer.x >= column.left - COLUMN_DROP_MARGIN &&
+    pointer.x <= column.right + COLUMN_DROP_MARGIN &&
+    pointer.y >= column.top &&
+    pointer.y <= column.bottom;
+  if (!nearColumn) {
+    return null;
+  }
+  const selector = betweenOnly ? ".group-seam[data-drop-place]" : "[data-drop-place]";
+  let nearest = null;
+  let nearestDistance = Infinity;
+  for (const seam of elements.stagesList.querySelectorAll(selector)) {
+    const rect = seam.getBoundingClientRect();
+    const distance = Math.abs(rect.top + rect.height / 2 - pointer.y);
+    if (distance < nearestDistance) {
+      nearest = seam;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
+// Shows the drop line on `seam` (a 4px blue line with a dot at each end), or hides it for null. A
+// seam between tip groups is marked across the column's width, one inside a box 8px in from its
+// cards' sides, as its own line is.
+function showDropLine(seam) {
+  const line = elements.dropLine;
+  if (seam === null) {
+    line.hidden = true;
+    return;
+  }
+  const rect = seam.getBoundingClientRect();
+  const inset = seam.classList.contains("group-seam") ? 0 : 8;
+  line.style.left = `${rect.left + inset}px`;
+  line.style.width = `${rect.width - inset * 2}px`;
+  line.style.top = `${rect.top + rect.height / 2}px`;
+  line.hidden = false;
+}
+
+// Scrolls the column by COLUMN_SCROLL_STEP while the pointer is within COLUMN_DROP_MARGIN of its top
+// or bottom (section 7, "Dragging").
+function scrollColumnNearEdges(pointerY) {
+  const column = elements.stagesColumn;
+  const rect = column.getBoundingClientRect();
+  if (pointerY < rect.top + COLUMN_DROP_MARGIN) {
+    column.scrollBy({ top: -COLUMN_SCROLL_STEP, behavior: "instant" });
+  } else if (pointerY > rect.bottom - COLUMN_DROP_MARGIN) {
+    column.scrollBy({ top: COLUMN_SCROLL_STEP, behavior: "instant" });
+  }
+}
+
+// Ends a press or a drag in the column: a drag drops (dropColumnDrag), and the click that follows
+// is ignored; a press that never moved leaves its click to clickInColumn, and the marks go back to
+// what's selected if the click didn't land on the handle.
+function releaseInColumn() {
+  if (columnDrag !== null) {
+    const finished = columnDrag;
+    endColumnDrag();
+    // This is the release: the click that comes right after it, if any, is ignored.
+    swallowNextClick = true;
+    setTimeout(() => {
+      swallowNextClick = false;
+    }, 0);
+    dropColumnDrag(finished);
+    return;
+  }
+  if (columnPress !== null) {
+    columnPress = null;
+    setTimeout(() => markSelection(selectedItems()), 0);
+  }
+}
+
+// Cancels a press or drag in the column (Escape, or the browser interrupting it): nothing changes.
+// The click that follows the release of a cancelled press is ignored too, so it doesn't open or
+// select the item (section 7: "Escape cancels the drag; nothing changes").
+function cancelColumnDrag() {
+  if (columnPress === null && columnDrag === null) {
+    return;
+  }
+  if (columnDrag !== null) {
+    ({ pickedSet, selectionAnchor } = columnDrag.before);
+  }
+  endColumnDrag();
+  markSelection(selectedItems());
+  swallowClickAfterRelease();
+}
+
+// Ignores the click that comes with the pointer's next release, if one comes: the flag is set now
+// and cleared a moment after that release (a click comes right after it, if at all), so a release
+// without a click doesn't eat a later click.
+function swallowClickAfterRelease() {
+  swallowNextClick = true;
+  document.addEventListener(
+    "pointerup",
+    () => {
+      setTimeout(() => {
+        swallowNextClick = false;
+      }, 0);
+    },
+    { once: true, capture: true },
+  );
+}
+
+// Takes away the drag's label, drop line and fading, and forgets the press and drag.
+function endColumnDrag() {
+  columnPress = null;
+  columnDrag = null;
+  elements.dragLabel.hidden = true;
+  elements.dropLine.hidden = true;
+  document.body.classList.remove("column-dragging");
+  elements.stagesList.classList.remove("dragging");
+  for (const element of elements.stagesList.querySelectorAll(".dragged")) {
+    element.classList.remove("dragged");
+  }
+}
+
+// Drops a finished drag (section 7, "Dragging"): a refused one shows the logic's message; one with
+// no place marked says where to drop it; otherwise it moves (moveItems) or, with Ctrl (Cmd) held,
+// copies (copyItems) to its place, as one edit.
+function dropColumnDrag({ items, copying, refused, place }) {
+  if (refused) {
+    // The logic gives the message: moving a randomization's stage alone is refused wherever it goes.
+    tryLogic(() => moveItems(currentPlan(), items, betweenBoxes(0)));
+    return;
+  }
+  if (place === null) {
+    showMessage("Drop it on a gap between stages or tip groups.", "note");
+    return;
+  }
+  if (copying) {
+    placeItems((plan) => copyItems(plan, items, place), "Copied");
+  } else {
+    placeItems((plan) => moveItems(plan, items, place), "Moved");
+  }
+}
+
+// --- Moving and copying: placing ---
+
+// Moves, copies or pastes, as one edit (section 7, "After a move, copy or paste"): an editing box
+// with changes refuses it, one without closes; an open randomization's card closes first as Close
+// would, or nothing happens. `place` runs the logic on the plan and gives { plan, placed }. What was
+// placed becomes the selection, glows, and is scrolled into view; the first stage among it opens.
+// `verb` starts the message, e.g. "Moved".
+function placeItems(place, verb) {
+  if (editingBox !== null) {
+    if (isBoxDirty()) {
+      refuseOutsideClick();
+      return;
+    }
+    closeEditingBox();
+  }
+  if (!closeRandomizationCard()) {
+    return;
+  }
+  const before = currentPlan();
+  const result = tryLogic(() => place(before));
+  if (result === false) {
+    return;
+  }
+  if (result.plan === before) {
+    showMessage("Dropped where it already was, so nothing moved.", "note");
+    return;
+  }
+  const firstStage = result.placed.find((item) => item.kind !== "randomization");
+  const open = firstStage === undefined ? validOpen(result.plan, currentOpen()) : firstStage.id;
+  for (const key of glowKeysOf(result.plan, result.placed)) {
+    glowsToStart.add(key);
+  }
+  source = null;
+  recordEdit(result.plan, open);
+  pickedSet = result.placed;
+  selectionAnchor = result.placed[0];
+  markSelection(selectedItems());
+  showMessage(`${verb} ${describeItems(result.plan, result.placed)}.`, "ok");
+  scrollIntoColumnView(elements.stagesList.querySelector(`[data-item="${cssEscape(itemKey(result.placed[0]))}"]`));
+}
+
+// The glow keys of what was placed: each stage's, every stage of a tip group, and a randomization's
+// box.
+function glowKeysOf(plan, placed) {
+  const boxes = columnBoxes(plan);
+  return placed.flatMap((item) => {
+    if (item.kind === "tipGroup") {
+      const box = boxes.find((candidate) => candidate.kind === "tipGroup" && candidate.stages[0] === item.id);
+      return box.stages.map((id) => `stage:${id}`);
+    }
+    return [itemKey(item)];
+  });
+}
+
+// The items described for the drag's label and the messages (section 7), e.g. “Drugs”, "2 stages",
+// "a tip group", "2 tip groups", "a randomization", or "3 items" for a mix.
+function describeItems(plan, items) {
+  const taken = itemsInColumnOrder(plan, items);
+  const kinds = new Set(taken.map((item) => item.kind));
+  if (kinds.size !== 1) {
+    return countOf(taken.length, "item");
+  }
+  const [kind] = kinds;
+  if (kind === "stage") {
+    return taken.length === 1 ? `“${plan.stageList.get(taken[0].id).name}”` : countOf(taken.length, "stage");
+  }
+  const noun = kind === "tipGroup" ? "tip group" : "randomization";
+  return taken.length === 1 ? `a ${noun}` : countOf(taken.length, noun);
+}
+
+// --- Moving and copying: copying and pasting ---
+
+// Ctrl+C (Cmd+C) on the page (section 7, "Copying and pasting"): copies what's selected, onto the
+// system clipboard as text (the event's own clipboard data) and as the page's copy. A text box or
+// menu, or text selected on the page, keeps the browser's copy.
+function copyFromClipboardEvent(event) {
+  if (keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
+    return;
+  }
+  const copied = copySelection();
+  if (copied !== null) {
+    event.clipboardData.setData("text/plain", JSON.stringify(copied));
+    event.preventDefault();
+  }
+}
+
+// True if `target` is a text box or menu, which keeps its own Ctrl+C and Ctrl+V.
+function keepsOwnClipboard(target) {
+  return target instanceof Element && target.matches("input, select, textarea, [contenteditable]");
+}
+
+// Copies what's selected (copyOf) as the page's copy, and says so; returns the copied items, or
+// null with nothing selected (a note says how to select).
+function copySelection() {
+  const plan = currentPlan();
+  const items = selectedItems();
+  if (items.length === 0) {
+    showMessage("Select a stage, a tip group (click its heading) or a randomization to copy it.", "note");
+    return null;
+  }
+  const copied = tryLogic(() => copyOf(plan, items));
+  if (copied === false) {
+    return null;
+  }
+  keepPageCopy(copied);
+  showMessage(
+    `Copied ${describeItems(plan, items)}. Right-click where it should go and choose Paste, or press ` +
+      "Ctrl+V to paste it below the selection.",
+    "note",
+  );
+  return copied;
+}
+
+// Keeps `copied` as the page's copy: in local storage, shared by every tab of the designer, and in
+// the page's memory, for a browser without local storage.
+function keepPageCopy(copied) {
+  copiedInMemory = copied;
+  try {
+    window.localStorage.setItem(COPIED_ITEMS_KEY, JSON.stringify(copied));
+  } catch {
+    // No local storage (e.g. a private window): the page's memory keeps it for this tab.
+  }
+}
+
+// The page's copy: the latest copied items in any tab (local storage), or this tab's own, or null.
+function pageCopy() {
+  try {
+    const stored = window.localStorage.getItem(COPIED_ITEMS_KEY);
+    if (stored !== null) {
+      return JSON.parse(stored);
+    }
+  } catch {
+    // Unreadable or no storage: this tab's own copy is used.
+  }
+  return copiedInMemory;
+}
+
+// Copied items in `text` from the system clipboard, if it's JSON in their format (anything with
+// that format, so a damaged one shows pasteItems' message), or null.
+function copiedItemsIn(text) {
+  try {
+    const parsed = JSON.parse(text);
+    return isObject(parsed) && parsed.format === COPIED_ITEMS_FORMAT ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+// True if copied items (perhaps damaged) hold a tip group or a randomization.
+function copiedHoldsContainer(copied) {
+  return Array.isArray(copied?.items) && copied.items.some((item) => item?.kind === "tipGroup" || item?.kind === "randomization");
+}
+
+// Ctrl+V (Cmd+V) on the page (section 7, "Copying and pasting"): pastes the system clipboard's
+// copied items, or else the page's copy, just below the selection. A text box or menu keeps the
+// browser's paste.
+function pasteFromClipboardEvent(event) {
+  if (keepsOwnClipboard(event.target)) {
+    return;
+  }
+  event.preventDefault();
+  const copied = copiedItemsIn(event.clipboardData?.getData("text/plain") ?? "") ?? pageCopy();
+  if (copied === null) {
+    showMessage("Nothing to paste yet: select a stage, tip group or randomization and press Ctrl+C.", "note");
+    return;
+  }
+  const place = pastePlaceBelowSelection(currentPlan(), copiedHoldsContainer(copied));
+  placeItems((plan) => pasteItems(plan, copied, place), "Pasted");
+}
+
+// Where Ctrl+V pastes (section 7): just below the last selected thing in column order, inside its
+// tip group for a stage of an ordinary tip group when nothing pasted is a tip group or
+// randomization (`holdsContainer`), otherwise between boxes, below its box; with nothing selected,
+// below the last box, or above the first with Start open.
+function pastePlaceBelowSelection(plan, holdsContainer) {
+  const selected = itemsInColumnOrder(plan, selectedItems());
+  if (selected.length === 0) {
+    return betweenBoxes(currentOpen() === START ? 0 : columnBoxes(plan).length);
+  }
+  return pastePlaceBeside(plan, selected.at(-1), "below", holdsContainer);
+}
+
+// The place just `side` ("above" or "below") of `item`: inside its tip group for a stage of an
+// ordinary tip group, unless what's pasted holds a tip group or randomization (`holdsContainer`);
+// otherwise between boxes, above or below its box (a randomization's stage's box being its
+// randomization's).
+function pastePlaceBeside(plan, item, side, holdsContainer) {
+  const where = locateItem(plan, item);
+  const below = side === "below" ? 1 : 0;
+  if (item.kind === "stage" && !where.owned && !holdsContainer) {
+    return { kind: "inTipGroup", index: where.boxIndex, position: where.position + below };
+  }
+  return betweenBoxes(where.boxIndex + below);
+}
+
+// --- Moving and copying: the right-click menu ---
+
+// A context menu asked for in the column (a right click, the menu key or Shift+F10): on an item's
+// handle, the item menu (Copy, Paste above, Paste below), selecting the item first if it isn't; on
+// a seam's band (not its buttons), Paste here. Anywhere else (Start, End, an open card's
+// contents), the browser's menu.
+function openColumnMenuFrom(event) {
+  // Inside an editing box, the browser's own menu, as for any text box.
+  if (event.target instanceof Element && event.target.closest(".editing-box") !== null) {
+    return;
+  }
+  if (editingBox !== null && isBoxDirty()) {
+    event.preventDefault();
+    return;
+  }
+  const fromKeyboard = event.button !== 2 && event.detail === 0 && event.clientX === 0 && event.clientY === 0;
+  const handle = itemHandleOf(event.target);
+  const seam = event.target instanceof Element ? event.target.closest("[data-drop-place]") : null;
+  const onSeamButton = event.target instanceof Element && event.target.closest(".seam-button") !== null;
+  if (handle === null && (seam === null || onSeamButton)) {
+    return;
+  }
+  event.preventDefault();
+  const at = fromKeyboard ? besideElement(handle ?? seam) : { x: event.clientX, y: event.clientY };
+  if (handle !== null) {
+    openItemMenu(itemFromKey(handle.dataset.itemHandle), at);
+  } else {
+    openSeamMenu(seam, at);
+  }
+}
+
+// Where a menu opened from the keyboard goes: just under `element`, a little in from its left.
+function besideElement(element) {
+  const rect = element.getBoundingClientRect();
+  return { x: rect.left + 16, y: rect.bottom };
+}
+
+// The menu key or Shift+F10 on a focused row or heading in the column opens its menu (section 12),
+// in case the browser doesn't send a context menu event for it. Returns true if it did.
+function openColumnMenuFromKey(event) {
+  const isMenuKey = event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
+  const handle = isMenuKey ? itemHandleOf(event.target) : null;
+  if (handle === null) {
+    return false;
+  }
+  event.preventDefault();
+  openItemMenu(itemFromKey(handle.dataset.itemHandle), besideElement(handle));
+  return true;
+}
+
+// The item menu for `item`, at `at` ({ x, y }): Copy, Paste above, Paste below. Right-clicking
+// something not selected selects it first, as in PowerPoint.
+function openItemMenu(item, at) {
+  if (!selectedItems().some((other) => itemKey(other) === itemKey(item))) {
+    pickedSet = [item];
+    selectionAnchor = item;
+    markSelection(selectedItems());
+  }
+  const copied = pageCopy();
+  const pasteBlocked = copied === null ? "Copy something first." : null;
+  // What Paste above or Paste below does (`side`, "above" or "below"): pastes the page's copy
+  // just beside the item, as one edit.
+  const pasteBeside = (side) => () => {
+    const plan = currentPlan();
+    const place = pastePlaceBeside(plan, item, side, copiedHoldsContainer(copied));
+    placeItems((current) => pasteItems(current, copied, place), "Pasted");
+  };
+  showColumnMenu(
+    [
+      { label: "Copy", action: copySelectionWithClipboard },
+      { label: "Paste above", action: pasteBeside("above"), blocked: pasteBlocked },
+      { label: "Paste below", action: pasteBeside("below"), blocked: pasteBlocked },
+    ],
+    at,
+    null,
+  );
+}
+
+// The menu's Copy: copies as Ctrl+C does, and puts the text on the system clipboard if the browser
+// lets the page write it (the menu has no copy event of its own).
+function copySelectionWithClipboard() {
+  const copied = copySelection();
+  if (copied !== null) {
+    navigator.clipboard?.writeText(JSON.stringify(copied)).catch(() => {
+      // Not allowed here: the page's copy still holds it, for the menu and Ctrl+V.
+    });
+  }
+}
+
+// The menu on a seam (a gap), at `at`: Paste here, at the seam's place; greyed out with nothing
+// copied, or on a gap inside a tip group when what's copied holds a tip group or randomization.
+function openSeamMenu(seam, at) {
+  const copied = pageCopy();
+  const place = JSON.parse(seam.dataset.dropPlace);
+  let blocked = null;
+  if (copied === null) {
+    blocked = "Copy something first.";
+  } else if (place.kind === "inTipGroup" && copiedHoldsContainer(copied)) {
+    blocked = "A tip group or randomization goes between tip groups.";
+  }
+  showColumnMenu(
+    [{ label: "Paste here", action: () => placeItems((plan) => pasteItems(plan, copied, place), "Pasted"), blocked }],
+    at,
+    seam,
+  );
+}
+
+// Shows the column's menu at `at`, kept inside the window, with `entries` ({ label, action,
+// blocked }: `blocked` the reason it can't be chosen, or null), each a menu item; the first that
+// can be chosen takes the keyboard focus. `seam` is the seam it's for, whose line shows as the drop
+// line does while the menu is open, or null.
+function showColumnMenu(entries, at, seam) {
+  closeColumnMenu();
+  const menu = elements.columnMenu;
+  menu.replaceChildren(...entries.map(createColumnMenuItem));
+  menu.hidden = false;
+  const width = menu.offsetWidth;
+  const height = menu.offsetHeight;
+  menu.style.left = `${Math.max(4, Math.min(at.x, window.innerWidth - width - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(at.y, window.innerHeight - height - 4))}px`;
+  columnMenu = { seam };
+  if (seam !== null) {
+    seam.classList.add("menu-target");
+    showDropLine(seam);
+  }
+  menu.querySelector("button:not([disabled])")?.focus();
+}
+
+// One item of the column's menu: a button (role menuitem) that runs its action after closing the
+// menu, or, greyed out, its reason under it.
+function createColumnMenuItem({ label, action, blocked = null }) {
+  const item = createElement("button", "", "column-menu-item");
+  item.type = "button";
+  item.setAttribute("role", "menuitem");
+  item.append(createElement("span", label, "column-menu-label"));
+  if (blocked !== null) {
+    item.disabled = true;
+    item.setAttribute("aria-disabled", "true");
+    item.append(createElement("span", blocked, "column-menu-reason"));
+  }
+  item.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeColumnMenu();
+    action();
+  });
+  item.addEventListener("keydown", moveFocusInColumnMenu);
+  return item;
+}
+
+// Up and down move the keyboard focus among the menu's items that can be chosen; Escape closes it.
+function moveFocusInColumnMenu(event) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeColumnMenu();
+    return;
+  }
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+    return;
+  }
+  event.preventDefault();
+  const items = [...elements.columnMenu.querySelectorAll("button:not([disabled])")];
+  const next = items.indexOf(event.target) + (event.key === "ArrowDown" ? 1 : -1);
+  items[(next + items.length) % items.length]?.focus();
+}
+
+// Closes the column's menu, if it's open.
+function closeColumnMenu() {
+  if (columnMenu === null) {
+    return;
+  }
+  columnMenu.seam?.classList.remove("menu-target");
+  if (columnMenu.seam !== null && columnDrag === null) {
+    elements.dropLine.hidden = true;
+  }
+  columnMenu = null;
+  elements.columnMenu.hidden = true;
+  elements.columnMenu.replaceChildren();
+}
+
+// Closes the column's menu on a press anywhere outside it.
+function closeColumnMenuPressedOutside(event) {
+  if (columnMenu !== null && !elements.columnMenu.contains(event.target)) {
+    closeColumnMenu();
+  }
 }
 
 // --- Starting contents: the palette (section 8) ---
@@ -5153,7 +6112,27 @@ function connectKeys() {
 
 // Acts on one key press (section 12).
 function handleKey(event) {
+  // While a drag is on in the Stages column, Escape cancels it and Ctrl (Cmd) switches it to
+  // copying (section 12).
+  if (columnDrag !== null || columnPress !== null) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelColumnDrag();
+      return;
+    }
+    if (columnDrag !== null && (event.key === "Control" || event.key === "Meta")) {
+      setDragCopying(true);
+      return;
+    }
+  }
   if (event.target.matches("input, select, textarea, [contenteditable]")) {
+    return;
+  }
+  if (columnMenu !== null && event.key === "Escape") {
+    closeColumnMenu();
+    return;
+  }
+  if (openColumnMenuFromKey(event)) {
     return;
   }
   const key = event.key.toLowerCase();
@@ -5198,6 +6177,10 @@ function pressEscape() {
     closeCardWithEscape();
   } else if (source !== null) {
     clearSource();
+  } else if (pickedSet !== null) {
+    // Nothing above used Escape: it forgets the selection (section 12).
+    forgetPickedSet();
+    markSelection(selectedItems());
   }
 }
 

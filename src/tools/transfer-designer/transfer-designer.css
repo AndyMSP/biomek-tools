@@ -1431,6 +1431,11 @@ button.entry-row {
   --glow-end: var(--red-tint);
 }
 
+/* A randomization's box glows when a move, copy or paste placed it (section 7). */
+.randomization.glowing {
+  --glow-end: var(--page-background);
+}
+
 /* A randomization's own tip group has no seams inside it, so it keeps its own space below its last
    stage (section 7). */
 .tip-group.owned {
@@ -2198,6 +2203,192 @@ button.quiet-danger:disabled {
 
 .contents-card .card-mix.short {
   color: var(--short-mix);
+}
+
+/* --- Moving and copying in the Stages column (sections 7 and 15) --- */
+
+/* A stage's row and the headings show the grab pointer, and pressing or dragging on them never
+   selects text. */
+.stages-list [data-item-handle] {
+  cursor: grab;
+  user-select: none;
+}
+
+/* An open stage's heading row is a handle too, while its card's contents keep their own pointer. */
+.entry.is-open .entry-row[data-item-handle] {
+  cursor: grab;
+}
+
+.tip-group-heading[data-item-handle] {
+  min-height: 24px;
+  border-radius: 6px;
+}
+
+/* An editing box floats inside the handle it was opened from, but keeps the page's own pointer and
+   text selection, so its text and boxes work as usual. */
+.stages-list [data-item-handle] .editing-box {
+  cursor: auto;
+  user-select: text;
+}
+
+/* While dragging, nothing on the page is selected as text, and the pointer is the grabbing hand. */
+body.column-dragging,
+body.column-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+/* A selected stage: light blue, a 2px blue ring and border, its number's badge blue with white
+   text, the open card too. */
+.entry.selected {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+  box-shadow: 0 0 0 2px var(--blue);
+}
+
+.entry.selected .entry-badge {
+  background: var(--blue);
+  color: #ffffff;
+}
+
+/* A selected tip group or randomization: a 3px blue ring and border, its heading's text blue and
+   semibold. */
+.tip-group.selected,
+.randomization.selected {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue);
+}
+
+.tip-group.selected > .tip-group-heading,
+.randomization.selected > .randomization-heading {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+/* What's dragged fades to half, with a 2px dashed blue outline, 2px out. */
+.stages-list .dragged {
+  opacity: 0.5;
+  outline: 2px dashed var(--blue);
+  outline-offset: 2px;
+}
+
+/* The seams' buttons are hidden during a drag. */
+.stages-list.dragging .seam-button,
+.stages-list.dragging .seam-line {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* The drag's label, following the pointer: white semibold 13px text on blue, 6px corners, a soft
+   shadow; gray for a refused drag. */
+.drag-label {
+  position: fixed;
+  z-index: 45;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--blue);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--text) 22%, transparent);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.drag-label.refused {
+  background: #8a8a85;
+}
+
+.drag-label[hidden],
+.drop-line[hidden],
+.column-menu[hidden] {
+  display: none;
+}
+
+/* Where a drop would land: a 4px blue line with a 10px dot at each end. */
+.drop-line {
+  position: fixed;
+  z-index: 44;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 2px;
+  background: var(--blue);
+  pointer-events: none;
+}
+
+.drop-line::before,
+.drop-line::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: var(--blue);
+}
+
+.drop-line::before {
+  left: -5px;
+}
+
+.drop-line::after {
+  right: -5px;
+}
+
+/* A seam a menu's Paste here is for shows no buttons while the menu is open (the drop line marks
+   it). */
+.seam.menu-target .seam-button {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* The right-click menu: at least 180px wide, 4px padding, white with a 1px border, 8px corners and
+   a shadow; items 32px tall, 14px text, light blue with blue text when pointed at or focused. */
+.column-menu {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel-background);
+  box-shadow: 0 6px 24px color-mix(in srgb, var(--text) 18%, transparent);
+}
+
+.column-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  text-align: left;
+}
+
+.column-menu-item:not([disabled]):hover,
+.column-menu-item:not([disabled]):focus-visible,
+.column-menu-item:not([disabled]):focus {
+  outline: none;
+  background: var(--blue-tint);
+  color: var(--blue);
+}
+
+.column-menu-item[disabled] {
+  color: var(--disabled-text);
+  cursor: default;
+}
+
+.column-menu-reason {
+  color: var(--muted-text);
+  font-size: 12px;
 }
 
 /* --- Motion: none with the system's "reduce motion" setting (section 15) --- */
