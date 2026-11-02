@@ -4006,7 +4006,7 @@ function pasteFromClipboardEvent(event) {
   event.preventDefault();
   const copied = copiedItemsIn(event.clipboardData?.getData("text/plain") ?? "") ?? pageCopy();
   if (copied === null) {
-    showMessage("Nothing to paste yet: select a stage, tip group or randomization and press Ctrl+V.", "note");
+    showMessage("Nothing to paste yet: select a stage, tip group or randomization and press Ctrl+C.", "note");
     return;
   }
   const place = pastePlaceBelowSelection(currentPlan(), copiedHoldsContainer(copied));
