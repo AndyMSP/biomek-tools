@@ -562,6 +562,9 @@ input:focus-visible {
   color: var(--muted-text);
   font: 12px/1.4 var(--mono-font);
   text-align: right;
+  /* One click selects the whole version, so it copies in one go (a double-click would stop at its
+     ".", "-" and "+"). */
+  user-select: all;
 }
 
 .results {

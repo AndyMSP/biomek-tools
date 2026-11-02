@@ -34,7 +34,7 @@ with `git` (section 4) and the pure function `buildVersion(facts)` turns into a 
 | Fact | What it is | Read with |
 |---|---|---|
 | `packageVersion` | `package.json`'s `version`: the version being worked towards, e.g. `"0.2.0"` | the file |
-| `lastRelease` | the most recent release tag reachable from the commit, without its `v`, e.g. `"0.1.0"`, or `null` if there's none. A release tag is `v` and `MAJOR.MINOR.PATCH`, e.g. `v0.1.0` (other tags, such as `pre-mixing`, aren't releases). | `git describe --tags --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*"` |
+| `lastRelease` | the most recent release tag reachable from the commit, without its `v`, e.g. `"0.1.0"`, or `null` if there's none. A release tag is exactly `v` and `MAJOR.MINOR.PATCH`, e.g. `v0.1.0`: other tags, such as `pre-mixing`, and tags that only start like one, such as `v0.2.0-rc1`, aren't releases (from the build, 2026-11-02). | `git describe --tags --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" --exclude "*-*" --exclude "*+*"` |
 | `commitsSince` | how many commits there are since that tag, e.g. `488`; `0` at the tag itself | `git rev-list --count v0.1.0..HEAD` |
 | `commit` | the commit, its first 7 characters, e.g. `"3cc65a9"` | `git rev-parse --short=7 HEAD` |
 | `branch` | the branch checked out, e.g. `"main"`, or `null` when none is (a detached HEAD) | `git rev-parse --abbrev-ref HEAD` (`"HEAD"` means none) |

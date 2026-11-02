@@ -27,8 +27,10 @@ const BRANCH_PREFIX = "branch-";
 // MAJOR.MINOR.PATCH: three whole numbers without leading zeros, and nothing after them.
 const RELEASE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
-// A release tag, as git describe looks for it: "v" and MAJOR.MINOR.PATCH, e.g. v0.1.0.
+// A release tag, as git describe looks for it: "v" and MAJOR.MINOR.PATCH, e.g. v0.1.0. The glob
+// would also take v0.2.0-rc1 or v0.2.0+x, so tags holding "-" or "+" are excluded.
 const RELEASE_TAG_PATTERN = "v[0-9]*.[0-9]*.[0-9]*";
+const NOT_RELEASE_TAG_PATTERNS = ["*-*", "*+*"];
 
 // The message when the folder isn't a git clone, or git can't be run (section 5).
 const NOT_A_CLONE =
@@ -204,7 +206,8 @@ function checkIsClone(git) {
 // or null if there's none (git describe fails when it finds no tag).
 function readLastRelease(git) {
   try {
-    const tag = git("describe", "--tags", "--abbrev=0", "--match", RELEASE_TAG_PATTERN);
+    const excludes = NOT_RELEASE_TAG_PATTERNS.flatMap((pattern) => ["--exclude", pattern]);
+    const tag = git("describe", "--tags", "--abbrev=0", "--match", RELEASE_TAG_PATTERN, ...excludes);
     return tag.slice(1);
   } catch {
     return null;

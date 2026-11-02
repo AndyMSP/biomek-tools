@@ -140,7 +140,7 @@ From the top:
 | Header | The experiment's name, as the page's heading; on the right, the buttons `Biomek files`, `Save`, `Open` and `Reset` (section 5). The tool's name isn't shown on the page (Andy, 2026-10-28): the browser tab says `Transfer Designer`. |
 | Deck panel (left) | Three bars, then the labware that's out (section 6). |
 | Stages column (right) | Start, the tip groups with their stages, and End (section 7). |
-| Below both, at the right | The **version line**: `Transfer Designer` and the build's version, e.g. `Transfer Designer 0.2.0-dev.488+3cc65a9` (`scripts/build-version.md`, "The page's version"; `0.2.0-unbuilt` when served unbuilt). It's text that can be selected and copied, not a control. |
+| Below both, at the right | The **version line**: `Transfer Designer` and the build's version, e.g. `Transfer Designer 0.2.0-dev.488+3cc65a9` (`scripts/build-version.md`, "The page's version"; `0.2.0-unbuilt` when served unbuilt). It's text, not a control: a click selects the whole version, so it can be copied in one go (a double-click would stop at its `.`, `-` and `+`; from the build, 2026-11-02). |
 | Message bar | Floating at the bottom of the window, centered (section 12). |
 
 When the window is wider than 1000px, the deck panel and the Stages column sit side by side, the
@@ -1397,6 +1397,6 @@ page's configuration (ADR 0009):
   (nothing selected, Ctrl+C's note);
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels;
-- the version line: the built file's name and the line show the same version; selecting it with a
-  double-click and copying it; a plan saved by the built file says the same version in `savedBy`;
+- the version line: the built file's name and the line show the same version; a click selects the
+  whole version, and it copies; a plan saved by the built file says the same version in `savedBy`;
   served unbuilt, the line ends `-unbuilt`.
