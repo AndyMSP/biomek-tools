@@ -113,7 +113,7 @@ from 1, in the list's order.
 | Missing properties | `Constituent 2 needs name, amount and unit, but is missing "unit".` (all missing, with `listNames`, in that order) |
 | Extra properties | `Constituent 2 can only have name, amount and unit, but also got "volume".` (all extra, with `listNames`, in their order) |
 | The name isn't a name | `checkName`'s messages, naming `constituent name`; the name is trimmed first |
-| The same name twice | `"Dye" is listed twice. List each constituent once.` The trimmed name; reported at the later entry, after that entry's own checks above. |
+| The same name twice | `"Dye" is listed twice. List each constituent once.` The trimmed name; reported at the later entry, in table order: after its object, missing, extra and name checks, before its amount and unit checks. |
 | The amount isn't a number above 0 (including `NaN`, `Infinity`, `0`, text) | `The amount of "Dye" must be a number above 0, like 10, but got "ten".` |
 | The unit isn't in the configuration | `The unit of "Dye" must be one of mM, µM, g/L, %, ×, but got "mg/mL".` (the offered units, in the configuration's order) |
 
@@ -146,7 +146,8 @@ the file holds.
   `"10"`, `0`, `-1`, `NaN` and `Infinity`; a unit not in the configuration, and one differing only
   in case, the message listing the offered units from the file.
 - Checks run in order: a bad constituent 1 and a bad constituent 2 report constituent 1; a bad name
-  and a bad amount in one constituent report the name.
+  and a bad amount in one constituent report the name; a repeated name with a bad amount in the
+  same entry reports the repeat.
 
 **A well's concentrations**
 - One component with one constituent, share 0.2 at 10 mM: `[{ name: "Dye", family: "molar", value:

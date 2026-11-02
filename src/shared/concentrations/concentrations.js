@@ -41,11 +41,7 @@ export function checkConstituents(constituents) {
   }
   const checked = [];
   constituents.forEach((constituent, index) => {
-    const entry = checkConstituent(constituent, index + 1);
-    if (checked.some((earlier) => earlier.name === entry.name)) {
-      throw new Error(`${describeValue(entry.name)} is listed twice. List each constituent once.`);
-    }
-    checked.push(entry);
+    checked.push(checkConstituent(constituent, index + 1, checked));
   });
   return checked;
 }
@@ -114,8 +110,9 @@ export function bestUnit(family, value) {
 // --- Helpers used only inside this module ---
 
 // One constituent, checked (concentrations.md, section 5, in table order) and copied with its name
-// trimmed. `number` is its place in the list, from 1, for messages.
-function checkConstituent(constituent, number) {
+// trimmed. `number` is its place in the list, from 1, for messages; `earlier` the constituents
+// already checked, so a repeated name is caught after the name check and before the amount's.
+function checkConstituent(constituent, number, earlier) {
   if (!isObject(constituent)) {
     throw new Error(
       `Constituent ${number} must be an object with a name, an amount and a unit, but got ${describeValue(constituent)}.`,
@@ -137,6 +134,9 @@ function checkConstituent(constituent, number) {
   // trimmed rather than refused; checkName then catches text that isn't text or is blank.
   const name = typeof constituent.name === "string" ? constituent.name.trim() : constituent.name;
   checkName(name, "constituent name");
+  if (earlier.some((entry) => entry.name === name)) {
+    throw new Error(`${describeValue(name)} is listed twice. List each constituent once.`);
+  }
   const { amount, unit } = constituent;
   if (!Number.isFinite(amount) || amount <= 0) {
     throw new Error(

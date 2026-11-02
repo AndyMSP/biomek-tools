@@ -175,10 +175,14 @@ describe("concentrations", () => {
       );
     });
 
-    test("the later entry's own checks come before the duplicate check", () => {
+    test("a repeated name is reported before the entry's amount and unit, after its name", () => {
       assert.throws(
         () => checkConstituents([constituent("Dye", 10, "mM"), constituent("Dye", 0, "mM")]),
-        { message: 'The amount of "Dye" must be a number above 0, like 10, but got 0.' },
+        { message: '"Dye" is listed twice. List each constituent once.' },
+      );
+      assert.throws(
+        () => checkConstituents([constituent("Dye", 10, "mM"), constituent("", 0, "mM")]),
+        { message: /constituent name/ },
       );
     });
 
