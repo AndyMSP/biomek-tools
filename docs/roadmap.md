@@ -306,6 +306,16 @@ Last updated: 2026-11-01
   `µL` after it, rather than a volume shown as text that turns into a box when clicked, which
   didn't look editable alone in the card. Transfer rows keep theirs. A very small change, done in
   the chat (CLAUDE.md, "Exception"): `transfer-designer-page.md`, section 7; **built (#126)**.
+- **Moving and copying in the Stages column is specified** (Draft, 2026-11-01; ADR 0014, Proposed),
+  from a preview Andy shaped on 2026-11-01, in the hands-off workflow: selecting, dragging, Ctrl+drag,
+  Ctrl+C and Ctrl+V, and right-click menus, as in PowerPoint's slide panel; and Andy's **container
+  rule** for tips (a tip group or randomization brings everything with it and goes only between tip
+  groups; a stage put inside a tip group takes its tips, and one put between tip groups keeps the
+  tips it had). `transfer-designer.md` gains `columnBoxes`, `moveItems`, `copyOf`, `copyItems` and
+  `pasteItems`; `transfer-designer-page.md`, section 7, "Moving and copying". It changes no Biomek
+  files and no plan files, so it doesn't affect the final Biomek runs. From the preview: box selection
+  and Duplicate (Ctrl+D) were considered and declined, and clicking a gap to set where Ctrl+V pastes
+  was tried and dropped (Andy, 2026-11-01).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -478,7 +488,10 @@ final Biomek runs, so they test the files as they will be:
 - **Converting between unit families** (2026-11-01): a constituent in g/L in one component and mM
   in another needs its molecular weight; the tool refuses the second family instead (ADR 0013). A
   molecular weight per constituent would let the two add up.
-- Editing the list further: moving a stage, or a transfer within its stage.
+- Editing the list further: moving a transfer to another stage (moving one within its stage only
+  changes how the list reads: the Biomek orders a stage's transfers itself, B56358AF 22-25); cut
+  (Ctrl+X) and Delete of what's selected in the Stages column (ADR 0014). Moving and copying stages,
+  tip groups and randomizations are specified (2026-11-01; "Where things stand").
 - **Splitting a stage's rows by well volume** (from the mixing work, 2026-10-29): a stage mixes one
   volume per row, worked out from its emptiest well, so fuller wells mix less than their share. The
   file writer could split a row's wells by what they hold, so each gets close to its share and
