@@ -88,6 +88,11 @@ import {
   setRandomizations,
   setConstituents,
   concentrationsOf,
+  columnBoxes,
+  moveItems,
+  copyOf,
+  copyItems,
+  pasteItems,
 } from "./transfer-designer.js";
 import { assignPool } from "../../shared/random-pool/random-pool.js";
 import { CONCENTRATION_UNITS } from "../../../config/concentration-units.js";
@@ -3072,6 +3077,627 @@ describe("transfer-designer", () => {
     return without;
   }
 
+  // --- Moving and copying ---
+
+  // The two tip types the moving tests use: the first and the last in config/tip-types.js.
+  const FIRST_TIPS = TIP_TYPES[0];
+  const OTHER_TIPS = TIP_TYPES.at(-1);
+
+  // The plan the moving tests use (transfer-designer.md, section 6, "Moving and copying"): RESERVOIR
+  // troughs 1 and 2 holding Media and Drug; stages "1" Media and "2" Drug on FIRST_TIPS (START),
+  // then "3" Top-up and "4" Wash on OTHER_TIPS, each with a transfer into PLATE (A1 to A4); and a
+  // randomization "r1" that has run, with two stages, "5" and "6", after them.
+  function movingPlan() {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addComponent(plan, "Drug", "#e15759");
+    plan = addToWells(plan, [trough("1")], "Media", capacityOf(RESERVOIR));
+    plan = addToWells(plan, [trough("2")], "Drug", capacityOf(RESERVOIR));
+    plan = renameStage(plan, "1", "Media");
+    plan = renameStage(addStage(plan, null).plan, "2", "Drug");
+    plan = renameStage(addStageWithNewTips(plan, null).plan, "3", "Top-up");
+    plan = renameStage(addStage(plan, null).plan, "4", "Wash");
+    plan = setTipType(plan, "3", OTHER_TIPS);
+    plan = addTransfers(plan, [
+      transferTo("1", "A1"),
+      { ...transferTo("2", "A2"), source: trough("2") },
+      transferTo("3", "A3"),
+      transferTo("4", "A4"),
+    ]);
+    const { plan: added, id } = addRandomization(plan, null, { seed: 37, volume: 10 });
+    const set = setRandomization(added, id, {
+      sources: [
+        { labware: DEEP, well: "A1", replicates: 2, filler: false },
+        { labware: DEEP, well: "A2", replicates: 2, filler: false },
+      ],
+      fill: [...GRID_96.wellsInBox("B1", "B4")].map(plateWell),
+    });
+    return runRandomization(set, id);
+  }
+
+  // Items and places, e.g. stageItem("3") → { kind: "stage", id: "3" }.
+  function stageItem(id) {
+    return { kind: "stage", id };
+  }
+  function groupItem(id) {
+    return { kind: "tipGroup", id };
+  }
+  function randomizationItem(id) {
+    return { kind: "randomization", id };
+  }
+  function between(index) {
+    return { kind: "between", index };
+  }
+  function inGroup(index, position) {
+    return { kind: "inTipGroup", index, position };
+  }
+
+  // The plan's tip groups as [tip type, stage IDs], e.g. [["BC230", ["1", "2"]], …].
+  function groupsOf(plan) {
+    return tipGroups(plan).map((group) => [group.tipType, group.stages]);
+  }
+
+  // Each stage's name, settings and transfers (without positions), by ID, to check a move keeps them.
+  function stagesById(plan) {
+    return Object.fromEntries(
+      stageOrder(plan).map((id) => {
+        const { name, settings } = plan.stageList.get(id);
+        const transfers = transfersIn(plan, id).map(({ position, ...transfer }) => transfer);
+        return [id, { name, settings, transfers }];
+      }),
+    );
+  }
+
+  // The operation list's stages, one per block, in order, e.g. ["1", "3", "2"].
+  function blocksOf(plan) {
+    return plan.operationList.groupByStage().map((group) => group.stage);
+  }
+
+  // A stage's name, settings and transfers (source, destination and volume), for comparing a copy
+  // with its original.
+  function stageContents(plan, id) {
+    const { name, settings } = plan.stageList.get(id);
+    const transfers = transfersIn(plan, id).map(({ source, destination, volume }) => ({ source, destination, volume }));
+    return { name, settings, transfers };
+  }
+
+  test("columnBoxes gives two tip groups, then the randomization with its two one-stage tip groups", () => {
+    const plan = movingPlan();
+    const boxes = columnBoxes(plan);
+    assert.deepEqual(
+      boxes.map((box) => box.kind),
+      ["tipGroup", "tipGroup", "randomization"],
+    );
+    assert.deepEqual(boxes[0], { kind: "tipGroup", key: START, tipType: FIRST_TIPS, probes: probesFor(DEFAULT_PROBE_COUNT), stages: ["1", "2"] });
+    assert.equal(boxes[1].key, "3");
+    assert.deepEqual(boxes[1].stages, ["3", "4"]);
+    assert.equal(boxes[2].id, "r1");
+    assert.deepEqual(boxes[2].tipGroups.map((group) => group.stages), [["5"], ["6"]]);
+    // Every tip group is in exactly one box.
+    const inBoxes = boxes.flatMap((box) => (box.kind === "tipGroup" ? [box.key] : box.tipGroups.map((group) => group.key)));
+    assert.deepEqual(inBoxes, tipGroups(plan).map((group) => group.key));
+  });
+
+  test("columnBoxes puts a randomization that hasn't run before its beforeId's box, or last, several in the list's order", () => {
+    let plan = movingPlan();
+    plan = addRandomization(plan, "3", { seed: 1, volume: 1 }).plan;
+    plan = addRandomization(plan, null, { seed: 2, volume: 1 }).plan;
+    plan = addRandomization(plan, "3", { seed: 3, volume: 1 }).plan;
+    const boxes = columnBoxes(plan);
+    assert.deepEqual(
+      boxes.map((box) => (box.kind === "tipGroup" ? box.key : box.id)),
+      [START, "r2", "r4", "3", "r1", "r3"],
+    );
+    assert.deepEqual(boxes[1].tipGroups, []);
+  });
+
+  test("moveItems: a stage into another tip group takes its tips, and every stage keeps its ID, name, settings and transfers", () => {
+    const plan = movingPlan();
+    const { plan: moved, placed } = moveItems(plan, [stageItem("3")], inGroup(0, 1));
+    assert.deepEqual(groupsOf(moved).slice(0, 2), [
+      [FIRST_TIPS, ["1", "3", "2"]],
+      [OTHER_TIPS, ["4"]],
+    ]);
+    assert.ok(Object.hasOwn(moved.tipChanges, "4"));
+    assert.equal(Object.hasOwn(moved.tipChanges, "3"), false);
+    assert.deepEqual(stagesById(moved), stagesById(plan));
+    assert.deepEqual(blocksOf(moved), stageOrder(moved).filter((id) => blocksOf(plan).includes(id)));
+    assert.deepEqual(placed, [stageItem("3")]);
+  });
+
+  test("moveItems: a stage to the top of a tip group gets the START tips; the stage it left keeps its group's tips", () => {
+    const { plan: moved } = moveItems(movingPlan(), [stageItem("4")], inGroup(0, 0));
+    assert.deepEqual(stageOrder(moved).slice(0, 4), ["4", "1", "2", "3"]);
+    assert.equal(tipChangeAt(moved, START).tipType, FIRST_TIPS);
+    assert.equal(tipChangeAt(moved, "3").tipType, OTHER_TIPS);
+    assert.equal(tipChangeAt(moved, "1"), null);
+  });
+
+  test("moveItems: a stage between boxes keeps its tips; at the top they become the START tips", () => {
+    const plan = movingPlan();
+    const { plan: moved } = moveItems(plan, [stageItem("3")], between(0));
+    assert.deepEqual(groupsOf(moved).slice(0, 3), [
+      [OTHER_TIPS, ["3"]],
+      [FIRST_TIPS, ["1", "2"]],
+      [OTHER_TIPS, ["4"]],
+    ]);
+    assert.deepEqual(tipChangeAt(moved, "1"), tipChangeAt(plan, START));
+  });
+
+  test("moveItems: stages from two tip groups between boxes make two new tip groups", () => {
+    const { plan: moved } = moveItems(movingPlan(), [stageItem("2"), stageItem("3")], between(3));
+    assert.deepEqual(stageOrder(moved), ["1", "4", "5", "6", "2", "3"]);
+    assert.deepEqual(groupsOf(moved).slice(0, 2), [
+      [FIRST_TIPS, ["1"]],
+      [OTHER_TIPS, ["4"]],
+    ]);
+    assert.deepEqual(groupsOf(moved).slice(-2), [
+      [FIRST_TIPS, ["2"]],
+      [OTHER_TIPS, ["3"]],
+    ]);
+    assert.equal(randomizationAt(moved, "r1").beforeId, "2");
+  });
+
+  test("moveItems: stages from one tip group, moved together, make one tip group", () => {
+    const { plan: moved } = moveItems(movingPlan(), [stageItem("1"), stageItem("2")], between(2));
+    assert.deepEqual(groupsOf(moved).slice(0, 2), [
+      [OTHER_TIPS, ["3", "4"]],
+      [FIRST_TIPS, ["1", "2"]],
+    ]);
+  });
+
+  test("moveItems: a tip group moved to the top and to the end brings its tips and stages", () => {
+    const plan = movingPlan();
+    const top = moveItems(plan, [groupItem("3")], between(0)).plan;
+    assert.deepEqual(groupsOf(top).slice(0, 2), [
+      [OTHER_TIPS, ["3", "4"]],
+      [FIRST_TIPS, ["1", "2"]],
+    ]);
+    const end = moveItems(plan, [groupItem("1")], between(3)).plan;
+    assert.deepEqual(stageOrder(end), ["3", "4", "5", "6", "1", "2"]);
+    assert.equal(tipChangeAt(end, START).tipType, OTHER_TIPS);
+    assert.equal(tipChangeAt(end, "1").tipType, FIRST_TIPS);
+    assert.equal(randomizationAt(end, "r1").beforeId, "1");
+  });
+
+  test("moveItems: a randomization moved to the top keeps its stages on tips of their own", () => {
+    const plan = movingPlan();
+    const { plan: moved, placed } = moveItems(plan, [randomizationItem("r1")], between(0));
+    assert.deepEqual(stageOrder(moved), ["5", "6", "1", "2", "3", "4"]);
+    assert.equal(randomizationOf(moved, "5"), "r1");
+    assert.equal(randomizationOf(moved, "6"), "r1");
+    assert.equal(randomizationAt(moved, "r1").beforeId, "1");
+    assert.ok(Object.hasOwn(moved.tipChanges, "6"));
+    assert.ok(Object.hasOwn(moved.tipChanges, "1"));
+    assert.deepEqual(tipChangeAt(moved, "1"), tipChangeAt(plan, START));
+    assert.deepEqual(placed, [randomizationItem("r1")]);
+    // Still a valid plan: its randomizations pass the plan file's checks.
+    setRandomizations(moved, JSON.parse(JSON.stringify(moved.randomizations)));
+  });
+
+  test("moveItems: a randomization that hasn't run, moved, sits before the next box's first stage, and the list is in column order", () => {
+    let plan = movingPlan();
+    plan = addRandomization(plan, null, { seed: 5, volume: 5 }).plan;
+    const top = moveItems(plan, [randomizationItem("r2")], between(0)).plan;
+    assert.equal(randomizationAt(top, "r2").beforeId, "1");
+    assert.deepEqual(top.randomizations.map((randomization) => randomization.id), ["r2", "r1"]);
+    const back = moveItems(top, [randomizationItem("r2")], between(4)).plan;
+    assert.equal(randomizationAt(back, "r2").beforeId, null);
+    assert.deepEqual(back.randomizations.map((randomization) => randomization.id), ["r1", "r2"]);
+  });
+
+  test("moveItems: a tip group whose stages all move away is gone; the first group's first stage moved away leaves the START tips", () => {
+    const plan = movingPlan();
+    const emptied = moveItems(plan, [stageItem("3"), stageItem("4")], inGroup(0, 2)).plan;
+    assert.deepEqual(groupsOf(emptied)[0], [FIRST_TIPS, ["1", "2", "3", "4"]]);
+    assert.equal(Object.hasOwn(emptied.tipChanges, "3"), false);
+    assert.equal(Object.hasOwn(emptied.tipChanges, "4"), false);
+    const firstAway = moveItems(plan, [stageItem("1")], inGroup(1, 2)).plan;
+    assert.deepEqual(groupsOf(firstAway).slice(0, 2), [
+      [FIRST_TIPS, ["2"]],
+      [OTHER_TIPS, ["3", "4", "1"]],
+    ]);
+  });
+
+  test("moveItems: a tip group's only stage moved to the top of its own box gives the same plan", () => {
+    const plan = addTipChange(movingPlan(), "4");
+    const result = moveItems(plan, [stageItem("4")], inGroup(2, 0));
+    assert.equal(result.plan, plan);
+    assert.deepEqual(result.placed, [stageItem("4")]);
+  });
+
+  test("moveItems: a stage dropped where it is, or a tip group just before or after itself, gives the same plan", () => {
+    const plan = movingPlan();
+    for (const [items, place] of [
+      [[stageItem("2")], inGroup(0, 1)],
+      [[stageItem("2")], inGroup(0, 2)],
+      [[groupItem("1")], between(0)],
+      [[groupItem("1")], between(1)],
+      [[groupItem("3")], between(2)],
+      [[randomizationItem("r1")], between(3)],
+    ]) {
+      assert.equal(moveItems(plan, items, place).plan, plan, JSON.stringify(place));
+    }
+  });
+
+  test("copyItems: a copied stage is a new stage with the same name, settings and transfers; the original stays", () => {
+    const plan = movingPlan();
+    const { plan: copied, placed } = copyItems(plan, [stageItem("2")], inGroup(1, 0));
+    const newId = placed[0].id;
+    assert.ok(!plan.stageList.has(newId));
+    assert.deepEqual(stageContents(copied, newId), stageContents(plan, "2"));
+    assert.deepEqual(groupsOf(copied).slice(0, 2), [
+      [FIRST_TIPS, ["1", "2"]],
+      [OTHER_TIPS, [newId, "3", "4"]],
+    ]);
+    assert.deepEqual(stageContents(copied, "2"), stageContents(plan, "2"));
+  });
+
+  test("copyItems: a copied tip group brings new stages with its tips", () => {
+    const plan = movingPlan();
+    const { plan: copied, placed } = copyItems(plan, [groupItem("3")], between(0));
+    const [first, second] = stageOrder(copied);
+    assert.deepEqual(placed, [groupItem(first)]);
+    assert.deepEqual(groupsOf(copied)[0], [OTHER_TIPS, [first, second]]);
+    assert.deepEqual(stageContents(copied, first), stageContents(plan, "3"));
+    assert.deepEqual(stageContents(copied, second), stageContents(plan, "4"));
+    assert.deepEqual(stageOrder(copied).slice(2, 6), ["1", "2", "3", "4"]);
+  });
+
+  test("copyItems: a copied randomization gets the next free ID and owns the copies of its stages", () => {
+    const plan = movingPlan();
+    const { plan: copied, placed } = copyItems(plan, [randomizationItem("r1")], between(1));
+    assert.deepEqual(placed, [randomizationItem("r2")]);
+    const copy = randomizationAt(copied, "r2");
+    const original = randomizationAt(plan, "r1");
+    for (const property of ["sources", "fill", "seed", "volume", "settings", "tipType", "probes"]) {
+      assert.deepEqual(copy[property], original[property], property);
+    }
+    assert.deepEqual(copy.stages.map(({ labware, well }) => ({ labware, well })), original.stages.map(({ labware, well }) => ({ labware, well })));
+    copy.stages.forEach((owned, index) => {
+      assert.ok(!plan.stageList.has(owned.stage));
+      assert.deepEqual(stageContents(copied, owned.stage), stageContents(plan, original.stages[index].stage));
+    });
+    assert.deepEqual(stageOrder(copied).slice(0, 4), ["1", "2", ...copy.stages.map((owned) => owned.stage)]);
+    assert.equal(copy.beforeId, "3");
+    assert.deepEqual(copied.randomizations.map((randomization) => randomization.id), ["r2", "r1"]);
+    setRandomizations(copied, JSON.parse(JSON.stringify(copied.randomizations)));
+  });
+
+  test("copyItems: a copy of a randomization's stage is owned by none and keeps its own tips between boxes", () => {
+    const plan = movingPlan();
+    const { plan: copied, placed } = copyItems(plan, [stageItem("5")], between(0));
+    const newId = placed[0].id;
+    assert.equal(randomizationOf(copied, newId), null);
+    assert.equal(stageOrder(copied)[0], newId);
+    assert.deepEqual(
+      { tipType: tipChangeAt(copied, START).tipType, probes: tipChangeAt(copied, START).probes },
+      { tipType: tipChangeAt(plan, "5").tipType, probes: tipChangeAt(plan, "5").probes },
+    );
+  });
+
+  test("copyOf gives plain data that survives JSON, and pasting it into another plan gives the same stages, tips and transfers", () => {
+    const plan = movingPlan();
+    const before = snapshot(plan);
+    const copied = copyOf(plan, [groupItem("3")]);
+    assert.equal(snapshot(plan), before);
+    assert.equal(copied.format, "biomek-tools copied items");
+    assert.equal(copied.version, 1);
+    const throughJson = JSON.parse(JSON.stringify(copied));
+    assert.deepEqual(throughJson, copied);
+    const other = emptyPlan().plan;
+    const { plan: pasted } = pasteItems(other, throughJson, between(1));
+    const newIds = stageOrder(pasted).slice(1);
+    assert.deepEqual(newIds.map((id) => stageContents(pasted, id)), ["3", "4"].map((id) => stageContents(plan, id)));
+    assert.deepEqual(groupsOf(pasted)[1], [OTHER_TIPS, newIds]);
+  });
+
+  test("items listed out of column order are taken in column order; a stage in a listed group is left out; twice counts once", () => {
+    const plan = movingPlan();
+    const { placed } = moveItems(
+      plan,
+      [stageItem("4"), groupItem("1"), stageItem("2"), stageItem("4")],
+      between(3),
+    );
+    assert.deepEqual(placed, [groupItem("1"), stageItem("4")]);
+    const copied = copyOf(plan, [stageItem("4"), stageItem("1")]);
+    assert.deepEqual(copied.items.map((item) => item.stage.name), ["Media", "Wash"]);
+  });
+
+  test("moveItems, copyOf and copyItems refuse each wrong list, item and place, with the plan unchanged", () => {
+    const plan = movingPlan();
+    const before = snapshot(plan);
+    const cases = [
+      [() => moveItems(plan, 5, between(0)), "The things to move must be a list of stages, tip groups or randomizations, but got 5."],
+      [() => copyOf(plan, []), "The things to copy must be a list of stages, tip groups or randomizations, but got an empty list."],
+      [() => copyItems(plan, 5, between(0)), "The things to copy must be a list of stages, tip groups or randomizations, but got 5."],
+      [
+        () => moveItems(plan, [stageItem("1"), { kind: "box", id: "1" }], between(0)),
+        'Item 2 must be { kind, id }, with kind "stage", "tipGroup" or "randomization", but got "box".',
+      ],
+      [() => moveItems(plan, [stageItem("9")], between(0)), 'There\'s no stage "9" in the plan.'],
+      [() => moveItems(plan, [groupItem("2")], between(0)), 'Stage "2" doesn\'t start a tip group, so it can\'t name one.'],
+      [() => moveItems(plan, [groupItem("5")], between(0)), 'Stage "5" doesn\'t start a tip group, so it can\'t name one.'],
+      [() => moveItems(plan, [randomizationItem("r9")], between(0)), 'There\'s no randomization "r9" in the plan.'],
+      [
+        () => moveItems(plan, [stageItem("1")], between(9)),
+        'The place must be between boxes (index 0 to 3) or inside a tip group, but got {"kind":"between","index":9}.',
+      ],
+      [
+        () => moveItems(plan, [stageItem("1")], { kind: "over", index: 0 }),
+        'The place must be between boxes (index 0 to 3) or inside a tip group, but got {"kind":"over","index":0}.',
+      ],
+      [() => moveItems(plan, [stageItem("1")], inGroup(1, 7)), "Box 1 has positions 0 to 2, but got 7."],
+      [() => moveItems(plan, [stageItem("1")], inGroup(2, 0)), "Box 2 is a randomization: nothing can be put inside it."],
+      [
+        () => moveItems(plan, [groupItem("3")], inGroup(0, 1)),
+        "A tip group or randomization can't go inside another tip group: put it between tip groups.",
+      ],
+      [
+        () => copyItems(plan, [randomizationItem("r1")], inGroup(0, 1)),
+        "A tip group or randomization can't go inside another tip group: put it between tip groups.",
+      ],
+      [
+        () => moveItems(plan, [stageItem("5")], between(0)),
+        `Stage 5, “${plan.stageList.get("5").name}”, belongs to a randomization, which moves its stages ` +
+          "with it: move the whole randomization, or copy the stage.",
+      ],
+    ];
+    for (const [action, message] of cases) {
+      assert.throws(action, { message });
+    }
+    assert.equal(snapshot(plan), before);
+    // Copying a randomization's stage is fine.
+    copyItems(plan, [stageItem("5")], between(0));
+  });
+
+  test("moveItems checks the list, then each item, then the place, then the container rule, then a randomization's stage", () => {
+    const plan = movingPlan();
+    assert.throws(() => moveItems(plan, [stageItem("9")], between(9)), { message: 'There\'s no stage "9" in the plan.' });
+    assert.throws(() => moveItems(plan, [groupItem("3")], inGroup(2, 0)), { message: /is a randomization/ });
+    assert.throws(() => moveItems(plan, [stageItem("5"), groupItem("1")], inGroup(1, 0)), { message: /can't go inside/ });
+  });
+
+  // Copied items holding one stage of `stage` (a copied stage, { name, settings, transfers }) with
+  // the START tips of a new plan.
+  function copiedStageItems(stage) {
+    return {
+      format: "biomek-tools copied items",
+      version: 1,
+      items: [{ kind: "stage", stage, tips: startTips() }],
+    };
+  }
+
+  // A copied stage: "Pasted", the default settings, and one transfer from trough 1 into PLATE A1.
+  function copiedStage(changes = {}) {
+    return {
+      name: "Pasted",
+      settings: defaultSettings(),
+      transfers: [{ source: trough("1"), destination: plateWell("A1"), volume: 50 }],
+      ...changes,
+    };
+  }
+
+  test("pasteItems refuses what isn't copied items, a newer version, and an entry not in its form", () => {
+    const plan = movingPlan();
+    const notCopied = "Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.";
+    for (const copied of [
+      "text",
+      null,
+      { format: "something else", version: 1, items: [] },
+      { ...copiedStageItems(copiedStage()), items: [] },
+      { ...copiedStageItems(copiedStage()), extra: 1 },
+    ]) {
+      assert.throws(() => pasteItems(plan, copied, between(0)), { message: notCopied });
+    }
+    assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 2 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 2).",
+    });
+    const second = { kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS } };
+    assert.throws(
+      () => pasteItems(plan, { ...copiedStageItems(copiedStage()), items: [copiedStageItems(copiedStage()).items[0], second] }, between(0)),
+      { message: "Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them." },
+    );
+  });
+
+  test("pasteItems checks every value with the edit that would make it, prefixed", () => {
+    const plan = movingPlan();
+    const before = snapshot(plan);
+    const mixStep = addMixStep(emptyPlan().plan, null);
+    const mixStepSettings = mixStep.plan.stageList.get(mixStep.id).settings;
+    const nonMixingSettings = {
+      ...defaultSettings(),
+      ...modeSettings("destination", NON_MIXING_MODE.name),
+      destinationMix: exampleMix(),
+    };
+    const cases = [
+      [copiedStage({ transfers: [{ source: trough("1"), destination: plateWell("Z99"), volume: 50 }] }), `"Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`],
+      [copiedStage({ name: " " }), null],
+      [copiedStage({ settings: nonMixingSettings }), null],
+      [
+        copiedStage({
+          transfers: [
+            { source: trough("1"), destination: plateWell("A1"), volume: 50 },
+            { source: plateWell("A1"), destination: plateWell("A2"), volume: 50 },
+          ],
+        }),
+        null,
+      ],
+      [copiedStage({ settings: mixStepSettings }), null],
+    ];
+    for (const [stage, ownMessage] of cases) {
+      let expected;
+      try {
+        // The message the edit itself gives, made on a plan with a stage to edit.
+        const target = emptyPlan();
+        let edited = renameStage(target.plan, target.stageId, stage.name);
+        edited = changeStageSettings(edited, target.stageId, stage.settings);
+        addTransfers(edited, stage.transfers.map((transfer) => ({ type: "transfer", ...transfer, stage: target.stageId })));
+        assert.fail("the case should be refused");
+      } catch (error) {
+        expected = error.message;
+      }
+      if (ownMessage !== null) {
+        assert.equal(expected, ownMessage);
+      }
+      const copied = { ...copiedStageItems(copiedStage()), items: [copiedStageItems(copiedStage()).items[0], { kind: "stage", stage, tips: startTips() }] };
+      // Messages may name the stage by its ID or place and a transfer by its position, which differ
+      // in the plan pasted into, so those numbers are left out of the comparison.
+      const withoutPlaces = (message) =>
+        message.replace(/Stage \d+,/g, "Stage N,").replace(/stage "\d+" \(operation \d+\)/g, 'stage "N"');
+      assert.throws(
+        () => pasteItems(plan, copied, between(0)),
+        (error) => withoutPlaces(error.message) === withoutPlaces(`Can't paste: item 2: ${expected}`),
+      );
+    }
+    assert.throws(
+      () => pasteItems(plan, { ...copiedStageItems(copiedStage()), items: [{ kind: "stage", stage: copiedStage(), tips: { tipType: "BC9", probes: [1] } }] }, between(0)),
+      { message: `Can't paste: item 1: "BC9" isn't a tip type. Choose one of ${TIP_TYPES.map((type) => `"${type}"`).join(", ")}.` },
+    );
+    assert.throws(
+      () => pasteItems(plan, { ...copiedStageItems(copiedStage()), items: [{ kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS, probes: [9] } }] }, between(0)),
+      { message: /^Can't paste: item 1: Probe numbers must be whole numbers/ },
+    );
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("pasteItems refuses a randomization's refused value, and two stages for one well", () => {
+    const plan = movingPlan();
+    const copied = copyOf(plan, [randomizationItem("r1")]);
+    const badSeed = JSON.parse(JSON.stringify(copied));
+    badSeed.items[0].randomization.seed = 0;
+    assert.throws(() => pasteItems(plan, badSeed, between(0)), {
+      message: /^Can't paste: item 1: A randomization's seed must be a whole number/,
+    });
+    const twice = JSON.parse(JSON.stringify(copied));
+    twice.items[0].stages[1].well = twice.items[0].stages[0].well;
+    assert.throws(() => pasteItems(plan, twice, between(0)), {
+      message: `Can't paste: item 1: ${DEEP} A1 has two stages.`,
+    });
+  });
+
+  test("places pointing at moved things: within one tip group", () => {
+    let plan = movingPlan();
+    plan = addStage(plan, "5").plan; // "7", the third stage of the OTHER_TIPS group: [3, 4, 7]
+    assert.deepEqual(columnBoxes(plan)[1].stages, ["3", "4", "7"]);
+    for (const position of [0, 1, 2]) {
+      assert.equal(moveItems(plan, [stageItem("3"), stageItem("4")], inGroup(1, position)).plan, plan, `position ${position}`);
+    }
+    const moved = moveItems(plan, [stageItem("3")], inGroup(1, 2)).plan;
+    assert.deepEqual(columnBoxes(moved)[1].stages, ["4", "3", "7"]);
+    assert.equal(columnBoxes(moved)[1].key, "4");
+    assert.equal(tipChangeAt(moved, "4").tipType, OTHER_TIPS);
+  });
+
+  test("places pointing at moved things: a tip group at or just below itself, and a lone stage at its group's index", () => {
+    const plan = addTipChange(movingPlan(), "4");
+    assert.equal(moveItems(plan, [groupItem("3")], between(1)).plan, plan);
+    assert.equal(moveItems(plan, [groupItem("3")], between(2)).plan, plan);
+    assert.equal(moveItems(plan, [stageItem("4")], between(2)).plan, plan);
+  });
+
+  test("a tip group's last stage moved between boxes just below its group splits it, with the same tips", () => {
+    const plan = movingPlan();
+    const { plan: moved } = moveItems(plan, [stageItem("4")], between(2));
+    assert.notEqual(moved, plan);
+    assert.deepEqual(groupsOf(moved).slice(1, 3), [
+      [OTHER_TIPS, ["3"]],
+      [OTHER_TIPS, ["4"]],
+    ]);
+  });
+
+  test("moving the box a randomization that hasn't run sits before keeps the randomization in its place", () => {
+    let plan = movingPlan();
+    plan = addRandomization(plan, "3", { seed: 5, volume: 5 }).plan;
+    const moved = moveItems(plan, [groupItem("3")], between(0)).plan;
+    assert.deepEqual(
+      columnBoxes(moved).map((box) => (box.kind === "tipGroup" ? box.key : box.id)),
+      [START, "1", "r2", "r1"],
+    );
+    assert.equal(randomizationAt(moved, "r2").beforeId, "5");
+    setRandomizations(moved, JSON.parse(JSON.stringify(moved.randomizations)));
+  });
+
+  test("the stage just after a run randomization keeps its own tips when stages around it move", () => {
+    let plan = movingPlan();
+    plan = addStageWithNewTips(plan, null).plan; // "7", just after the randomization
+    plan = addStage(plan, null).plan; // "8", in 7's group
+    const away = moveItems(plan, [stageItem("7")], inGroup(0, 0)).plan;
+    assert.ok(Object.hasOwn(away.tipChanges, "8"));
+    assert.equal(randomizationAt(away, "r1").beforeId, "8");
+    const into = moveItems(plan, [stageItem("1")], inGroup(3, 0)).plan;
+    assert.ok(Object.hasOwn(into.tipChanges, "1"));
+    assert.equal(randomizationAt(into, "r1").beforeId, "1");
+    for (const edited of [away, into]) {
+      setRandomizations(edited, JSON.parse(JSON.stringify(edited.randomizations)));
+    }
+  });
+
+  test("pasting at the top of the first tip group puts the stage first, on the START tips", () => {
+    const plan = movingPlan();
+    const { plan: pasted, placed } = pasteItems(plan, copyOf(plan, [stageItem("4")]), inGroup(0, 0));
+    assert.equal(stageOrder(pasted)[0], placed[0].id);
+    assert.equal(tipChangeAt(pasted, START).tipType, FIRST_TIPS);
+    assert.equal(tipChangeAt(pasted, "1"), null);
+  });
+
+  test("a copied randomization with a stage left over from its last run keeps it, and passes setRandomizations", () => {
+    const run = movingPlan();
+    const dropped = setRandomization(run, "r1", {
+      sources: randomizationAt(run, "r1").sources.filter((entry) => entry.well !== "A2"),
+    });
+    const copied = copyOf(dropped, [randomizationItem("r1")]);
+    assert.equal(copied.items[0].stages.length, 2);
+    const { plan: pasted } = pasteItems(dropped, copied, between(0));
+    assert.equal(randomizationAt(pasted, "r2").stages.length, 2);
+    setRandomizations(pasted, JSON.parse(JSON.stringify(pasted.randomizations)));
+  });
+
+  test("a copied tip group pasted at the top of a new plan lands above New stage, which gets tips of its own", () => {
+    const plan = movingPlan();
+    const { plan: empty, stageId } = emptyPlan();
+    const { plan: pasted } = pasteItems(empty, copyOf(plan, [groupItem("3")]), between(0));
+    assert.equal(stageOrder(pasted).at(-1), stageId);
+    assert.equal(pasted.stageList.get(stageId).name, NEW_STAGE_NAME);
+    assert.deepEqual(tipChangeAt(pasted, stageId), tipChangeAt(empty, START));
+    assert.equal(tipChangeAt(pasted, START).tipType, OTHER_TIPS);
+  });
+
+  test("moving a stage before the stage that fills its source makes a contents problem in it", () => {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addToWells(plan, [trough("1")], "Media", capacityOf(RESERVOIR));
+    plan = renameStage(plan, "1", "Media");
+    plan = addTransfer(plan, { type: "transfer", source: trough("1"), destination: trough("3"), volume: capacityOf(RESERVOIR) / 2, stage: "1" });
+    plan = renameStage(addStage(plan, null).plan, "2", "Drug");
+    plan = addTransfer(plan, { ...transferTo("2", "A1", 10), source: trough("3") });
+    assert.equal(stagesWithContentsProblem(plan).size, 0);
+    const { plan: moved } = moveItems(plan, [stageItem("2")], inGroup(0, 0));
+    assert.deepEqual([...stagesWithContentsProblem(moved)], ["2"]);
+  });
+
+  test("placed lists the moved or pasted things in column order, copies by their new IDs", () => {
+    const plan = movingPlan();
+    assert.deepEqual(moveItems(plan, [randomizationItem("r1"), stageItem("4"), groupItem("1")], between(0)).placed, [
+      groupItem("1"),
+      stageItem("4"),
+      randomizationItem("r1"),
+    ]);
+    const { placed } = copyItems(plan, [stageItem("4"), groupItem("1"), randomizationItem("r1")], between(3));
+    assert.deepEqual(placed.map((item) => item.kind), ["tipGroup", "stage", "randomization"]);
+    assert.deepEqual(placed.map((item) => item.id), ["7", "9", "r2"]);
+  });
+
+  test("moveItems changes only stageOrder, tipChanges, operationList and randomizations, and leaves its plan unchanged", () => {
+    const plan = movingPlan();
+    const before = snapshot(plan);
+    const { plan: moved } = moveItems(plan, [groupItem("3")], between(0));
+    assert.equal(snapshot(plan), before);
+    for (const part of PLAN_PARTS.filter((name) => !["stageOrder", "tipChanges", "operationList", "randomizations"].includes(name))) {
+      assert.equal(moved[part], plan[part], part);
+    }
+    assert.equal(moved.stageList, plan.stageList);
+  });
 
   // --- Immutability and sharing ---
 
@@ -3138,6 +3764,22 @@ describe("transfer-designer", () => {
       "removeRandomization",
       (plan) => removeRandomization(plan, "r1"),
       ["randomizations", "stageList", "stageOrder", "operationList", "tipChanges"],
+    ],
+    [
+      "moveItems",
+      (plan) => moveItems(plan, [{ kind: "tipGroup", id: "2" }], { kind: "between", index: 0 }).plan,
+      ["stageOrder", "tipChanges", "operationList", "randomizations"],
+    ],
+    [
+      "copyItems",
+      (plan) => copyItems(plan, [{ kind: "stage", id: "2" }], { kind: "between", index: 0 }).plan,
+      ["stageList", "stageOrder", "tipChanges", "operationList", "randomizations"],
+    ],
+    [
+      "pasteItems",
+      (plan) =>
+        pasteItems(plan, copyOf(plan, [{ kind: "randomization", id: "r1" }]), { kind: "between", index: 1 }).plan,
+      ["stageList", "stageOrder", "tipChanges", "operationList", "randomizations"],
     ],
   ];
 

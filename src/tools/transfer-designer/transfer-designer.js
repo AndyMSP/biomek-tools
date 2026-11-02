@@ -1088,6 +1088,667 @@ export function setRandomizations(plan, randomizations) {
   return updated;
 }
 
+// --- Moving and copying ---
+
+// What copied items say they are, and the version of their form this module writes and reads
+// (transfer-designer.md, "Moving and copying").
+const COPIED_ITEMS_FORMAT = "biomek-tools copied items";
+const COPIED_ITEMS_VERSION = 1;
+
+// The kinds of item (docs/glossary.md, "Item"), as items name them.
+const ITEM_KINDS = ["stage", "tipGroup", "randomization"];
+
+// The properties of each part of copied items, exactly (section 3, "Moving and copying").
+const COPIED_ITEMS_PROPERTIES = ["format", "version", "items"];
+const COPIED_STAGE_ITEM_PROPERTIES = ["kind", "stage", "tips"];
+const COPIED_TIP_GROUP_PROPERTIES = ["kind", "tips", "stages"];
+const COPIED_RANDOMIZATION_PROPERTIES = ["kind", "randomization", "stages"];
+const COPIED_STAGE_PROPERTIES = ["name", "settings", "transfers"];
+const COPIED_TRANSFER_PROPERTIES = ["source", "destination", "volume"];
+const COPIED_TIPS_PROPERTIES = ["tipType", "probes"];
+const COPIED_OWNED_STAGE_PROPERTIES = ["labware", "well", "stage", "tips"];
+
+// The column's boxes, in order, between Start and End (section 3, "Moving and copying"): each an
+// ordinary tip group, { kind: "tipGroup", key, tipType, probes, stages }, or a randomization,
+// { kind: "randomization", id, tipGroups }, with its stages' tip groups (one stage each, in stage
+// order; [] while it has none). A randomization without stages sits just before the box whose first
+// stage is its beforeId (last for null), several at one place in the order of `randomizations`.
+// e.g. [{ kind: "tipGroup", key: "start", tipType: "BC230", probes: [1, 2, 3, 4], stages: ["1", "2"] },
+// { kind: "randomization", id: "r1", tipGroups: [{ key: "5", … }] }].
+export function columnBoxes(plan) {
+  const groups = tipGroups(plan);
+  // The boxes of the randomizations without stages sitting just before stage `beforeId`.
+  const notRunAt = (beforeId) =>
+    plan.randomizations
+      .filter((randomization) => randomization.stages.length === 0 && randomization.beforeId === beforeId)
+      .map((randomization) => ({ kind: "randomization", id: randomization.id, tipGroups: [] }));
+  const boxes = [];
+  let index = 0;
+  while (index < groups.length) {
+    const first = groups[index].stages[0];
+    boxes.push(...notRunAt(first));
+    const owner = randomizationOf(plan, first);
+    if (owner === null) {
+      const { key, tipType, probes, stages } = groups[index];
+      boxes.push({ kind: "tipGroup", key, tipType, probes, stages });
+      index += 1;
+      continue;
+    }
+    const owned = new Set(randomizationAt(plan, owner).stages.map((entry) => entry.stage));
+    const its = [];
+    while (index < groups.length && owned.has(groups[index].stages[0])) {
+      its.push(groups[index]);
+      index += 1;
+    }
+    boxes.push({ kind: "randomization", id: owner, tipGroups: its });
+  }
+  boxes.push(...notRunAt(null));
+  return boxes;
+}
+
+// Returns { plan, placed }: the plan with `items` (each { kind, id }) moved to `place`, as one edit,
+// following the container rule (section 3, "Moving and copying"). Every stage keeps its ID, name,
+// settings and transfers; only stageOrder, tipChanges, the operation list's order and the
+// randomizations change. `placed` is the moved items, in column order. If nothing would change, the
+// same plan is given back, with `placed` the items. Throws, in section 5's order of checks, e.g.
+// moveItems(plan, [{ kind: "stage", id: "3" }], { kind: "inTipGroup", index: 0, position: 1 }).
+export function moveItems(plan, items, place) {
+  const boxes = columnBoxes(plan);
+  const entries = checkedItems(plan, items, "move", boxes);
+  checkPlace(boxes, place, entries.some(isContainerEntry));
+  checkNoOwnedStageAlone(plan, entries);
+  const layout = layoutOf(plan, boxes);
+  const movedStages = new Set(entries.filter((entry) => entry.kind === "stage").map((entry) => entry.id));
+  const movedBoxes = new Set(entries.filter(isContainerEntry).map((entry) => entry.boxIndex));
+  const pieces = entries.map((entry) =>
+    entry.kind === "stage"
+      ? { kind: "stage", id: entry.id, tips: layout[entry.boxIndex].tips, runKey: `box ${entry.boxIndex}` }
+      : { kind: "box", box: layout[entry.boxIndex] },
+  );
+  const anchor = anchorOf(layout, place, movedStages, movedBoxes);
+  const remaining = layoutWithout(layout, movedStages, movedBoxes, place);
+  const moved = planFromLayout(plan, withPiecesPlaced(remaining, pieces, place, anchor), plan.randomizations);
+  const placed = entries.map(({ kind, id }) => ({ kind, id }));
+  if (sameArrangement(plan, moved)) {
+    return { plan, placed };
+  }
+  return { plan: withOperationsInStageOrder(moved), placed };
+}
+
+// The copied items for `items` (each { kind, id }, of this plan), in column order, as plain data
+// that survives JSON (section 3, "Moving and copying"), e.g. copyOf(plan, [{ kind: "stage", id:
+// "2" }]) → { format: "biomek-tools copied items", version: 1, items: [{ kind: "stage", stage: {
+// name, settings, transfers }, tips: { tipType, probes } }] }. Doesn't change the plan. Throws, as
+// moveItems does, if `items` isn't a list of items of this plan.
+export function copyOf(plan, items) {
+  const boxes = columnBoxes(plan);
+  const entries = checkedItems(plan, items, "copy", boxes);
+  const copied = entries.map((entry) => copiedItem(plan, boxes, entry));
+  // Through JSON, so nothing in the result is shared with the (frozen) plan.
+  return JSON.parse(
+    JSON.stringify({ format: COPIED_ITEMS_FORMAT, version: COPIED_ITEMS_VERSION, items: copied }),
+  );
+}
+
+// Returns { plan, placed }: the plan with copies of `items` at `place`, as one edit; the same as
+// pasteItems(plan, copyOf(plan, items), place). Throws as copyOf, then pasteItems, do.
+export function copyItems(plan, items, place) {
+  return pasteItems(plan, copyOf(plan, items), place);
+}
+
+// Returns { plan, placed }: the plan with `copied` (copied items, from copyOf, perhaps of another
+// plan, perhaps through the system clipboard) at `place`, as one edit, following the container rule:
+// each stage a new stage, each randomization a new randomization (section 3, "Moving and copying").
+// `placed` is the pasted things, as items of the new plan, in column order. Everything is checked,
+// as opening a plan file is, and refused with "Can't paste: " and the reason.
+export function pasteItems(plan, copied, place) {
+  const copiedItems = checkCopiedForm(copied);
+  let working = plan;
+  const pieces = [];
+  const created = [];
+  copiedItems.forEach((item, index) => {
+    checkCopiedItemForm(item, index + 1);
+    const result = withPrefix(`Can't paste: item ${index + 1}: `, () =>
+      pastedPiece(working, item, [...plan.randomizations, ...created]),
+    );
+    working = result.plan;
+    pieces.push(result.piece);
+    if (result.randomization !== undefined) {
+      created.push(result.randomization);
+    }
+  });
+  const boxes = columnBoxes(plan);
+  checkPlace(boxes, place, pieces.some((piece) => piece.kind === "box"));
+  const layout = layoutOf(plan, boxes);
+  const anchor = anchorOf(layout, place, new Set(), new Set());
+  const everyBox = layout.map((box, boxIndex) => ({ boxIndex, box }));
+  const arranged = withPiecesPlaced(everyBox, pieces, place, anchor);
+  const pasted = planFromLayout(working, arranged, [...plan.randomizations, ...created]);
+  return { plan: withOperationsInStageOrder(pasted), placed: pieces.map(placedItemOf) };
+}
+
+// --- Moving and copying: helpers ---
+
+// The items in `items`, checked and in column order, each as { kind, id, boxIndex, order }: its
+// box's index in `boxes` and its place for sorting. A stage inside a listed tip group or randomization
+// is left out, and an item listed twice counts once. Throws, in section 5's order: the list, then each
+// item in turn (its form, that it's in the plan, a tip group's ID starting one). `verb` is "move" or
+// "copy", for the message about the list.
+function checkedItems(plan, items, verb, boxes) {
+  if (!Array.isArray(items) || items.length === 0) {
+    const got = Array.isArray(items) ? "an empty list" : describeValue(items);
+    throw new Error(
+      `The things to ${verb} must be a list of stages, tip groups or randomizations, but got ${got}.`,
+    );
+  }
+  const where = columnPlaces(boxes);
+  const found = items.map((item, index) => locatedItem(plan, item, index + 1, where));
+  const containers = new Set(found.filter(isContainerEntry).map((entry) => entry.boxIndex));
+  const seen = new Set();
+  const kept = found.filter((entry) => {
+    const key = `${entry.kind} ${entry.id}`;
+    if (seen.has(key) || (entry.kind === "stage" && containers.has(entry.boxIndex))) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+  return kept.sort((first, second) => first.boxIndex - second.boxIndex || first.order - second.order);
+}
+
+// Where everything is in the column's `boxes`: { stages, groupStarts, randomizations }, Maps from a
+// stage's ID to { boxIndex, order } (its place in its box), from an ordinary tip group's first
+// stage to its box's index, and from a randomization's ID to its box's index.
+function columnPlaces(boxes) {
+  const stages = new Map();
+  const groupStarts = new Map();
+  const randomizations = new Map();
+  boxes.forEach((box, boxIndex) => {
+    if (box.kind === "tipGroup") {
+      groupStarts.set(box.stages[0], boxIndex);
+      box.stages.forEach((id, place) => stages.set(id, { boxIndex, order: place + 1 }));
+    } else {
+      randomizations.set(box.id, boxIndex);
+      box.tipGroups.forEach((group, place) => stages.set(group.stages[0], { boxIndex, order: place + 1 }));
+    }
+  });
+  return { stages, groupStarts, randomizations };
+}
+
+// Item number `number` of a list, checked and located in the column (`where`, from columnPlaces):
+// { kind, id, boxIndex, order }, `order` being 0 for a tip group or randomization (it comes before
+// its own stages). Throws if it isn't { kind, id } with a known kind, isn't in the plan, or, for a
+// tip group, its ID doesn't start an ordinary tip group.
+function locatedItem(plan, item, number, where) {
+  if (!isObject(item) || !ITEM_KINDS.includes(item.kind)) {
+    throw new Error(
+      `Item ${number} must be { kind, id }, with kind "stage", "tipGroup" or "randomization", ` +
+        `but got ${describeValue(isObject(item) ? item.kind : item)}.`,
+    );
+  }
+  const { kind, id } = item;
+  if (kind === "randomization") {
+    checkRandomizationExists(plan, id);
+    return { kind, id, boxIndex: where.randomizations.get(id), order: 0 };
+  }
+  if (!plan.stageList.has(id)) {
+    throw new Error(`There's no stage ${describeValue(id)} in the plan.`);
+  }
+  if (kind === "stage") {
+    return { kind, id, ...where.stages.get(id) };
+  }
+  if (!where.groupStarts.has(id)) {
+    throw new Error(`Stage ${describeValue(id)} doesn't start a tip group, so it can't name one.`);
+  }
+  return { kind, id, boxIndex: where.groupStarts.get(id), order: 0 };
+}
+
+// True if a located item (or an entry of one) is a container: a tip group or a randomization.
+function isContainerEntry(entry) {
+  return entry.kind !== "stage";
+}
+
+// Throws unless `place` is a place in the column of `boxes`, checked in section 5's order: its form
+// and range, then that a place inside names a tip group's box, then its position, then the container
+// rule (`holdsContainer`: what goes there holds a tip group or randomization, which goes only
+// between boxes). The place is { kind: "between", index } or { kind: "inTipGroup", index, position }.
+function checkPlace(boxes, place, holdsContainer) {
+  const formError = new Error(
+    `The place must be between boxes (index 0 to ${boxes.length}) or inside a tip group, ` +
+      `but got ${JSON.stringify(place) ?? String(place)}.`,
+  );
+  if (!isObject(place) || !Number.isInteger(place.index) || place.index < 0) {
+    throw formError;
+  }
+  if (place.kind === "between") {
+    if (place.index > boxes.length) {
+      throw formError;
+    }
+    return;
+  }
+  if (place.kind !== "inTipGroup" || place.index >= boxes.length) {
+    throw formError;
+  }
+  const box = boxes[place.index];
+  if (box.kind === "randomization") {
+    throw new Error(`Box ${place.index} is a randomization: nothing can be put inside it.`);
+  }
+  const { position } = place;
+  if (!Number.isInteger(position) || position < 0 || position > box.stages.length) {
+    throw new Error(
+      `Box ${place.index} has positions 0 to ${box.stages.length}, but got ${describeValue(position)}.`,
+    );
+  }
+  if (holdsContainer) {
+    throw new Error(
+      "A tip group or randomization can't go inside another tip group: put it between tip groups.",
+    );
+  }
+}
+
+// Throws if `entries` (checked items) hold a stage a randomization owns without that randomization:
+// a randomization's stages move only with it (ADR 0014). The randomization's own stages are left
+// out of `entries` already when it's listed.
+function checkNoOwnedStageAlone(plan, entries) {
+  const owned = entries.find((entry) => entry.kind === "stage" && randomizationOf(plan, entry.id) !== null);
+  if (owned !== undefined) {
+    throw new Error(
+      `${stageNamed(plan, owned.id)}, belongs to a randomization, which moves its stages with it: ` +
+        "move the whole randomization, or copy the stage.",
+    );
+  }
+}
+
+// The column as boxes that can be rearranged, one per box of `boxes`, in order: an ordinary tip
+// group as { kind: "tipGroup", tips, stages }, a randomization as { kind: "randomization",
+// randomization, groups }, each of `groups` { tips, stages } with one stage. `tips` is
+// { tipType, probes }.
+function layoutOf(plan, boxes) {
+  return boxes.map((box) =>
+    box.kind === "tipGroup"
+      ? { kind: "tipGroup", tips: tipsOf(box), stages: box.stages }
+      : {
+          kind: "randomization",
+          randomization: randomizationAt(plan, box.id),
+          groups: box.tipGroups.map((group) => ({ tips: tipsOf(group), stages: group.stages })),
+        },
+  );
+}
+
+// A tip group's tips, { tipType, probes }, e.g. { tipType: "BC230", probes: [1, 2, 3, 4] }.
+function tipsOf(group) {
+  return { tipType: group.tipType, probes: group.probes };
+}
+
+// Where moved or pasted things go, in `layout` (the column before the edit), for `place`, when the
+// stages in `movedStages` and the boxes at the indexes in `movedBoxes` are taken out (section 3,
+// "Places"): for a place inside a tip group, the first stage of that group at `position` or after it
+// that isn't moved ({ stage }, or { stage: null } for its end); between boxes, the index of the first
+// box at `index` or after it that isn't moved and keeps a stage ({ boxIndex }, or { boxIndex: null }
+// for below the last). A randomization without stages stays, and counts.
+function anchorOf(layout, place, movedStages, movedBoxes) {
+  if (place.kind === "inTipGroup") {
+    const stage = layout[place.index].stages
+      .slice(place.position)
+      .find((id) => !movedStages.has(id));
+    return { stage: stage ?? null };
+  }
+  for (let boxIndex = place.index; boxIndex < layout.length; boxIndex += 1) {
+    const box = layout[boxIndex];
+    const keepsStage = box.kind === "randomization" || box.stages.some((id) => !movedStages.has(id));
+    if (!movedBoxes.has(boxIndex) && keepsStage) {
+      return { boxIndex };
+    }
+  }
+  return { boxIndex: null };
+}
+
+// `layout` without the moved things (section 3, the container rule): the boxes at the indexes in
+// `movedBoxes` and the stages in `movedStages` taken out; a tip group left with no stages is gone,
+// except the one `place` puts stages into, which is kept so it keeps its tips. Each box kept is
+// given as { boxIndex, box }, its index in `layout` beside it.
+function layoutWithout(layout, movedStages, movedBoxes, place) {
+  const kept = [];
+  layout.forEach((box, boxIndex) => {
+    if (movedBoxes.has(boxIndex)) {
+      return;
+    }
+    if (box.kind === "randomization") {
+      kept.push({ boxIndex, box });
+      return;
+    }
+    const stages = box.stages.filter((id) => !movedStages.has(id));
+    const isTarget = place.kind === "inTipGroup" && place.index === boxIndex;
+    if (stages.length > 0 || isTarget) {
+      kept.push({ boxIndex, box: { ...box, stages } });
+    }
+  });
+  return kept;
+}
+
+// The column's boxes with `pieces` put at `place`, at `anchor` (anchorOf), as a list of layout
+// boxes (section 3, the container rule). `remaining` is the column without them, each box beside its
+// index before the edit (layoutWithout; for a paste, every box). Pieces are { kind: "stage", id,
+// tips, runKey } or { kind: "box", box }: stages put inside a tip group join it; put between boxes,
+// each run of consecutive stages with one `runKey` becomes a tip group of its own, loading `tips`.
+function withPiecesPlaced(remaining, pieces, place, anchor) {
+  if (place.kind === "inTipGroup") {
+    const ids = pieces.map((piece) => piece.id);
+    return remaining.map(({ boxIndex, box }) => {
+      if (boxIndex !== place.index) {
+        return box;
+      }
+      const at = anchor.stage === null ? box.stages.length : box.stages.indexOf(anchor.stage);
+      return { ...box, stages: [...box.stages.slice(0, at), ...ids, ...box.stages.slice(at)] };
+    });
+  }
+  const boxes = remaining.map(({ box }) => box);
+  const at =
+    anchor.boxIndex === null
+      ? boxes.length
+      : remaining.findIndex(({ boxIndex }) => boxIndex === anchor.boxIndex);
+  return [...boxes.slice(0, at), ...boxesFromPieces(pieces), ...boxes.slice(at)];
+}
+
+// The layout boxes `pieces` make between boxes: a box piece as its own box; consecutive stage pieces
+// with one `runKey` as one new tip group, loading the first one's tips, e.g. two stages from one
+// tip group → one tip group holding both.
+function boxesFromPieces(pieces) {
+  const boxes = [];
+  let runKey = null;
+  for (const piece of pieces) {
+    if (piece.kind === "box") {
+      boxes.push(piece.box);
+      runKey = null;
+    } else if (runKey !== null && piece.runKey === runKey) {
+      boxes.at(-1).stages.push(piece.id);
+    } else {
+      boxes.push({ kind: "tipGroup", tips: piece.tips, stages: [piece.id] });
+      runKey = piece.runKey;
+    }
+  }
+  return boxes;
+}
+
+// The plan arranged as `layout` says, from `plan`'s stages: its stage order, its tip changes (one per
+// tip group, the first the START one), and its randomizations (from `randomizations`, those in the
+// layout), in column order, each sitting before the first stage of the next box below it that has
+// one, or null (section 3, "Where randomizations sit afterwards"). The operation list isn't put in
+// the new order here (withOperationsInStageOrder).
+function planFromLayout(plan, layout, randomizations) {
+  const stageOrder = [];
+  const tipChanges = {};
+  const groups = layout.flatMap((box) => (box.kind === "tipGroup" ? [box] : box.groups));
+  for (const group of groups) {
+    const key = stageOrder.length === 0 ? START : group.stages[0];
+    tipChanges[key] = { tipType: group.tips.tipType, probes: [...group.tips.probes] };
+    stageOrder.push(...group.stages);
+  }
+  const placed = [];
+  layout.forEach((box, index) => {
+    if (box.kind !== "randomization") {
+      return;
+    }
+    const beforeId = firstStageBelow(layout, index);
+    const randomization = randomizations.find((candidate) => candidate.id === box.randomization.id);
+    placed.push(randomization.beforeId === beforeId ? randomization : { ...randomization, beforeId });
+  });
+  return withParts(plan, {
+    stageOrder: sameOrNew(plan.stageOrder, stageOrder),
+    tipChanges: sameOrNew(plan.tipChanges, tipChanges),
+    randomizations: sameOrNew(plan.randomizations, placed),
+  });
+}
+
+// `old` if `made` holds the same plain data (compared as JSON), otherwise `made`, so a part an edit
+// didn't change stays the very same object (section 6, "Immutability and sharing").
+function sameOrNew(old, made) {
+  return JSON.stringify(old) === JSON.stringify(made) ? old : made;
+}
+
+// The first stage of the first box below box `index` of `layout` that has one, or null.
+function firstStageBelow(layout, index) {
+  for (const box of layout.slice(index + 1)) {
+    const stages = box.kind === "tipGroup" ? box.stages : box.groups.flatMap((group) => group.stages);
+    if (stages.length > 0) {
+      return stages[0];
+    }
+  }
+  return null;
+}
+
+// True if `arranged` has the same stage order, tip changes (tip types and probes by key) and
+// randomizations as `plan`: a move that changes nothing. `plan`'s randomizations are compared in
+// column order, since a move puts the list in column order: a list that was in another order isn't
+// a different column.
+function sameArrangement(plan, arranged) {
+  const tipsByKey = (tipChanges) =>
+    JSON.stringify(Object.keys(tipChanges).sort().map((key) => [key, tipChanges[key]]));
+  const inColumnOrder = columnBoxes(plan)
+    .filter((box) => box.kind === "randomization")
+    .map((box) => randomizationAt(plan, box.id));
+  return (
+    JSON.stringify(plan.stageOrder) === JSON.stringify(arranged.stageOrder) &&
+    tipsByKey(plan.tipChanges) === tipsByKey(arranged.tipChanges) &&
+    JSON.stringify(inColumnOrder) === JSON.stringify(arranged.randomizations)
+  );
+}
+
+// The plan with its operation list rebuilt in its stage order (section 3, "The operation list after
+// a move"): every stage's transfers, stage by stage, each stage's in the order it had, added with the
+// operation list's own add. The same plan if the order already matches.
+function withOperationsInStageOrder(plan) {
+  const groups = plan.operationList.groupByStage();
+  const inOrder = plan.stageOrder.filter((id) => groups.some((group) => group.stage === id));
+  if (JSON.stringify(inOrder) === JSON.stringify(groups.map((group) => group.stage))) {
+    return plan;
+  }
+  const byStage = new Map(groups.map((group) => [group.stage, group.operations]));
+  let operationList = new OperationList();
+  for (const id of inOrder) {
+    for (const operation of byStage.get(id)) {
+      operationList = operationList.add(operation);
+    }
+  }
+  return withParts(plan, { operationList });
+}
+
+// One copied item for a checked item `entry` (section 3, "Copied items"): a stage with the tips of
+// its tip group, a tip group with its tips and stages, or a randomization with its values and its
+// stages, each with its source's well and its own tips.
+function copiedItem(plan, boxes, entry) {
+  if (entry.kind === "stage") {
+    return { kind: "stage", stage: copiedStage(plan, entry.id), tips: tipsInUseAt(plan, entry.id) };
+  }
+  if (entry.kind === "tipGroup") {
+    const box = boxes[entry.boxIndex];
+    return { kind: "tipGroup", tips: tipsOf(box), stages: box.stages.map((id) => copiedStage(plan, id)) };
+  }
+  const randomization = randomizationAt(plan, entry.id);
+  const values = Object.fromEntries(RANDOMIZATION_CHANGES.map((property) => [property, randomization[property]]));
+  const stages = ownedStagesIn(plan, randomization).map(({ labware, well, stage }) => ({
+    labware,
+    well,
+    stage: copiedStage(plan, stage),
+    tips: tipsInUseAt(plan, stage),
+  }));
+  return { kind: "randomization", randomization: values, stages };
+}
+
+// A stage as copied items hold it: { name, settings, transfers }, its transfers in order, each
+// { source, destination, volume }.
+function copiedStage(plan, id) {
+  const { name, settings } = plan.stageList.get(id);
+  const transfers = transfersIn(plan, id).map(({ source, destination, volume }) => ({
+    source: { labware: source.labware, well: source.well },
+    destination: { labware: destination.labware, well: destination.well },
+    volume,
+  }));
+  return { name, settings, transfers };
+}
+
+// The items of `copied`, after checking it's copied items in their form: an object with exactly
+// format (COPIED_ITEMS_FORMAT), version and a non-empty list of items; version 1, or a message
+// saying a newer version copied them.
+function checkCopiedForm(copied) {
+  const notCopiedItems = new Error(
+    "Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.",
+  );
+  if (!hasExactly(copied, COPIED_ITEMS_PROPERTIES) || copied.format !== COPIED_ITEMS_FORMAT) {
+    throw notCopiedItems;
+  }
+  if (Number.isInteger(copied.version) && copied.version > COPIED_ITEMS_VERSION) {
+    throw new Error(
+      `Can't paste: these were copied by a newer version of the tools (version ${copied.version}).`,
+    );
+  }
+  if (copied.version !== COPIED_ITEMS_VERSION || !Array.isArray(copied.items) || copied.items.length === 0) {
+    throw notCopiedItems;
+  }
+  return copied.items;
+}
+
+// Throws unless copied item number `number` is in its form (section 3, "Copied items"): a stage, a
+// tip group (at least one stage) or a randomization, each part with exactly its properties. Values
+// are checked later, by the edits that would make them.
+function checkCopiedItemForm(item, number) {
+  const isStage = (stage) =>
+    hasExactly(stage, COPIED_STAGE_PROPERTIES) &&
+    Array.isArray(stage.transfers) &&
+    stage.transfers.every((transfer) => hasExactly(transfer, COPIED_TRANSFER_PROPERTIES));
+  const isTips = (tips) => hasExactly(tips, COPIED_TIPS_PROPERTIES);
+  let inForm = false;
+  if (isObject(item) && item.kind === "stage") {
+    inForm = hasExactly(item, COPIED_STAGE_ITEM_PROPERTIES) && isStage(item.stage) && isTips(item.tips);
+  } else if (isObject(item) && item.kind === "tipGroup") {
+    inForm =
+      hasExactly(item, COPIED_TIP_GROUP_PROPERTIES) &&
+      isTips(item.tips) &&
+      Array.isArray(item.stages) &&
+      item.stages.length > 0 &&
+      item.stages.every(isStage);
+  } else if (isObject(item) && item.kind === "randomization") {
+    inForm =
+      hasExactly(item, COPIED_RANDOMIZATION_PROPERTIES) &&
+      hasExactly(item.randomization, RANDOMIZATION_CHANGES) &&
+      Array.isArray(item.stages) &&
+      item.stages.every(
+        (owned) => hasExactly(owned, COPIED_OWNED_STAGE_PROPERTIES) && isStage(owned.stage) && isTips(owned.tips),
+      );
+  }
+  if (!inForm) {
+    throw new Error(
+      `Can't paste: item ${number} isn't a stage, tip group or randomization as the transfer designer copies them.`,
+    );
+  }
+}
+
+// Pastes one copied `item` (in its form) into `plan`, its stages added as new stages, last in the
+// stage order for now: { plan, piece, randomization }, `piece` being what goes at the place (as
+// withPiecesPlaced takes it) and `randomization` a new randomization, if it is one. Its values are
+// checked in the order its edits check them; `existing` is the randomizations so far, for a new ID.
+function pastedPiece(plan, item, existing) {
+  if (item.kind === "stage") {
+    const added = withCopiedStage(plan, item.stage);
+    const tips = checkedTips(item.tips);
+    return { plan: added.plan, piece: { kind: "stage", id: added.id, tips, runKey: JSON.stringify(tips) } };
+  }
+  if (item.kind === "tipGroup") {
+    let pasting = plan;
+    const stages = [];
+    for (const stage of item.stages) {
+      const added = withCopiedStage(pasting, stage);
+      pasting = added.plan;
+      stages.push(added.id);
+    }
+    const tips = checkedTips(item.tips);
+    return { plan: pasting, piece: { kind: "box", box: { kind: "tipGroup", tips, stages } } };
+  }
+  return pastedRandomization(plan, item, existing);
+}
+
+// Pastes a copied randomization (pastedPiece): its stages as new stages, each with its own tips;
+// then its values, checked as setRandomization checks them; then its stages' wells (on the deck, no
+// well twice, none a mix step). It gets the next free ID among `existing`.
+function pastedRandomization(plan, item, existing) {
+  let pasting = plan;
+  const groups = [];
+  const owned = [];
+  for (const entry of item.stages) {
+    const added = withCopiedStage(pasting, entry.stage);
+    pasting = added.plan;
+    groups.push({ tips: checkedTips(entry.tips), stages: [added.id] });
+    owned.push({ labware: entry.labware, well: entry.well, stage: added.id });
+  }
+  const values = checkedRandomizationValues(item.randomization, { sources: [], fill: [] });
+  checkPastedOwnedStages(pasting, owned);
+  const id = nextRandomizationId({ randomizations: existing });
+  const randomization = {
+    id,
+    beforeId: null,
+    ...Object.fromEntries(RANDOMIZATION_CHANGES.map((property) => [property, values[property]])),
+    stages: owned,
+  };
+  return { plan: pasting, piece: { kind: "box", box: { kind: "randomization", randomization, groups } }, randomization };
+}
+
+// Throws if a pasted randomization's stages (`owned`, each { labware, well, stage }) aren't as a
+// randomization's stages must be: each well on the deck, no well twice, none a mix step, e.g.
+// 'Deep1 A1 has two stages.'
+function checkPastedOwnedStages(plan, owned) {
+  const seen = new Set();
+  for (const entry of owned) {
+    checkWell(entry);
+    if (seen.has(wellKey(entry))) {
+      throw new Error(`${entry.labware} ${entry.well} has two stages.`);
+    }
+    seen.add(wellKey(entry));
+    if (isMixStep(plan, entry.stage)) {
+      throw new Error(`its stage for ${entry.labware} ${entry.well} is a mix step.`);
+    }
+  }
+}
+
+// Returns { plan, id }: the plan with a new stage from copied `stage` ({ name, settings, transfers }),
+// last in the stage order, checked as renameStage, changeStageSettings and addTransfer check them,
+// in that order.
+function withCopiedStage(plan, stage) {
+  const { stageList, id } = plan.stageList.add(stage.name, defaultSettings());
+  let pasting = withParts(plan, { stageList, stageOrder: [...plan.stageOrder, id] });
+  pasting = changeStageSettings(pasting, id, stage.settings);
+  pasting = addTransfers(
+    pasting,
+    stage.transfers.map(({ source, destination, volume }) => ({
+      type: "transfer",
+      source,
+      destination,
+      volume,
+      stage: id,
+    })),
+  );
+  return { plan: pasting, id };
+}
+
+// Copied `tips`, checked as setTipType and setTipProbes check them, as { tipType, probes }, probes
+// smallest first.
+function checkedTips(tips) {
+  checkTipType(tips.tipType);
+  checkProbes(tips.probes);
+  return { tipType: tips.tipType, probes: [...tips.probes].sort((a, b) => a - b) };
+}
+
+// What a pasted piece is, as an item of the new plan: a stage by its ID, a tip group by its first
+// stage's ID, a randomization by its ID.
+function placedItemOf(piece) {
+  if (piece.kind === "stage") {
+    return { kind: "stage", id: piece.id };
+  }
+  const { box } = piece;
+  return box.kind === "tipGroup"
+    ? { kind: "tipGroup", id: box.stages[0] }
+    : { kind: "randomization", id: box.randomization.id };
+}
+
 // --- Helpers used only inside this module ---
 
 // --- Randomizations: helpers ---
