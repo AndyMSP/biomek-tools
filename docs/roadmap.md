@@ -288,7 +288,7 @@ Last updated: 2026-11-01
   by both tools), randomizations in the plan and plan files (format version 6), and the page's
   dice button, box, card and deck picking (`random-pool.md`, `randomizer.md`,
   `transfer-designer.md`, `plan-file.md`, `transfer-designer-page.md`; glossary "Randomization").
-- **Constituents and concentrations are specified** (Draft, 2026-11-01; ADR 0013, Proposed), from
+- **Constituents and concentrations are specified** (Draft, 2026-11-01; ADR 0013), from
   a preview Andy shaped on 2026-11-01 while not at the Biomek: two "Later" items, final
   concentrations and constituents of a component, done as one model. Each component carries
   **constituents** (a name, an amount and a unit; glossary), set in its box's `Contains` field and

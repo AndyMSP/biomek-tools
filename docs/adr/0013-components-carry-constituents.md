@@ -3,8 +3,7 @@
 Date: 2026-11-01
 
 ## Status
-Proposed (Andy, 2026-11-01: decided while shaping a preview; accepted once its pull request is
-merged).
+Accepted (Andy, 2026-11-01: decided while shaping a preview, and accepted by merging #125).
 
 ## Context
 Two items on the roadmap's "Later" list asked for the same thing from different ends. **Final
