@@ -3464,7 +3464,7 @@ describe("transfer-designer", () => {
     return {
       format: "biomek-tools copied items",
       version: 1,
-      items: [{ kind: "stage", stage, tips: startTips() }],
+      items: [{ kind: "stage", stage, tips: startTips(), group: 1 }],
     };
   }
 
@@ -3493,7 +3493,7 @@ describe("transfer-designer", () => {
     assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 2 }, between(0)), {
       message: "Can't paste: these were copied by a newer version of the tools (version 2).",
     });
-    const second = { kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS } };
+    const second = { kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS }, group: 2 };
     assert.throws(
       () => pasteItems(plan, { ...copiedStageItems(copiedStage()), items: [copiedStageItems(copiedStage()).items[0], second] }, between(0)),
       { message: "Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them." },
@@ -3540,7 +3540,7 @@ describe("transfer-designer", () => {
       if (ownMessage !== null) {
         assert.equal(expected, ownMessage);
       }
-      const copied = { ...copiedStageItems(copiedStage()), items: [copiedStageItems(copiedStage()).items[0], { kind: "stage", stage, tips: startTips() }] };
+      const copied = { ...copiedStageItems(copiedStage()), items: [copiedStageItems(copiedStage()).items[0], { kind: "stage", stage, tips: startTips(), group: 2 }] };
       // Messages may name the stage by its ID or place and a transfer by its position, which differ
       // in the plan pasted into, so those numbers are left out of the comparison.
       const withoutPlaces = (message) =>
@@ -3551,11 +3551,11 @@ describe("transfer-designer", () => {
       );
     }
     assert.throws(
-      () => pasteItems(plan, { ...copiedStageItems(copiedStage()), items: [{ kind: "stage", stage: copiedStage(), tips: { tipType: "BC9", probes: [1] } }] }, between(0)),
+      () => pasteItems(plan, { ...copiedStageItems(copiedStage()), items: [{ kind: "stage", stage: copiedStage(), tips: { tipType: "BC9", probes: [1] }, group: 1 }] }, between(0)),
       { message: `Can't paste: item 1: "BC9" isn't a tip type. Choose one of ${TIP_TYPES.map((type) => `"${type}"`).join(", ")}.` },
     );
     assert.throws(
-      () => pasteItems(plan, { ...copiedStageItems(copiedStage()), items: [{ kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS, probes: [9] } }] }, between(0)),
+      () => pasteItems(plan, { ...copiedStageItems(copiedStage()), items: [{ kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS, probes: [9] }, group: 1 }] }, between(0)),
       { message: /^Can't paste: item 1: Probe numbers must be whole numbers/ },
     );
     assert.equal(snapshot(plan), before);
@@ -3651,6 +3651,54 @@ describe("transfer-designer", () => {
     const { plan: pasted } = pasteItems(dropped, copied, between(0));
     assert.equal(randomizationAt(pasted, "r2").stages.length, 2);
     setRandomizations(pasted, JSON.parse(JSON.stringify(pasted.randomizations)));
+  });
+
+  test("copies from two tip groups with the same tips paste as two tip groups, as moving them gives; from one tip group, as one", () => {
+    // "3" gets FIRST_TIPS too, so both tip groups load the same tips.
+    const plan = setTipType(movingPlan(), "3", FIRST_TIPS);
+    const copied = copyOf(plan, [stageItem("2"), stageItem("3")]);
+    assert.deepEqual(copied.items.map((item) => item.group), [1, 2]);
+    const { plan: pasted, placed } = pasteItems(plan, copied, between(3));
+    const ids = placed.map((item) => item.id);
+    assert.deepEqual(groupsOf(pasted).slice(-2), [
+      [FIRST_TIPS, [ids[0]]],
+      [FIRST_TIPS, [ids[1]]],
+    ]);
+    const moved = moveItems(plan, [stageItem("2"), stageItem("3")], between(3)).plan;
+    assert.deepEqual(groupsOf(moved).slice(-2), [
+      [FIRST_TIPS, ["2"]],
+      [FIRST_TIPS, ["3"]],
+    ]);
+    const fromOne = copyOf(plan, [stageItem("1"), stageItem("2")]);
+    assert.deepEqual(fromOne.items.map((item) => item.group), [1, 1]);
+    const { plan: joined, placed: joinedPlaced } = pasteItems(plan, fromOne, between(3));
+    assert.deepEqual(groupsOf(joined).at(-1), [FIRST_TIPS, joinedPlaced.map((item) => item.id)]);
+  });
+
+  test("a run randomization's two stages, copied together, paste as two tip groups", () => {
+    const plan = movingPlan();
+    const copied = copyOf(plan, [stageItem("5"), stageItem("6")]);
+    assert.deepEqual(copied.items.map((item) => item.group), [1, 2]);
+    const { plan: pasted, placed } = pasteItems(plan, copied, between(0));
+    assert.deepEqual(
+      groupsOf(pasted).slice(0, 2).map(([, stages]) => stages),
+      placed.map((item) => [item.id]),
+    );
+  });
+
+  test("pasteItems refuses a stage entry whose group isn't a whole number from 1", () => {
+    const plan = movingPlan();
+    for (const group of [0, 1.5, "1", undefined]) {
+      const copied = copyOf(plan, [stageItem("2")]);
+      if (group === undefined) {
+        delete copied.items[0].group;
+      } else {
+        copied.items[0].group = group;
+      }
+      assert.throws(() => pasteItems(plan, copied, between(0)), {
+        message: "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.",
+      });
+    }
   });
 
   test("a copied tip group pasted at the top of a new plan lands above New stage, which gets tips of its own", () => {

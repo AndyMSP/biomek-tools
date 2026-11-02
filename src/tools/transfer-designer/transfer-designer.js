@@ -1100,7 +1100,7 @@ const ITEM_KINDS = ["stage", "tipGroup", "randomization"];
 
 // The properties of each part of copied items, exactly (section 3, "Moving and copying").
 const COPIED_ITEMS_PROPERTIES = ["format", "version", "items"];
-const COPIED_STAGE_ITEM_PROPERTIES = ["kind", "stage", "tips"];
+const COPIED_STAGE_ITEM_PROPERTIES = ["kind", "stage", "tips", "group"];
 const COPIED_TIP_GROUP_PROPERTIES = ["kind", "tips", "stages"];
 const COPIED_RANDOMIZATION_PROPERTIES = ["kind", "randomization", "stages"];
 const COPIED_STAGE_PROPERTIES = ["name", "settings", "transfers"];
@@ -1178,12 +1178,25 @@ export function moveItems(plan, items, place) {
 // The copied items for `items` (each { kind, id }, of this plan), in column order, as plain data
 // that survives JSON (section 3, "Moving and copying"), e.g. copyOf(plan, [{ kind: "stage", id:
 // "2" }]) → { format: "biomek-tools copied items", version: 1, items: [{ kind: "stage", stage: {
-// name, settings, transfers }, tips: { tipType, probes } }] }. Doesn't change the plan. Throws, as
-// moveItems does, if `items` isn't a list of items of this plan.
+// name, settings, transfers }, tips: { tipType, probes }, group: 1 }] }. A stage entry's `group`
+// numbers the tip group it came from, from 1 in column order, so a paste keeps stages from
+// different tip groups apart. Doesn't change the plan. Throws, as moveItems does, if `items` isn't
+// a list of items of this plan.
 export function copyOf(plan, items) {
   const boxes = columnBoxes(plan);
   const entries = checkedItems(plan, items, "copy", boxes);
-  const copied = entries.map((entry) => copiedItem(plan, boxes, entry));
+  const groupNumbers = new Map();
+  const copied = entries.map((entry) => {
+    const item = copiedItem(plan, boxes, entry);
+    if (entry.kind === "stage") {
+      const groupKey = tipGroupKeyOf(plan, entry.id);
+      if (!groupNumbers.has(groupKey)) {
+        groupNumbers.set(groupKey, groupNumbers.size + 1);
+      }
+      item.group = groupNumbers.get(groupKey);
+    }
+    return item;
+  });
   // Through JSON, so nothing in the result is shared with the (frozen) plan.
   return JSON.parse(
     JSON.stringify({ format: COPIED_ITEMS_FORMAT, version: COPIED_ITEMS_VERSION, items: copied }),
@@ -1553,6 +1566,12 @@ function withOperationsInStageOrder(plan) {
   return withParts(plan, { operationList });
 }
 
+// The key of the tip group stage `id` is in (tipGroups' key), e.g. "start" or "3"; a randomization's
+// stages are each in a tip group of their own, so each has its own key.
+function tipGroupKeyOf(plan, id) {
+  return tipGroups(plan).find((group) => group.stages.includes(id)).key;
+}
+
 // One copied item for a checked item `entry` (section 3, "Copied items"): a stage with the tips of
 // its tip group, a tip group with its tips and stages, or a randomization with its values and its
 // stages, each with its source's well and its own tips.
@@ -1612,14 +1631,22 @@ function checkCopiedForm(copied) {
 // tip group (at least one stage) or a randomization, each part with exactly its properties. Values
 // are checked later, by the edits that would make them.
 function checkCopiedItemForm(item, number) {
+  // True if `stage` is a copied stage in its form: { name, settings, transfers }, each transfer
+  // { source, destination, volume }.
   const isStage = (stage) =>
     hasExactly(stage, COPIED_STAGE_PROPERTIES) &&
     Array.isArray(stage.transfers) &&
     stage.transfers.every((transfer) => hasExactly(transfer, COPIED_TRANSFER_PROPERTIES));
+  // True if `tips` is { tipType, probes }.
   const isTips = (tips) => hasExactly(tips, COPIED_TIPS_PROPERTIES);
   let inForm = false;
   if (isObject(item) && item.kind === "stage") {
-    inForm = hasExactly(item, COPIED_STAGE_ITEM_PROPERTIES) && isStage(item.stage) && isTips(item.tips);
+    inForm =
+      hasExactly(item, COPIED_STAGE_ITEM_PROPERTIES) &&
+      isStage(item.stage) &&
+      isTips(item.tips) &&
+      Number.isInteger(item.group) &&
+      item.group >= 1;
   } else if (isObject(item) && item.kind === "tipGroup") {
     inForm =
       hasExactly(item, COPIED_TIP_GROUP_PROPERTIES) &&
@@ -1651,7 +1678,8 @@ function pastedPiece(plan, item, existing) {
   if (item.kind === "stage") {
     const added = withCopiedStage(plan, item.stage);
     const tips = checkedTips(item.tips);
-    return { plan: added.plan, piece: { kind: "stage", id: added.id, tips, runKey: JSON.stringify(tips) } };
+    // Stages with one `group` came from one tip group, so a run of them forms one tip group.
+    return { plan: added.plan, piece: { kind: "stage", id: added.id, tips, runKey: `group ${item.group}` } };
   }
   if (item.kind === "tipGroup") {
     let pasting = plan;
