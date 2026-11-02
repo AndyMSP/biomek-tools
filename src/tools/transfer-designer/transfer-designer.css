@@ -1766,6 +1766,15 @@ button.quiet-danger:disabled {
   box-shadow: 0 0 0 1px var(--red);
 }
 
+/* What a chip carries (section 8): small and gray after the name, never wrapped, the same gray when
+   the chip is picked (section 15). */
+.component-chip .chip-carries {
+  margin-left: 2px;
+  color: var(--muted-text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .chip-holder .edit-button {
   margin-left: 2px;
 }
@@ -1942,6 +1951,54 @@ button.quiet-danger:disabled {
   color: var(--blue);
 }
 
+/* A component's Contains rows (sections 8 and 15): a grid per row, the name box taking what's left,
+   then the amount box 56px, the unit menu 76px, then × 26px; 6px apart; rows 6px apart and 6px
+   above + Add. */
+.contains-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.contains-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.constituent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px 76px 26px;
+  gap: 6px;
+  align-items: center;
+}
+
+/* The unit menu's right padding is 2px, so "g/L" and "mM" show whole beside the arrow. */
+.editing-box .constituent-unit {
+  padding-right: 2px;
+}
+
+/* × is plain, like a transfer row's: no border, gray, 16px. */
+.remove-constituent {
+  min-height: 26px;
+  min-width: 26px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.remove-constituent:hover {
+  border-color: var(--input-border);
+  color: var(--red);
+}
+
+.editing-box .contains-nothing {
+  margin-bottom: 6px;
+}
+
 .tip-type-buttons {
   display: flex;
   gap: 6px;
@@ -2100,6 +2157,28 @@ button.quiet-danger:disabled {
   margin-left: auto;
   font-family: var(--mono-font);
   font-size: 12px;
+}
+
+/* The Concentrations group (sections 6 and 15): 6px below the components, above a 1px rule in the
+   light text at 20% opacity, 6px of space under the rule; its heading small capitals, quiet; each
+   line as a component's, 12px between. */
+.contents-card .card-concentrations {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(246, 245, 241, 0.2);
+}
+
+.contents-card .card-group-heading {
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  opacity: 0.6;
+}
+
+.contents-card .card-concentrations li {
+  gap: 12px;
 }
 
 .contents-card .card-problem {
