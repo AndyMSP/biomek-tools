@@ -1689,6 +1689,11 @@ input.seed-box {
   width: 120px;
 }
 
+/* A randomization's Volume box (section 7): like Seed's, narrower, with "µL" after it. */
+input.card-volume-box {
+  width: 80px;
+}
+
 .card-footer {
   display: flex;
   flex-direction: column;

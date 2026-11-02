@@ -2933,35 +2933,28 @@ function createCardTipsField() {
   return field;
 }
 
-// The card's Volume (section 7): a button showing the volume per transfer ("50 µL", or "? µL" with
-// none), which turns into a text box when clicked, as a transfer's volume does: Enter or clicking
-// away sets it, Escape keeps the old one.
+// The card's Volume (section 7): a text box like Seed's, 80px wide, then "µL"; what's typed
+// changes the draft at once, as Seed's box does. (It was a button that turned into a box when
+// clicked, as a transfer's volume does, but alone in the card it didn't look editable; Andy,
+// 2026-11-01.)
 function createCardVolumeField() {
   const { draft } = card;
   const field = createElement("div", "", "card-field");
-  field.append(createElement("span", "Volume", "field-name"));
-  const shown = draft.volumeText.trim() === "" ? "?" : draft.volumeText.trim();
-  const button = createElement("button", `${shown} µL`, "volume-button card-volume");
-  button.type = "button";
-  button.dataset.focusKey = "volume";
-  button.title = "Volume per transfer. Click to change it.";
-  button.addEventListener("click", () => {
-    const box = createInlineEditor({
-      value: draft.volumeText,
-      className: "volume-box card-volume-box",
-      accessibleName: "Volume per transfer in µL",
-      onSave: (text) => {
-        draft.volumeText = text.trim();
-        redrawCard();
-        return "closed";
-      },
-      onCancel: redrawCard,
-    });
-    button.replaceWith(box);
-    box.focus();
-    box.select();
+  const box = document.createElement("input");
+  box.type = "text";
+  box.inputMode = "decimal";
+  box.id = "card-volume";
+  box.className = "card-volume-box";
+  box.dataset.focusKey = "volume";
+  box.value = draft.volumeText;
+  box.setAttribute("aria-label", "Volume per transfer in µL");
+  box.addEventListener("input", () => {
+    draft.volumeText = box.value;
+    redrawCard();
   });
-  field.append(button);
+  const label = createElement("label", "Volume", "field-name");
+  label.htmlFor = box.id;
+  field.append(label, box, createElement("span", "µL", "muted"));
   return field;
 }
 
