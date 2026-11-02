@@ -71,6 +71,35 @@ Andy is learning, so explanations matter as much as the code.
 - **Exception:** a very small code fix (a few lines, found in a review) can be made in the chat,
   still specification first, on its own branch with a pull request (Andy, 2026-10-26).
 
+## Workflows
+Andy chooses a workflow for each topic (Andy, 2026-11-01). The standard workflow is the default; the
+hands-off workflow is used only when Andy asks for it.
+- **Standard workflow:** as above. Andy approves a pull request's specifications before the build
+  starts, and questions that need his decision are asked as they come up.
+- **Hands-off workflow:** Claude carries a topic from specification to Andy's test without
+  stopping. Where a question would need Andy's decision, Claude takes its own recommendation, notes
+  the decision and its reason, and carries on. The steps:
+  1. A branch for the topic, from the latest `main`.
+  2. The specifications, marked **Draft**, with the roadmap entry, an ADR and glossary terms as
+     needed; each committed and pushed.
+  3. The pull request, whose **For Andy** lists every decision Claude made for him, with its reason.
+  4. A review of the specifications by a separate agent, given only the specifications; Claude
+     fixes what matters.
+  5. The build, by Claude Code, as in "Who does what", from the specifications only.
+  6. A review of the build: Claude checks it against the description and the specifications, runs
+     `npm test` and checks pages in a real browser; a separate agent reviews the code against the
+     specifications without Claude's conclusions. Fixes go specification first, back to the same
+     build agent or, for a few lines, made in the chat.
+  7. The roadmap entry says "built (#N)", the build goes to Andy's preview, and Andy gets a
+     notification.
+  8. One report: the pull request, what to test, the decisions made for Andy and why, and any
+     questions still open.
+
+  Still Andy's, even in this workflow: merging, real runs, anything hard to undo, and any change to
+  what goes into the Biomek files. For these, Claude does the preparatory work, sets out the
+  decision and stops. The decisions Claude made stand as proposals until Andy merges the pull
+  request.
+
 ## Code
 - **Readability first.** Use clear, descriptive names. Prefer simple code to clever code.
 - **Single responsibility.** Each function does one thing; each module covers one topic. Keep
