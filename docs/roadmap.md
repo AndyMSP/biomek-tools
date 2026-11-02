@@ -315,7 +315,9 @@ Last updated: 2026-11-01
   `pasteItems`; `transfer-designer-page.md`, section 7, "Moving and copying". It changes no Biomek
   files and no plan files, so it doesn't affect the final Biomek runs. From the preview: box selection
   and Duplicate (Ctrl+D) were considered and declined, and clicking a gap to set where Ctrl+V pastes
-  was tried and dropped (Andy, 2026-11-01).
+  was tried and dropped (Andy, 2026-11-01). **Built (#128, 2026-11-02)**: code, tests and REPL of the
+  five functions, and the page; reviewed by a separate agent and checked in headless Chrome. Still to
+  check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
