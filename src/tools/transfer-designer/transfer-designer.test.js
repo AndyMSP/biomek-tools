@@ -93,6 +93,8 @@ import {
   copyOf,
   copyItems,
   pasteItems,
+  COPIED_ITEMS_FORMAT,
+  COPIED_ITEMS_VERSION,
 } from "./transfer-designer.js";
 import { assignPool } from "../../shared/random-pool/random-pool.js";
 import { CONCENTRATION_UNITS } from "../../../config/concentration-units.js";
@@ -3394,6 +3396,8 @@ describe("transfer-designer", () => {
     assert.equal(snapshot(plan), before);
     assert.equal(copied.format, "biomek-tools copied items");
     assert.equal(copied.version, 1);
+    assert.equal(COPIED_ITEMS_FORMAT, copied.format);
+    assert.equal(COPIED_ITEMS_VERSION, copied.version);
     const throughJson = JSON.parse(JSON.stringify(copied));
     assert.deepEqual(throughJson, copied);
     const other = emptyPlan().plan;

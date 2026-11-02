@@ -1091,9 +1091,10 @@ export function setRandomizations(plan, randomizations) {
 // --- Moving and copying ---
 
 // What copied items say they are, and the version of their form this module writes and reads
-// (transfer-designer.md, "Moving and copying").
-const COPIED_ITEMS_FORMAT = "biomek-tools copied items";
-const COPIED_ITEMS_VERSION = 1;
+// (transfer-designer.md, "Moving and copying"). Exported, so a tool can recognize copied items on
+// the system clipboard by the same text.
+export const COPIED_ITEMS_FORMAT = "biomek-tools copied items";
+export const COPIED_ITEMS_VERSION = 1;
 
 // The kinds of item (docs/glossary.md, "Item"), as items name them.
 const ITEM_KINDS = ["stage", "tipGroup", "randomization"];
@@ -1535,6 +1536,8 @@ function firstStageBelow(layout, index) {
 // column order, since a move puts the list in column order: a list that was in another order isn't
 // a different column.
 function sameArrangement(plan, arranged) {
+  // The tip changes as text, by key in sorted order, so two tables with the same entries in a
+  // different order compare equal.
   const tipsByKey = (tipChanges) =>
     JSON.stringify(Object.keys(tipChanges).sort().map((key) => [key, tipChanges[key]]));
   const inColumnOrder = columnBoxes(plan)

@@ -136,6 +136,8 @@ import {
   copyOf,
   copyItems,
   pasteItems,
+  COPIED_ITEMS_FORMAT,
+  COPIED_ITEMS_VERSION,
 } from "../src/tools/transfer-designer/transfer-designer.js";
 import {
   PLAN_FILE_FORMAT,
@@ -520,6 +522,8 @@ const TOPICS = {
       copyOf,
       copyItems,
       pasteItems,
+      COPIED_ITEMS_FORMAT,
+      COPIED_ITEMS_VERSION,
     },
     examples: [
       "let plan = emptyPlan().plan",

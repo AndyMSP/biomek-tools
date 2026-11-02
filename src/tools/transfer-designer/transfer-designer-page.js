@@ -95,12 +95,14 @@ import {
   copyOf,
   copyItems,
   pasteItems,
+  COPIED_ITEMS_FORMAT,
 } from "./transfer-designer.js";
 import {
   CONCENTRATION_UNITS,
   DEFAULT_CONCENTRATION_UNIT,
 } from "../../../config/concentration-units.js";
 import { bestUnit } from "../../shared/concentrations/concentrations.js";
+import { isObject } from "../../shared/input-checks/input-checks.js";
 
 // --- Constants ---
 
@@ -113,10 +115,6 @@ const STORAGE_KEY = "biomek-tools transfer designer: plan";
 // The key the page's copy of copied items is stored under, in the browser's local storage, shared
 // by every tab of the designer (section 7, "Moving and copying").
 const COPIED_ITEMS_KEY = "biomek-tools transfer designer: copied items";
-
-// What copied items say they are (transfer-designer.md, "Copied items"): text on the clipboard
-// with this format goes to pasteItems.
-const COPIED_ITEMS_FORMAT = "biomek-tools copied items";
 
 // While dragging in the Stages column: the drop line looks for seams while the pointer is within
 // this far (in pixels) of the column's sides, and the column scrolls when it's within this far of
@@ -2250,6 +2248,8 @@ function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, dr
 
   const stages = createElement("div", "", "tip-group-stages");
   const firstStage = group.stages[0];
+  // A seam inside this box (createSeamInBox with `seamOptions`), noted as the place just before
+  // its stage at `position`, for dropping and pasting.
   const seamInBox = (position, seamOptions) =>
     withDropPlace(createSeamInBox(plan, seamOptions), { kind: "inTipGroup", index: boxIndex, position });
   stages.append(
@@ -3980,15 +3980,10 @@ function pageCopy() {
 function copiedItemsIn(text) {
   try {
     const parsed = JSON.parse(text);
-    return isPlainObject(parsed) && parsed.format === COPIED_ITEMS_FORMAT ? parsed : null;
+    return isObject(parsed) && parsed.format === COPIED_ITEMS_FORMAT ? parsed : null;
   } catch {
     return null;
   }
-}
-
-// True if `value` is an object (not a list or null).
-function isPlainObject(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // True if copied items (perhaps damaged) hold a tip group or a randomization.
@@ -4094,6 +4089,8 @@ function openItemMenu(item, at) {
   }
   const copied = pageCopy();
   const pasteBlocked = copied === null ? "Copy something first." : null;
+  // What Paste above or Paste below does (`side`, "above" or "below"): pastes the page's copy
+  // just beside the item, as one edit.
   const pasteBeside = (side) => () => {
     const plan = currentPlan();
     const place = pastePlaceBeside(plan, item, side, copiedHoldsContainer(copied));
