@@ -299,7 +299,9 @@ Last updated: 2026-11-01
   nM and mg/L for display. Decided with Andy, 2026-11-01: one family per constituent name across
   the plan (g/L and mM can't be added without a molecular weight); renaming a component leaves a
   constituent of the same name alone; concentrations on the card only, not the deck. Written while
-  Andy was driving, so the choices are listed in its pull request. Next, Claude Code builds it.
+  Andy was driving, so the choices are listed in its pull request. **Built (#125, 2026-11-01)**:
+  code, tests and REPL of `concentrations`, the transfer designer, plan files (version 7, versions
+  1 to 6 still opening) and the page; checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
