@@ -509,8 +509,9 @@ well) can't be used on the day: everything the plan does with one well moves to 
   every problem of the moved well on another well.) Clicking, or dropping on, a
   well in use moves nothing and keeps the pick: `Plate1 A1 is already used in the plan. Choose a
   well with a dashed outline, or press Escape to pick another well.` (note). Clicking the picked
-  well again, Escape, or dropping off the labware lets go of it; dropping on the picked well itself
-  keeps it picked. If `moveWell` refuses (it shouldn't, after these checks), its message is shown as
+  well again, Escape, or dropping off the labware lets go of it; dropping on the picked well itself,
+  or on a labware between its wells, keeps it picked (from the build's review, 2026-11-02: a drop
+  that just misses a well shouldn't lose the pick). If `moveWell` refuses (it shouldn't, after these checks), its message is shown as
   an error.
 - **A drag while a well is picked** starts from wherever it's pressed: from another well that can be
   picked, it picks that one instead and drags it; from a randomization's well to fill, the message
@@ -966,9 +967,11 @@ the column keeps its look, but only three things work there: clicking a closed e
 (Start, a stage, End; a randomization's stages too), `Show transfers` / `Hide transfers`, and
 pointing at a transfer row, which singles out its transfer as usual. The ✎
 buttons, the `×` on transfer rows and the seams are hidden (their space kept, so nothing shifts).
-Any other click in the column (a volume, a component chip, a randomization's heading, which would
-open its card) does nothing but say `Stages can't be changed while moving wells. Press Done
-first.` (note). Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
+Any other click on a control or heading in the column (a volume, a component chip, a randomization's
+heading, which would open its card) does nothing but say `Stages can't be changed while moving
+wells. Press Done first.` (note); a click on plain text or empty space does nothing and says
+nothing. An undo or redo that would open a randomization's card while moving wells opens instead
+the point it sits at (its first stage, or the stage it sits before, or End), so no card opens. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
 are off.
 
 ## 8. Starting contents (Start open)
@@ -1316,7 +1319,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **Blue** (`#2F5DA8`) for actions and what's chosen, with a light border (`#9DB7DB`) and tint
   (`#EEF3FA`). **Purple** (`#7A4FBF`, with a tint `#F3EEFB`) only for moving wells (section 6):
   the deck panel's border, its bar, the picked well's ring, the outlines of the wells it can move
-  to, and `Done`, solid purple with white text. **Red** (`#C4362A`) for problems, with a pale background (`#FCE9E7`) and border
+  to, and `Done`, solid purple with white text. A well with one of these outlines still shows
+  keyboard focus (a 3px light blue ring outside its purple one), so the keyboard can be followed. **Red** (`#C4362A`) for problems, with a pale background (`#FCE9E7`) and border
   (`#E8A39B`). **Green** text `#22603A` on `#EDF5EF`.
 - **Buttons**, in a few groups, each styled once (Andy, 2026-10-26: "if things were grouped, keep
   them grouped. Prioritize simplicity"):
