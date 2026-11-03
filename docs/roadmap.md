@@ -530,9 +530,15 @@ added on 2026-10-28 (Andy).
       - **Elsewhere on the deck:** naming wells by right-click and typing volumes are off; the
         cursor's label is hidden; the contents card's last line says what a click does there
         (e.g. `Click to move Res1 3 here`).
-    Still open: wells to fill are kept in deck order, so moving one of a randomization's wells to
-    fill can change its place in the pool, and an Update after that would reshuffle it even with
-    the same seed (the stages already made don't change). Next: the specifications.
+    - **A randomization's wells to fill can't be moved** (Andy, 2026-11-02). They're kept in deck
+      order, so a moved one could change its place in the pool, and an Update after that would
+      reshuffle even with the same seed; keeping its old place instead would break the deck-order
+      rule. Its sources can be moved: they keep the order given, so the moved well keeps its place
+      and the same seed gives the same wells. Moving one is refused with `Wells a randomization
+      fills can't be moved.` (Andy chose the short form); on the page such a well is dimmed like an
+      unused one until a well is picked, a click or drag on it gives that message, and the
+      contents card's last line says `Filled by a randomization`.
+    Next: the specifications.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
