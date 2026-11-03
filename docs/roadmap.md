@@ -336,6 +336,9 @@ Last updated: 2026-11-02
   2026-11-02)**: code, tests and REPL of the three functions, and the page; the specifications
   and the build each reviewed by a separate agent, and checked in headless Chrome. Still to check by
   Andy.
+- **Decided: a filler can be several wells** (Andy, 2026-11-02; item 13, below), since one well
+  can't always hold enough filler; Exp36 needs it. Worked on alongside moving wells (#131), on its
+  own branch (Andy, 2026-11-02). Not specified yet.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -545,6 +548,23 @@ added on 2026-10-28 (Andy).
       unused one until a well is picked, a click or drag on it gives that message, and the
       contents card's last line says `Filled by a randomization`.
     **Specified** (Draft, 2026-11-02) and **built (#131)**: see "Where things stand".
+13. **A filler of several wells** (Andy, 2026-11-02): a randomization's filler can't always fit in
+    one well, so it can be several wells. Exp36 needs it. Decided so far (Andy, 2026-11-02):
+    - **Picking them:** several source rows can be marked Filler, where only one can today. They're
+      used in the order they're listed, so the user puts the rows in the order wanted.
+    - **Whole transfers only:** the filler's transfers draw from its first well until the next one
+      would reach into the well's dead volume; that transfer, and the rest, draw from the next
+      well. A transfer is never split between two wells, so a well may be left with a little more
+      than its dead volume. Since every transfer of a randomization has the same volume, each
+      filler well gives as many whole transfers as fit in what it holds above its dead volume at
+      the randomization's point in the plan (e.g. 1,900 µL above it and 50 µL transfers: 38).
+    - **Not enough filler:** if the filler wells together don't hold enough, the last one is
+      overdrawn, shown and refused like any overdraw.
+    - **The Biomek files' format doesn't change** (the filler's transfers name different source
+      wells; the Biomek orders a stage's transfers itself, B56358AF 22-25, so splitting by whole
+      transfers is safe). Plan files do: today they allow one filler, so a new format version, with
+      older files still opening.
+    Next: a preview, then the specifications.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -558,7 +578,9 @@ final Biomek runs, so they test the files as they will be:
 6. Moving wells (item 12), added on 2026-11-02: preview, specifications, then build. It doesn't
    change the Biomek files' format, so it doesn't need to come before the final runs; it's being
    done first anyway, on 2026-11-02, while the runs wait for Andy to be at the Biomek.
-7. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+7. A filler of several wells (item 13), added on 2026-11-02: preview, specifications, then build.
+   It doesn't change the Biomek files' format, so it needn't come before the final runs.
+8. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen
