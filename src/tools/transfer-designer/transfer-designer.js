@@ -35,7 +35,12 @@ import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
 import { labwareNames, gridOf, checkWell } from "../../shared/deck/deck.js";
 import { START, tipGroups } from "../../shared/tip-groups/tip-groups.js";
 import { checkExperimentName } from "../../shared/file-writer/file-writer.js";
-import { assignPool, findPoolProblems, MAX_SEED } from "../../shared/random-pool/random-pool.js";
+import {
+  assignPool,
+  findPoolProblems,
+  spareWellCount,
+  MAX_SEED,
+} from "../../shared/random-pool/random-pool.js";
 import {
   checkConstituents,
   familyOf,
@@ -880,6 +885,13 @@ const RANDOMIZATION_PROPERTIES = ["id", "beforeId", ...RANDOMIZATION_CHANGES, "s
 const SOURCE_PROPERTIES = ["labware", "well", "replicates", "filler"];
 const OWNED_STAGE_PROPERTIES = ["labware", "well", "stage"];
 
+// Contents tracking's allowance for arithmetic leftovers, 0.000001 ("Tiny amounts"), used the same
+// way here: added to a filler well's usable volume before counting its whole transfers, so exactly n
+// transfers' worth gives n, and as the most two filler wells' shares of a component may differ by
+// and still be one liquid (section 3, "The filler's shares" and "Problems"). Not in config/: it's
+// part of how amounts are compared, as in contents tracking.
+const TINY_AMOUNT = 0.000001;
+
 // The pool's problems (random-pool) that only follow from having no sources or no wells to fill,
 // so they aren't listed then (section 3, "Problems").
 const FOLLOW_ON_POOL_PROBLEMS = ["replicates-missing", "replicates-invalid", "too-many", "spare-without-filler"];
@@ -987,7 +999,38 @@ export function randomizationProblems(plan, id) {
   if (randomization.volume === null) {
     problems.push("Set the volume.");
   }
+  if (!fillerWellsHoldOneLiquid(randomization, () => contentsBefore(plan, randomization))) {
+    problems.push("The filler wells hold different liquids.");
+  }
   return problems;
+}
+
+// How many of the filler's wells each filler well fills (section 3, "The filler's shares"), as
+// [{ index, count }] in sources' order, `index` its place in sources from 0, e.g. three filler wells
+// each 750 µL above their dead volume, 100 µL transfers and 18 wells for the filler →
+// [{ index: 2, count: 7 }, { index: 3, count: 7 }, { index: 4, count: 4 }]. [] with no filler wells;
+// null while the volume or a source's replicates aren't known. Throws if there's no such
+// randomization.
+export function fillerShares(plan, id) {
+  const randomization = checkRandomizationExists(plan, id);
+  return sharesOf(randomization, () => contentsBefore(plan, randomization));
+}
+
+// True if randomization `id` has run and either has problems now or a run now would give different
+// stages (section 3, "Out of date"): a different number of stages, or, for any of them in order, a
+// different source well, name or list of transfers (source, destination and volume). Stage IDs
+// aren't compared, since a run may make them fresh. The run is a trial on the plan given, which
+// never changes. Throws if there's no such randomization.
+export function isRandomizationOutOfDate(plan, id) {
+  const randomization = checkRandomizationExists(plan, id);
+  if (randomization.stages.length === 0) {
+    return false;
+  }
+  if (randomizationProblems(plan, id).length > 0) {
+    return true;
+  }
+  const trial = runRandomization(plan, id);
+  return stagesOutline(trial, randomizationAt(trial, id)) !== stagesOutline(plan, randomization);
 }
 
 // A source's name (section 3): its well label; otherwise the component it holds most of just before
@@ -996,13 +1039,18 @@ export function randomizationProblems(plan, id) {
 // ignored). Throws if there's no such randomization, or `source` isn't a well on the deck.
 export function sourceName(plan, id, source) {
   const randomization = checkRandomizationExists(plan, id);
+  return nameOfSource(plan, () => contentsBefore(plan, randomization), source);
+}
+
+// A source's name (sourceName), with what every well holds just before the randomization given by
+// `contentsOf`, a function called only when the source has no well label (so a run replays the
+// contents once, not once per source), e.g. "Cond 1" or "Drug A +2".
+function nameOfSource(plan, contentsOf, source) {
   const label = wellLabelOf(plan, source);
   if (label !== null) {
     return label;
   }
-  const components = Object.entries(
-    contentsBefore(plan, randomization).componentsOf(source.labware, source.well),
-  ).filter(([, volume]) => volume > 0);
+  const components = heldComponents(contentsOf(), source);
   if (components.length === 0) {
     return `${labelOf(plan, source.labware)} ${source.well}`;
   }
@@ -1028,14 +1076,16 @@ export function runRandomization(plan, id) {
     throw new Error(problems[0]);
   }
   const randomization = randomizationAt(plan, id);
-  const wellsBySource = wellsForEachSource(randomization);
+  // Contents just before the randomization, replayed once per run (section 3, step 5).
+  const contents = contentsBefore(plan, randomization);
+  const runStages = runStagesOf(plan, randomization, contents);
+  const kept = keptEntries(plan, randomization, runStages);
   const place = runPlace(plan, randomization);
-  const names = randomization.sources.map((source) => sourceName(plan, id, source));
-  let running = withNewSourceStages(plan, randomization, wellsBySource, place, names);
-  running = withoutUnusedSourceStages(running, id, wellsBySource);
+  let running = withNewSourceStages(plan, randomization, runStages, kept, place);
+  running = withoutUnusedSourceStages(running, id, kept);
   for (const owned of randomizationAt(running, id).stages) {
-    const wells = wellsBySource[sourceIndexOf(randomization, owned)];
-    running = withSourceStageSet(running, randomization, owned, wells);
+    const runStage = runStages.find((candidate) => wellKey(candidate.well) === wellKey(owned));
+    running = withSourceStageSet(running, randomization, owned, runStage);
   }
   return withRunPlaceNoted(running, id);
 }
@@ -1094,7 +1144,11 @@ export function setRandomizations(plan, randomizations) {
 // (transfer-designer.md, "Moving and copying"). Exported, so a tool can recognize copied items on
 // the system clipboard by the same text.
 export const COPIED_ITEMS_FORMAT = "biomek-tools copied items";
-export const COPIED_ITEMS_VERSION = 1;
+export const COPIED_ITEMS_VERSION = 2;
+
+// The versions of copied items this module reads: version 1 (before several filler wells) and the
+// one it writes, with the same checks (section 3, "Copied items version 2").
+const COPIED_ITEMS_VERSIONS_READ = [1, COPIED_ITEMS_VERSION];
 
 // The kinds of item (docs/glossary.md, "Item"), as items name them.
 const ITEM_KINDS = ["stage", "tipGroup", "randomization"];
@@ -1178,7 +1232,7 @@ export function moveItems(plan, items, place) {
 
 // The copied items for `items` (each { kind, id }, of this plan), in column order, as plain data
 // that survives JSON (section 3, "Moving and copying"), e.g. copyOf(plan, [{ kind: "stage", id:
-// "2" }]) → { format: "biomek-tools copied items", version: 1, items: [{ kind: "stage", stage: {
+// "2" }]) → { format: "biomek-tools copied items", version: 2, items: [{ kind: "stage", stage: {
 // name, settings, transfers }, tips: { tipType, probes }, group: 1 }] }. A stage entry's `group`
 // numbers the tip group it came from, from 1 in column order, so a paste keeps stages from
 // different tip groups apart. Doesn't change the plan. Throws, as moveItems does, if `items` isn't
@@ -1610,8 +1664,8 @@ function copiedStage(plan, id) {
 }
 
 // The items of `copied`, after checking it's copied items in their form: an object with exactly
-// format (COPIED_ITEMS_FORMAT), version and a non-empty list of items; version 1, or a message
-// saying a newer version copied them.
+// format (COPIED_ITEMS_FORMAT), version and a non-empty list of items; a version it reads
+// (COPIED_ITEMS_VERSIONS_READ), or a message saying a newer version copied them.
 function checkCopiedForm(copied) {
   const notCopiedItems = new Error(
     "Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.",
@@ -1624,7 +1678,11 @@ function checkCopiedForm(copied) {
       `Can't paste: these were copied by a newer version of the tools (version ${copied.version}).`,
     );
   }
-  if (copied.version !== COPIED_ITEMS_VERSION || !Array.isArray(copied.items) || copied.items.length === 0) {
+  if (
+    !COPIED_ITEMS_VERSIONS_READ.includes(copied.version) ||
+    !Array.isArray(copied.items) ||
+    copied.items.length === 0
+  ) {
     throw notCopiedItems;
   }
   return copied.items;
@@ -1700,7 +1758,7 @@ function pastedPiece(plan, item, existing) {
 
 // Pastes a copied randomization (pastedPiece): its stages as new stages, each with its own tips;
 // then its values, checked as setRandomization checks them; then its stages' wells (on the deck, no
-// well twice, none a mix step). It gets the next free ID among `existing`.
+// well twice, none a mix step), and not two of them its filler's. It gets the next free ID among `existing`.
 function pastedRandomization(plan, item, existing) {
   let pasting = plan;
   const groups = [];
@@ -1720,6 +1778,8 @@ function pastedRandomization(plan, item, existing) {
     ...Object.fromEntries(RANDOMIZATION_CHANGES.map((property) => [property, values[property]])),
     stages: owned,
   };
+  // As setRandomizations checks a plan file's, so a pasted plan can always be saved and opened.
+  checkOneFillerStage(randomization);
   return { plan: pasting, piece: { kind: "box", box: { kind: "randomization", randomization, groups } }, randomization };
 }
 
@@ -2046,25 +2106,22 @@ function checkedRandomizationValues(changes, current) {
 }
 
 // A copy of `sources`, checked: a list; each source's form, well, replicates and filler in turn;
-// then no well twice, at most one filler, and the filler without replicates.
+// then no well twice, then each filler well without replicates, in order. Any number of sources may
+// be filler wells (section 3).
 function checkedSources(sources) {
   if (!Array.isArray(sources)) {
     throw new Error(`A randomization's sources must be a list, but got ${describeValue(sources)}.`);
   }
   sources.forEach((source, index) => checkSource(source, index + 1));
   checkNoWellTwice(sources, (where) => `${where} is a source twice. List each source once.`);
-  const fillers = sources.flatMap((source, index) => (source.filler ? [index + 1] : []));
-  if (fillers.length > 1) {
-    throw new Error(
-      `Sources ${fillers[0]} and ${fillers[1]} are both the filler. Only one source can be.`,
-    );
-  }
-  if (fillers.length === 1 && sources[fillers[0] - 1].replicates !== null) {
-    throw new Error(
-      `Source ${fillers[0]} is the filler, so its replicates must be null, ` +
-        `but got ${describeValue(sources[fillers[0] - 1].replicates)}.`,
-    );
-  }
+  sources.forEach((source, index) => {
+    if (source.filler && source.replicates !== null) {
+      throw new Error(
+        `Source ${index + 1} is a filler well, so its replicates must be null, ` +
+          `but got ${describeValue(source.replicates)}.`,
+      );
+    }
+  });
   return sources.map(({ labware, well, replicates, filler }) => ({ labware, well, replicates, filler }));
 }
 
@@ -2175,20 +2232,101 @@ function withRandomizationReplaced(plan, randomization) {
   });
 }
 
-// The pool for a randomization (random-pool.md): an item per source, keyed "source 1" … by its
-// place, the filler's key or null, the wells to fill keyed "well 1" …, and the seed.
+// The pool for a randomization (random-pool.md; section 3, "Running", step 1): an item per source,
+// keyed "source 1" … by its place, except that the filler wells are one item, keyed by the first
+// filler well's place; the filler's key (the first filler well's) or null; the wells to fill keyed
+// "well 1" …; and the seed. So the pool is the same however many filler wells there are.
 function poolOf(randomization) {
-  const items = randomization.sources.map((source, index) => ({
-    key: `source ${index + 1}`,
-    replicates: source.replicates,
-  }));
-  const fillerIndex = randomization.sources.findIndex((source) => source.filler);
+  const firstFiller = randomization.sources.findIndex((source) => source.filler);
+  const items = randomization.sources.flatMap((source, index) =>
+    source.filler && index !== firstFiller
+      ? []
+      : [{ key: sourceKey(index), replicates: source.replicates }],
+  );
   return {
     items,
-    filler: fillerIndex === -1 ? null : `source ${fillerIndex + 1}`,
+    filler: firstFiller === -1 ? null : sourceKey(firstFiller),
     wells: randomization.fill.map((_, index) => `well ${index + 1}`),
     seed: randomization.seed,
   };
+}
+
+// The pool's key for the source at place `index` (from 0) in sources, e.g. 0 → "source 1".
+function sourceKey(index) {
+  return `source ${index + 1}`;
+}
+
+// The place in sources (from 0) of the source a pool key names, e.g. "source 3" → 2.
+function sourceIndexOfKey(key) {
+  return Number(key.slice("source ".length)) - 1;
+}
+
+// The places in sources (from 0) of a randomization's filler wells, in order, e.g. [2, 3, 4].
+function fillerIndexes(randomization) {
+  return randomization.sources.flatMap((source, index) => (source.filler ? [index] : []));
+}
+
+// The filler's shares (fillerShares), with what every well holds just before the randomization
+// given by `contentsOf`, a function called only when there are two or more filler wells.
+function sharesOf(randomization, contentsOf) {
+  const indexes = fillerIndexes(randomization);
+  if (indexes.length === 0) {
+    return [];
+  }
+  const { volume } = randomization;
+  const spare = spareWellCount(poolOf(randomization));
+  if (volume === null || spare === null) {
+    return null;
+  }
+  let left = spare;
+  return indexes.map((index, place) => {
+    if (place === indexes.length - 1) {
+      return { index, count: left };
+    }
+    const { labware, well } = randomization.sources[index];
+    // TINY_AMOUNT allows for arithmetic leftovers, so exactly n transfers' worth gives n.
+    const fit = Math.floor((contentsOf().usableVolumeOf(labware, well) + TINY_AMOUNT) / volume);
+    const count = Math.min(fit, left);
+    left -= count;
+    return { index, count };
+  });
+}
+
+// True unless two filler wells that hold something just before the randomization hold different
+// liquids: different components, or a component's share of the well differing by more than
+// TINY_AMOUNT (section 3, "Problems"). Filler wells holding nothing are left out.
+// `contentsOf` gives what every well holds then, and is called only with two or more filler wells.
+function fillerWellsHoldOneLiquid(randomization, contentsOf) {
+  const indexes = fillerIndexes(randomization);
+  if (indexes.length < 2) {
+    return true;
+  }
+  const contents = contentsOf();
+  const liquids = indexes
+    .map((index) => {
+      const { labware, well } = randomization.sources[index];
+      return contents.volumeFractionsOf(labware, well);
+    })
+    .filter((shares) => Object.keys(shares).length > 0);
+  return liquids.every((shares) => sameLiquid(shares, liquids[0]));
+}
+
+// The components a well holds in `contents` (a ContentsSnapshot), as [name, µL] pairs in the well's
+// component order, leaving out any it holds none of, e.g. [["Media", 990], ["DMSO", 10]].
+function heldComponents(contents, { labware, well }) {
+  return Object.entries(contents.componentsOf(labware, well)).filter(([, volume]) => volume > 0);
+}
+
+// True if two wells' shares of each component (volumeFractionsOf) are one liquid: the same components, each share
+// within TINY_AMOUNT of the other, e.g. { Media: 1 } and { Media: 1 } → true.
+function sameLiquid(first, second) {
+  const names = Object.keys(first);
+  return (
+    names.length === Object.keys(second).length &&
+    names.every(
+      (name) => Object.hasOwn(second, name) && Math.abs(first[name] - second[name]) <= TINY_AMOUNT,
+    )
+  );
 }
 
 // A pool problem in the designer's words (section 3), or null for one it never has (an invalid
@@ -2196,7 +2334,7 @@ function poolOf(randomization) {
 function poolProblemMessage(plan, randomization, problem) {
   switch (problem.kind) {
     case "replicates-missing":
-      return `${sourceName(plan, randomization.id, randomization.sources[problem.index])} needs a number of replicates.`;
+      return `${sourceName(plan, randomization.id, randomization.sources[sourceIndexOfKey(problem.key)])} needs a number of replicates.`;
     case "too-many":
       return (
         `${problem.needed} replicates, but only ${problem.available} ` +
@@ -2246,15 +2384,101 @@ function contentsBefore(plan, randomization) {
   return replay(plan.startingContents, plan.operationList, count);
 }
 
-// For each source, by its place in sources, the wells to fill it gets, in fill's order, e.g.
-// [[{ labware: "Plate1", well: "B3" }, …], [], …], from assignPool.
-function wellsForEachSource(randomization) {
-  const wellsBySource = randomization.sources.map(() => []);
+// What a run gives (section 3, "Running", steps 1, 1a and 5), as one entry per stage it makes, in
+// sources' order, the filler's at its first filler well's place: { well, name, transfers }, `well`
+// being the source well its entry in `stages` names (the first filler well's, for the filler),
+// `name` the stage's name, and `transfers` each { source, destination } in fill's order, e.g.
+// [{ well: { labware: "Deep1", well: "A1" }, name: "Drug A", transfers: [{ source, destination }, …] }].
+// A source, or the filler, that gets no wells has no entry. `contents` is what every well holds just
+// before the randomization.
+function runStagesOf(plan, randomization, contents) {
+  const { sources, fill } = randomization;
+  const wellsByKey = new Map();
   for (const { well, key } of assignPool(poolOf(randomization))) {
-    const sourceIndex = Number(key.slice("source ".length)) - 1;
-    wellsBySource[sourceIndex].push(randomization.fill[Number(well.slice("well ".length)) - 1]);
+    const wells = wellsByKey.get(key) ?? [];
+    wells.push(fill[Number(well.slice("well ".length)) - 1]);
+    wellsByKey.set(key, wells);
   }
-  return wellsBySource;
+  const firstFiller = sources.findIndex((source) => source.filler);
+  return sources.flatMap((source, index) => {
+    const wells = wellsByKey.get(sourceKey(index)) ?? [];
+    if (wells.length === 0) {
+      return [];
+    }
+    if (index === firstFiller) {
+      return [fillerRunStage(plan, randomization, contents, wells)];
+    }
+    const name = nameOfSource(plan, () => contents, source);
+    return [{ well: endOf(source), name, transfers: wells.map((destination) => ({ source: endOf(source), destination })) }];
+  });
+}
+
+// The filler's entry of runStagesOf: its wells, in fill's order, shared out to the filler wells in
+// their order (section 3, step 1a), each drawing from the filler well it fell to; named as the first
+// filler well holding something is (or the first filler well, if none does).
+function fillerRunStage(plan, randomization, contents, wells) {
+  const shares = sharesOf(randomization, () => contents);
+  const transfers = [];
+  let next = 0;
+  for (const { index, count } of shares) {
+    const fillerWell = endOf(randomization.sources[index]);
+    for (const destination of wells.slice(next, next + count)) {
+      transfers.push({ source: fillerWell, destination });
+    }
+    next += count;
+  }
+  const fillerWells = fillerIndexes(randomization).map((index) => randomization.sources[index]);
+  const named =
+    fillerWells.find((fillerWell) => heldComponents(contents, fillerWell).length > 0) ?? fillerWells[0];
+  return { well: endOf(fillerWells[0]), name: nameOfSource(plan, () => contents, named), transfers };
+}
+
+// A well as { labware, well } only, leaving out any other properties, e.g. a source's replicates.
+function endOf({ labware, well }) {
+  return { labware, well };
+}
+
+// For each of the randomization's stages in the plan, in order, the source well its entry is keyed
+// to after this run, or null if the run removes it (section 3, "Running", steps 3 and 4), as a Map
+// from stage ID. A source's entry stays its stage while it gets wells. The filler's stage is the first
+// entry naming any of its filler wells, re-keyed to the first filler well; every other entry naming
+// a filler well goes; so does one whose well is no longer a source.
+function keptEntries(plan, randomization, runStages) {
+  const fillerKeys = new Set(fillerIndexes(randomization).map((index) => wellKey(randomization.sources[index])));
+  const fillerRun = runStages.find((runStage) => fillerKeys.has(wellKey(runStage.well)));
+  let fillerStageFound = false;
+  const kept = new Map();
+  for (const owned of ownedStagesIn(plan, randomization)) {
+    let keyedTo = null;
+    if (fillerKeys.has(wellKey(owned))) {
+      if (!fillerStageFound && fillerRun !== undefined) {
+        keyedTo = fillerRun.well;
+      }
+      fillerStageFound = true;
+    } else {
+      const runStage = runStages.find((candidate) => wellKey(candidate.well) === wellKey(owned));
+      keyedTo = runStage === undefined ? null : runStage.well;
+    }
+    kept.set(owned.stage, keyedTo);
+  }
+  return kept;
+}
+
+// What a randomization's stages are, as text to compare two plans by (section 3, "Out of date"):
+// for each of its stages, in order, its source well, its name and its transfers' source, destination
+// and volume, in order. Stage IDs are left out, since a run may make them fresh.
+function stagesOutline(plan, randomization) {
+  return JSON.stringify(
+    randomization.stages.map((owned) => ({
+      well: endOf(owned),
+      name: plan.stageList.get(owned.stage).name,
+      transfers: transfersIn(plan, owned.stage).map(({ source, destination, volume }) => [
+        endOf(source),
+        endOf(destination),
+        volume,
+      ]),
+    })),
+  );
 }
 
 // The stage a run adds new stages before (section 3, "Running", step 2): the stage just after the
@@ -2268,27 +2492,26 @@ function runPlace(plan, randomization) {
   return order[order.indexOf(owned.at(-1).stage) + 1] ?? null;
 }
 
-// The place of the source a randomization's owned stage is for, or -1 if it's no longer a source.
-function sourceIndexOf(randomization, owned) {
-  return randomization.sources.findIndex((source) => wellKey(source) === wellKey(owned));
-}
-
-// Returns the plan with a new stage, on new tips, before `place`, for each source that gets wells
-// but has no stage yet, in source order, named `names[i]`; the randomization's stages list them after
-// its own. Randomizations that haven't run, earlier in the list and sitting at the same place, move
-// onto its first stage, so they stay above it.
-function withNewSourceStages(plan, randomization, wellsBySource, place, names) {
+// Returns the plan with a new stage, on new tips, before `place`, for each of `runStages`
+// (runStagesOf) that no kept entry is keyed to (`kept`, from keptEntries), in order, named as it says;
+// the randomization's stages list its own first, each kept one re-keyed, then the new ones.
+// Randomizations that haven't run, earlier in the list and sitting at the same place, move onto its
+// first stage, so they stay above it.
+function withNewSourceStages(plan, randomization, runStages, kept, place) {
   let adding = plan;
-  const stages = [...ownedStagesIn(plan, randomization)];
-  randomization.sources.forEach((source, index) => {
-    const hasStage = stages.some((owned) => wellKey(owned) === wellKey(source));
-    if (wellsBySource[index].length === 0 || hasStage) {
-      return;
+  const stages = ownedStagesIn(plan, randomization).map((owned) => {
+    const keyedTo = kept.get(owned.stage);
+    return keyedTo === null ? owned : { ...keyedTo, stage: owned.stage };
+  });
+  const keyedWells = new Set([...kept.values()].filter((well) => well !== null).map(wellKey));
+  for (const runStage of runStages) {
+    if (keyedWells.has(wellKey(runStage.well))) {
+      continue;
     }
     const { plan: added, id } = addStageWithNewTips(adding, place);
-    adding = renameStage(added, id, names[index]);
-    stages.push({ labware: source.labware, well: source.well, stage: id });
-  });
+    adding = renameStage(added, id, runStage.name);
+    stages.push({ ...runStage.well, stage: id });
+  }
   const firstRun = ownedStagesIn(plan, randomization).length === 0;
   const ownIndex = plan.randomizations.findIndex((candidate) => candidate.id === randomization.id);
   const randomizations = adding.randomizations.map((candidate, index) => {
@@ -2306,14 +2529,12 @@ function withNewSourceStages(plan, randomization, wellsBySource, place, names) {
   return withParts(adding, { randomizations });
 }
 
-// Returns the plan without the stages of randomization `id` whose source is no longer one of its
-// sources, or gets no wells (section 3, "Running", step 4), each removed with removeStage.
-function withoutUnusedSourceStages(plan, id, wellsBySource) {
+// Returns the plan without the stages of randomization `id` the run removes (section 3, "Running",
+// step 4): those `keptByStage` (keptEntries) keys to null, each removed with removeStage. New
+// stages aren't in it, so they stay.
+function withoutUnusedSourceStages(plan, id, keptByStage) {
   const randomization = randomizationAt(plan, id);
-  const unused = randomization.stages.filter((owned) => {
-    const index = sourceIndexOf(randomization, owned);
-    return index === -1 || wellsBySource[index].length === 0;
-  });
+  const unused = randomization.stages.filter((owned) => keptByStage.get(owned.stage) === null);
   let removing = plan;
   for (const owned of unused) {
     removing = removeStage(removing, owned.stage);
@@ -2323,12 +2544,16 @@ function withoutUnusedSourceStages(plan, id, wellsBySource) {
 }
 
 // Returns the plan with `owned`, one of a randomization's stages ({ labware, well, stage }), set as
-// its source's stage (section 3, "Running", step 5): its settings, its tips (its own tip change, or
-// START's if it's the first stage) and its transfers, one of the randomization's volume from the
-// source to each of `wells`, in order.
-function withSourceStageSet(plan, randomization, owned, wells) {
+// `runStage` says (runStagesOf; section 3, "Running", step 5): its name, its settings, its tips (its
+// own tip change, or START's if it's the first stage) and its transfers, each of the randomization's
+// volume, in order.
+function withSourceStageSet(plan, randomization, owned, runStage) {
   const stageId = owned.stage;
-  let setting = changeStageSettings(plan, stageId, randomization.settings);
+  let setting = plan;
+  if (plan.stageList.get(stageId).name !== runStage.name) {
+    setting = renameStage(setting, stageId, runStage.name);
+  }
+  setting = changeStageSettings(setting, stageId, randomization.settings);
   const tipKey = stageOrder(setting)[0] === stageId ? START : stageId;
   if (tipKey !== START && !Object.hasOwn(setting.tipChanges, stageId)) {
     setting = addTipChange(setting, stageId);
@@ -2342,10 +2567,10 @@ function withSourceStageSet(plan, randomization, owned, wells) {
   setting = withParts(setting, { operationList });
   return addTransfers(
     setting,
-    wells.map((destination) => ({
+    runStage.transfers.map(({ source, destination }) => ({
       type: "transfer",
-      source: { labware: owned.labware, well: owned.well },
-      destination: { labware: destination.labware, well: destination.well },
+      source: endOf(source),
+      destination: endOf(destination),
       volume: randomization.volume,
       stage: stageId,
     })),
@@ -2466,6 +2691,7 @@ function checkedStoredRandomization(plan, randomization, number) {
     checkStoredOrder(randomization, values);
     const stored = { id, beforeId: randomization.beforeId, ...values };
     stored.stages = checkedOwnedStages(plan, randomization.stages);
+    checkOneFillerStage(stored);
     return stored;
   });
 }
@@ -2538,6 +2764,17 @@ function checkedOwnedStages(plan, stages) {
     }
   }
   return stages.map(({ labware, well, stage }) => ({ labware, well, stage }));
+}
+
+// Throws if two of a stored randomization's stages name its filler wells: 'its filler has two
+// stages.' One naming a filler well other than the first is accepted, as a plan between
+// setRandomization and a run holds it (section 5).
+function checkOneFillerStage(randomization) {
+  const fillerKeys = new Set(fillerIndexes(randomization).map((index) => wellKey(randomization.sources[index])));
+  const fillerStages = randomization.stages.filter((owned) => fillerKeys.has(wellKey(owned)));
+  if (fillerStages.length > 1) {
+    throw new Error("its filler has two stages.");
+  }
 }
 
 // Throws if two randomizations share an ID: 'Randomizations 1 and 3 both have the ID "r2".'
