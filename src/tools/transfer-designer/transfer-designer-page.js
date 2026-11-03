@@ -21,7 +21,7 @@ import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
-import { randomSeed, spareWellCount, MAX_SEED } from "../../shared/random-pool/random-pool.js";
+import { randomSeed, MAX_SEED } from "../../shared/random-pool/random-pool.js";
 import {
   labwareNames,
   gridOf,
@@ -84,6 +84,8 @@ import {
   setRandomization,
   placeRandomization,
   randomizationProblems,
+  fillerShares,
+  isRandomizationOutOfDate,
   sourceName,
   runRandomization,
   removeRandomization,
@@ -310,6 +312,12 @@ let pickedWell = null;
 // asks about every well each time the deck is drawn: { plan, used, toFill }, two Sets of wellKeys,
 // or null before the first time (movingWellSets).
 let movingWellCache = null;
+
+// The randomizations that are out of date (section 6), worked out once per plan and reused by the
+// headings, the problem count, the card and the Biomek files box, since each check reruns a
+// randomization on a copy: a Set of their IDs for each plan asked about. Plans are never changed, so
+// a plan's answer never goes stale; a WeakMap lets a plan no longer held be forgotten.
+const outOfDateByPlan = new WeakMap();
 
 // The page's elements that transfer-designer.html gives an id, looked up once.
 const elements = {
@@ -929,7 +937,8 @@ let biomekRun = null;
 // Opens the Biomek files box under its button, or closes it if it's open. Opening it closes
 // Reset's question, and works out the run's files at once with writeRunFiles, the moment the box
 // opens as their timestamp, so the zip's name it shows is the one Write files saves. If the writer
-// refuses the plan, its message is shown instead, unchanged, with Write files disabled.
+// refuses the plan, its message is shown instead, unchanged, with Write files disabled. Before
+// that, a randomization that's out of date is named instead, as the writer never reads them.
 function toggleBiomekBox() {
   if (!elements.biomekBox.hidden) {
     closeBiomekBox();
@@ -942,6 +951,7 @@ function toggleBiomekBox() {
   const now = new Date();
   const summary = elements.biomekSummary;
   try {
+    checkNoRandomizationOutOfDate(currentPlan());
     const { folderName, files } = writeRunFiles(currentPlan(), now);
     biomekRun = { folderName, files, now };
     summary.classList.remove("refused");
@@ -960,6 +970,19 @@ function toggleBiomekBox() {
   elements.biomekBox.hidden = false;
   elements.biomekFiles.setAttribute("aria-expanded", "true");
   (biomekRun === null ? elements.biomekCancel : elements.writeFiles).focus();
+}
+
+// Throws if a randomization of the plan is out of date (section 5), naming the first in the
+// column's order by its first stage: 'A randomization (at stage 1, “Drug”) is out of date: open it
+// and press Update.'
+function checkNoRandomizationOutOfDate(plan) {
+  const randomization = firstOutOfDateRandomization(plan);
+  if (randomization !== null) {
+    throw new Error(
+      `A randomization (at ${stageLabel(plan, randomization.stages[0].stage)}) is out of date: ` +
+        "open it and press Update.",
+    );
+  }
 }
 
 // The run's files, for the box, e.g. "Setup.csv, Stages.csv and 3 Transfer From File files". The
@@ -1224,7 +1247,8 @@ function timelineCaption(plan, open) {
 
 // Shows "No problems" in green or "N problems" in red (section 6): each contents problem in the
 // whole plan (a draw into the dead volume, an overdraw or an overfill, including a well that starts
-// over its capacity) counts as one, and so does each stage with a mix problem.
+// over its capacity) counts as one, and so does each randomization that's out of date and each
+// stage with a mix problem.
 function refreshProblemCount(plan) {
   const count = problemCount(plan);
   elements.problemCount.textContent = count === 0 ? "No problems" : countOf(count, "problem");
@@ -1233,12 +1257,35 @@ function refreshProblemCount(plan) {
 }
 
 // The number of problems in the whole plan, as the problem count shows it (section 6, "First bar"):
-// each contents problem, and each stage with a mix problem, e.g. 2.
+// each contents problem, each randomization that's out of date, and each stage with a mix problem,
+// e.g. 2.
 function problemCount(plan) {
   return (
     replay(plan.startingContents, plan.operationList).listProblems().length +
+    outOfDateRandomizations(plan).size +
     stagesWithMixProblem(plan).size
   );
+}
+
+// The IDs of the plan's randomizations that are out of date (isRandomizationOutOfDate), as a Set,
+// e.g. new Set(["r1"]), worked out once per plan (outOfDateByPlan; section 6).
+function outOfDateRandomizations(plan) {
+  if (!outOfDateByPlan.has(plan)) {
+    const ids = new Set(
+      plan.randomizations
+        .filter((randomization) => isRandomizationOutOfDate(plan, randomization.id))
+        .map((randomization) => randomization.id),
+    );
+    outOfDateByPlan.set(plan, ids);
+  }
+  return outOfDateByPlan.get(plan);
+}
+
+// The first randomization in the column's order that's out of date, or null (section 5).
+function firstOutOfDateRandomization(plan) {
+  const outOfDate = outOfDateRandomizations(plan);
+  const box = columnBoxes(plan).find((candidate) => candidate.kind === "randomization" && outOfDate.has(candidate.id));
+  return box === undefined ? null : randomizationAt(plan, box.id);
 }
 
 // Draws the labware tray (section 6): a chip per labware, in the groups Used labware and Unused
@@ -2567,7 +2614,8 @@ function createRandomizationBox(plan, block, groupIndex, open, problems, drawnKe
   // copying"). Its box glows when a move, copy or paste placed it.
   box.dataset.item = itemKey({ kind: "randomization", id: randomization.id });
   applyGlow(box, `randomization:${randomization.id}`, drawnKeys, { whenNew: false });
-  const heading = createRandomizationHeading(randomization, cardOpen);
+  const outOfDate = outOfDateRandomizations(plan).has(randomization.id);
+  const heading = createRandomizationHeading(randomization, cardOpen, outOfDate);
   heading.dataset.itemHandle = box.dataset.item;
   box.append(heading);
   if (cardOpen) {
@@ -2596,21 +2644,29 @@ function noteDrawnWithoutGlow(group, drawnKeys) {
 }
 
 // A randomization's heading (section 7): a button the box's width, with the dice icon, "Randomize"
-// (not set up yet) or "Randomized" (run), and, at the right, "not set up yet" or "68 stages · seed
-// 360310". Clicking it opens its card, or closes it if open.
-function createRandomizationHeading(randomization, cardOpen) {
+// (not set up yet) or "Randomized" (run), and, at the right, "not set up yet", "68 stages · seed
+// 360310", or, when `outOfDate`, "needs update" in red. Clicking it opens its card, or closes it if
+// open.
+function createRandomizationHeading(randomization, cardOpen, outOfDate) {
   const hasRun = randomization.stages.length > 0;
   const heading = createElement("button", "", "randomization-heading");
   heading.type = "button";
   heading.setAttribute("aria-expanded", String(cardOpen));
-  heading.title = hasRun ? "Open to change it" : "Not set up yet: open it to finish setting it up.";
-  const status = hasRun
+  let title = hasRun ? "Open to change it" : "Not set up yet: open it to finish setting it up.";
+  let status = hasRun
     ? `${countOf(randomization.stages.length, "stage")} · seed ${randomization.seed}`
     : "not set up yet";
+  if (outOfDate) {
+    title = "The plan changed since this last ran: open it and press Update.";
+    status = "needs update";
+  }
+  heading.title = title;
+  const statusElement = createElement("span", status, "randomization-status");
+  statusElement.classList.toggle("needs-update", outOfDate);
   heading.append(
     createDiceIcon(),
     createElement("span", hasRun ? "Randomized" : "Randomize", "randomization-title"),
-    createElement("span", status, "randomization-status"),
+    statusElement,
   );
   heading.addEventListener("click", () => {
     if (cardOpen) {
@@ -2802,30 +2858,32 @@ function cardProblem(plan) {
   }
 }
 
-// How many wells the draft's filler fills (section 7): "12 wells", "1 well", "0 wells", or "?"
-// while a replicate count isn't a whole number yet (random-pool's spareWellCount).
-function fillerCountText() {
-  const { draft } = card;
-  const fillerIndex = draft.sources.findIndex((entry) => entry.filler);
-  const pool = {
-    items: draft.sources.map((entry, index) => ({
-      key: `source ${index + 1}`,
-      replicates: replicatesValue(entry.replicatesText),
-    })),
-    filler: fillerIndex === -1 ? null : `source ${fillerIndex + 1}`,
-    wells: draft.fill.map((_, index) => `well ${index + 1}`),
-    seed: null,
-  };
-  const spare = spareWellCount(pool);
-  return spare === null ? "?" : countOf(spare, "well");
+// The draft's filler shares (fillerShares on the draft, worked out as the problems are; section 7),
+// as a Map from each filler well's place in the draft's sources to how many wells it fills, e.g.
+// Map { 1 → 7, 2 → 7, 3 → 4 }; null while they aren't known yet (a replicate count isn't a whole
+// number, or the volume isn't set) or the draft is refused.
+function draftFillerShares(plan) {
+  try {
+    const shares = fillerShares(draftPlan(plan), card.id);
+    return shares === null ? null : new Map(shares.map(({ index, count }) => [index, count]));
+  } catch {
+    return null;
+  }
+}
+
+// How many wells the filler well at `index` in the draft's sources fills (section 7): "7 wells",
+// "1 well", "0 wells", or "?" while `shares` (draftFillerShares) isn't known.
+function fillerShareText(shares, index) {
+  return shares === null ? "?" : countOf(shares.get(index), "well");
 }
 
 // How many stages running the draft makes: one per source taking replicates, and one for the
-// filler if it fills any well (section 7).
-function stagesToMake() {
+// filler if it fills any well, however many filler wells it has (section 7).
+function stagesToMake(plan) {
   const { draft } = card;
   const takers = draft.sources.filter((entry) => !entry.filler).length;
-  const fillerFills = draft.sources.some((entry) => entry.filler) && fillerCountText() !== "0 wells";
+  const shares = draftFillerShares(plan);
+  const fillerFills = shares !== null && [...shares.values()].some((count) => count > 0);
   return takers + (fillerFills ? 1 : 0);
 }
 
@@ -2902,7 +2960,8 @@ function createSourcesTab(plan) {
   const inFull = sourcesShownInFull.has(card.id);
   const shown = inFull ? draft.sources : draft.sources.slice(0, SOURCES_SHOWN);
   const list = createElement("ul", "", "source-list");
-  list.append(...shown.map((entry) => createSourceRow(plan, entry)));
+  const shares = draftFillerShares(plan);
+  list.append(...shown.map((entry) => createSourceRow(plan, entry, shares)));
   parts.push(list);
   if (draft.sources.length > SOURCES_SHOWN) {
     const toggle = createElement(
@@ -2966,9 +3025,10 @@ function rowEndPlaceholders() {
 }
 
 // One source's row (section 7): its main component's swatch just before the randomization (gray if
-// it holds nothing then), its name (sourceName), its replicates box, or, for the filler, how many
-// wells it fills; the Filler toggle; and ×.
-function createSourceRow(plan, entry) {
+// it holds nothing then), its name (sourceName), its replicates box, or, for a filler well, how many
+// wells it fills (its share, from `shares`, draftFillerShares); the Filler toggle, which turns only
+// this row's on or off; and ×.
+function createSourceRow(plan, entry, shares) {
   const where = wellName(plan, entry);
   const key = wellKey(entry);
   const row = createElement("li", "", "source-row");
@@ -2976,7 +3036,7 @@ function createSourceRow(plan, entry) {
   name.title = where;
   row.append(createSwatch(mainComponentColor(plan, shownSnapshot, entry)), name);
   if (entry.filler) {
-    row.append(createElement("span", fillerCountText(), "filler-count"));
+    row.append(createElement("span", fillerShareText(shares, card.draft.sources.indexOf(entry)), "filler-count"));
   } else {
     const box = document.createElement("input");
     box.type = "text";
@@ -2994,14 +3054,10 @@ function createSourceRow(plan, entry) {
   const filler = createElement("button", "Filler", "filler-button");
   filler.type = "button";
   filler.dataset.focusKey = `filler:${key}`;
-  filler.title = "The filler fills the wells the replicates leave over.";
+  filler.title = "Filler wells fill the wells the replicates leave over, used in list order.";
   filler.setAttribute("aria-pressed", String(entry.filler));
   filler.addEventListener("click", () => {
-    const making = !entry.filler;
-    for (const other of card.draft.sources) {
-      other.filler = false;
-    }
-    entry.filler = making;
+    entry.filler = !entry.filler;
     redrawCard();
   });
   const remove = createElement("button", "×", "remove-transfer");
@@ -3127,6 +3183,14 @@ function createCardFooter(plan, randomization) {
   const problem = cardProblem(plan);
   if (problem !== null) {
     footer.append(createElement("p", problem, "card-problem-line"));
+  } else if (hasRun && !isCardDirty(plan) && outOfDateRandomizations(plan).has(randomization.id)) {
+    footer.append(
+      createElement(
+        "p",
+        "The plan has changed since this last ran. Press Update to bring its stages up to date.",
+        "card-problem-line",
+      ),
+    );
   }
   const buttons = createElement("div", "", "box-buttons");
   const remove = createElement("button", "Remove", "quiet-danger");
@@ -3159,7 +3223,7 @@ function createCardFooter(plan, randomization) {
   if (problem === null) {
     run.title = hasRun
       ? "Applies these settings to its stages. The same seed keeps the same wells; a new seed shuffles again."
-      : `Makes ${countOf(stagesToMake(), "stage")}, with new tips before each.`;
+      : `Makes ${countOf(stagesToMake(plan), "stage")}, with new tips before each.`;
   }
   run.addEventListener("click", runOpenRandomization);
   buttons.append(close, run);
