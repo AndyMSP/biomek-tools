@@ -342,7 +342,9 @@ Last updated: 2026-11-02
   **specified** (Draft, in the hands-off workflow): `fillerShares`, `isRandomizationOutOfDate`, the
   one-liquid problem and renaming on a run (`transfer-designer.md`, "Randomizations"), plan files
   version 8 (`plan-file.md`), the card, heading, problem count and Biomek files box
-  (`transfer-designer-page.md`), glossary "Randomization".
+  (`transfer-designer-page.md`), glossary "Randomization". **Built (#132, 2026-11-03)**: code,
+  tests and REPL, and the page; the specifications and the build each reviewed by a separate
+  agent, and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -594,7 +596,7 @@ added on 2026-10-28 (Andy).
       wells; the Biomek orders a stage's transfers itself, B56358AF 22-25, so splitting by whole
       transfers is safe). Plan files do: today they allow one filler, so a new format version, with
       older files still opening.
-    **Specified** (Draft, 2026-11-03): see "Where things stand".
+    **Specified** (Draft, 2026-11-03) and **built (#132)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
