@@ -17,6 +17,10 @@
   --blue: #2f5da8;
   --blue-border: #9db7db;
   --blue-tint: #eef3fa;
+  /* Purple, only for moving wells (section 6), so it can't be mistaken for the blue of a chosen
+     source or a randomization's wells. */
+  --purple: #7a4fbf;
+  --purple-tint: #f3eefb;
   --red: #c4362a;
   --red-tint: #fce9e7;
   --red-border: #e8a39b;
@@ -963,6 +967,78 @@ input.experiment-name-box.invalid {
 .well.drop-target {
   outline: 2px dashed var(--blue);
   outline-offset: 2px;
+}
+
+/* --- Moving wells (section 6) --- */
+
+/* Move wells reads Done while moving wells, solid purple with white text. */
+button.move-wells[aria-pressed="true"] {
+  border-color: var(--purple);
+  background: var(--purple);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* The deck panel's 2px purple border while moving wells; the padding is 1px less, so nothing
+   shifts. */
+.deck-panel.moving-wells {
+  border: 2px solid var(--purple);
+  padding: calc(var(--panel-padding) - 1px);
+}
+
+/* The bar above the labware saying what to do: a light purple background, a purple border, 14px
+   text, the heading bold and purple, the reminder gray. */
+.moving-bar {
+  padding: 8px 12px;
+  border: 1px solid var(--purple);
+  border-radius: 6px;
+  background: var(--purple-tint);
+  font-size: 14px;
+}
+
+.moving-bar .moving-heading {
+  color: var(--purple);
+}
+
+.moving-bar .moving-aside {
+  color: var(--muted-text);
+}
+
+/* Wells that can't be picked, or, with one picked, other wells in use: 30% opacity, even when
+   pointed at. */
+.well.move-dimmed,
+.well.move-dimmed:hover {
+  opacity: 0.3;
+}
+
+/* The picked well: a 3px purple ring standing 2px outside it. */
+.well.move-picked {
+  outline: 3px solid var(--purple);
+  outline-offset: 2px;
+}
+
+/* The wells it can move to: a 2px dashed purple outline standing 2px outside, and, when empty, a
+   light purple fill. */
+.well.move-target {
+  outline: 2px dashed var(--purple);
+  outline-offset: 2px;
+}
+
+.well.move-target:not(.holding) {
+  background: var(--purple-tint);
+}
+
+/* A well it can move to, under a dragged picked well: its outline turns solid and 3px. */
+.well.move-target.move-drop {
+  outline: 3px solid var(--purple);
+}
+
+/* While moving wells, the Stages column's ✎ buttons, the ×s on its rows and its seams are hidden,
+   their space kept, so nothing shifts (section 7). */
+.stages-list.moving-wells .edit-button,
+.stages-list.moving-wells .remove-transfer,
+.stages-list.moving-wells .seam {
+  visibility: hidden;
 }
 
 /* The arrows are drawn over the whole deck panel, above the wells, and never take the pointer. */
