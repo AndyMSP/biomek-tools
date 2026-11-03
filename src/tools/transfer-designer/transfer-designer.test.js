@@ -95,7 +95,12 @@ import {
   pasteItems,
   COPIED_ITEMS_FORMAT,
   COPIED_ITEMS_VERSION,
+  isWellUsed,
+  isWellToFill,
+  moveWell,
 } from "./transfer-designer.js";
+import { PlanHistory } from "./plan-history.js";
+import { planToText, planFromText } from "./plan-file.js";
 import { assignPool } from "../../shared/random-pool/random-pool.js";
 import { CONCENTRATION_UNITS } from "../../../config/concentration-units.js";
 import { familyOf, unitsOf } from "../../shared/concentrations/concentrations.js";
@@ -3078,6 +3083,365 @@ describe("transfer-designer", () => {
     }
     return without;
   }
+
+  // --- Moving wells ---
+
+  // The plan the trough-move tests use (section 6, "Moving wells"): components Media and Dye; Res 1
+  // holding Dye, Res 3 holding Media, labeled "Media stock"; stage 1 with two transfers from Res 3 (into PLATE A1 and
+  // A2) and stage 2 with one (into A3), plus a transfer from Res 1 into A4 in stage 2 that doesn't
+  // touch Res 3.
+  function troughMovePlan() {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addComponent(plan, "Dye", "#e15759");
+    // Each trough the transfers draw from holds its dead volume and 1000 µL more, so the plan has no
+    // contents problems before a move.
+    const filled = deadVolumeOf(RESERVOIR) + 1000;
+    plan = addToWells(plan, [trough("1")], "Dye", filled);
+    plan = addToWells(plan, [trough("3")], "Media", filled);
+    plan = addToWells(plan, [trough("5")], "Dye", 1000);
+    plan = setWellLabel(plan, trough("3"), "Media stock");
+    plan = addTransfer(plan, { ...transferTo("1", "A1"), source: trough("3") });
+    plan = addTransfer(plan, { ...transferTo("1", "A2"), source: trough("3") });
+    plan = addStage(plan, null).plan;
+    plan = addTransfer(plan, { ...transferTo("2", "A3"), source: trough("3") });
+    return addTransfer(plan, transferTo("2", "A4"));
+  }
+
+  // The contents of every well after each operation of `plan`, as text by well, leaving out the
+  // wells in `skipped` (each { labware, well }), so two plans can be compared well by well.
+  function contentsAfterEachOperation(plan, skipped) {
+    const skippedKeys = new Set(skipped.map((end) => `${end.labware} ${end.well}`));
+    const count = plan.operationList.listOperations().length;
+    const steps = [];
+    for (let done = 0; done <= count; done += 1) {
+      const snapshotAt = replay(plan.startingContents, plan.operationList, done);
+      steps.push(
+        snapshotAt
+          .listContents()
+          .filter((entry) => !skippedKeys.has(`${entry.labware} ${entry.well}`))
+          .map((entry) => JSON.stringify(entry))
+          .sort(),
+      );
+    }
+    return steps;
+  }
+
+  test("isWellUsed: false for every well of an empty plan", () => {
+    const { plan } = emptyPlan();
+    for (const { name } of DECK) {
+      for (const well of gridOf(name).wellNames()) {
+        assert.equal(isWellUsed(plan, { labware: name, well }), false, `${name} ${well}`);
+      }
+    }
+  });
+
+  test("isWellUsed: true for starting contents, a source, a destination, a mixed well and a label only", () => {
+    let plan = planWithContents();
+    plan = addTransfer(plan, transferTo("1", "B2"));
+    let mixStep = addMixStep(plan, null);
+    plan = mixWells(mixStep.plan, mixStep.id, [plateWell("C3")]);
+    plan = setWellLabel(plan, { labware: LABELED_ONLY, well: "D4" }, "Cond 1");
+    assert.equal(isWellUsed(plan, trough("2")), true, "starting contents");
+    assert.equal(isWellUsed(plan, trough("1")), true, "a source");
+    assert.equal(isWellUsed(plan, plateWell("B2")), true, "a destination");
+    assert.equal(isWellUsed(plan, plateWell("C3")), true, "a mixed well");
+    assert.equal(isWellUsed(plan, { labware: LABELED_ONLY, well: "D4" }), true, "a label only");
+    assert.equal(isWellUsed(plan, plateWell("H12")), false, "an unused well on the same labware");
+    assert.equal(isWellUsed(plan, trough("12")), false, "an unused trough");
+  });
+
+  test("isWellUsed: true for a randomization's source, its well to fill, and a stage entry whose source was taken out", () => {
+    const { plan } = runRandomizationPlan();
+    // A stage entry whose well is no longer a source and has no other use (G7), as a plan file can
+    // hold it after its source was taken out and the well emptied.
+    const stored = JSON.parse(JSON.stringify(plan.randomizations));
+    stored[0].stages.find((owned) => owned.well === "A2").well = "G7";
+    const loaded = setRandomizations(plan, stored);
+    assert.equal(isWellUsed(loaded, deepWell("G7")), true, "a stage entry");
+    assert.equal(isWellUsed(plan, deepWell("A1")), true, "a source");
+    assert.equal(isWellUsed(plan, plateWell("B2")), true, "a well to fill");
+    assert.equal(isWellUsed(plan, deepWell("H12")), false, "an unused well");
+  });
+
+  test("isWellToFill: true for a well to fill, false for a source and for a well no randomization fills", () => {
+    const { plan } = setUpRandomization();
+    assert.equal(isWellToFill(plan, plateWell("B2")), true);
+    assert.equal(isWellToFill(plan, deepWell("A1")), false);
+    assert.equal(isWellToFill(plan, plateWell("H12")), false);
+  });
+
+  test("isWellUsed and isWellToFill throw deck.checkWell's message for a well off the deck", () => {
+    const { plan } = emptyPlan();
+    const off = { labware: PLATE, well: "Z99" };
+    const message = { message: `"Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.` };
+    assert.throws(() => isWellUsed(plan, off), message);
+    assert.throws(() => isWellToFill(plan, off), message);
+  });
+
+  test("moveWell: a trough moved to another trough takes its contents, transfers and label", () => {
+    const plan = troughMovePlan();
+    const moved = moveWell(plan, trough("3"), trough("7"));
+    assert.deepEqual(moved.startingContents, [
+      plan.startingContents[0],
+      { labware: RESERVOIR, well: "7", components: plan.startingContents[1].components },
+      plan.startingContents[2],
+    ]);
+    const before = plan.operationList.listOperations();
+    const after = moved.operationList.listOperations();
+    assert.equal(after.length, before.length);
+    after.forEach((operation, position) => {
+      const expectedSource =
+        before[position].source.well === "3" ? trough("7") : before[position].source;
+      assert.deepEqual(operation, { ...before[position], source: expectedSource }, `transfer ${position}`);
+    });
+    assert.equal(wellLabelOf(moved, trough("7")), "Media stock");
+    assert.equal(wellLabelOf(moved, trough("3")), null);
+    assert.equal(Object.hasOwn(moved.wellLabels, RESERVOIR), true);
+    assert.equal(isWellUsed(moved, trough("3")), false);
+    assert.deepEqual(
+      contentsAfterEachOperation(moved, [trough("3"), trough("7")]),
+      contentsAfterEachOperation(plan, [trough("3"), trough("7")]),
+    );
+    const at = (candidate, well) =>
+      replay(candidate.startingContents, candidate.operationList).componentsOf(RESERVOIR, well);
+    assert.deepEqual(at(moved, "7"), at(plan, "3"));
+  });
+
+  test("moveWell: the labware stays in wellLabels only while it has another labeled well", () => {
+    const plan = troughMovePlan();
+    assert.equal(Object.hasOwn(moveWell(plan, trough("3"), plateWell("H1")).wellLabels, RESERVOIR), false);
+    const twoLabels = setWellLabel(plan, trough("1"), "Dye stock");
+    assert.deepEqual(moveWell(twoLabels, trough("3"), plateWell("H1")).wellLabels[RESERVOIR], { 1: "Dye stock" });
+  });
+
+  test("moveWell: a destination moved leaves the old well empty after every stage", () => {
+    let plan = troughMovePlan();
+    const moved = moveWell(plan, plateWell("A1"), plateWell("H1"));
+    for (let done = 0; done <= plan.operationList.listOperations().length; done += 1) {
+      const snapshotAt = replay(moved.startingContents, moved.operationList, done);
+      assert.equal(snapshotAt.totalVolumeOf(PLATE, "A1"), 0, `after ${done}`);
+    }
+    assert.deepEqual(
+      replay(moved.startingContents, moved.operationList).componentsOf(PLATE, "H1"),
+      replay(plan.startingContents, plan.operationList).componentsOf(PLATE, "A1"),
+    );
+  });
+
+  test("moveWell: a mix step's mixed well moves at both ends", () => {
+    let plan = troughMovePlan();
+    const mixStep = addMixStep(plan, null);
+    plan = mixWells(mixStep.plan, mixStep.id, [plateWell("A1")]);
+    const moved = moveWell(plan, plateWell("A1"), plateWell("H1"));
+    const [transfer] = transfersIn(moved, mixStep.id);
+    assert.deepEqual(transfer.source, plateWell("H1"));
+    assert.deepEqual(transfer.destination, plateWell("H1"));
+    assert.equal(transfer.volume, mixedWell(mixStep.id, plateWell("H1")).volume);
+  });
+
+  test("moveWell: a trough holding more than a plate well's capacity, moved to a plate well, is allowed and overfills", () => {
+    const plan = troughMovePlan();
+    assert.ok(plan.startingContents[1].components.Media > capacityOf(PLATE));
+    assert.deepEqual(replay(plan.startingContents, plan.operationList).listProblems(), []);
+    const moved = moveWell(plan, trough("3"), plateWell("H1"));
+    const problems = replay(moved.startingContents, moved.operationList).listProblems();
+    assert.ok(problems.some((problem) => problem.labware === PLATE && problem.well === "H1"));
+
+    // A trough a transfer fills past a plate well's capacity: the overfill is the stage's, so
+    // stagesWithContentsProblem reports it too. (An overfill at the start belongs to no stage.)
+    let filled = addStage(plan, null).plan;
+    filled = addTransfer(filled, {
+      type: "transfer",
+      source: trough("1"),
+      destination: trough("9"),
+      volume: capacityOf(PLATE) + 1,
+      stage: "3",
+    });
+    assert.deepEqual(stagesWithContentsProblem(filled), new Set());
+    const filledMoved = moveWell(filled, trough("9"), plateWell("H1"));
+    assert.deepEqual(stagesWithContentsProblem(filledMoved), new Set(["3"]));
+  });
+
+  test("moveWell: a randomization's source keeps its place, and running again with the seed gives the same wells", () => {
+    const { plan, id } = runRandomizationPlan();
+    const moved = moveWell(plan, deepWell("A2"), deepWell("H2"));
+    const randomization = randomizationAt(moved, id);
+    assert.deepEqual(randomization.sources, [source("A1", 8), source("H2", 8), source("A3", null, true)]);
+    const before = randomizationAt(plan, id).stages;
+    assert.deepEqual(
+      randomization.stages,
+      before.map((owned) => (owned.well === "A2" ? { ...owned, well: "H2" } : owned)),
+    );
+    assert.deepEqual(randomization.fill, randomizationAt(plan, id).fill);
+    const rerun = runRandomization(moved, id);
+    assert.deepEqual(destinationsByStage(rerun, id), destinationsByStage(plan, id));
+    // The stage's name, given when it ran, stays as it was.
+    const ownedA2 = before.find((owned) => owned.well === "A2").stage;
+    assert.equal(moved.stageList.get(ownedA2).name, plan.stageList.get(ownedA2).name);
+  });
+
+  test("moveWell: a source of one transfer and destination of another both move", () => {
+    let plan = troughMovePlan();
+    plan = addStage(plan, null).plan;
+    plan = addTransfer(plan, {
+      type: "transfer",
+      source: plateWell("A1"),
+      destination: plateWell("B1"),
+      volume: 10,
+      stage: "3",
+    });
+    const moved = moveWell(plan, plateWell("A1"), plateWell("H1"));
+    assert.deepEqual(transfersIn(moved, "1")[0].destination, plateWell("H1"));
+    assert.deepEqual(transfersIn(moved, "3")[0].source, plateWell("H1"));
+  });
+
+  test("moveWell: a source of a randomization that hasn't run moves in its sources", () => {
+    const { plan, id } = setUpRandomization();
+    assert.deepEqual(randomizationAt(plan, id).stages, []);
+    const moved = moveWell(plan, deepWell("A1"), deepWell("H1"));
+    assert.deepEqual(randomizationAt(moved, id).sources[0], source("H1", 8));
+    assert.deepEqual(moved.startingContents[0], { ...plan.startingContents[0], well: "H1" });
+  });
+
+  test("moveWell: a stage entry whose well is no longer a source moves", () => {
+    const { plan, id } = runRandomizationPlan();
+    const stored = JSON.parse(JSON.stringify(plan.randomizations));
+    const ownedA2 = stored[0].stages.find((owned) => owned.well === "A2");
+    // A stage entry for a well that isn't among the sources, as a plan file can hold it.
+    ownedA2.well = "G7";
+    const loaded = setRandomizations(plan, stored);
+    assert.equal(isWellUsed(loaded, deepWell("G7")), true);
+    const moved = moveWell(loaded, deepWell("G7"), deepWell("G8"));
+    assert.deepEqual(
+      randomizationAt(moved, id).stages.find((owned) => owned.stage === ownedA2.stage),
+      { ...ownedA2, well: "G8" },
+    );
+  });
+
+  test("moveWell: a label lands where setWellLabel would put it", () => {
+    let plan = troughMovePlan();
+    plan = setWellLabels(plan, { [RESERVOIR]: { 1: "One", 3: "Three", 5: "Five" } });
+    const moved = moveWell(plan, trough("3"), trough("9"));
+    assert.deepEqual(Object.keys(moved.wellLabels[RESERVOIR]), ["1", "5", "9"]);
+    assert.equal(moved.wellLabels[RESERVOIR]["9"], "Three");
+
+    let other = troughMovePlan();
+    other = setWellLabels(other, { [DEEP]: { A1: "Cond 1" }, [RESERVOIR]: { 3: "Media stock" } });
+    const toPlate = moveWell(other, trough("3"), plateWell("H1"));
+    assert.deepEqual(Object.keys(toPlate.wellLabels), [DEEP, PLATE]);
+  });
+
+  test("moveWell: a plan with a moved randomization source is saved and opened as the same plan", () => {
+    const { plan } = runRandomizationPlan();
+    const moved = moveWell(plan, deepWell("A2"), deepWell("H2"));
+    const text = planToText(moved, "transfer designer v0.2.0");
+    const opened = planFromText(text);
+    // Opening renumbers the stages from "1" (plan-file.md), so the stage IDs are left out.
+    const withoutStageIds = (candidate) => ({
+      startingContents: candidate.startingContents,
+      wellLabels: candidate.wellLabels,
+      sources: candidate.randomizations.map((randomization) => randomization.sources),
+      fill: candidate.randomizations.map((randomization) => randomization.fill),
+      stageWells: candidate.randomizations.map((randomization) =>
+        randomization.stages.map(({ labware, well }) => ({ labware, well })),
+      ),
+      transfers: candidate.operationList
+        .listOperations()
+        .map(({ source, destination, volume }) => ({ source, destination, volume })),
+    });
+    assert.deepEqual(withoutStageIds(opened), withoutStageIds(moved));
+  });
+
+  test("moveWell refuses each wrong move with its message, leaving the plan unchanged", () => {
+    const { plan: randomized } = runRandomizationPlan();
+    let plan = setWellLabel(randomized, plateWell("H11"), "Only a label");
+    plan = addToWells(plan, [deepWell("H1")], "Media", 10);
+    const stored = JSON.parse(JSON.stringify(plan.randomizations));
+    stored[0].stages.find((owned) => owned.well === "A2").well = "G7";
+    const withEntry = setRandomizations(plan, stored);
+    const before = snapshot(withEntry);
+    const cases = [
+      [deepWell("A1"), deepWell("A1"), `${DEEP} A1 is where it is already. Choose another well to move it to.`],
+      [deepWell("H12"), deepWell("H11"), `The plan doesn't use ${DEEP} H12, so there's nothing to move.`],
+      [plateWell("B2"), plateWell("H1"), "Wells a randomization fills can't be moved."],
+    ];
+    const inUse = (end) => `${end.labware} ${end.well} is already used in the plan. Move to a well the plan doesn't use.`;
+    const usedTargets = [
+      deepWell("H1"), // only starting contents
+      plateWell("A1"), // a transfer's destination
+      plateWell("H11"), // only a label
+      deepWell("A1"), // a randomization's source
+      deepWell("G7"), // only the well of a randomization's stage entry
+      plateWell("B3"), // a randomization's well to fill
+    ];
+    for (const target of usedTargets) {
+      cases.push([trough("1"), target, inUse(target)]);
+    }
+    cases.push([{ labware: PLATE, well: "Z99" }, trough("2"), `"Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`]);
+    cases.push([trough("1"), { labware: PLATE, well: "Z99" }, `"Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`]);
+    for (const [from, to, message] of cases) {
+      assert.throws(() => moveWell(withEntry, from, to), { message }, `${JSON.stringify(from)} → ${JSON.stringify(to)}`);
+    }
+    assert.equal(snapshot(withEntry), before);
+  });
+
+  test("moveWell checks in its order: from on the deck, to on the deck, the same well, from in use, a well to fill, to in use", () => {
+    const { plan } = runRandomizationPlan();
+    const offFrom = { labware: PLATE, well: "Z98" };
+    const offTo = { labware: PLATE, well: "Z99" };
+    assert.throws(() => moveWell(plan, offFrom, offTo), {
+      message: `"Z98" isn't a well on ${PLATE}. Its wells are A1 to H12.`,
+    });
+    assert.throws(() => moveWell(plan, deepWell("H12"), deepWell("H12")), {
+      message: `${DEEP} H12 is where it is already. Choose another well to move it to.`,
+    });
+    assert.throws(() => moveWell(plan, deepWell("H12"), deepWell("A1")), {
+      message: `The plan doesn't use ${DEEP} H12, so there's nothing to move.`,
+    });
+    assert.throws(() => moveWell(plan, plateWell("B2"), deepWell("A1")), {
+      message: "Wells a randomization fills can't be moved.",
+    });
+  });
+
+  test("moveWell changes only the parts that name the moved well, and shares every other transfer", () => {
+    const plan = troughMovePlan();
+    const moved = moveWell(plan, trough("3"), trough("7"));
+    for (const part of PLAN_PARTS.filter((name) => !["startingContents", "operationList", "wellLabels"].includes(name))) {
+      assert.equal(moved[part], plan[part], part);
+    }
+    assert.equal(moved.startingContents[0], plan.startingContents[0]);
+    assert.equal(moved.startingContents[2], plan.startingContents[2]);
+    const before = plan.operationList.listOperations();
+    const after = moved.operationList.listOperations();
+    assert.equal(after[3], before[3], "the transfer from Res 1 is shared");
+    assert.notEqual(after[0], before[0]);
+
+    // A well used only as a destination: starting contents, well labels and randomizations stay.
+    const destination = moveWell(plan, plateWell("A4"), plateWell("H4"));
+    assert.equal(destination.startingContents, plan.startingContents);
+    assert.equal(destination.wellLabels, plan.wellLabels);
+    assert.equal(destination.randomizations, plan.randomizations);
+
+    // A well with only a label: only well labels change.
+    const labeled = setWellLabel(plan, plateWell("H11"), "Spare");
+    const labelMoved = moveWell(labeled, plateWell("H11"), plateWell("H12"));
+    assert.equal(labelMoved.operationList, labeled.operationList);
+    assert.equal(labelMoved.startingContents, labeled.startingContents);
+  });
+
+  test("moveWell: a randomization that doesn't use the moved well is the very same object", () => {
+    const { plan, id } = runRandomizationPlan();
+    const moved = moveWell(plan, trough("1"), trough("9"));
+    assert.equal(moved.randomizations, plan.randomizations);
+    assert.equal(randomizationAt(moved, id), randomizationAt(plan, id));
+  });
+
+  test("moveWell: one undo with plan-history brings back the plan before the move", () => {
+    const plan = troughMovePlan();
+    let history = new PlanHistory(plan);
+    history = history.record(moveWell(plan, trough("3"), trough("7")));
+    assert.equal(history.undo().present, plan);
+  });
 
   // --- Moving and copying ---
 

@@ -138,6 +138,9 @@ import {
   pasteItems,
   COPIED_ITEMS_FORMAT,
   COPIED_ITEMS_VERSION,
+  isWellUsed,
+  isWellToFill,
+  moveWell,
 } from "../src/tools/transfer-designer/transfer-designer.js";
 import {
   PLAN_FILE_FORMAT,
@@ -525,6 +528,9 @@ const TOPICS = {
       pasteItems,
       COPIED_ITEMS_FORMAT,
       COPIED_ITEMS_VERSION,
+      isWellUsed,
+      isWellToFill,
+      moveWell,
     },
     examples: [
       "let plan = emptyPlan().plan",
@@ -628,6 +634,18 @@ const TOPICS = {
       "tipGroups(pasted.plan)",
       'copyItems(column, [{ kind: "stage", id: "1" }], { kind: "between", index: 2 }).placed',
       'pasteItems(column, { format: "something else" }, { kind: "between", index: 0 })',
+      'let warped = addComponent(emptyPlan().plan, "Media", "#4e79a7")',
+      'warped = addToWells(warped, [{ labware: "Res1", well: "3" }], "Media", 5000)',
+      'warped = setWellLabel(warped, { labware: "Res1", well: "3" }, "Media stock")',
+      'warped = addTransfer(warped, { type: "transfer", source: { labware: "Res1", well: "3" }, destination: { labware: "Plate1", well: "A1" }, volume: 100, stage: "1" })',
+      'isWellUsed(warped, { labware: "Res1", well: "3" })',
+      'isWellToFill(warped, { labware: "Res1", well: "3" })',
+      'let unwarped = moveWell(warped, { labware: "Res1", well: "3" }, { labware: "Res1", well: "7" })',
+      'transfersIn(unwarped, "1")',
+      'wellLabelOf(unwarped, { labware: "Res1", well: "7" })',
+      "unwarped.startingContents",
+      'isWellUsed(unwarped, { labware: "Res1", well: "3" })',
+      'moveWell(unwarped, { labware: "Res1", well: "7" }, { labware: "Plate1", well: "A1" })',
     ],
   },
   "plan-file": {
