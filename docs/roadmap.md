@@ -338,7 +338,11 @@ Last updated: 2026-11-02
   Andy.
 - **Decided: a filler can be several wells** (Andy, 2026-11-02; item 13, below), since one well
   can't always hold enough filler; Exp36 needs it. Worked on alongside moving wells (#131), on its
-  own branch (Andy, 2026-11-02). Not specified yet.
+  own branch (Andy, 2026-11-02). Shaped in a preview (2026-11-02 and 2026-11-03) and
+  **specified** (Draft, in the hands-off workflow): `fillerShares`, `isRandomizationOutOfDate`, the
+  one-liquid problem and renaming on a run (`transfer-designer.md`, "Randomizations"), plan files
+  version 8 (`plan-file.md`), the card, heading, problem count and Biomek files box
+  (`transfer-designer-page.md`), glossary "Randomization".
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -590,7 +594,7 @@ added on 2026-10-28 (Andy).
       wells; the Biomek orders a stage's transfers itself, B56358AF 22-25, so splitting by whole
       transfers is safe). Plan files do: today they allow one filler, so a new format version, with
       older files still opening.
-    Next: a preview, then the specifications.
+    **Specified** (Draft, 2026-11-03): see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:

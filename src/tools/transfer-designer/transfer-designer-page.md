@@ -101,6 +101,14 @@
 > in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its
 > pull request. They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-02, a filler of several wells, item 13 of v0.2.0):** from the preview
+> Andy shaped on 2026-11-02 and 2026-11-03: several sources can be filler wells, each row showing
+> its share; one filler stage; a randomization that's out of date says so in its heading and card,
+> counts as a problem, and holds back the Biomek files (sections 5, 6, 7 and 16;
+> `transfer-designer.md`, "Randomizations"). Written in the hands-off workflow (CLAUDE.md,
+> "Workflows"), so the choices made for Andy are listed in its pull request. They become Final once
+> built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -226,6 +234,10 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
   the files' folder is named after it.`, or an overdraw), in red, with Write files disabled and
   Cancel focused. The page shows the writer's messages unchanged, with no wording of its own, so
   they never name a part of the page that may later change (Andy, 2026-10-28).
+- Before asking the file writer, if a randomization is out of date (`isRandomizationOutOfDate`; the
+  file writer never reads randomizations, so the page checks), the first in the column's order is
+  named instead, in red, with Write files disabled: `A randomization (at stage 1, “Drug”) is out of
+  date: open it and press Update.` (its first stage, as messages name stages; Andy, 2026-11-02).
 
 The time is fixed when the box opens, so the name it shows is the name Write files saves (Andy,
 2026-10-28: "tell you what file name it's actually generating").
@@ -285,7 +297,8 @@ read as a view setting), `Undo`, `Redo` (each disabled
 when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the problem count: `No
 problems` in green, or `N problems` in red: each contents problem in the whole plan (a draw into
 the dead volume, an overdraw or an overfill, including a well that starts over its capacity;
-`contents-tracking.md`) counts as one, and so does each stage with a mix problem
+`contents-tracking.md`) counts as one, and so does each randomization that's out of date
+(`isRandomizationOutOfDate`; section 7), and each stage with a mix problem
 (`stagesWithMixProblem`).
 
 **Second bar.** On the left, the **labware tray**; on the right, the key, then the `Names` and
@@ -725,8 +738,11 @@ like a tip group's, with seams between tip groups above and below it as for any 
 - **Its heading**, a button the box's width: the **dice icon** (a small SVG of two dice, one tilted
   behind showing three, one in front showing five, in the text's color, so it's the same on every
   PC), then `Randomize` (not set up yet) or `Randomized` (run), semibold, then at the right, in
-  gray, `not set up yet` or `68 stages · seed 360310` (the stages it owns; `1 stage`). Tooltip, not set up yet: `Not set up yet:
-  open it to finish setting it up.`; run: `Open to change it`. Clicking it opens its card, or, if
+  gray, `not set up yet` or `68 stages · seed 360310` (the stages it owns; `1 stage`), or, when
+  it's out of date (`isRandomizationOutOfDate`), `needs update` in red, semibold (Andy,
+  2026-11-02). Tooltip, not set up yet: `Not set up yet: open it to finish setting it up.`; run:
+  `Open to change it`; out of date: `The plan changed since this last ran: open it and press
+  Update.` Clicking it opens its card, or, if
   open, closes it (saving, below).
 - **Seams around it**: a seam between tip groups above its box and one below, as for any box, and
   **none inside it** (not between its stages' boxes, nor inside them). For one that hasn't run,
@@ -773,11 +789,15 @@ From the top:
 - **Sources**: with none, `Click wells on the deck to add them.` in gray. Otherwise one row per
   source, in order: its main component's swatch (gray if it holds nothing then), its name
   (`sourceName`), a 40px **replicates box** (accessible name `Replicates of Deep A1`) and a
-  **Filler** toggle button (pressed while it's the filler; tooltip `The filler fills the wells the
-  replicates leave over.`), then a `×` (`Remove source Deep A1`). The filler's row shows, in place
-  of its box, how many wells it fills (on an exact fit it gets none, and no stage): `12 wells`, `1 well`, `0 wells`, or `?` while a replicate
-  count isn't a whole number yet, updating as replicates are typed and wells picked (Andy,
-  2026-11-01). Making a source the filler makes any other one not the filler.
+  **Filler** toggle button (pressed while it's a filler well; tooltip `Filler wells fill the wells
+  the replicates leave over, used in list order.`), then a `×` (`Remove source Deep A1`). Any
+  number of sources can be filler wells (Andy, 2026-11-02); each press turns only that row's on or
+  off. A filler well's row shows, in place of its box, how many wells it fills, its share
+  (`fillerShares`, worked out on the draft as the problems are, below): `7 wells`, `1 well`, `0
+  wells` (on an exact fit the filler gets none, and no stage), or `?` while a replicate count isn't
+  a whole number yet or the volume isn't set, updating as replicates, the volume and wells are
+  changed (Andy, 2026-11-01 and 2026-11-02). The filler wells are used in the order of their rows,
+  which is the order they were picked in; to change it, remove a row and pick its well again.
   - With two or more sources that take replicates, a first row, **All sources**, set apart by a
     line, with one box (accessible name `Replicates for every source`): typing in it sets every
     source's replicates as you type (not the filler's). It shows their number when they all match,
@@ -808,9 +828,14 @@ From the top:
   box holds what isn't a number, its own: `Drug A: replicates must be a whole number, 1 or more.`,
   `The seed must be a whole number from 1 to 999,999.`, `The volume must be a number of µL above
   0.`); then `Remove` (quiet red text at the left), `Close` (action) and the main button,
-  **Randomize** (not run yet; tooltip `Makes 12 stages, with new tips before each.`) or **Update**
+  **Randomize** (not run yet; tooltip `Makes 12 stages, with new tips before each.`: one per
+  source taking replicates, and one for the filler if it fills any well, however many filler wells
+  it has) or **Update**
   (run; tooltip `Applies these settings to its stages. The same seed keeps the same wells; a new
-  seed shuffles again.`), disabled while there's a problem. Randomize and Update save the draft and
+  seed shuffles again.`), disabled while there's a problem. With no problem, a card that has run, has
+  no unsaved changes and is out of date shows, in the problem's place and in red, `The plan has
+  changed since this last ran. Press Update to bring its stages up to date.` (Update stays enabled;
+  Andy, 2026-11-02). Randomize and Update save the draft and
   run it (`runRandomization`), as one undoable edit, close the card and open its first stage
   (message `Randomized: 12 stages with 96 transfers (seed 37). Undo takes the change out again.`).
   After Update the message is `Updated: 12 stages with 96 transfers (seed 37). Undo takes the change
@@ -1430,7 +1455,12 @@ page's configuration (ADR 0009):
   above End); closing with nothing set keeps it, not set up; sources and wells to fill picked by
   clicks and drags on two plates, each tab picking only its kind, a well never both; dragging on the
   Sources tab to add and to remove a box of sources; the All sources
-  box, a source's own box, `mixed`; the filler's count; more than `SOURCES_SHOWN` sources; Each
+  box, a source's own box, `mixed`; the filler's count; several filler wells (each row's share,
+  in pick order; a well with less than one transfer above its dead volume giving `0 wells`; one
+  filler stage drawing from each; `The filler wells hold different liquids.`); out of date (a filler
+  trough topped up, then the heading, the card's line, the problem count, the Biomek files box, and
+  Update clearing them; every filler trough's liquid changed, and Update renaming the stage); more
+  than `SOURCES_SHOWN` sources; Each
   transfer, Tips and Volume; each problem message; Randomize: stages in source order, named, each on
   new tips, the stage after keeping its tips, every well filled once; Update with the same seed (same
   wells) and a new one; a source removed and added; Remove before and after running, and Undo; the

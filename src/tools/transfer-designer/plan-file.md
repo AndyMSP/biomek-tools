@@ -17,6 +17,12 @@
 > **Draft change (2026-11-01, format version 7):** each component's constituents (`constituents`;
 > `transfer-designer.md`, "Constituents"; ADR 0013), sections 2 to 6. Versions 1 to 6 open with
 > components carrying nothing. It becomes Final once built and tested by Andy.
+>
+> **Draft change (2026-11-02, format version 8):** a randomization may have several filler wells
+> (`transfer-designer.md`, "Randomizations"; item 13 of v0.2.0), sections 2 to 6. Nothing else
+> changes: a version 8 file holds what a version 7 file does, so where this specification says a
+> version 7 file, a version 8 file is meant too. Written in the hands-off workflow; it becomes
+> Final once built and tested by Andy.
 
 ## 1. Purpose
 `plan-file.js` turns a **plan** (`docs/glossary.md`) into the text of a **plan file**, and a plan
@@ -36,12 +42,14 @@ never quietly tidied. The tool always writes valid files, so such a file was dam
 hand, and that's better reported than changed.
 
 ## 2. Scope
-Version 1 writes format version 7, and reads versions 7, 6, 5, 4, 3, 2 and 1 (below). Version 2 added the
+Version 1 writes format version 8, and reads versions 8, 7, 6, 5, 4, 3, 2 and 1 (below). Version 2 added the
 experiment name (Andy, 2026-10-28). Version 3 moved probes from the stages to the tip changes
 (Andy, 2026-10-30; ADR 0007, "Tip changes"). Version 4 adds each stage's mixes, `sourceMix` and
 `destinationMix` (Andy, 2026-10-30; ADR 0007, "Mixing"). Version 5 adds the well labels, and version 6 the
 randomizations (Andy, 2026-11-01). Version 7 adds each component's constituents (ADR 0013; Andy,
-2026-11-01). Older plans still open (ADR 0010,
+2026-11-01). Version 8 lets a randomization have several filler wells (Andy, 2026-11-02), so a tool
+that knows only version 7 refuses such a file as newer, rather than with a confusing message about
+two fillers; its properties are those of version 7. Older plans still open (ADR 0010,
 "Consequences"): version 1, with no experiment name; versions 1 and 2, with each tip change loading
 every probe its stages used, which is exactly where look-ahead loading put tips, so the same tips
 go on; versions 1 to 3, with no mixing, since plans couldn't mix before version 4; versions 1 to
@@ -59,19 +67,19 @@ Not in version 1:
 ### The format name and version
 - **`PLAN_FILE_FORMAT`** is `"biomek-tools transfer plan"`, so a file can be recognized as a plan
   file.
-- **`PLAN_FILE_VERSION`** is `7`, the format version written: it goes up only when what a plan file holds
+- **`PLAN_FILE_VERSION`** is `8`, the format version written: it goes up only when what a plan file holds
   changes, not with every release of the tools (ADR 0010).
 
 They are constants in the module, not in `config/`: changing either one means changing how files are
 read and written, which is a change to the code.
 
-### What a plan file holds (version 7)
+### What a plan file holds (version 8)
 A plan file is written as one JSON object with these properties, in this order:
 
 ```json
 {
   "format": "biomek-tools transfer plan",
-  "version": 7,
+  "version": 8,
   "savedBy": "transfer designer v0.2.0",
   "experimentName": "Exp36",
   "components": [{ "name": "Media", "color": "#4e79a7", "constituents": [] },
@@ -104,7 +112,9 @@ A plan file is written as one JSON object with these properties, in this order:
   file needs no separate list of the order (ADR 0011).
 - `operations`: every operation, in the operation list's order (`listOperations()`).
 
-**Version 6** files hold the same properties, with `"version": 6`, but each component is `{ name,
+**Version 7** files hold exactly the same properties, with `"version": 7`; they're read with the
+same rules as version 8 (several filler wells in one are accepted: no tool wrote them, and refusing
+them would add a rule for nothing). **Version 6** files hold the same properties, with `"version": 6`, but each component is `{ name,
 color }` only, with no `constituents`. **Version 5** files are like version 6, with `"version": 5`, but no `randomizations`.
 **Version 4** files are like version 5, with `"version": 4`, but no `wellLabels`.
 **Version 3** files are like version 4, with `"version": 3`, but a stage's `settings` have no
@@ -276,7 +286,7 @@ row of section 5 has at least one test.
 - A plan whose stages have IDs `"2"`, `"5"` and `"7"` opens with IDs `"1"`, `"2"` and `"3"`, its
   transfers and tip changes following them.
 - An `emptyPlan()`, saved and opened, gives a plan with the same contents, and is written as version
-  7, with `"wellLabels": {}` and `"randomizations": []`. (The existing tests of the version written
+  8 (the tests of the version written are updated from 7 to 8), with `"wellLabels": {}` and `"randomizations": []`. (The existing tests of the version written
   and of a component's exact properties are updated to version 7 and the three properties: the
   specification changed, not the tests' purpose.)
 - A component is written with its properties in the order `name`, `color`, `constituents`, and
@@ -294,9 +304,15 @@ row of section 5 has at least one test.
 - Tip changes keep their probes: `START` on `[1, 2, 3, 4]` and a tip change on `[1]`, saved and
   opened, give the same probes.
 
+**Version 8** (2026-11-02)
+- A plan whose randomization has three filler wells, run, is saved as version 8 and opened as the
+  same plan (its filler wells, its one filler stage and that stage's transfers from each well).
+- A version 7 file holding a randomization with two filler wells opens; a version 7 file as saved
+  before (one filler) opens as before.
+
 **Refusing**
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
-- `version` `8` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
+- `version` `9` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
   message.
 - **Version 6:** a version 6 file (as saved before constituents, its components `{ name, color }`)
   opens, every component carrying `[]`; a version 6 file whose component *has* `constituents` is
