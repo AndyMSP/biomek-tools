@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -328,6 +328,8 @@ Last updated: 2026-11-01
   2026-11-02)**: `scripts/build-version.js` with its tests and REPL topic, `build.js`, both pages,
   and `package.json` at 0.2.0; checked by hand in a scratch clone and in headless Chrome. Tested by
   Andy and merged.
+- **Decided: moving wells joins v0.2.0** (Andy, 2026-11-02; item 12, below), so a reservoir that
+  warps in the autoclave can be worked around in the plan, as Exp36 may need. Not specified yet.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -481,6 +483,35 @@ added on 2026-10-28 (Andy).
     capacity and dead volume; `config/deck.js` keeps only each labware's name and type, its `grid`
     moving to the type (a `BCFlat96` is always 96 wells). The `deck` module reads the grid through
     the type. Next: the specifications.
+12. **Moving wells** (Andy, 2026-11-02): a reservoir warped in the autoclave in an earlier
+    experiment, and some troughs were too distorted to use, so different wells were used than
+    planned, changed by hand in Biomek Software. Moving a well in the plan lets the tool write the
+    files for the wells actually used. It changes the plan, not the format of the Biomek files, so
+    it can be built after the final Biomek runs. Decided so far (Andy, 2026-11-02):
+    - **One well at a time**, onto any well on any labware, not only troughs: the tool treats
+      every well the same, so limiting it would only add a special case. Moving a whole plate or
+      column is left for later.
+    - **Everything moves with it:** the old well is replaced by the new one wherever the plan names
+      it: its starting contents, transfers from it and into it (mix steps included), its well
+      label, and any randomization that uses it, as a source or a well to fill. The plan does the
+      same as before, from a different well.
+    - **Only onto a well the plan doesn't use** (no starting contents, transfers, well label or
+      randomization); otherwise the move is refused, with a message saying to choose a well the
+      plan doesn't use. Swapping two wells was considered and declined: in the warped-reservoir case
+      it would put the other well's liquid into the warped one. Merging two wells' roles was
+      declined too, as it mixes two liquids in one well.
+    - **No new checks:** capacity, dead volume, overdraws and mixes are recalculated after every
+      edit, so a move that causes a problem is allowed and shown in red like any other edit's, and
+      the file writer refuses it. A move is undone like any edit.
+    - **On the page:** a **Move wells** button near the deck's toggles puts the page into moving
+      wells: the Stages column can't be edited and the deck looks different (for example a colored
+      border and a line saying what to do). Only wells the plan uses can be picked; once one is
+      picked, every well it can move to is marked (on any labware), and wells in use are dimmed and
+      do nothing. The page stays in moving wells after each move, since more than one trough may
+      be warped, until **Done** (the same button) is pressed; Escape with a well picked cancels only
+      that pick. Right-click (which names a well) and dragging were considered; the button was
+      chosen as easier to find, and dragging is easy to do by accident.
+    Next: a preview, to settle the page's details, then the specifications.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -491,7 +522,9 @@ final Biomek runs, so they test the files as they will be:
 4. The randomizer link (item 9), decided on 2026-11-01: seams, well labels, then randomizations.
 5. The final Biomek runs (item 8): simulation, then one real run with water, on the final files;
    then the golden file.
-6. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+6. Moving wells (item 12), added on 2026-11-02: preview, specifications, then build. It doesn't
+   change the Biomek files' format, so it doesn't need to come before the final runs.
+7. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen
