@@ -979,11 +979,13 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `pasteItems`: a value refused by the edit that would make it | `Can't paste: item 2: ` and that edit's message, e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1. Its wells are A1 to H12.` (Messages pass through unchanged, so the operation list's stage rule names the new stage's ID and an operation number, which the user never sees; roadmap, "Technical debt", "Some messages use internal terms".) |
 | `pasteItems`: two stages for one well, or a stage that's a mix step, in a randomization | `Can't paste: item 2: Deep A1 has two stages.` / `Can't paste: item 2: its stage for Deep A1 is a mix step.` |
 | `isWellUsed`, `isWellToFill`, `moveWell`: a well isn't on the deck | `deck.checkWell`'s messages, unchanged, e.g. `"Z99" isn't a well on Plate1. Its wells are A1 to H12.` |
-| `moveWell`: its messages name a well by its labware's name in the deck description and the well, as this module's other messages do (e.g. `Res1 3`); a tool may word its own | — |
 | `moveWell`: `to` is `from` | `Res1 3 is where it is already. Choose another well to move it to.` |
 | `moveWell`: `from` isn't in use | `The plan doesn't use Res1 7, so there's nothing to move.` |
 | `moveWell`: `from` is a randomization's well to fill | `Wells a randomization fills can't be moved.` (Andy, 2026-11-02: the short form) |
 | `moveWell`: `to` is in use | `Plate1 A1 is already used in the plan. Move to a well the plan doesn't use.` |
+
+`moveWell`'s messages name a well by its labware's name in the deck description and the well, as this
+module's other messages do (e.g. `Res1 3`); a tool may show its own wording instead.
 
 **Order of checks.** The first problem found is reported:
 - `addTransfer`: the operation list's checks of the transfer (its form, then the stage rule), then
