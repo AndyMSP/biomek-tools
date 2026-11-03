@@ -577,6 +577,13 @@ added on 2026-10-28 (Andy).
       the Biomek files wait: `A randomization (at stage 1, “Drug”) is out of date: open it and
       press Update.` Rerunning it automatically after every edit was considered and declined: it
       would change stages, perhaps a plate already checked, without the user asking.
+      **How it's found** (decided with Andy, 2026-11-03): a trial run on a copy of the plan, with the
+      card's settings and the same seed, compared with the stored stages: for each of its stages,
+      in order, its source well, its **name**, and each transfer's source, destination and volume
+      (not stage IDs, which a trial run makes fresh). Names are compared because a stage is named
+      from what its source holds when it runs (Andy: changing every filler well to another liquid
+      left the stage named for the old one); **Update also renames** a stage whose name would now
+      differ. So changing what a source holds, or renaming its component, flags it too.
     - **Not enough filler:** if the filler wells together don't hold enough, the last one is
       overdrawn, shown and refused like any overdraw.
     - **The Biomek files' format doesn't change** (the filler's transfers name different source
