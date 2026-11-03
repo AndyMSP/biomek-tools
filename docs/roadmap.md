@@ -332,7 +332,10 @@ Last updated: 2026-11-02
   warps in the autoclave can be worked around in the plan, as Exp36 may need. Shaped in a preview
   and **specified** (Draft, 2026-11-02, in the hands-off workflow): `isWellUsed`, `isWellToFill` and
   `moveWell` (`transfer-designer.md`, "Moving wells"), the page's moving wells
-  (`transfer-designer-page.md`, sections 6 and 7), glossary "Well in use".
+  (`transfer-designer-page.md`, sections 6 and 7), glossary "Well in use". **Built (#131,
+  2026-11-02)**: code, tests and REPL of the three functions, and the page; the specifications
+  and the build each reviewed by a separate agent, and checked in headless Chrome. Still to check by
+  Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -541,7 +544,7 @@ added on 2026-10-28 (Andy).
       fills can't be moved.` (Andy chose the short form); on the page such a well is dimmed like an
       unused one until a well is picked, a click or drag on it gives that message, and the
       contents card's last line says `Filled by a randomization`.
-    **Specified** (Draft, 2026-11-02): see "Where things stand".
+    **Specified** (Draft, 2026-11-02) and **built (#131)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
