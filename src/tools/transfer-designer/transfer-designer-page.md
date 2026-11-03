@@ -94,6 +94,13 @@
 > right, and saved plan files record it (sections 3, 5, 15 and 16), from a preview Andy saw on
 > 2026-11-02. It becomes Final once built and tested by Andy.
 
+> **Draft changes (2026-11-02, moving wells, item 12 of v0.2.0):** from the preview Andy shaped on
+> 2026-11-02: a `Move wells` button left of `Undo`, and moving wells, in which a well's every use
+> moves to a free well by clicking or dragging, while the Stages column can be looked through but
+> not changed (sections 2, 6, 7, 9, 12, 15 and 16; `transfer-designer.md`, "Moving wells"). Written
+> in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its
+> pull request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -118,8 +125,8 @@ how typing a volume works and how numbers are shown (section 13), as for the ran
 ## 2. Scope
 Version 1 does everything below: naming the experiment, filling wells with components before the
 run, building stages, adding transfers by clicking and dragging, tip changes, labels, undo and redo,
-saving and opening plans, with a browser copy, writing the Biomek files as one zip, and moving,
-copying and pasting stages, tip groups and randomizations.
+saving and opening plans, with a browser copy, writing the Biomek files as one zip, moving,
+copying and pasting stages, tip groups and randomizations, and moving wells.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **A guided start** for an empty plan (Andy considered it, 2026-10-26: not now).
@@ -270,7 +277,9 @@ has no local storage or refuses it (e.g. a private window), the page works witho
 nothing. Saving a file doesn't touch the copy; Reset leaves it holding the empty plan.
 
 ## 6. The deck panel
-**First bar.** On the left, the timeline (section 11); on the right, `Undo`, `Redo` (each disabled
+**First bar.** On the left, the timeline (section 11); on the right, `Move wells` (below, "Moving
+wells"; beside `Undo`, since it changes the plan: Andy, 2026-11-02, beside `Names` and `Arrows` it
+read as a view setting), `Undo`, `Redo` (each disabled
 when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the problem count: `No
 problems` in green, or `N problems` in red: each contents problem in the whole plan (a draw into
 the dead volume, an overdraw or an overfill, including a well that starts over its capacity;
@@ -455,6 +464,55 @@ triangular head, 12px from tip to base and 12px wide at the base. A head can sit
 own color and be hard to see; that's accepted (Andy, 2026-10-26: a white edge around the arrows was
 tried and dropped, since it looked worse). A transfer from a well into itself has no arrow. An end
 on labware that's put away ends at that labware's chip in the tray instead.
+
+**Moving wells** (Andy, 2026-11-02; `transfer-designer.md`, "Moving wells"). For when a trough (or any
+well) can't be used on the day: everything the plan does with one well moves to a free one.
+- **`Move wells`**, an action button, starts it. While it's on, the same button reads **`Done`** and
+  is solid purple; pressing it ends moving wells, with the message `Done moving wells.` (note).
+  Nothing else ends it: the page stays in moving wells after each move, since more than one trough
+  may be warped, and Escape never leaves it. Starting it closes an open editing box and an open
+  randomization's card (as Close does; if the card can't close, nothing happens), and clears a
+  chosen source.
+- **What the deck shows** doesn't change: whatever is open stays open, and the deck shows its point
+  (section 11; Andy, 2026-11-02: not switched to Start). The timeline's `‹` and `›` work, and so
+  does opening an entry from the Stages column (below), so the user can follow a well's transfers.
+  The deck panel gets a 2px purple border, and a purple bar above the labware (a light purple
+  background, a purple border, 14px text) says what to do: with no well picked, **`Moving wells.`**
+  (bold, purple) `Click a well to move it. Its contents, transfers, name and randomizations go with
+  it.` `Press Done when finished.` (gray); with one picked, **`Moving Res1 3 “Media stock”.`** (the
+  well as messages name it, with its well label in quotes if it has one) `Click a well with a dashed
+  outline to move it there.` `Escape picks another well.` (gray). Purple is used only here, so
+  moving can't be mistaken for the blue of a chosen source or a randomization's wells.
+- **Which wells can be picked:** wells in use (`isWellUsed`), judged over the whole plan, not the
+  point shown, so a well a later stage fills can be moved even where it shows empty; except a
+  randomization's wells to fill (`isWellToFill`). With no well picked, every other well is dimmed
+  (30% opacity). The open stage's own fading of the wells it doesn't touch (section 9) is off while
+  moving, so only one kind of dimming shows.
+- **Picking:** clicking a well that can be picked, or pressing on one and dragging (as a drag starts
+  on the deck, section 9), picks it: a 3px purple ring standing 2px outside it. Then every well not
+  in use, on any labware out (including labware brought out from the tray while moving), gets a 2px
+  dashed purple outline standing 2px outside it, and, when empty, a light purple fill: the wells it
+  can move to. Wells in use are dimmed. Clicking a well the plan doesn't use: `The plan doesn't use
+  Res1 7, so there's nothing to move. Click a well the plan uses.` (note). Clicking or dragging a
+  randomization's well to fill: `Wells a randomization fills can't be moved.` (note; Andy,
+  2026-11-02). Dragging from either does nothing else.
+- **Moving:** clicking a well with a dashed outline, or dropping the dragged well on one (under the
+  pointer its outline turns solid and 3px), moves the picked well there with `moveWell`, as one
+  edit: `Moved Res1 3 to Res1 7.` (ok). Nothing is picked afterwards. Clicking, or dropping on, a
+  well in use moves nothing and keeps the pick: `Plate1 A1 is already used in the plan. Choose a
+  well with a dashed outline, or press Escape to pick another well.` (note). Clicking the picked
+  well again, Escape, or dropping off the labware lets go of it; dropping on the picked well itself
+  keeps it picked. If `moveWell` refuses (it shouldn't, after these checks), its message is shown as
+  an error.
+- **The contents card's last line** says what a click on that well does, in place of `Right-click
+  to name`: with no well picked, `Click to move this well`, `Filled by a randomization`, or `Not
+  used in the plan`; with one picked, `Click to move Res1 3 here` on a well it can move to,
+  `Click to let go of this well` on the picked well, and `Already used in the plan` on a well in use.
+- **Off while moving:** naming a well by right-click (`Wells can't be named while moving wells.
+  Press Done first.`, note), filling, adding transfers, mixing wells and picking a randomization's
+  wells by clicks or drags, typing volumes, and the cursor's label (section 12). `Undo` and `Redo`
+  work; a picked well that an undo or redo leaves not in use is let go.
+- **The Stages column** can be looked through but not changed (Andy, 2026-11-02): see section 7.
 
 ## 7. The Stages column
 From the top: **Start**, then one **tip group box** per tip group (`tipGroups`), each holding its
@@ -883,6 +941,15 @@ transfers` opens a stage's list, the column scrolls smoothly (the browser's own 
 just enough to show the whole card; a card taller than the column is shown from its top, so the
 list starts at its first transfer (Andy, 2026-10-26). Hiding the list doesn't scroll.
 
+**While moving wells** (section 6, "Moving wells"; Andy, 2026-11-02: looked through, not changed),
+the column keeps its look, but only two things work there: clicking a closed entry's row opens it
+(Start, a stage, End; a randomization's stages too), and `Show transfers` / `Hide transfers`. The ✎
+buttons, the `×` on transfer rows and the seams are hidden (their space kept, so nothing shifts).
+Any other click in the column (a volume, a component chip, a randomization's heading, which would
+open its card) does nothing but say `Stages can't be changed while moving wells. Press Done
+first.` (note). Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
+are off.
+
 ## 8. Starting contents (Start open)
 While Start is open, clicking a well fills it, and dragging from one well to another across one
 labware fills the box between them; each fill is one undoable edit.
@@ -1133,6 +1200,9 @@ and the deck shows its point again.
 **Keys** (none while typing in a text box or menu, which keep their own keys):
 - **Digits, `.` and Backspace** type a volume (section 13), at any time: the brush's while Start is
   open (not with the eraser), and the next transfer's while a stage is open. Not while End is open.
+- **While moving wells** (section 6), Escape lets go of a picked well and does nothing else (with
+  none picked, nothing); typed volumes, Ctrl+C, Ctrl+V and the menu key are ignored; Ctrl+Z and
+  Ctrl+Y work.
 - **Escape** closes the open editing box without saving, or the open header box (section 5), or
   the open randomization's card (saving or discarding, section 7); otherwise clears a chosen source.
   Typed volumes (above) are ignored while a randomization's card is open.
@@ -1146,7 +1216,7 @@ and the deck shows its point again.
 **The cursor's label.** While the pointer is over the deck, a small label beside it (14px right,
 26px up) shows what a click does: with a stage open, the next transfer's volume, `50 µL`; with Start
 open, `+ 1000 µL Media`, `Eraser`, or `No component picked`; with a randomization's card open,
-`Source` or `Fill`, by its tab; with End open, nothing.
+`Source` or `Fill`, by its tab; with End open, or while moving wells, nothing.
 
 **The message bar** floats at the bottom center of the window, at most 720px wide, and shows the
 latest message until the next replaces it; it's hidden when empty. It's announced to screen readers.
@@ -1222,7 +1292,9 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   between items, as is the `Components:` label; swatches (here, on component buttons, and in the
   contents card) 12px circles.
 - **Blue** (`#2F5DA8`) for actions and what's chosen, with a light border (`#9DB7DB`) and tint
-  (`#EEF3FA`). **Red** (`#C4362A`) for problems, with a pale background (`#FCE9E7`) and border
+  (`#EEF3FA`). **Purple** (`#7A4FBF`, with a tint `#F3EEFB`) only for moving wells (section 6):
+  the deck panel's border, its bar, the picked well's ring, the outlines of the wells it can move
+  to, and `Done`, solid purple with white text. **Red** (`#C4362A`) for problems, with a pale background (`#FCE9E7`) and border
   (`#E8A39B`). **Green** text `#22603A` on `#EDF5EF`.
 - **Buttons**, in a few groups, each styled once (Andy, 2026-10-26: "if things were grouped, keep
   them grouped. Prioritize simplicity"):
@@ -1395,6 +1467,18 @@ page's configuration (ADR 0009):
   one that fills its source; with an editing box with changes open, and with a run randomization's
   card with changes open (refused, shaking, its message); a picked set made empty by Ctrl-click
   (nothing selected, Ctrl+C's note);
+- moving wells: `Move wells` and `Done`; the bar's two texts; a trough moved to a free trough by a
+  click and by a drag, its label, contents and transfers following it, then another move without
+  pressing Move wells again; a well a later stage fills, moved from Start, where it shows empty; a
+  trough moved onto a plate well (an overfill), onto labware brought out from the tray while moving;
+  a click and a drop on a well in use (the pick kept, the message); a click on an unused well; a
+  randomization's well to fill (dimmed, the message, its card line) and its source (moved, the
+  randomization following it); Escape letting go, and Escape with nothing picked; a drop off the
+  labware; the contents card's last line in each case; Undo and Redo while moving; a stage opened
+  from the column and with `‹` `›` while moving, its ✎, `×` and seams hidden, a volume clicked (the
+  message), right-click on a well (the message), Ctrl+C, typed digits; starting it with a stage's
+  editing box open and with a randomization's card open (with and without changes); Done keeping
+  what was open;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels;
 - the version line: the built file's name and the line show the same version; a click selects the
