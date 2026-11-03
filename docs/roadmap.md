@@ -562,6 +562,11 @@ added on 2026-10-28 (Andy).
       liquid is the same: the fewest tips, and the Stages column shows the filler as one thing.
       Its transfers each draw from the filler well they were given. (One stage per filler well,
       each on new tips as other sources are, was picked by mistake first, then changed.)
+    - **The filler wells must hold one liquid** (Andy, 2026-11-02, from the preview: nothing said
+      so when they didn't), since they share a stage and tips: the same components in the same
+      proportions just before the randomization (so Media and Media with 1% DMSO differ); filler
+      wells holding nothing are left out, as they show as overdrawn. Otherwise it's a problem that
+      stops Randomize, like the card's others: `The filler wells hold different liquids.`
     - **Not enough filler:** if the filler wells together don't hold enough, the last one is
       overdrawn, shown and refused like any overdraw.
     - **The Biomek files' format doesn't change** (the filler's transfers name different source
