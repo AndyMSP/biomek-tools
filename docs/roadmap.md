@@ -503,15 +503,36 @@ added on 2026-10-28 (Andy).
     - **No new checks:** capacity, dead volume, overdraws and mixes are recalculated after every
       edit, so a move that causes a problem is allowed and shown in red like any other edit's, and
       the file writer refuses it. A move is undone like any edit.
-    - **On the page:** a **Move wells** button near the deck's toggles puts the page into moving
-      wells: the Stages column can't be edited and the deck looks different (for example a colored
-      border and a line saying what to do). Only wells the plan uses can be picked; once one is
-      picked, every well it can move to is marked (on any labware), and wells in use are dimmed and
-      do nothing. The page stays in moving wells after each move, since more than one trough may
-      be warped, until **Done** (the same button) is pressed; Escape with a well picked cancels only
-      that pick. Right-click (which names a well) and dragging were considered; the button was
-      chosen as easier to find, and dragging is easy to do by accident.
-    Next: a preview, to settle the page's details, then the specifications.
+    - **On the page** (shaped in a preview, 2026-11-02): a **Move wells** button in the deck
+      panel's first bar, just left of Undo, since it acts on the plan (beside Names and Arrows it
+      read as a view setting; Andy). It puts the page into moving wells, and becomes **Done**,
+      solid purple; the page stays in moving wells after each move, since more than one trough
+      may be warped, until Done is pressed. While moving:
+      - **The deck** keeps showing whatever is open (Andy: not switched to Start), with a purple
+        border and a purple bar above the labware saying what to do. Purple, so moving can't be
+        confused with the blue of picking sources and wells to fill.
+      - **Picking:** click a well the plan uses (a well in use anywhere in the plan, whatever the
+        point shown), or start dragging one (Andy). Unused wells are dimmed until one is picked;
+        then it has a purple ring, every well it can move to (on any labware, including labware
+        brought out from the tray while moving) a dashed purple outline, and wells in use are
+        dimmed. The open stage's own fading of the wells it doesn't touch is off while moving, so
+        only one kind of dimming shows.
+      - **Moving:** click a well with a dashed outline, or drop the dragged well on one (it turns
+        solid under the pointer). Clicking or dropping on a well in use moves nothing and keeps
+        the pick, with a message saying why; clicking the picked well again, or Escape, lets go of
+        it; dropping off the labware lets go of it. A drag from an unused well does nothing.
+        Escape never leaves moving wells. Undo and Redo work.
+      - **The Stages column** can be looked through but not changed (Andy): clicking an entry
+        opens it, Show transfers works, and the timeline's ‹ › work; the ✎ buttons, transfer rows'
+        ×, and seams are hidden; any other click there says `Stages can't be changed while moving
+        wells. Press Done first.`; selecting, dragging, right-click menus and copy and paste are
+        off, and a randomization's card doesn't open (its stages do).
+      - **Elsewhere on the deck:** naming wells by right-click and typing volumes are off; the
+        cursor's label is hidden; the contents card's last line says what a click does there
+        (e.g. `Click to move Res1 3 here`).
+    Still open: wells to fill are kept in deck order, so moving one of a randomization's wells to
+    fill can change its place in the pool, and an Update after that would reshuffle it even with
+    the same seed (the stages already made don't change). Next: the specifications.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
