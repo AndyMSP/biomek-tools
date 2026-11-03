@@ -486,24 +486,33 @@ whatever else is edited:
    its share, the next the next ones, and so on.
 2. **The place**: the stage just after its last owned stage, or, with none, `beforeId` (`null`:
    last). Noted before anything changes.
-3. **New stages first**: each source that gets wells but has no stage in `stages` (the filler may
-   get none, on an exact fit: then it gets no stage; Andy, to confirm) gets one. **The filler has
-   one stage for all its filler wells** (Andy, 2026-11-02: the liquid is the same, so one set of
-   tips), belonging to the first filler well: its entry in `stages` names that well, and the other
-   filler wells have no entry. It gets one added with
+3. **New stages first**: each source that gets wells but has no stage in `stages` gets one (the
+   filler may get none, on an exact fit: then it gets no stage, as decided for one filler).
+   **The filler has one stage for all its filler wells** (Andy, 2026-11-02: the liquid is the same,
+   so one set of tips). The filler **gets wells** when its shares add up to more than 0, whatever
+   the first filler well's own share. **Its stage** is the first entry in `stages`, in stage order,
+   that names any of its current filler wells; it's kept (same stage ID and tips), and the run
+   re-keys its entry to the first filler well. With none, a new one is made, its entry naming the
+   first filler well. Every other entry naming a filler well is removed with its stage in step 4.
+   An entry naming a well that's now a source taking replicates is that source's stage, as for any
+   source. So the other filler wells have no entry. Each new stage is added with
    `addStageWithNewTips` (section 3, "Tip changes and tip groups") before the place, in `sources`'
    order, **named** as its source is (below). So every new stage has new tips, and the stage after
    keeps the tips it had.
 4. **Then old stages go**: each stage in `stages` whose source is no longer in `sources`, or now
-   gets no wells, is removed (`removeStage`). (New stages come first, so a run never tries to
+   gets no wells (for the filler's stage: the filler as a whole gets none), and each other entry
+   naming a filler well (step 3), is removed (`removeStage`). (New stages come first, so a run never tries to
    remove a plan's only stage.)
 5. **Each source's stage**: its transfers replaced by one transfer of `volume` from the source to
    each of its wells, in `fill`'s order (the filler's stage: from the filler well each well was
    shared to, in `fill`'s order); its settings set to `settings` (as `changeStageSettings`);
    its tip change set to `tipType` and `probes` (its own, or `START`'s if it's the run's first
-   stage). It's **named** as its source is now (the filler's stage, as the first filler well is),
-   so a run renames a stage whose source holds something else since the last run (Andy,
-   2026-11-03).
+   stage). It's **named** as its source is now: `sourceName` of its source, and for the filler's
+   stage, of the first filler well that holds something just before the randomization (its label,
+   if it has one, counts as for any source), or of the first filler well if none holds anything.
+   So a run renames a stage whose source holds something else since the last run (Andy,
+   2026-11-03). Contents just before the randomization are replayed once per run, not once per
+   source.
 6. `stages` lists them in stage order, and `beforeId` is set (above).
 
 **The filler's shares** (`fillerShares(plan, id)`): how many of the filler's wells each filler well
@@ -512,13 +521,16 @@ fills, as `[{ index, count }]`, one per filler well in `sources`' order (`index`
 `spareWellCount`). Every filler well but the last takes as many whole transfers of `volume` as fit
 in its **usable volume** (contents tracking's `usableVolumeOf`: what it holds above its labware
 type's dead volume) just before the randomization (as `sourceName` replays it), or the wells still
-left if fewer; the last takes all the wells still left, and may be overdrawn (a contents problem,
-as any other). A transfer is never split between two wells, so a filler well may be left with a
-little more than its dead volume (Andy, 2026-11-02). A fit is worked out exactly: `floor(usable /
-volume)`, allowing for rounding (a usable volume within a millionth of a µL of a whole number of
-transfers counts as that many). E.g. three filler wells each 750 µL above their dead volume, 100 µL
-transfers and 18 wells for the filler: `7`, `7` and `4`. `[]` if it has no filler wells; `null` if
-`volume` is `null`, or the replicates don't yet give a number of spare wells.
+left if fewer; the last takes all the wells still left, and may draw into its dead volume or be
+overdrawn (a contents problem, as any other). A transfer is never split between two wells, so a
+filler well may be left with a little more than its dead volume (Andy, 2026-11-02). A well's fit is
+`floor((usable + 0.000001) / volume)`, the 0.000001 µL being contents tracking's allowance for
+arithmetic leftovers ("Tiny amounts"), so a usable volume of exactly `n` transfers gives `n`. E.g.
+three filler wells each 750 µL above their dead volume, 100 µL transfers and 18 wells for the
+filler: `7`, `7` and `4`. `[]` if it has no filler wells; `null` if `volume` is `null`, or a
+source's replicates aren't known yet (`spareWellCount` gives `null`). When `spareWellCount` gives
+`0` (an exact fit, or more replicates than wells to fill), every share is `0`; with only filler
+wells, every well to fill is spare. Throws if there's no randomization `id`.
 
 With the same sources, replicates, filler, wells to fill and seed, a run gives every well the same
 source as before, so running again only applies changed settings, tips or volume; a new seed
@@ -529,10 +541,13 @@ randomization's stages are what its last run made; other edits never rerun it. A
 depends on its own values and, through the filler's shares, on what the filler wells hold, and a
 stage's name on what its source holds, so an edit elsewhere can leave its stages different from
 what a run would make now. A randomization is **out of date** when it has run (its `stages` isn't
-empty) and either it now has problems, or running it now (on a copy, thrown away) would give
-different stages: compared, for each of its stages in order, its source well, its name, and each of
-its transfers' source, destination and volume, in order (not stage IDs, which a run makes fresh).
-One that hasn't run is never out of date. A tool shows it and lets the user run it again; nothing
+empty) and either it now has problems (checked first: a run would refuse), or running it now (on a
+copy, thrown away) would give different stages: a different number of stages, or, for any of its
+stages in order, a different source well, name, or list of transfers (each one's source,
+destination and volume, in order). Stage IDs aren't compared, since a run may make them fresh.
+One that hasn't run is never out of date. Throws if there's no randomization `id`. (A plan saved
+before names were compared, whose sources' contents changed after a run, opens out of date; one
+Update clears it.) A tool shows it and lets the user run it again; nothing
 reruns it by itself (Andy: it could rearrange a plate already checked).
 
 **A source's name** (`sourceName`; for a new stage, and for the caller to show): its well label if
@@ -555,7 +570,7 @@ designer's own, in the designer's words), in this order:
 | wells left over, no filler | `12 wells left over: make a source the filler, or unpick them.` (`1 well`) |
 | no seed | `Type a seed.` |
 | no volume | `Set the volume.` |
-| two filler wells holding something hold different liquids (different components, or the same in different proportions, just before the randomization; filler wells holding nothing are left out) | `The filler wells hold different liquids.` (Andy, 2026-11-02: they share a stage and tips) |
+| two filler wells holding something hold different liquids (different components, or a component's share of the well differing by more than 0.000001, just before the randomization; filler wells holding nothing are left out) | `The filler wells hold different liquids.` (Andy, 2026-11-02: they share a stage and tips) |
 
 With no sources, or no wells to fill, the pool's problems (replicates, too many, left over) aren't
 listed, since they'd only follow from that one.
@@ -666,7 +681,7 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
 ```js
 {
   format: "biomek-tools copied items",
-  version: 1,
+  version: 2,
   items: [
     { kind: "stage", stage, tips, group },   // tips: the tip change of the tip group it came from
     { kind: "tipGroup", tips, stages: [stage, …] },
@@ -686,9 +701,15 @@ randomization's **randomization** holds its `sources`, `fill`, `seed`, `volume`,
 and the tips of its own tip group.
 `items` is in column order, as `copyOf` gives it.
 
+**Copied items version 2** (2026-11-02, with several filler wells): the same form as version 1,
+whose randomizations may have several filler wells. `copyOf` writes version 2; `pasteItems` reads
+versions 1 and 2 with the same checks, so a build that knows only version 1 refuses a copy holding
+several filler wells as newer, rather than with a confusing message (as plan files go to version
+8).
+
 **Pasting checks everything**, as opening a plan file does (ADR 0010): copied items may come from
 another plan or the system clipboard, so they're never trusted. `pasteItems` refuses, changing
-nothing, anything that isn't copied items in this form (version 1), and checks every value with the
+nothing, anything that isn't copied items in this form (version 1 or 2), and checks every value with the
 rules of the edit that would make it: names (`renameStage`), settings (`changeStageSettings`),
 transfers (`addTransfer`: wells on this plan's deck, the stage rule, a mix step's wells), tips
 (`setTipType`, `setTipProbes`), a randomization's values (`setRandomization`) and its stages (as
@@ -997,6 +1018,8 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | replicates aren't a whole number of at least 1, or `null` | `Source 2's replicates must be a whole number of at least 1, or null, but got 1.5.` |
 | `filler` isn't `true` or `false` | `Source 2's "filler" must be true or false, but got "yes".` |
 | a filler well has replicates | `Source 3 is a filler well, so its replicates must be null, but got 4.` |
+| `setRandomizations`: two entries in `stages` name filler wells of one randomization | `Randomization 2: its filler has two stages.` (An entry naming a filler well that isn't the first is accepted, as a plan between `setRandomization` and a run holds it; the filler stage's transfers may draw from any of its filler wells.) |
+| `fillerShares`, `isRandomizationOutOfDate`: no such randomization | `There's no randomization "r9" in the plan.` (as for the other randomization functions) |
 | seed not a whole number from 1 to 999,999, or `null` | `A randomization's seed must be a whole number from 1 to 999,999, or null, but got 0.` |
 | volume not a number above 0, or `null` | `A randomization's volume must be a number of µL above 0, or null, but got 0.` |
 | settings refused | the stage list's message, or the mixing rule's (section 3), unchanged |
@@ -1024,7 +1047,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | a tip group or randomization put inside a tip group | `A tip group or randomization can't go inside another tip group: put it between tip groups.` |
 | `moveItems`: a randomization's stage without its randomization | `Stage 5, “Drug A”, belongs to a randomization, which moves its stages with it: move the whole randomization, or copy the stage.` |
 | `pasteItems`: not copied items (not an object, wrong `format`, `items` not a non-empty list) | `Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.` |
-| `pasteItems`: a newer version | `Can't paste: these were copied by a newer version of the tools (version 2).` |
+| `pasteItems`: a newer version | `Can't paste: these were copied by a newer version of the tools (version 3).` |
 | `pasteItems`: an entry isn't in its form | `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.` |
 | `pasteItems`: a value refused by the edit that would make it | `Can't paste: item 2: ` and that edit's message, e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1. Its wells are A1 to H12.` (Messages pass through unchanged, so the operation list's stage rule names the new stage's ID and an operation number, which the user never sees; roadmap, "Technical debt", "Some messages use internal terms".) |
 | `pasteItems`: two stages for one well, or a stage that's a mix step, in a randomization | `Can't paste: item 2: Deep A1 has two stages.` / `Can't paste: item 2: its stage for Deep A1 is a mix step.` |
@@ -1387,7 +1410,33 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
   problem appears (filler wells holding different liquids): `true`. A source's stage keeps its
   name if nothing it holds changed. The trial run leaves the plan given unchanged.
 - **Renaming on a run:** after the component Media is renamed Buffer (`renameComponent`), the filler
-  stage's name differs from what a run would give: out of date; a run renames it.
+  stage's name differs from what a run would give: out of date; a run renames it; one undo brings
+  back the old name.
+- **The filler stage after changes** (each run after the first): the first filler well unmarked
+  (now taking replicates): it keeps the old stage as its own, and the filler gets a new stage keyed
+  to the new first filler well; a filler well added in front: the filler keeps its stage, its entry
+  re-keyed to the new first; the first filler well's share `0` (holding less than one transfer above
+  its dead volume): the stage is kept, keyed to it, drawing only from the others; the first filler
+  well empty and a later one holding Media: the stage is named `Media`; the first filler well
+  labeled `Main media`: named `Main media`.
+- **More shares:** a filler well holding nothing between two holding Media: share `0`, no one-liquid
+  problem; too many replicates (the pool's problem): every share `0`; only filler wells: every well
+  to fill shared; the same Media with DMSO mix reached through different transfers (fractions
+  differing only by arithmetic): no problem.
+- **Copying:** `copyOf` writes version 2; a run randomization with three filler wells, copied and
+  pasted (`copyItems`), gives a randomization with the same filler wells, one filler stage and its
+  transfers from each; a version 1 copy pastes as before; version 3 is refused as newer.
+- **`setRandomizations`:** accepts a filler stage entry naming a filler well that isn't the first;
+  refuses two entries naming filler wells of one randomization with its message.
+- **Moving wells with filler wells:** `isWellUsed` is `true` for a filler well that isn't the first
+  (no entry in `stages`); moving it moves its transfers and changes no entry; moving the first
+  filler well moves the entry; moving a filler well onto labware of another dead volume makes the
+  randomization out of date; moving an empty, unlabeled source onto other labware changes its
+  name, so out of date.
+- **Two randomizations:** updating the first, so a later randomization's filler well holds more,
+  makes the later one out of date; each is checked against its own trial run.
+- **Unknown ID:** `fillerShares` and `isRandomizationOutOfDate` throw the no-randomization
+  message.
 - Run again with nothing changed: the same transfers, the same stage IDs and names. With a new seed:
   the same stages, different wells (for two chosen seeds). With new settings, tips or volume: the
   same wells, the new settings on every stage and tip change.

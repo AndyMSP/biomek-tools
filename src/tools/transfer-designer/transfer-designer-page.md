@@ -298,7 +298,9 @@ when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the pro
 problems` in green, or `N problems` in red: each contents problem in the whole plan (a draw into
 the dead volume, an overdraw or an overfill, including a well that starts over its capacity;
 `contents-tracking.md`) counts as one, and so does each randomization that's out of date
-(`isRandomizationOutOfDate`; section 7), and each stage with a mix problem
+(`isRandomizationOutOfDate`; section 7), and each stage with a mix problem. Since that check
+reruns each randomization on a copy, the page works it out once per plan (after each edit, undo or
+redo) and reuses it for the headings, the problem count, the card and the Biomek files box
 (`stagesWithMixProblem`).
 
 **Second bar.** On the left, the **labware tray**; on the right, the key, then the `Names` and
