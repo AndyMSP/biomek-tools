@@ -558,6 +558,10 @@ added on 2026-10-28 (Andy).
       than its dead volume. Since every transfer of a randomization has the same volume, each
       filler well gives as many whole transfers as fit in what it holds above its dead volume at
       the randomization's point in the plan (e.g. 1,900 µL above it and 50 µL transfers: 38).
+    - **One stage per filler well** (Andy, 2026-11-02), each on new tips, as every source works
+      today: each Filler row is a source like any other, named as its source is. One stage for all
+      the filler wells, on one set of tips, was considered (fewer tips, since the liquid is the
+      same) and not chosen.
     - **Not enough filler:** if the filler wells together don't hold enough, the last one is
       overdrawn, shown and refused like any overdraw.
     - **The Biomek files' format doesn't change** (the filler's transfers name different source
