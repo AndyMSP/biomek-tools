@@ -96,6 +96,7 @@ import {
   copyItems,
   pasteItems,
   COPIED_ITEMS_FORMAT,
+  moveWell,
 } from "./transfer-designer.js";
 import {
   CONCENTRATION_UNITS,
@@ -299,6 +300,17 @@ let columnMenu = null;
 // True when a press in the Stages column became a drag, so the click that follows it is ignored.
 let swallowNextClick = false;
 
+// Whether moving wells is on (section 6, "Moving wells"); off when the page opens.
+let movingWells = false;
+
+// The well picked to move while moving wells, { labware, well }, or null.
+let pickedWell = null;
+
+// The wells in use and the wells to fill of one plan, worked out once for it, since moving wells
+// asks about every well each time the deck is drawn: { plan, used, toFill }, two Sets of wellKeys,
+// or null before the first time (movingWellSets).
+let movingWellCache = null;
+
 // The page's elements that transfer-designer.html gives an id, looked up once.
 const elements = {
   experimentHeading: byId("experiment-heading"),
@@ -319,6 +331,8 @@ const elements = {
   previousPoint: byId("previous-point"),
   nextPoint: byId("next-point"),
   timelineCaption: byId("timeline-caption"),
+  moveWells: byId("move-wells"),
+  movingBar: byId("moving-bar"),
   undo: byId("undo"),
   redo: byId("redo"),
   problemCount: byId("problem-count"),
@@ -412,11 +426,12 @@ function connectHeader() {
   elements.resetEverything.addEventListener("click", resetEverything);
 }
 
-// Connects the deck panel's two bars (sections 6 and 11): the timeline, Undo, Redo, Names and
-// Arrows.
+// Connects the deck panel's two bars (sections 6 and 11): the timeline, Move wells, Undo, Redo,
+// Names and Arrows.
 function connectDeckBars() {
   elements.previousPoint.addEventListener("click", () => openNeighbour(-1));
   elements.nextPoint.addEventListener("click", () => openNeighbour(1));
+  elements.moveWells.addEventListener("click", toggleMovingWells);
   elements.undo.addEventListener("click", undo);
   elements.redo.addEventListener("click", redo);
   elements.namesToggle.addEventListener("click", () => {
@@ -564,12 +579,28 @@ function redo() {
 // Stages column and the column's fit.
 function refresh() {
   const plan = currentPlan();
+  // While moving wells no randomization's card opens (section 7, "While moving wells"): an undo or
+  // redo back to one shows the point it sits at instead.
+  if (movingWells && isRandomization(plan, currentOpen())) {
+    const place = randomizationPlace(plan, currentOpen()) ?? END;
+    history = history.replacePresent({ plan, open: place });
+  }
   syncCard(plan, currentOpen());
   // Undo or redo can take the picked component away (e.g. undoing a rename): then, as when a picked
   // component is removed, the first component is picked, or the eraser if there's none.
   if (brush.pick.kind === "component" && !hasComponent(plan, brush.pick.name)) {
     const first = plan.components[0];
     brush.pick = first === undefined ? { kind: "eraser" } : { kind: "component", name: first.name };
+  }
+  // Undo or redo can leave the picked well unable to be picked: it's let go (section 6), and a drag
+  // of it ends.
+  if (pickedWell !== null && !canPickToMove(plan, pickedWell)) {
+    pickedWell = null;
+    if (drag !== null && drag.kind === "move") {
+      drag = null;
+      press = null;
+      updateDragMarks();
+    }
   }
   refreshHeading();
   refreshDeck();
@@ -699,8 +730,12 @@ async function openChosenFile() {
 }
 
 // Replaces the plan shown with `plan` as one undoable edit, with `open` open: brings out exactly the
-// labware it uses, closes any editing box, clears any source, and picks its first component.
+// labware it uses, closes any editing box, clears any source, picks its first component, and ends
+// moving wells.
 function showReplacedPlan(plan, open) {
+  // Opening a plan ends moving wells, as Done does, without its message (section 6).
+  movingWells = false;
+  pickedWell = null;
   closeEditingBox();
   card = null;
   source = null;
@@ -751,9 +786,11 @@ function closeHeaderBoxesPressedOutside(event) {
 }
 
 // Replaces the plan with an empty one as one undoable edit, with Start open and all labware put
-// away.
+// away. It ends moving wells, as Done does, without its message (section 6).
 function resetEverything() {
   closeResetBox();
+  movingWells = false;
+  pickedWell = null;
   closeEditingBox();
   card = null;
   source = null;
@@ -1020,6 +1057,7 @@ function refreshDeck() {
   // Undo and Redo are off while a randomization's card is open: its changes aren't in the plan yet.
   elements.undo.disabled = !history.canUndo() || card !== null;
   elements.redo.disabled = !history.canRedo() || card !== null;
+  refreshMovingWellsControls(plan);
   refreshProblemCount(plan);
   drawTray(plan);
   drawComponentColors(plan);
@@ -1188,12 +1226,19 @@ function timelineCaption(plan, open) {
 // whole plan (a draw into the dead volume, an overdraw or an overfill, including a well that starts
 // over its capacity) counts as one, and so does each stage with a mix problem.
 function refreshProblemCount(plan) {
-  const count =
-    replay(plan.startingContents, plan.operationList).listProblems().length +
-    stagesWithMixProblem(plan).size;
+  const count = problemCount(plan);
   elements.problemCount.textContent = count === 0 ? "No problems" : countOf(count, "problem");
   elements.problemCount.classList.toggle("ok", count === 0);
   elements.problemCount.classList.toggle("problems", count > 0);
+}
+
+// The number of problems in the whole plan, as the problem count shows it (section 6, "First bar"):
+// each contents problem, and each stage with a mix problem, e.g. 2.
+function problemCount(plan) {
+  return (
+    replay(plan.startingContents, plan.operationList).listProblems().length +
+    stagesWithMixProblem(plan).size
+  );
 }
 
 // Draws the labware tray (section 6): a chip per labware, in the groups Used labware and Unused
@@ -1235,12 +1280,17 @@ function createLabwareChip(plan, name) {
   return chip;
 }
 
-// Brings a labware out, or puts it away. Putting labware away clears a source chosen on it.
+// Brings a labware out, or puts it away. Putting labware away clears a source chosen on it, and lets
+// go of a well picked to move on it (section 6).
 function toggleLabwareOut(name) {
   if (labwareOut.has(name)) {
     labwareOut.delete(name);
     if (source !== null && source.labware === name) {
       source = null;
+    }
+    // As for a chosen source, putting away the labware a picked well is on lets go of it.
+    if (pickedWell !== null && pickedWell.labware === name) {
+      pickedWell = null;
     }
   } else {
     labwareOut.add(name);
@@ -1580,7 +1630,8 @@ function markWells(plan, open) {
     wellElements.get(wellKey(affected))?.classList.add("off-plan");
   }
   const transfers = isStage(plan, open) ? transfersIn(plan, open) : [];
-  if (transfers.length > 0) {
+  // While moving wells, the open stage's fading is off, so only one kind of dimming shows (section 6).
+  if (transfers.length > 0 && !movingWells) {
     const touched = new Set(transfers.flatMap((transfer) => [wellKey(transfer.source), wellKey(transfer.destination)]));
     for (const [key, wellElement] of wellElements) {
       wellElement.classList.toggle("faded", !touched.has(key));
@@ -1589,6 +1640,7 @@ function markWells(plan, open) {
   if (source !== null) {
     wellElements.get(wellKey(source))?.classList.add("source");
   }
+  markMovingWells(plan);
   // A randomization's sources and wells to fill, from its card's draft, while it's open (section 6).
   if (card !== null) {
     for (const entry of card.draft.sources) {
@@ -1753,6 +1805,8 @@ function refreshStages() {
   items.push(withDropPlace(lastSeam, betweenBoxes(blocks.length)));
   items.push(createEntry(plan, END, open, problems));
   elements.stagesList.replaceChildren(...items);
+  // While moving wells, the ✎ buttons, the ×s and the seams are hidden, their space kept (section 7).
+  elements.stagesList.classList.toggle("moving-wells", movingWells);
   lastDrawnKeys = drawnKeys;
   glowsToStart.clear();
   markSelection(selectedItems());
@@ -3609,6 +3663,10 @@ function clickInColumn(event) {
     event.stopPropagation();
     return;
   }
+  if (movingWells) {
+    clickInColumnWhileMoving(event);
+    return;
+  }
   const handle = itemHandleOf(event.target);
   // A press an open text box passed on, or one an editing box with changes refuses, is left to
   // their guards (sections 7 and 10).
@@ -3631,7 +3689,8 @@ function clickInColumn(event) {
 // once it moves DRAG_START_DISTANCE.
 function pressInColumn(event) {
   swallowNextClick = false;
-  const handle = event.button === 0 ? itemHandleOf(event.target) : null;
+  // Selecting and dragging are off while moving wells (section 7, "While moving wells").
+  const handle = event.button === 0 && !movingWells ? itemHandleOf(event.target) : null;
   if (handle === null) {
     return;
   }
@@ -3955,7 +4014,8 @@ function describeItems(plan, items) {
 // system clipboard as text (the event's own clipboard data) and as the page's copy. A text box or
 // menu, or text selected on the page, keeps the browser's copy.
 function copyFromClipboardEvent(event) {
-  if (keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
+  // Ctrl+C is ignored while moving wells (section 12).
+  if (movingWells || keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
     return;
   }
   const copied = copySelection();
@@ -4036,7 +4096,8 @@ function copiedHoldsContainer(copied) {
 // copied items, or else the page's copy, just below the selection. A text box or menu keeps the
 // browser's paste.
 function pasteFromClipboardEvent(event) {
-  if (keepsOwnClipboard(event.target)) {
+  // Ctrl+V is ignored while moving wells (section 12).
+  if (movingWells || keepsOwnClipboard(event.target)) {
     return;
   }
   event.preventDefault();
@@ -4081,6 +4142,12 @@ function pastePlaceBeside(plan, item, side, holdsContainer) {
 // a seam's band (not its buttons), Paste here. Anywhere else (Start, End, an open card's
 // contents), the browser's menu.
 function openColumnMenuFrom(event) {
+  // The menu is off while moving wells (section 7, "While moving wells"): a right click on what it
+  // would open for says why instead.
+  if (movingWells) {
+    refuseColumnMenuWhileMoving(event);
+    return;
+  }
   // Inside an editing box, the browser's own menu, as for any text box.
   if (event.target instanceof Element && event.target.closest(".editing-box") !== null) {
     return;
@@ -4481,11 +4548,16 @@ function startingOverfills(plan) {
 
 // --- Transfers (section 9) ---
 
-// Acts on a click on a well: while Start is open it fills the well; while a stage is open it chooses
-// the source, clears it, or adds the transfer; while a mix step is open it mixes the well, or stops
-// mixing it; while End is open it says nothing can be added.
+// Acts on a click on a well: while moving wells, it picks, moves or lets go (section 6); while Start
+// is open it fills the well; while a stage is open it chooses the source, clears it, or adds the
+// transfer; while a mix step is open it mixes the well, or stops mixing it; while End is open it
+// says nothing can be added.
 function clickWell(end) {
   const open = currentOpen();
+  if (movingWells) {
+    clickWellWhileMoving(end);
+    return;
+  }
   if (card !== null) {
     pickWell(end);
     return;
@@ -4732,14 +4804,21 @@ function movePointer(event) {
   pointerPosition = overLabware(event) ? { x: event.clientX, y: event.clientY } : null;
   const moved = press !== null && Math.hypot(event.clientX - press.x, event.clientY - press.y) >= DRAG_START_DISTANCE;
   if (moved && drag === null) {
-    // Dragging does nothing with End open (section 9).
-    if (currentOpen() === END) {
+    // Dragging does nothing with End open (section 9), except while moving wells (section 6).
+    if (movingWells) {
+      beginMovingDrag();
+    } else if (currentOpen() === END) {
       press = null;
     } else {
       beginDrag();
     }
   }
   if (drag !== null) {
+    // A dragged picked well notes whether it's over a labware, since a drop between its wells keeps
+    // the pick (section 6).
+    if (drag.kind === "move") {
+      drag.onLabware = overLabwareBlock(event);
+    }
     const over = wellUnderPointer(event);
     if (over !== drag.over && wellKeyOrNull(over) !== wellKeyOrNull(drag.over)) {
       drag.over = over;
@@ -4803,10 +4882,14 @@ function clickWellWithKeyboard(event) {
   }
 }
 
-// Finishes a drag (sections 8 and 9): fills the box, mixes the box, adds one transfer, or sends the
-// source into the box.
-function finishDrag({ kind, from, over }) {
+// Finishes a drag (sections 6, 8 and 9): moves a picked well, fills the box, mixes the box, adds one
+// transfer, or sends the source into the box.
+function finishDrag({ kind, from, over, onLabware }) {
   updateDragMarks();
+  if (kind === "move") {
+    dropPickedWell(over, onLabware);
+    return;
+  }
   if (kind === "owned") {
     showOwnedStageNote();
     return;
@@ -4862,13 +4945,21 @@ function finishBoxDrag(from, over) {
   addManyTransfers(chosen, wells);
 }
 
-// Shows the drag on the wells: the box being dragged across outlined, or the well under a transfer
-// drag with a dashed outline.
+// Shows the drag on the wells: the box being dragged across outlined, the well under a transfer
+// drag with a dashed outline, or, under a dragged picked well, a well it can move to made solid.
 function updateDragMarks() {
   for (const wellElement of wellElements.values()) {
-    wellElement.classList.remove("in-box", "drop-target");
+    wellElement.classList.remove("in-box", "drop-target", "move-drop");
   }
   if (drag === null || drag.over === null) {
+    return;
+  }
+  // A well it can move to turns solid under a dragged picked well (section 6).
+  if (drag.kind === "move") {
+    const overElement = wellElements.get(wellKey(drag.over));
+    if (overElement?.classList.contains("move-target")) {
+      overElement.classList.add("move-drop");
+    }
     return;
   }
   if (drag.kind === "transfer" || drag.kind === "owned") {
@@ -4895,22 +4986,366 @@ function overLabware(event) {
   return element !== null && elements.labwareArea.contains(element);
 }
 
+// True if the pointer event is over one labware's block (its heading or its grid, between wells
+// too), e.g. for a drop of a picked well that just misses a well (section 6).
+function overLabwareBlock(event) {
+  const element = document.elementFromPoint(event.clientX, event.clientY);
+  return element !== null && elements.labwareArea.contains(element) && element.closest(".labware") !== null;
+}
+
 // The well a well element (or an element inside it) stands for, { labware, well }, or null.
 function endOf(element) {
   const wellElement = element.closest(".well");
   return wellElement === null ? null : { labware: wellElement.dataset.labware, well: wellElement.dataset.well };
 }
 
+// --- Moving wells (sections 6 and 7) ---
+
+// Move wells starts moving wells; Done ends it (section 6, "Moving wells").
+function toggleMovingWells() {
+  if (movingWells) {
+    endMovingWells();
+    showMessage("Done moving wells.", "note");
+  } else {
+    startMovingWells();
+  }
+}
+
+// Starts moving wells: an open randomization's card closes first, as Close would (if it can't, it
+// shakes and moving wells doesn't start); an open editing box, a new component's box, the
+// column's menu and selection, and a chosen source are cleared. What's open stays open.
+function startMovingWells() {
+  if (!closeRandomizationCard()) {
+    return;
+  }
+  closeEditingBox();
+  closeColumnMenu();
+  forgetPickedSet();
+  addingComponent = null;
+  source = null;
+  hideContentsCard();
+  movingWells = true;
+  pickedWell = null;
+  refresh();
+}
+
+// Ends moving wells, letting go of a picked well, and redraws the page. What's open stays open.
+function endMovingWells() {
+  movingWells = false;
+  pickedWell = null;
+  refresh();
+}
+
+// True if well `end` can be picked to move: a well in use (judged over the whole plan, not the
+// point the deck shows) that isn't a randomization's well to fill (section 6).
+function canPickToMove(plan, end) {
+  return isInUse(plan, end) && !isToFill(plan, end);
+}
+
+// True if `plan` uses well `end` anywhere (isWellUsed), looked up in movingWellSets.
+function isInUse(plan, end) {
+  return movingWellSets(plan).used.has(wellKey(end));
+}
+
+// True if well `end` is one of `plan`'s randomizations' wells to fill (isWellToFill), looked up in
+// movingWellSets.
+function isToFill(plan, end) {
+  return movingWellSets(plan).toFill.has(wellKey(end));
+}
+
+// The wells `plan` uses and its wells to fill, as { used, toFill }, two Sets of wellKeys, worked out
+// once per plan and kept until the plan changes. They're the wells isWellUsed and isWellToFill say
+// yes to, gathered from the plan's parts in one pass rather than asked about well by well, which
+// would read every transfer once per well: the starting contents, each transfer's two ends, the
+// well labels, and each randomization's sources, wells to fill and stage entries.
+function movingWellSets(plan) {
+  if (movingWellCache !== null && movingWellCache.plan === plan) {
+    return movingWellCache;
+  }
+  const toFill = new Set(plan.randomizations.flatMap((randomization) => randomization.fill.map(wellKey)));
+  const used = new Set([
+    ...toFill,
+    ...plan.startingContents.map(wellKey),
+    ...plan.operationList.listOperations().flatMap((operation) => [wellKey(operation.source), wellKey(operation.destination)]),
+    ...Object.entries(plan.wellLabels).flatMap(([labware, wells]) =>
+      Object.keys(wells).map((well) => wellKey({ labware, well })),
+    ),
+    ...plan.randomizations.flatMap((randomization) =>
+      [...randomization.sources, ...randomization.stages].map(wellKey),
+    ),
+  ]);
+  movingWellCache = { plan, used, toFill };
+  return movingWellCache;
+}
+
+// Shows moving wells' state in the deck panel (section 6): Move wells reads Done, solid purple,
+// while it's on (with aria-pressed); the panel's purple border; and the purple bar above the
+// labware saying what to do.
+function refreshMovingWellsControls(plan) {
+  elements.moveWells.textContent = movingWells ? "Done" : "Move wells";
+  elements.moveWells.setAttribute("aria-pressed", String(movingWells));
+  elements.deckPanel.classList.toggle("moving-wells", movingWells);
+  elements.movingBar.hidden = !movingWells;
+  if (!movingWells) {
+    elements.movingBar.replaceChildren();
+    return;
+  }
+  const [heading, instruction, aside] =
+    pickedWell === null
+      ? [
+          "Moving wells.",
+          "Click a well to move it. Its contents, transfers, name and randomizations go with it.",
+          "Press Done when finished.",
+        ]
+      : [
+          `Moving ${movingWellName(plan, pickedWell)}.`,
+          "Click a well with a dashed outline to move it there.",
+          "Escape picks another well.",
+        ];
+  // Only redrawn when it changes, so screen readers announce it once per change.
+  if (elements.movingBar.textContent === `${heading} ${instruction} ${aside}`) {
+    return;
+  }
+  elements.movingBar.replaceChildren(
+    createElement("strong", heading, "moving-heading"),
+    " ",
+    createElement("span", instruction),
+    " ",
+    createElement("span", aside, "moving-aside"),
+  );
+}
+
+// A well as the moving bar names it: as messages name it, with its well label in quotes if it has
+// one, e.g. 'Res1 3 “Media stock”' (section 6).
+function movingWellName(plan, end) {
+  const label = wellLabelOf(plan, end);
+  return label === null ? wellName(plan, end) : `${wellName(plan, end)} “${label}”`;
+}
+
+// Marks the wells while moving wells (section 6): with none picked, every well that can't be picked
+// is dimmed; with one picked, it has a purple ring, every well not in use a dashed purple outline
+// (the wells it can move to), and every other well in use is dimmed.
+function markMovingWells(plan) {
+  if (!movingWells) {
+    return;
+  }
+  const pickedKey = wellKeyOrNull(pickedWell);
+  for (const [key, wellElement] of wellElements) {
+    const end = endOf(wellElement);
+    if (pickedKey === null) {
+      wellElement.classList.toggle("move-dimmed", !canPickToMove(plan, end));
+    } else if (key === pickedKey) {
+      wellElement.classList.add("move-picked");
+    } else if (isInUse(plan, end)) {
+      wellElement.classList.add("move-dimmed");
+    } else {
+      wellElement.classList.add("move-target");
+    }
+  }
+}
+
+// The contents card's last line while moving wells (section 6): what a click on well `end` does.
+// With none picked: "Click to move this well", "Filled by a randomization" or "Not used in the
+// plan"; with one picked: "Click to let go of this well" on it, "Click to move Res1 3 here" on a
+// well it can move to, or "Already used in the plan".
+function movingCardHint(plan, end) {
+  if (pickedWell === null) {
+    if (canPickToMove(plan, end)) {
+      return "Click to move this well";
+    }
+    return isToFill(plan, end) ? "Filled by a randomization" : "Not used in the plan";
+  }
+  if (wellKey(end) === wellKey(pickedWell)) {
+    return "Click to let go of this well";
+  }
+  return isInUse(plan, end) ? "Already used in the plan" : `Click to move ${wellName(plan, pickedWell)} here`;
+}
+
+// A click on a well while moving wells (section 6): with none picked, picks it if it can be
+// picked; with one picked, clicking it again lets go of it, a well in use keeps the pick with a
+// message, and a well it can move to gets it. Keyboard focus stays on the clicked well.
+function clickWellWhileMoving(end) {
+  const hadFocus = document.activeElement === wellElements.get(wellKey(end));
+  const plan = currentPlan();
+  if (pickedWell === null) {
+    pickToMove(plan, end);
+  } else if (wellKey(end) === wellKey(pickedWell)) {
+    letGoOfPickedWell();
+  } else if (isInUse(plan, end)) {
+    showWellInUseMessage(plan, end);
+  } else {
+    movePickedWellTo(end);
+  }
+  if (hadFocus) {
+    focusWell(end);
+  }
+}
+
+// Picks well `end` to move, if it can be picked; otherwise says why (a randomization's well to
+// fill, or a well the plan doesn't use; section 6).
+function pickToMove(plan, end) {
+  if (isToFill(plan, end)) {
+    showMessage("Wells a randomization fills can't be moved.", "note");
+    return;
+  }
+  if (!isInUse(plan, end)) {
+    showMessage(
+      `The plan doesn't use ${wellName(plan, end)}, so there's nothing to move. Click a well the plan uses.`,
+      "note",
+    );
+    return;
+  }
+  pickedWell = end;
+  refreshDeck();
+}
+
+// Lets go of the picked well, if there is one, and redraws the deck.
+function letGoOfPickedWell() {
+  pickedWell = null;
+  refreshDeck();
+}
+
+// Says that well `end` is in use, so the picked well can't move there; the pick is kept (section 6).
+function showWellInUseMessage(plan, end) {
+  showMessage(
+    `${wellName(plan, end)} is already used in the plan. Choose a well with a dashed outline, or ` +
+      "press Escape to pick another well.",
+    "note",
+  );
+}
+
+// Moves the picked well to well `to` with moveWell, as one edit, and lets go of it (section 6):
+// "Moved Res1 3 to Res1 7." (ok), or, if the problem count rose, an error saying by how much, e.g.
+// "Moved Res1 3 to Plate1 A1, which causes 1 problem.". If moveWell refuses, its message is shown
+// as an error and the pick is kept.
+function movePickedWellTo(to) {
+  const plan = currentPlan();
+  const from = pickedWell;
+  const moved = tryLogic(() => moveWell(plan, from, to));
+  if (moved === false) {
+    return;
+  }
+  pickedWell = null;
+  recordEdit(moved);
+  const moveText = `Moved ${wellName(plan, from)} to ${wellName(moved, to)}`;
+  const added = problemCount(moved) - problemCount(plan);
+  if (added > 0) {
+    showMessage(`${moveText}, which causes ${countOf(added, "problem")}.`, "error");
+  } else {
+    showMessage(`${moveText}.`, "ok");
+  }
+}
+
+// Turns a press on a well into a drag while moving wells (section 6): from the picked well, it drags
+// it; from another well that can be picked, it picks that one and drags it; from a randomization's
+// well to fill, it says why it can't be moved; from any other well, nothing. A press that isn't
+// dragged is dropped, so it doesn't become a click either.
+function beginMovingDrag() {
+  hideContentsCard();
+  const plan = currentPlan();
+  const from = press.end;
+  const isPicked = pickedWell !== null && wellKey(from) === wellKey(pickedWell);
+  if (!isPicked) {
+    if (isToFill(plan, from)) {
+      showMessage("Wells a randomization fills can't be moved.", "note");
+    }
+    if (!canPickToMove(plan, from)) {
+      press = null;
+      return;
+    }
+    pickedWell = from;
+    refreshDeck();
+  }
+  drag = { kind: "move", from, over: from, onLabware: true };
+  updateDragMarks();
+}
+
+// Ends a drag of the picked well over well `over` (or null, not on a well), `onLabware` saying
+// whether it was dropped on a labware (section 6): off the labware lets go of it; on a labware
+// between its wells, or on itself, keeps it picked; on a well in use keeps it with a message; on a
+// well it can move to moves it there. Nothing happens if no well is picked any more (an undo or
+// redo during the drag let go of it).
+function dropPickedWell(over, onLabware) {
+  if (pickedWell === null) {
+    return;
+  }
+  const plan = currentPlan();
+  if (over === null) {
+    if (!onLabware) {
+      letGoOfPickedWell();
+    }
+  } else if (wellKey(over) === wellKey(pickedWell)) {
+    return;
+  } else if (isInUse(plan, over)) {
+    showWellInUseMessage(plan, over);
+  } else {
+    movePickedWellTo(over);
+  }
+}
+
+// Escape while moving wells (section 12): closes an open header box, putting the focus back on its
+// button; otherwise cancels a drag of the picked well, letting go of it; otherwise lets go of the
+// picked well; with none picked, nothing. It never ends moving wells.
+function pressEscapeWhileMoving() {
+  if (!elements.biomekBox.hidden) {
+    closeBiomekBox();
+    elements.biomekFiles.focus();
+  } else if (!elements.resetBox.hidden) {
+    closeResetBox();
+    elements.reset.focus();
+  } else if (pickedWell !== null) {
+    drag = null;
+    press = null;
+    updateDragMarks();
+    letGoOfPickedWell();
+  }
+}
+
+// A click in the Stages column while moving wells (section 7, "While moving wells"): a closed
+// entry's row (it opens) and Show / Hide transfers keep their own behavior; any other click on a
+// control or an item's heading does nothing but say that stages can't be changed. A click on plain
+// text or empty space does nothing.
+function clickInColumnWhileMoving(event) {
+  const target = event.target;
+  if (!(target instanceof Element) || !elements.stagesList.contains(target)) {
+    return;
+  }
+  if (target.closest("button.entry-row, .toggle-list") !== null) {
+    return;
+  }
+  if (target.closest("button, input, select, textarea, label, [data-item-handle]") === null) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  showChangesRefusedWhileMoving();
+}
+
+// A right click in the Stages column while moving wells: the column's menu is off (section 7), so
+// on an item's heading it says why instead; elsewhere the browser's own menu shows.
+function refuseColumnMenuWhileMoving(event) {
+  if (itemHandleOf(event.target) === null) {
+    return;
+  }
+  event.preventDefault();
+  showChangesRefusedWhileMoving();
+}
+
+// Says that the Stages column can't be changed while moving wells (section 7).
+function showChangesRefusedWhileMoving() {
+  showMessage("Stages can't be changed while moving wells. Press Done first.", "note");
+}
+
 // --- The cursor's label and the contents card (sections 6 and 12) ---
 
 // Shows, beside the pointer, what a click does: the next transfer's volume with a stage open; the
-// brush with Start open; nothing with a mix step or End open, or off the labware.
+// brush with Start open; nothing with a mix step or End open, while moving wells, or off the labware.
 function updateCursorLabel() {
   const label = elements.cursorLabel;
   const open = currentOpen();
   // A mix step has no volume at the cursor (section 9).
   const isMixStepOpen = isStage(currentPlan(), open) && isMixStep(currentPlan(), open);
-  if (pointerPosition === null || open === END || isMixStepOpen) {
+  if (pointerPosition === null || open === END || isMixStepOpen || movingWells) {
     label.hidden = true;
     return;
   }
@@ -4961,8 +5396,7 @@ function hideContentsCard() {
 // The contents card's lines for a well (section 6): its label first if it has one, then its name,
 // smaller under the label ("Empty" under it if it holds nothing), each component's swatch, name,
 // volume and share, then only problems and warnings: each contents problem of the well by its kind,
-// whether it's off plan, and how much of it the open stage mixes; last, a hint that a right click
-// names it ("Right-click to name", or "to rename" for a labeled well).
+// whether it's off plan, and how much of it the open stage mixes; last, a hint (cardHint).
 // No total, usable-volume or capacity lines (Andy, 2026-10-31): the components add up to the total,
 // the labware's limits are the same for every well of it, and the problem lines carry the numbers.
 function contentsCardLines(plan, end) {
@@ -5009,9 +5443,18 @@ function contentsCardLines(plan, end) {
   if (mixed !== undefined) {
     lines.push(mixCardLine(mixed));
   }
-  const hint = wellLabel === null ? "Right-click to name" : "Right-click to rename";
-  lines.push(createElement("div", hint, "card-hint"));
+  lines.push(createElement("div", cardHint(plan, end, wellLabel), "card-hint"));
   return lines;
+}
+
+// The contents card's last line (section 6): what a click on the well does. While moving wells, it
+// says what a click does there (movingCardHint); otherwise that a right click names it ("Right-click
+// to name", or "to rename" for a labeled well, `wellLabel` being its label or null).
+function cardHint(plan, end, wellLabel) {
+  if (movingWells) {
+    return movingCardHint(plan, end);
+  }
+  return wellLabel === null ? "Right-click to name" : "Right-click to rename";
 }
 
 // The contents card's Concentrations group (section 6): under a thin rule, the heading, then one
@@ -5141,6 +5584,15 @@ function openNameBoxFromMenu(event) {
     return;
   }
   event.preventDefault();
+  // Wells can't be named while moving wells (section 6); the menu key is ignored (section 12).
+  if (movingWells) {
+    // A right click that found a box open only closed or saved it, as at other times.
+    if (secondaryPress !== null && !secondaryPress.foundOpen) {
+      showMessage("Wells can't be named while moving wells. Press Done first.", "note");
+    }
+    secondaryPress = null;
+    return;
+  }
   const foundOpen = secondaryPress !== null ? secondaryPress.foundOpen : somethingOpen();
   secondaryPress = null;
   if (!foundOpen) {
@@ -6142,7 +6594,8 @@ function handleKey(event) {
     closeColumnMenu();
     return;
   }
-  if (openColumnMenuFromKey(event)) {
+  // The menu key is ignored while moving wells (section 12).
+  if (!movingWells && openColumnMenuFromKey(event)) {
     return;
   }
   const key = event.key.toLowerCase();
@@ -6173,8 +6626,13 @@ function handleKey(event) {
 
 // Escape closes the open editing box without saving, or the open header box (Biomek files' or
 // Reset's), putting the focus back on its button, or the open randomization's card (saving or
-// discarding, closeCardWithEscape); otherwise it clears a chosen source.
+// discarding, closeCardWithEscape); otherwise it clears a chosen source. While moving wells, it does
+// what pressEscapeWhileMoving says instead.
 function pressEscape() {
+  if (movingWells) {
+    pressEscapeWhileMoving();
+    return;
+  }
   if (editingBox !== null) {
     closeEditingBox();
   } else if (!elements.biomekBox.hidden) {
@@ -6203,8 +6661,9 @@ function isVolumeKey(key) {
 // eraser), the next transfer's while a stage is open; nothing while End is open.
 function typeVolume(key) {
   const open = currentOpen();
-  // Typed volumes are ignored while a randomization's card is open (section 9).
-  if (open === END || card !== null) {
+  // Typed volumes are ignored while a randomization's card is open (section 9), and while moving
+  // wells (section 12).
+  if (open === END || card !== null || movingWells) {
     return;
   }
   if (open === START) {

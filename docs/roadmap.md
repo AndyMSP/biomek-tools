@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -328,6 +328,14 @@ Last updated: 2026-11-01
   2026-11-02)**: `scripts/build-version.js` with its tests and REPL topic, `build.js`, both pages,
   and `package.json` at 0.2.0; checked by hand in a scratch clone and in headless Chrome. Tested by
   Andy and merged.
+- **Decided: moving wells joins v0.2.0** (Andy, 2026-11-02; item 12, below), so a reservoir that
+  warps in the autoclave can be worked around in the plan, as Exp36 may need. Shaped in a preview
+  and **specified** (Draft, 2026-11-02, in the hands-off workflow): `isWellUsed`, `isWellToFill` and
+  `moveWell` (`transfer-designer.md`, "Moving wells"), the page's moving wells
+  (`transfer-designer-page.md`, sections 6 and 7), glossary "Well in use". **Built (#131,
+  2026-11-02)**: code, tests and REPL of the three functions, and the page; the specifications
+  and the build each reviewed by a separate agent, and checked in headless Chrome. Still to check by
+  Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -481,6 +489,62 @@ added on 2026-10-28 (Andy).
     capacity and dead volume; `config/deck.js` keeps only each labware's name and type, its `grid`
     moving to the type (a `BCFlat96` is always 96 wells). The `deck` module reads the grid through
     the type. Next: the specifications.
+12. **Moving wells** (Andy, 2026-11-02): a reservoir warped in the autoclave in an earlier
+    experiment, and some troughs were too distorted to use, so different wells were used than
+    planned, changed by hand in Biomek Software. Moving a well in the plan lets the tool write the
+    files for the wells actually used. It changes the plan, not the format of the Biomek files, so
+    it can be built after the final Biomek runs. Decided so far (Andy, 2026-11-02):
+    - **One well at a time**, onto any well on any labware, not only troughs: the tool treats
+      every well the same, so limiting it would only add a special case. Moving a whole plate or
+      column is left for later.
+    - **Everything moves with it:** the old well is replaced by the new one wherever the plan names
+      it: its starting contents, transfers from it and into it (mix steps included), its well
+      label, and any randomization that uses it, as a source or a well to fill. The plan does the
+      same as before, from a different well.
+    - **Only onto a well the plan doesn't use** (no starting contents, transfers, well label or
+      randomization); otherwise the move is refused, with a message saying to choose a well the
+      plan doesn't use. Swapping two wells was considered and declined: in the warped-reservoir case
+      it would put the other well's liquid into the warped one. Merging two wells' roles was
+      declined too, as it mixes two liquids in one well.
+    - **No new checks:** capacity, dead volume, overdraws and mixes are recalculated after every
+      edit, so a move that causes a problem is allowed and shown in red like any other edit's, and
+      the file writer refuses it. A move is undone like any edit.
+    - **On the page** (shaped in a preview, 2026-11-02): a **Move wells** button in the deck
+      panel's first bar, just left of Undo, since it acts on the plan (beside Names and Arrows it
+      read as a view setting; Andy). It puts the page into moving wells, and becomes **Done**,
+      solid purple; the page stays in moving wells after each move, since more than one trough
+      may be warped, until Done is pressed. While moving:
+      - **The deck** keeps showing whatever is open (Andy: not switched to Start), with a purple
+        border and a purple bar above the labware saying what to do. Purple, so moving can't be
+        confused with the blue of picking sources and wells to fill.
+      - **Picking:** click a well the plan uses (a well in use anywhere in the plan, whatever the
+        point shown), or start dragging one (Andy). Unused wells are dimmed until one is picked;
+        then it has a purple ring, every well it can move to (on any labware, including labware
+        brought out from the tray while moving) a dashed purple outline, and wells in use are
+        dimmed. The open stage's own fading of the wells it doesn't touch is off while moving, so
+        only one kind of dimming shows.
+      - **Moving:** click a well with a dashed outline, or drop the dragged well on one (it turns
+        solid under the pointer). Clicking or dropping on a well in use moves nothing and keeps
+        the pick, with a message saying why; clicking the picked well again, or Escape, lets go of
+        it; dropping off the labware lets go of it. A drag from an unused well does nothing.
+        Escape never leaves moving wells. Undo and Redo work.
+      - **The Stages column** can be looked through but not changed (Andy): clicking an entry
+        opens it, Show transfers works, and the timeline's ‹ › work; the ✎ buttons, transfer rows'
+        ×, and seams are hidden; any other click there says `Stages can't be changed while moving
+        wells. Press Done first.`; selecting, dragging, right-click menus and copy and paste are
+        off, and a randomization's card doesn't open (its stages do).
+      - **Elsewhere on the deck:** naming wells by right-click and typing volumes are off; the
+        cursor's label is hidden; the contents card's last line says what a click does there
+        (e.g. `Click to move Res1 3 here`).
+    - **A randomization's wells to fill can't be moved** (Andy, 2026-11-02). They're kept in deck
+      order, so a moved one could change its place in the pool, and an Update after that would
+      reshuffle even with the same seed; keeping its old place instead would break the deck-order
+      rule. Its sources can be moved: they keep the order given, so the moved well keeps its place
+      and the same seed gives the same wells. Moving one is refused with `Wells a randomization
+      fills can't be moved.` (Andy chose the short form); on the page such a well is dimmed like an
+      unused one until a well is picked, a click or drag on it gives that message, and the
+      contents card's last line says `Filled by a randomization`.
+    **Specified** (Draft, 2026-11-02) and **built (#131)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -491,7 +555,10 @@ final Biomek runs, so they test the files as they will be:
 4. The randomizer link (item 9), decided on 2026-11-01: seams, well labels, then randomizations.
 5. The final Biomek runs (item 8): simulation, then one real run with water, on the final files;
    then the golden file.
-6. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+6. Moving wells (item 12), added on 2026-11-02: preview, specifications, then build. It doesn't
+   change the Biomek files' format, so it doesn't need to come before the final runs; it's being
+   done first anyway, on 2026-11-02, while the runs wait for Andy to be at the Biomek.
+7. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen

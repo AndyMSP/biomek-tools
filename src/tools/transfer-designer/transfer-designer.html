@@ -60,8 +60,8 @@
       <section id="deck-panel" class="panel deck-panel" aria-labelledby="deck-heading">
         <h2 id="deck-heading" class="visually-hidden">Deck</h2>
 
-        <!-- First bar (section 6): the timeline on the left; Undo, Redo and the problem count on
-             the right. -->
+        <!-- First bar (section 6): the timeline on the left; Move wells, Undo, Redo and the
+             problem count on the right. -->
         <div class="deck-bar">
           <div class="timeline">
             <button id="previous-point" class="action small-button" type="button" aria-label="Open the entry before">‹</button>
@@ -69,6 +69,8 @@
             <span id="timeline-caption" class="timeline-caption"></span>
           </div>
           <div class="deck-bar-right">
+            <!-- Starts and ends moving wells (section 6); reads Done while it's on. -->
+            <button id="move-wells" class="action move-wells" type="button" aria-pressed="false">Move wells</button>
             <button id="undo" class="action" type="button">Undo</button>
             <button id="redo" class="action" type="button">Redo</button>
             <span id="problem-count" class="problem-count"></span>
@@ -92,6 +94,10 @@
           <span class="components-label">Components:</span>
           <ul id="component-colors" class="component-colors" aria-label="Component colors"></ul>
         </div>
+
+        <!-- While moving wells (section 6): what to do, above the labware; filled by
+             transfer-designer-page.js, and announced to screen readers when it changes. -->
+        <div id="moving-bar" class="moving-bar" role="status" aria-live="polite" hidden></div>
 
         <!-- The labware that's out, one block each; the arrows are drawn over the whole panel. -->
         <div id="labware-area" class="labware-area">

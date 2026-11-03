@@ -1780,6 +1780,157 @@ function placedItemOf(piece) {
     : { kind: "randomization", id: box.randomization.id };
 }
 
+// --- Moving wells ---
+
+// True if the plan uses `well` ({ labware, well }) anywhere: in its starting contents, as a
+// transfer's source or destination (a mix step's mixed wells included), in its well labels, or in
+// a randomization (a source, a well to fill, or the well of one of its stages), e.g.
+// isWellUsed(emptyPlan().plan, { labware: "Res1", well: "3" }) → false (section 3, "Moving wells").
+// Throws if `well` isn't a well on the deck (deck.checkWell's message).
+export function isWellUsed(plan, well) {
+  checkWell(well);
+  // Compared directly rather than by wellKey, since a tool asks this for every well it draws.
+  const isIt = (end) => end.labware === well.labware && end.well === well.well;
+  return (
+    plan.startingContents.some(isIt) ||
+    plan.operationList
+      .listOperations()
+      .some((operation) => isIt(operation.source) || isIt(operation.destination)) ||
+    wellLabelOf(plan, well) !== null ||
+    plan.randomizations.some(
+      (randomization) =>
+        randomization.sources.some(isIt) ||
+        randomization.fill.some(isIt) ||
+        randomization.stages.some(isIt),
+    )
+  );
+}
+
+// True if `well` ({ labware, well }) is one of a randomization's wells to fill, e.g. true for
+// Plate1 B2 when a randomization fills it. Throws if `well` isn't a well on the deck.
+export function isWellToFill(plan, well) {
+  checkWell(well);
+  const key = wellKey(well);
+  return plan.randomizations.some((randomization) =>
+    randomization.fill.some((end) => wellKey(end) === key),
+  );
+}
+
+// Returns the plan with well `from` replaced by well `to` (each { labware, well }) wherever the
+// plan names it, as one edit (section 3, "Moving wells"): its starting contents entry, every
+// transfer from or into it, its well label, and a randomization's sources and stage entries. Parts
+// the move doesn't touch are shared with `plan`.
+// e.g. moveWell(plan, { labware: "Res1", well: "3" }, { labware: "Res1", well: "7" }).
+// Throws, in this order (section 5): `from` or `to` isn't on the deck, `to` is `from`, `from` isn't
+// in use, `from` is a randomization's well to fill, `to` is in use.
+export function moveWell(plan, from, to) {
+  checkWell(from);
+  checkWell(to);
+  if (wellKey(from) === wellKey(to)) {
+    throw new Error(
+      `${wellText(from)} is where it is already. Choose another well to move it to.`,
+    );
+  }
+  if (!isWellUsed(plan, from)) {
+    throw new Error(`The plan doesn't use ${wellText(from)}, so there's nothing to move.`);
+  }
+  if (isWellToFill(plan, from)) {
+    throw new Error("Wells a randomization fills can't be moved.");
+  }
+  if (isWellUsed(plan, to)) {
+    throw new Error(
+      `${wellText(to)} is already used in the plan. Move to a well the plan doesn't use.`,
+    );
+  }
+  const changes = {
+    startingContents: startingContentsMoved(plan, from, to),
+    operationList: operationListMoved(plan, from, to),
+    wellLabels: wellLabelsMoved(plan, from, to),
+    randomizations: randomizationsMoved(plan, from, to),
+  };
+  // Only the parts the move changed are passed on, so the others stay the very same objects.
+  const changed = Object.fromEntries(
+    Object.entries(changes).filter(([part, value]) => value !== plan[part]),
+  );
+  return withParts(plan, changed);
+}
+
+// --- Moving wells: helpers ---
+
+// A well as this module's messages name it: its labware's name in the deck description and the
+// well, e.g. { labware: "Res1", well: "3" } → "Res1 3".
+function wellText(end) {
+  return `${end.labware} ${end.well}`;
+}
+
+// `end` with its labware and well taken from `to` if it's the well `from`, keeping its other
+// properties (a source's replicates, a stage entry's stage); otherwise `end` itself, e.g.
+// movedEnd({ labware: "Res1", well: "3", replicates: 4 }, Res1 3, Res1 7) → { labware: "Res1",
+// well: "7", replicates: 4 }.
+function movedEnd(end, from, to) {
+  return wellKey(end) === wellKey(from) ? { ...end, labware: to.labware, well: to.well } : end;
+}
+
+// The plan's starting contents with `from`'s entry turned into `to`'s, in the same place, with the
+// same components; the same list if `from` has no entry.
+function startingContentsMoved(plan, from, to) {
+  if (!plan.startingContents.some((entry) => wellKey(entry) === wellKey(from))) {
+    return plan.startingContents;
+  }
+  return plan.startingContents.map((entry) => movedEnd(entry, from, to));
+}
+
+// The plan's operation list with every transfer from or into `from` given `to` in its place, by
+// the operation list's replace, so each transfer keeps its place, stage and volume and the others
+// are shared; the same list if no transfer touches `from`. Since `to` isn't in use, no replacement
+// can break the stage rule.
+function operationListMoved(plan, from, to) {
+  let operationList = plan.operationList;
+  plan.operationList.listOperations().forEach((operation, position) => {
+    const source = movedEnd(operation.source, from, to);
+    const destination = movedEnd(operation.destination, from, to);
+    if (source !== operation.source || destination !== operation.destination) {
+      operationList = operationList.replace(position, { ...operation, source, destination });
+    }
+  });
+  return operationList;
+}
+
+// The plan's well labels with `from`'s label given to `to` instead, placed as removing `from`'s
+// label and then labeling `to` with setWellLabel would place it (section 3, "Moving wells"); the
+// same table if `from` has no label.
+function wellLabelsMoved(plan, from, to) {
+  const label = wellLabelOf(plan, from);
+  if (label === null) {
+    return plan.wellLabels;
+  }
+  const withoutFrom = setWellLabel(plan, from, "");
+  return setWellLabel(withoutFrom, to, label).wellLabels;
+}
+
+// The plan's randomizations with each source and stage entry at `from` moved to `to`, keeping its
+// place and other properties; a randomization that doesn't use `from` is the very same object, and
+// the list is the same list if none does. Wells to fill never change: moveWell refuses to move one.
+function randomizationsMoved(plan, from, to) {
+  let changed = false;
+  const randomizations = plan.randomizations.map((randomization) => {
+    const sources = randomization.sources.map((source) => movedEnd(source, from, to));
+    const stages = randomization.stages.map((owned) => movedEnd(owned, from, to));
+    const sourcesChanged = sources.some((source, index) => source !== randomization.sources[index]);
+    const stagesChanged = stages.some((owned, index) => owned !== randomization.stages[index]);
+    if (!sourcesChanged && !stagesChanged) {
+      return randomization;
+    }
+    changed = true;
+    return {
+      ...randomization,
+      sources: sourcesChanged ? sources : randomization.sources,
+      stages: stagesChanged ? stages : randomization.stages,
+    };
+  });
+  return changed ? randomizations : plan.randomizations;
+}
+
 // --- Helpers used only inside this module ---
 
 // --- Randomizations: helpers ---

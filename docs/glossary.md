@@ -161,6 +161,12 @@ A group of stages that run on the same tips: the stages after one tip change, up
 example, with tip changes at the start and before stage 4, stages 1 to 3 are one tip group and
 stages 4 and 5 another. Every stage in the group uses all the probes its tip change loads.
 
+**Well in use**
+A well the plan names anywhere: in its starting contents, as a transfer's source or destination (a
+mix step's mixed wells included), in its well labels, or in a randomization (a source, a well to
+fill, or the well of one of its stages). Moving wells moves a well in use onto a well that isn't
+(`transfer-designer.md`, "Moving wells").
+
 **Well label**
 A name the user gives a well, such as "Cond 1", so it's easy to recognize. It belongs to the well's
 place on the deck for the whole run, not to what the well holds; two wells may share a label. Like a
