@@ -96,8 +96,6 @@ import {
   copyItems,
   pasteItems,
   COPIED_ITEMS_FORMAT,
-  isWellUsed,
-  isWellToFill,
   moveWell,
 } from "./transfer-designer.js";
 import {
@@ -307,6 +305,11 @@ let movingWells = false;
 
 // The well picked to move while moving wells, { labware, well }, or null.
 let pickedWell = null;
+
+// The wells in use and the wells to fill of one plan, worked out once for it, since moving wells
+// asks about every well each time the deck is drawn: { plan, used, toFill }, two Sets of wellKeys,
+// or null before the first time (movingWellSets).
+let movingWellCache = null;
 
 // The page's elements that transfer-designer.html gives an id, looked up once.
 const elements = {
@@ -589,9 +592,15 @@ function refresh() {
     const first = plan.components[0];
     brush.pick = first === undefined ? { kind: "eraser" } : { kind: "component", name: first.name };
   }
-  // Undo or redo can leave the picked well unable to be picked: it's let go (section 6).
+  // Undo or redo can leave the picked well unable to be picked: it's let go (section 6), and a drag
+  // of it ends.
   if (pickedWell !== null && !canPickToMove(plan, pickedWell)) {
     pickedWell = null;
+    if (drag !== null && drag.kind === "move") {
+      drag = null;
+      press = null;
+      updateDragMarks();
+    }
   }
   refreshHeading();
   refreshDeck();
@@ -4805,6 +4814,11 @@ function movePointer(event) {
     }
   }
   if (drag !== null) {
+    // A dragged picked well notes whether it's over a labware, since a drop between its wells keeps
+    // the pick (section 6).
+    if (drag.kind === "move") {
+      drag.onLabware = overLabwareBlock(event);
+    }
     const over = wellUnderPointer(event);
     if (over !== drag.over && wellKeyOrNull(over) !== wellKeyOrNull(drag.over)) {
       drag.over = over;
@@ -4870,10 +4884,10 @@ function clickWellWithKeyboard(event) {
 
 // Finishes a drag (sections 6, 8 and 9): moves a picked well, fills the box, mixes the box, adds one
 // transfer, or sends the source into the box.
-function finishDrag({ kind, from, over }) {
+function finishDrag({ kind, from, over, onLabware }) {
   updateDragMarks();
   if (kind === "move") {
-    dropPickedWell(over);
+    dropPickedWell(over, onLabware);
     return;
   }
   if (kind === "owned") {
@@ -4972,6 +4986,13 @@ function overLabware(event) {
   return element !== null && elements.labwareArea.contains(element);
 }
 
+// True if the pointer event is over one labware's block (its heading or its grid, between wells
+// too), e.g. for a drop of a picked well that just misses a well (section 6).
+function overLabwareBlock(event) {
+  const element = document.elementFromPoint(event.clientX, event.clientY);
+  return element !== null && elements.labwareArea.contains(element) && element.closest(".labware") !== null;
+}
+
 // The well a well element (or an element inside it) stands for, { labware, well }, or null.
 function endOf(element) {
   const wellElement = element.closest(".well");
@@ -5018,7 +5039,43 @@ function endMovingWells() {
 // True if well `end` can be picked to move: a well in use (judged over the whole plan, not the
 // point the deck shows) that isn't a randomization's well to fill (section 6).
 function canPickToMove(plan, end) {
-  return isWellUsed(plan, end) && !isWellToFill(plan, end);
+  return isInUse(plan, end) && !isToFill(plan, end);
+}
+
+// True if `plan` uses well `end` anywhere (isWellUsed), looked up in movingWellSets.
+function isInUse(plan, end) {
+  return movingWellSets(plan).used.has(wellKey(end));
+}
+
+// True if well `end` is one of `plan`'s randomizations' wells to fill (isWellToFill), looked up in
+// movingWellSets.
+function isToFill(plan, end) {
+  return movingWellSets(plan).toFill.has(wellKey(end));
+}
+
+// The wells `plan` uses and its wells to fill, as { used, toFill }, two Sets of wellKeys, worked out
+// once per plan and kept until the plan changes. They're the wells isWellUsed and isWellToFill say
+// yes to, gathered from the plan's parts in one pass rather than asked about well by well, which
+// would read every transfer once per well: the starting contents, each transfer's two ends, the
+// well labels, and each randomization's sources, wells to fill and stage entries.
+function movingWellSets(plan) {
+  if (movingWellCache !== null && movingWellCache.plan === plan) {
+    return movingWellCache;
+  }
+  const toFill = new Set(plan.randomizations.flatMap((randomization) => randomization.fill.map(wellKey)));
+  const used = new Set([
+    ...toFill,
+    ...plan.startingContents.map(wellKey),
+    ...plan.operationList.listOperations().flatMap((operation) => [wellKey(operation.source), wellKey(operation.destination)]),
+    ...Object.entries(plan.wellLabels).flatMap(([labware, wells]) =>
+      Object.keys(wells).map((well) => wellKey({ labware, well })),
+    ),
+    ...plan.randomizations.flatMap((randomization) =>
+      [...randomization.sources, ...randomization.stages].map(wellKey),
+    ),
+  ]);
+  movingWellCache = { plan, used, toFill };
+  return movingWellCache;
 }
 
 // Shows moving wells' state in the deck panel (section 6): Move wells reads Done, solid purple,
@@ -5079,7 +5136,7 @@ function markMovingWells(plan) {
       wellElement.classList.toggle("move-dimmed", !canPickToMove(plan, end));
     } else if (key === pickedKey) {
       wellElement.classList.add("move-picked");
-    } else if (isWellUsed(plan, end)) {
+    } else if (isInUse(plan, end)) {
       wellElement.classList.add("move-dimmed");
     } else {
       wellElement.classList.add("move-target");
@@ -5096,12 +5153,12 @@ function movingCardHint(plan, end) {
     if (canPickToMove(plan, end)) {
       return "Click to move this well";
     }
-    return isWellToFill(plan, end) ? "Filled by a randomization" : "Not used in the plan";
+    return isToFill(plan, end) ? "Filled by a randomization" : "Not used in the plan";
   }
   if (wellKey(end) === wellKey(pickedWell)) {
     return "Click to let go of this well";
   }
-  return isWellUsed(plan, end) ? "Already used in the plan" : `Click to move ${wellName(plan, pickedWell)} here`;
+  return isInUse(plan, end) ? "Already used in the plan" : `Click to move ${wellName(plan, pickedWell)} here`;
 }
 
 // A click on a well while moving wells (section 6): with none picked, picks it if it can be
@@ -5114,7 +5171,7 @@ function clickWellWhileMoving(end) {
     pickToMove(plan, end);
   } else if (wellKey(end) === wellKey(pickedWell)) {
     letGoOfPickedWell();
-  } else if (isWellUsed(plan, end)) {
+  } else if (isInUse(plan, end)) {
     showWellInUseMessage(plan, end);
   } else {
     movePickedWellTo(end);
@@ -5124,23 +5181,22 @@ function clickWellWhileMoving(end) {
   }
 }
 
-// Picks well `end` to move, if it can be picked, and returns true; otherwise says why (a
-// randomization's well to fill, or a well the plan doesn't use) and returns false (section 6).
+// Picks well `end` to move, if it can be picked; otherwise says why (a randomization's well to
+// fill, or a well the plan doesn't use; section 6).
 function pickToMove(plan, end) {
-  if (isWellToFill(plan, end)) {
+  if (isToFill(plan, end)) {
     showMessage("Wells a randomization fills can't be moved.", "note");
-    return false;
+    return;
   }
-  if (!isWellUsed(plan, end)) {
+  if (!isInUse(plan, end)) {
     showMessage(
       `The plan doesn't use ${wellName(plan, end)}, so there's nothing to move. Click a well the plan uses.`,
       "note",
     );
-    return false;
+    return;
   }
   pickedWell = end;
   refreshDeck();
-  return true;
 }
 
 // Lets go of the picked well, if there is one, and redraws the deck.
@@ -5190,7 +5246,7 @@ function beginMovingDrag() {
   const from = press.end;
   const isPicked = pickedWell !== null && wellKey(from) === wellKey(pickedWell);
   if (!isPicked) {
-    if (isWellToFill(plan, from)) {
+    if (isToFill(plan, from)) {
       showMessage("Wells a randomization fills can't be moved.", "note");
     }
     if (!canPickToMove(plan, from)) {
@@ -5200,20 +5256,27 @@ function beginMovingDrag() {
     pickedWell = from;
     refreshDeck();
   }
-  drag = { kind: "move", from, over: from };
+  drag = { kind: "move", from, over: from, onLabware: true };
   updateDragMarks();
 }
 
-// Ends a drag of the picked well over well `over` (or null, off the labware; section 6): off the
-// labware lets go of it; on itself keeps it picked; on a well in use keeps it with a message; on a
-// well it can move to moves it there.
-function dropPickedWell(over) {
+// Ends a drag of the picked well over well `over` (or null, not on a well), `onLabware` saying
+// whether it was dropped on a labware (section 6): off the labware lets go of it; on a labware
+// between its wells, or on itself, keeps it picked; on a well in use keeps it with a message; on a
+// well it can move to moves it there. Nothing happens if no well is picked any more (an undo or
+// redo during the drag let go of it).
+function dropPickedWell(over, onLabware) {
+  if (pickedWell === null) {
+    return;
+  }
   const plan = currentPlan();
   if (over === null) {
-    letGoOfPickedWell();
+    if (!onLabware) {
+      letGoOfPickedWell();
+    }
   } else if (wellKey(over) === wellKey(pickedWell)) {
     return;
-  } else if (isWellUsed(plan, over)) {
+  } else if (isInUse(plan, over)) {
     showWellInUseMessage(plan, over);
   } else {
     movePickedWellTo(over);

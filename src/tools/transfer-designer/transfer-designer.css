@@ -1033,6 +1033,31 @@ button.move-wells[aria-pressed="true"] {
   outline: 3px solid var(--purple);
 }
 
+/* A well with a move outline still shows keyboard focus: a 3px light blue ring outside its purple
+   one (section 15). */
+.well.move-picked:focus-visible,
+.well.move-target:focus-visible {
+  box-shadow: 0 0 0 calc(2px + var(--move-outline-width)) var(--panel-background),
+    0 0 0 calc(5px + var(--move-outline-width)) var(--blue-border);
+}
+
+.well.move-picked,
+.well.move-target.move-drop {
+  --move-outline-width: 3px;
+}
+
+.well.move-target {
+  --move-outline-width: 2px;
+}
+
+/* A problem's red ring stays inside the focus ring. */
+.well.move-picked:is(.off-plan, .overdraw, .overfill):focus-visible,
+.well.move-target:is(.off-plan, .overdraw, .overfill):focus-visible {
+  box-shadow: 0 0 0 3px var(--red),
+    0 0 0 calc(2px + var(--move-outline-width)) var(--panel-background),
+    0 0 0 calc(5px + var(--move-outline-width)) var(--blue-border);
+}
+
 /* While moving wells, the Stages column's ✎ buttons, the ×s on its rows and its seams are hidden,
    their space kept, so nothing shifts (section 7). */
 .stages-list.moving-wells .edit-button,
