@@ -3,8 +3,8 @@
 Date: 2026-11-01
 
 ## Status
-Proposed (2026-11-01: decided with Andy while shaping a preview; written in the hands-off workflow,
-so it stands as a proposal until Andy merges its pull request).
+Accepted (Andy, 2026-11-02: decided while shaping a preview on 2026-11-01, written in the hands-off
+workflow, and accepted by merging #128).
 
 ## Context
 Stages could be added and removed, but not moved or copied. Repeating part of an experiment meant
