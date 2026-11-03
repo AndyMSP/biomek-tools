@@ -1789,8 +1789,8 @@ function placedItemOf(piece) {
 // Throws if `well` isn't a well on the deck (deck.checkWell's message).
 export function isWellUsed(plan, well) {
   checkWell(well);
-  const key = wellKey(well);
-  const isIt = (end) => wellKey(end) === key;
+  // Compared directly rather than by wellKey, since a tool asks this for every well it draws.
+  const isIt = (end) => end.labware === well.labware && end.well === well.well;
   return (
     plan.startingContents.some(isIt) ||
     plan.operationList
