@@ -3127,6 +3127,21 @@ describe("transfer-designer", () => {
     return steps;
   }
 
+  // `base` (randomizingPlan by default) with a randomization that hasn't run, last, whose wells have
+  // no other use there: its sources DEEP E1 and E2 (the filler), holding nothing, and its wells to
+  // fill PLATE F1 and F2. So a test of one of a randomization's uses fails if that rule is taken
+  // out: { plan, id }.
+  function bareRandomizationPlan(base = randomizingPlan()) {
+    const { plan, id } = addRandomization(base, null, { seed: 5, volume: 10 });
+    return {
+      plan: setRandomization(plan, id, {
+        sources: [source("E1", 1), source("E2", null, true)],
+        fill: [plateWell("F1"), plateWell("F2")],
+      }),
+      id,
+    };
+  }
+
   test("isWellUsed: false for every well of an empty plan", () => {
     const { plan } = emptyPlan();
     for (const { name } of DECK) {
@@ -3138,12 +3153,13 @@ describe("transfer-designer", () => {
 
   test("isWellUsed: true for starting contents, a source, a destination, a mixed well and a label only", () => {
     let plan = planWithContents();
-    plan = addTransfer(plan, transferTo("1", "B2"));
+    // From trough 11, which holds nothing, so only the transfer uses it.
+    plan = addTransfer(plan, { ...transferTo("1", "B2"), source: trough("11") });
     let mixStep = addMixStep(plan, null);
     plan = mixWells(mixStep.plan, mixStep.id, [plateWell("C3")]);
     plan = setWellLabel(plan, { labware: LABELED_ONLY, well: "D4" }, "Cond 1");
     assert.equal(isWellUsed(plan, trough("2")), true, "starting contents");
-    assert.equal(isWellUsed(plan, trough("1")), true, "a source");
+    assert.equal(isWellUsed(plan, trough("11")), true, "a source");
     assert.equal(isWellUsed(plan, plateWell("B2")), true, "a destination");
     assert.equal(isWellUsed(plan, plateWell("C3")), true, "a mixed well");
     assert.equal(isWellUsed(plan, { labware: LABELED_ONLY, well: "D4" }), true, "a label only");
@@ -3152,16 +3168,17 @@ describe("transfer-designer", () => {
   });
 
   test("isWellUsed: true for a randomization's source, its well to fill, and a stage entry whose source was taken out", () => {
-    const { plan } = runRandomizationPlan();
+    const { plan: bare } = bareRandomizationPlan();
+    assert.equal(isWellUsed(bare, deepWell("E1")), true, "a source");
+    assert.equal(isWellUsed(bare, plateWell("F1")), true, "a well to fill");
+    assert.equal(isWellUsed(bare, deepWell("H12")), false, "an unused well");
     // A stage entry whose well is no longer a source and has no other use (G7), as a plan file can
     // hold it after its source was taken out and the well emptied.
+    const { plan } = runRandomizationPlan();
     const stored = JSON.parse(JSON.stringify(plan.randomizations));
     stored[0].stages.find((owned) => owned.well === "A2").well = "G7";
     const loaded = setRandomizations(plan, stored);
     assert.equal(isWellUsed(loaded, deepWell("G7")), true, "a stage entry");
-    assert.equal(isWellUsed(plan, deepWell("A1")), true, "a source");
-    assert.equal(isWellUsed(plan, plateWell("B2")), true, "a well to fill");
-    assert.equal(isWellUsed(plan, deepWell("H12")), false, "an unused well");
   });
 
   test("isWellToFill: true for a well to fill, false for a source and for a well no randomization fills", () => {
@@ -3353,8 +3370,9 @@ describe("transfer-designer", () => {
   });
 
   test("moveWell refuses each wrong move with its message, leaving the plan unchanged", () => {
-    const { plan: randomized } = runRandomizationPlan();
-    let plan = setWellLabel(randomized, plateWell("H11"), "Only a label");
+    // A run randomization (for its stage entries), and a second, not run, on wells with no other use.
+    let { plan } = bareRandomizationPlan(runRandomizationPlan().plan);
+    plan = setWellLabel(plan, plateWell("H11"), "Only a label");
     plan = addToWells(plan, [deepWell("H1")], "Media", 10);
     const stored = JSON.parse(JSON.stringify(plan.randomizations));
     stored[0].stages.find((owned) => owned.well === "A2").well = "G7";
@@ -3370,9 +3388,9 @@ describe("transfer-designer", () => {
       deepWell("H1"), // only starting contents
       plateWell("A1"), // a transfer's destination
       plateWell("H11"), // only a label
-      deepWell("A1"), // a randomization's source
+      deepWell("E1"), // only a randomization's source
       deepWell("G7"), // only the well of a randomization's stage entry
-      plateWell("B3"), // a randomization's well to fill
+      plateWell("F1"), // only a randomization's well to fill
     ];
     for (const target of usedTargets) {
       cases.push([trough("1"), target, inUse(target)]);
@@ -4235,6 +4253,11 @@ describe("transfer-designer", () => {
       (plan) =>
         pasteItems(plan, copyOf(plan, [{ kind: "randomization", id: "r1" }]), { kind: "between", index: 1 }).plan,
       ["stageList", "stageOrder", "tipChanges", "operationList", "randomizations"],
+    ],
+    [
+      "moveWell",
+      (plan) => moveWell(plan, trough("1"), trough("12")),
+      ["startingContents", "operationList", "wellLabels", "randomizations"],
     ],
   ];
 
