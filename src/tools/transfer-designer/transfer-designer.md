@@ -664,7 +664,7 @@ a well** puts everything the plan does with one well onto another, so the plan d
 before from a different well, and the files the tool writes name the wells actually used. It's one
 edit, undone as one.
 
-**A well in use** (`isWellUsed(plan, end)`; `docs/glossary.md`) is a well the plan names anywhere:
+**A well in use** (`isWellUsed(plan, well)`; `docs/glossary.md`) is a well the plan names anywhere:
 - in its starting contents;
 - as the source or destination of a transfer (a mix step's mixed wells included);
 - in its well labels;
@@ -675,7 +675,7 @@ well }`, on any labware, not only between troughs (Andy: every well is the same 
 limiting it would only add a special case). `from` must be in use; `to` must not be (a move never
 swaps or merges two wells' uses: Andy, 2026-11-02; swapping would put the other well's liquid into
 the warped one, and merging mixes two liquids in one well). A randomization's **well to fill**
-(`isWellToFill(plan, end)`) can't be moved (Andy, 2026-11-02): wells to fill are kept in deck order
+(`isWellToFill(plan, well)`) can't be moved (Andy, 2026-11-02): wells to fill are kept in deck order
 (section 3, "Randomizations"), so a moved one could change its place in the pool, and a later run
 would give different wells even with the same seed. A randomization's **sources** can be moved:
 they keep the order given, so a moved source keeps its place, and the same seed gives the same
@@ -688,8 +688,10 @@ changes:
 - **transfers:** each transfer from or into `from` (a mix step's mixed well: both ends) gets `to` in
   its place, with the operation list's `replace`, so every transfer keeps its place, stage and
   volume, and every other stored transfer is shared;
-- **well labels:** `from`'s label becomes `to`'s; a labware left with no labeled wells is left out of
-  `wellLabels`, as `setWellLabel` does;
+- **well labels:** `from`'s label becomes `to`'s, placed exactly as removing `from`'s label and then
+  giving `to` that label with `setWellLabel` would place it (so `to` comes last among its labware's
+  labeled wells, and a labware new to `wellLabels` comes last in it; plan files write them in that
+  order); a labware left with no labeled wells is left out of `wellLabels`;
 - **randomizations:** each source at `from` gets `to` (keeping its place, replicates and filler), and
   so does each of its stages' entries at `from`; wells to fill never change (above). A stage's name,
   given when its randomization ran, stays as it was.
@@ -859,8 +861,8 @@ randomization.
 **Moving wells** (section 3, "Moving wells")
 | Function | Returns |
 |---|---|
-| `isWellUsed(plan, end)` | `true` if the plan uses well `end` (`{ labware, well }`) anywhere: starting contents, a transfer, a well label, or a randomization. Throws if `end` isn't a well on the deck (`deck.checkWell`). |
-| `isWellToFill(plan, end)` | `true` if `end` is one of a randomization's wells to fill. Throws if `end` isn't a well on the deck. |
+| `isWellUsed(plan, well)` | `true` if the plan uses `well` (`{ labware, well }`) anywhere: starting contents, a transfer, a well label, or a randomization. Throws if `well` isn't a well on the deck (`deck.checkWell`). |
+| `isWellToFill(plan, well)` | `true` if `well` is one of a randomization's wells to fill. Throws if `well` isn't a well on the deck. |
 | `moveWell(plan, from, to)` | the plan with well `from` replaced by well `to` wherever it names it, as one edit. Throws as section 5 says. |
 
 ## 5. Errors
@@ -977,6 +979,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `pasteItems`: a value refused by the edit that would make it | `Can't paste: item 2: ` and that edit's message, e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1. Its wells are A1 to H12.` (Messages pass through unchanged, so the operation list's stage rule names the new stage's ID and an operation number, which the user never sees; roadmap, "Technical debt", "Some messages use internal terms".) |
 | `pasteItems`: two stages for one well, or a stage that's a mix step, in a randomization | `Can't paste: item 2: Deep A1 has two stages.` / `Can't paste: item 2: its stage for Deep A1 is a mix step.` |
 | `isWellUsed`, `isWellToFill`, `moveWell`: a well isn't on the deck | `deck.checkWell`'s messages, unchanged, e.g. `"Z99" isn't a well on Plate1. Its wells are A1 to H12.` |
+| `moveWell`: its messages name a well by its labware's name in the deck description and the well, as this module's other messages do (e.g. `Res1 3`); a tool may word its own | — |
 | `moveWell`: `to` is `from` | `Res1 3 is where it is already. Choose another well to move it to.` |
 | `moveWell`: `from` isn't in use | `The plan doesn't use Res1 7, so there's nothing to move.` |
 | `moveWell`: `from` is a randomization's well to fill | `Wells a randomization fills can't be moved.` (Andy, 2026-11-02: the short form) |
@@ -1447,13 +1450,23 @@ group and pastes a copied tip group into an empty plan.
 - **A randomization's source moved:** its source keeps its place in `sources`, with its replicates
   and filler, and its stage's entry in `stages` names the new well; running it again with the same
   seed gives every well to fill the same source as before the move.
+- **More uses moved together:** a well that's the source of a transfer in one stage and the
+  destination of one in another: both move. A source of a randomization that hasn't run (`stages`
+  empty): its `sources` entry moves. A randomization's stage entry whose well is no longer one of its
+  sources (built with `setRandomizations`, as a plan file can hold it): the entry moves, and
+  `isWellUsed` is `true` for that well even with no transfers from it.
+- **Labels land as `setWellLabel` places them:** with `Res1` labeling `1`, `3` and `5`, moving `3`
+  to `9` gives `Res1`'s labels in the order `1`, `5`, `9`; moving `Res1 3` (the only labeled well
+  of `Res1`) to `Plate1 A1` when `Deep1` has labels gives `wellLabels` `Deep1` then `Plate1`.
+- **Plan files:** a plan with a randomization whose source was moved is saved with `planToText` and
+  opened with `planFromText`, giving the same plan (`setRandomizations` accepts it).
 - **Refusals**, each with its message, leaving the plan unchanged: `to` the same as `from`; `from`
   not in use; `from` a randomization's well to fill; `to` with starting contents, `to` a transfer's
-  destination, `to` with only a label, and `to` a randomization's well to fill; `from` or `to` not on
-  the deck.
-- **Order of checks:** `moveWell(plan, { labware: "Res1", well: "Z" }, { labware: "Res1", well: "3" })`
-  reports `from`'s well, not the same well; a `from` that's unused and a `to` that's in use reports
-  `from`.
+  destination, `to` with only a label, `to` a randomization's source, `to` only the well of a randomization's
+  stage entry, and `to` a randomization's well to fill; `from` or `to` not on the deck.
+- **Order of checks:** both wells off the deck reports `from`'s; `to` the same as an unused `from`
+  reports the same well, not `from` unused; an unused `from` with a `to` in use reports `from`; a
+  `from` that's a well to fill with a `to` in use reports the well to fill.
 - **Sharing:** `moveWell` changes only `startingContents`, `operationList`, `wellLabels` and
   `randomizations`, and each only if the moved well is in it; the operation list shares every
   transfer that doesn't touch `from`.

@@ -188,6 +188,8 @@ data everyone has to clear first).
 - the **open randomization's card** and its unsaved changes (section 7, "Randomizations"), which
   tab it shows, and whether each randomization's source list is shown in full;
 - the **Biomek files box**, while it's open, and the run it will write (section 5);
+- whether **moving wells** is on, and the well picked to move (section 6); off when the page opens,
+  so not kept by the browser copy;
 - the **selection** in the Stages column, the last thing clicked there (for Shift-click), and the
   **copied items** (section 7, "Moving and copying"); the copied items are also kept in the
   browser's local storage, for other tabs.
@@ -471,8 +473,9 @@ well) can't be used on the day: everything the plan does with one well moves to 
   is solid purple; pressing it ends moving wells, with the message `Done moving wells.` (note).
   Nothing else ends it: the page stays in moving wells after each move, since more than one trough
   may be warped, and Escape never leaves it. Starting it closes an open editing box and an open
-  randomization's card (as Close does; if the card can't close, nothing happens), and clears a
-  chosen source.
+  randomization's card (as Close does; if the card can't close, because it has run and has
+  changes, it shakes, the message bar says `Update or discard your changes first.`, and moving
+  wells doesn't start), and clears a chosen source.
 - **What the deck shows** doesn't change: whatever is open stays open, and the deck shows its point
   (section 11; Andy, 2026-11-02: not switched to Start). The timeline's `‹` and `›` work, and so
   does opening an entry from the Stages column (below), so the user can follow a well's transfers.
@@ -492,18 +495,30 @@ well) can't be used on the day: everything the plan does with one well moves to 
   on the deck, section 9), picks it: a 3px purple ring standing 2px outside it. Then every well not
   in use, on any labware out (including labware brought out from the tray while moving), gets a 2px
   dashed purple outline standing 2px outside it, and, when empty, a light purple fill: the wells it
-  can move to. Wells in use are dimmed. Clicking a well the plan doesn't use: `The plan doesn't use
+  can move to. Wells in use other than the picked well are dimmed. Dimmed wells stay at 30% opacity
+  when pointed at (unlike the open stage's faded wells). Clicking a well the plan doesn't use: `The plan doesn't use
   Res1 7, so there's nothing to move. Click a well the plan uses.` (note). Clicking or dragging a
   randomization's well to fill: `Wells a randomization fills can't be moved.` (note; Andy,
   2026-11-02). Dragging from either does nothing else.
 - **Moving:** clicking a well with a dashed outline, or dropping the dragged well on one (under the
   pointer its outline turns solid and 3px), moves the picked well there with `moveWell`, as one
-  edit: `Moved Res1 3 to Res1 7.` (ok). Nothing is picked afterwards. Clicking, or dropping on, a
+  edit: `Moved Res1 3 to Res1 7.` (ok). Nothing is picked afterwards. If the problem count (section
+  6, "First bar") is higher after the move than before, the message is an error instead: `Moved Res1
+  3 to Plate1 A1, which causes 1 problem.` (`2 problems` …), and the marks show where. (Counting,
+  rather than matching problems one by one as section 10 does after adding, because a move puts
+  every problem of the moved well on another well.) Clicking, or dropping on, a
   well in use moves nothing and keeps the pick: `Plate1 A1 is already used in the plan. Choose a
   well with a dashed outline, or press Escape to pick another well.` (note). Clicking the picked
   well again, Escape, or dropping off the labware lets go of it; dropping on the picked well itself
   keeps it picked. If `moveWell` refuses (it shouldn't, after these checks), its message is shown as
   an error.
+- **A drag while a well is picked** starts from wherever it's pressed: from another well that can be
+  picked, it picks that one instead and drags it; from a randomization's well to fill, the message
+  above; from any other well, nothing (a press there that doesn't move is a click, as above).
+- **The keyboard:** Enter or Space on a focused well does what a click would. `Move wells` / `Done`
+  shows its state with `aria-pressed`, and the bar is announced to screen readers when it changes.
+- **The page's own messages** (above) name wells by the labware's label and the well, as section 12
+  says; they're the page's wording, not `moveWell`'s.
 - **The contents card's last line** says what a click on that well does, in place of `Right-click
   to name`: with no well picked, `Click to move this well`, `Filled by a randomization`, or `Not
   used in the plan`; with one picked, `Click to move Res1 3 here` on a well it can move to,
@@ -511,7 +526,12 @@ well) can't be used on the day: everything the plan does with one well moves to 
 - **Off while moving:** naming a well by right-click (`Wells can't be named while moving wells.
   Press Done first.`, note), filling, adding transfers, mixing wells and picking a randomization's
   wells by clicks or drags, typing volumes, and the cursor's label (section 12). `Undo` and `Redo`
-  work; a picked well that an undo or redo leaves not in use is let go.
+  work; a picked well that an undo or redo leaves unable to be picked (not in use, or now a
+  randomization's well to fill) is let go. Putting away the labware a picked well is on lets go of
+  it, as it clears a chosen source.
+- **The header while moving:** `Save`, `Biomek files`, renaming the experiment and renaming labware
+  work as usual. `Open` and `Reset` end moving wells (as `Done`, without its message) once they've
+  replaced the plan; if they're cancelled, moving wells stays on.
 - **The Stages column** can be looked through but not changed (Andy, 2026-11-02): see section 7.
 
 ## 7. The Stages column
@@ -942,8 +962,9 @@ just enough to show the whole card; a card taller than the column is shown from 
 list starts at its first transfer (Andy, 2026-10-26). Hiding the list doesn't scroll.
 
 **While moving wells** (section 6, "Moving wells"; Andy, 2026-11-02: looked through, not changed),
-the column keeps its look, but only two things work there: clicking a closed entry's row opens it
-(Start, a stage, End; a randomization's stages too), and `Show transfers` / `Hide transfers`. The ✎
+the column keeps its look, but only three things work there: clicking a closed entry's row opens it
+(Start, a stage, End; a randomization's stages too), `Show transfers` / `Hide transfers`, and
+pointing at a transfer row, which singles out its transfer as usual. The ✎
 buttons, the `×` on transfer rows and the seams are hidden (their space kept, so nothing shifts).
 Any other click in the column (a volume, a component chip, a randomization's heading, which would
 open its card) does nothing but say `Stages can't be changed while moving wells. Press Done
@@ -1200,8 +1221,9 @@ and the deck shows its point again.
 **Keys** (none while typing in a text box or menu, which keep their own keys):
 - **Digits, `.` and Backspace** type a volume (section 13), at any time: the brush's while Start is
   open (not with the eraser), and the next transfer's while a stage is open. Not while End is open.
-- **While moving wells** (section 6), Escape lets go of a picked well and does nothing else (with
-  none picked, nothing); typed volumes, Ctrl+C, Ctrl+V and the menu key are ignored; Ctrl+Z and
+- **While moving wells** (section 6), Escape closes an open header box (section 5); otherwise
+  cancels a drag of a picked well, letting go of it; otherwise lets go of a picked well; with none
+  picked, nothing. It never ends moving wells; typed volumes, Ctrl+C, Ctrl+V and the menu key are ignored; Ctrl+Z and
   Ctrl+Y work.
 - **Escape** closes the open editing box without saving, or the open header box (section 5), or
   the open randomization's card (saving or discarding, section 7); otherwise clears a chosen source.
