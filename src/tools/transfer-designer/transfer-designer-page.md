@@ -97,7 +97,7 @@
 > **Draft changes (2026-11-02, moving wells, item 12 of v0.2.0):** from the preview Andy shaped on
 > 2026-11-02: a `Move wells` button left of `Undo`, and moving wells, in which a well's every use
 > moves to a free well by clicking or dragging, while the Stages column can be looked through but
-> not changed (sections 2, 6, 7, 9, 12, 15 and 16; `transfer-designer.md`, "Moving wells"). Written
+> not changed (sections 2, 6, 7, 12, 15 and 16; `transfer-designer.md`, "Moving wells"). Written
 > in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its
 > pull request. They become Final once built and tested by Andy.
 

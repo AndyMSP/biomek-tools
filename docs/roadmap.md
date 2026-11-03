@@ -329,7 +329,10 @@ Last updated: 2026-11-02
   and `package.json` at 0.2.0; checked by hand in a scratch clone and in headless Chrome. Tested by
   Andy and merged.
 - **Decided: moving wells joins v0.2.0** (Andy, 2026-11-02; item 12, below), so a reservoir that
-  warps in the autoclave can be worked around in the plan, as Exp36 may need. Not specified yet.
+  warps in the autoclave can be worked around in the plan, as Exp36 may need. Shaped in a preview
+  and **specified** (Draft, 2026-11-02, in the hands-off workflow): `isWellUsed`, `isWellToFill` and
+  `moveWell` (`transfer-designer.md`, "Moving wells"), the page's moving wells
+  (`transfer-designer-page.md`, sections 6 and 7), glossary "Well in use".
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -538,7 +541,7 @@ added on 2026-10-28 (Andy).
       fills can't be moved.` (Andy chose the short form); on the page such a well is dimmed like an
       unused one until a well is picked, a click or drag on it gives that message, and the
       contents card's last line says `Filled by a randomization`.
-    Next: the specifications.
+    **Specified** (Draft, 2026-11-02): see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -550,7 +553,8 @@ final Biomek runs, so they test the files as they will be:
 5. The final Biomek runs (item 8): simulation, then one real run with water, on the final files;
    then the golden file.
 6. Moving wells (item 12), added on 2026-11-02: preview, specifications, then build. It doesn't
-   change the Biomek files' format, so it doesn't need to come before the final runs.
+   change the Biomek files' format, so it doesn't need to come before the final runs; it's being
+   done first anyway, on 2026-11-02, while the runs wait for Andy to be at the Biomek.
 7. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
