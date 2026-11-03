@@ -64,11 +64,11 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 export const PLAN_FILE_VERSION = 8;
 
 // The versions this module can read: the one it writes, version 7 (plans saved from 2026-11-01 to
-// 2026-11-02, before several filler wells; read with the same rules), version 6 (plans saved on 2026-11-01, before
-// constituents), version 5 (plans saved on 2026-11-01, before randomizations), version 4 (plans saved
-// from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved on 2026-10-30, before
-// mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version 1 (plans saved before
-// 2026-10-28).
+// 2026-11-02, before several filler wells; read with the same rules), version 6 (plans saved on
+// 2026-11-01, before constituents), version 5 (plans saved on 2026-11-01, before randomizations),
+// version 4 (plans saved from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved
+// on 2026-10-30, before mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version
+// 1 (plans saved before 2026-10-28).
 const VERSIONS_READ = [PLAN_FILE_VERSION, 7, 6, 5, 4, 3, 2, 1];
 
 // The first version whose components hold their constituents. An older file's components are
@@ -89,8 +89,8 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 // table: an older file's stages can't hold them, and get them as null.
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 6 to 8
-// have all of them: version 7's change is inside each component, and version 8's inside the
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 6 to
+// 8 have all of them: version 7's change is inside each component, and version 8's inside the
 // randomizations.
 const FILE_PROPERTIES = [
   "format",

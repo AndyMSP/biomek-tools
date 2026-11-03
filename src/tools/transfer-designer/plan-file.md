@@ -42,19 +42,19 @@ never quietly tidied. The tool always writes valid files, so such a file was dam
 hand, and that's better reported than changed.
 
 ## 2. Scope
-Version 1 writes format version 8, and reads versions 8, 7, 6, 5, 4, 3, 2 and 1 (below). Version 2 added the
-experiment name (Andy, 2026-10-28). Version 3 moved probes from the stages to the tip changes
-(Andy, 2026-10-30; ADR 0007, "Tip changes"). Version 4 adds each stage's mixes, `sourceMix` and
-`destinationMix` (Andy, 2026-10-30; ADR 0007, "Mixing"). Version 5 adds the well labels, and version 6 the
-randomizations (Andy, 2026-11-01). Version 7 adds each component's constituents (ADR 0013; Andy,
-2026-11-01). Version 8 lets a randomization have several filler wells (Andy, 2026-11-02), so a tool
-that knows only version 7 refuses such a file as newer, rather than with a confusing message about
-two fillers; its properties are those of version 7. Older plans still open (ADR 0010,
-"Consequences"): version 1, with no experiment name; versions 1 and 2, with each tip change loading
-every probe its stages used, which is exactly where look-ahead loading put tips, so the same tips
-go on; versions 1 to 3, with no mixing, since plans couldn't mix before version 4; versions 1 to
-4, with no well labels; versions 1 to 5, with no randomizations; versions 1 to 6, with components
-carrying no constituents.
+Version 1 writes format version 8, and reads versions 8, 7, 6, 5, 4, 3, 2 and 1 (below). Version 2
+added the experiment name (Andy, 2026-10-28). Version 3 moved probes from the stages to the tip
+changes (Andy, 2026-10-30; ADR 0007, "Tip changes"). Version 4 adds each stage's mixes, `sourceMix`
+and `destinationMix` (Andy, 2026-10-30; ADR 0007, "Mixing"). Version 5 adds the well labels, and
+version 6 the randomizations (Andy, 2026-11-01). Version 7 adds each component's constituents (ADR
+0013; Andy, 2026-11-01). Version 8 lets a randomization have several filler wells (Andy,
+2026-11-02), so a tool that knows only version 7 refuses such a file as newer, rather than with a
+confusing message about two fillers; its properties are those of version 7. Older plans still open
+(ADR 0010, "Consequences"): version 1, with no experiment name; versions 1 and 2, with each tip
+change loading every probe its stages used, which is exactly where look-ahead loading put tips, so
+the same tips go on; versions 1 to 3, with no mixing, since plans couldn't mix before version 4;
+versions 1 to 4, with no well labels; versions 1 to 5, with no randomizations; versions 1 to 6, with
+components carrying no constituents.
 
 Not in version 1:
 - **Upgrading files in place.** A version 1 to 6 file stays as it is; saving the plan again writes
@@ -67,8 +67,8 @@ Not in version 1:
 ### The format name and version
 - **`PLAN_FILE_FORMAT`** is `"biomek-tools transfer plan"`, so a file can be recognized as a plan
   file.
-- **`PLAN_FILE_VERSION`** is `8`, the format version written: it goes up only when what a plan file holds
-  changes, not with every release of the tools (ADR 0010).
+- **`PLAN_FILE_VERSION`** is `8`, the format version written: it goes up only when what a plan file
+  holds changes, not with every release of the tools (ADR 0010).
 
 They are constants in the module, not in `config/`: changing either one means changing how files are
 read and written, which is a change to the code.
@@ -114,8 +114,9 @@ A plan file is written as one JSON object with these properties, in this order:
 
 **Version 7** files hold exactly the same properties, with `"version": 7`; they're read with the
 same rules as version 8 (several filler wells in one are accepted: no tool wrote them, and refusing
-them would add a rule for nothing). **Version 6** files hold the same properties, with `"version": 6`, but each component is `{ name,
-color }` only, with no `constituents`. **Version 5** files are like version 6, with `"version": 5`, but no `randomizations`.
+them would add a rule for nothing). **Version 6** files hold the same properties, with
+`"version": 6`, but each component is `{ name, color }` only, with no `constituents`. **Version 5**
+files are like version 6, with `"version": 5`, but no `randomizations`.
 **Version 4** files are like version 5, with `"version": 4`, but no `wellLabels`.
 **Version 3** files are like version 4, with `"version": 3`, but a stage's `settings` have no
 `sourceMix` or `destinationMix`. **Version 2** files are like version 3, with `"version": 2`, but a
@@ -199,8 +200,8 @@ Opening a file checks, in this order:
     (`transfer-designer.md`), so strictly: a label with spaces at its ends, a blank one, or a
     labware listed with no wells is refused rather than tidied. A version 1 to 4 file opens with no
     well labels.
-13. **Randomizations** (versions 6 to 8): first, just enough form to renumber: each is an object, and
-    its `beforeId` is text or `null`, and its `stages` a list of objects whose `stage` is text
+13. **Randomizations** (versions 6 to 8): first, just enough form to renumber: each is an object,
+    and its `beforeId` is text or `null`, and its `stages` a list of objects whose `stage` is text
     (else `setRandomizations`' own message for that form, after `randomizations: `); every stage ID
     named is one of the file's stages. Then their stage IDs (`beforeId`, each of `stages`' `stage`)
     are changed to the stages' new IDs (above), and they're checked and set all at once by

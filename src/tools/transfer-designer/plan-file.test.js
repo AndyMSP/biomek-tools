@@ -600,9 +600,9 @@ describe("plan-file", () => {
   // --- Version 8: several filler wells ---
 
   // A plan with one stage and, after it, a randomization whose filler is three troughs of the
-  // reservoir, each holding Media two 10 µL transfers above the reservoir's dead volume, run: troughs
-  // 3, 4 and 5 after DEEP A1 at 2 replicates, filling eight wells of PLATE, so the filler's six wells
-  // are drawn two from each trough.
+  // reservoir, each holding Media two 10 µL transfers above the reservoir's dead volume, run:
+  // troughs 3, 4 and 5 after DEEP A1 at 2 replicates, filling eight wells of PLATE, so the filler's
+  // six wells are drawn two from each trough.
   function severalFillersPlan() {
     let { plan } = emptyPlan();
     plan = addComponent(plan, "Drug A", "#4e79a7");

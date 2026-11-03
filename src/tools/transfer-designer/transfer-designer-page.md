@@ -830,23 +830,22 @@ From the top:
   box holds what isn't a number, its own: `Drug A: replicates must be a whole number, 1 or more.`,
   `The seed must be a whole number from 1 to 999,999.`, `The volume must be a number of µL above
   0.`); then `Remove` (quiet red text at the left), `Close` (action) and the main button,
-  **Randomize** (not run yet; tooltip `Makes 12 stages, with new tips before each.`: one per
-  source taking replicates, and one for the filler if it fills any well, however many filler wells
-  it has) or **Update**
-  (run; tooltip `Applies these settings to its stages. The same seed keeps the same wells; a new
-  seed shuffles again.`), disabled while there's a problem. With no problem, a card that has run, has
-  no unsaved changes and is out of date shows, in the problem's place and in red, `The plan has
-  changed since this last ran. Press Update to bring its stages up to date.` (Update stays enabled;
-  Andy, 2026-11-02). Randomize and Update save the draft and
-  run it (`runRandomization`), as one undoable edit, close the card and open its first stage
-  (message `Randomized: 12 stages with 96 transfers (seed 37). Undo takes the change out again.`).
-  After Update the message is `Updated: 12 stages with 96 transfers (seed 37). Undo takes the change
-  out again.`. `Remove` acts at once (`removeRandomization`), as every Remove does: `Removed the
+  **Randomize** (not run yet; tooltip `Makes 12 stages, with new tips before each.`: one per source
+  taking replicates, and one for the filler if it fills any well, however many filler wells it has)
+  or **Update** (run; tooltip `Applies these settings to its stages. The same seed keeps the same
+  wells; a new seed shuffles again.`), disabled while there's a problem. With no problem, a card
+  that has run, has no unsaved changes and is out of date shows, in the problem's place and in red,
+  `The plan has changed since this last ran. Press Update to bring its stages up to date.` (Update
+  stays enabled; Andy, 2026-11-02). Randomize and Update save the draft and run it
+  (`runRandomization`), as one undoable edit, close the card and open its first stage (message
+  `Randomized: 12 stages with 96 transfers (seed 37). Undo takes the change out again.`). After
+  Update the message is `Updated: 12 stages with 96 transfers (seed 37). Undo takes the change out
+  again.`. `Remove` acts at once (`removeRandomization`), as every Remove does: `Removed the
   randomization.` or, once run, `Removed the randomization and its 12 stages. Undo brings them
   back.`, with the tooltip `Removes it and its 12 stages. Tips it added stay.`; disabled when its
   stages are all the plan's (`canRemoveRandomization`), with the tooltip `Its stages are all the
-  plan's stages. Add a stage outside it first.` (A `Turn into ordinary stages`
-  button was tried and dropped for now; Andy, 2026-11-01.)
+  plan's stages. Add a stage outside it first.` (A `Turn into ordinary stages` button was tried and
+  dropped for now; Andy, 2026-11-01.)
 
 **What changed glows.** When a stage or a tip group box appears that wasn't there at the last
 drawing, it glows soft yellow (`#FFF1BF` background, a 4px `#F3D36B` ring) and fades over 1.2

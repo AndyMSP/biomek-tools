@@ -501,8 +501,8 @@ whatever else is edited:
    keeps the tips it had.
 4. **Then old stages go**: each stage in `stages` whose source is no longer in `sources`, or now
    gets no wells (for the filler's stage: the filler as a whole gets none), and each other entry
-   naming a filler well (step 3), is removed (`removeStage`). (New stages come first, so a run never tries to
-   remove a plan's only stage.)
+   naming a filler well (step 3), is removed (`removeStage`). (New stages come first, so a run never
+   tries to remove a plan's only stage.)
 5. **Each source's stage**: its transfers replaced by one transfer of `volume` from the source to
    each of its wells, in `fill`'s order (the filler's stage: from the filler well each well was
    shared to, in `fill`'s order); its settings set to `settings` (as `changeStageSettings`);
@@ -709,14 +709,14 @@ several filler wells as newer, rather than with a confusing message (as plan fil
 
 **Pasting checks everything**, as opening a plan file does (ADR 0010): copied items may come from
 another plan or the system clipboard, so they're never trusted. `pasteItems` refuses, changing
-nothing, anything that isn't copied items in this form (version 1 or 2), and checks every value with the
-rules of the edit that would make it: names (`renameStage`), settings (`changeStageSettings`),
+nothing, anything that isn't copied items in this form (version 1 or 2), and checks every value with
+the rules of the edit that would make it: names (`renameStage`), settings (`changeStageSettings`),
 transfers (`addTransfer`: wells on this plan's deck, the stage rule, a mix step's wells), tips
 (`setTipType`, `setTipProbes`), a randomization's values (`setRandomization`) and its stages (as
 `setRandomizations` checks a plan file's: no well twice, none a mix step; a stage's well needn't be
 one of its sources, since a plan may hold a stage left over from the last run), with their own
-messages, prefixed `Can't paste: item 2: ` (e.g. `Can't paste: item 2: "Z99" isn't a well on
-Plate1. Its wells are A1 to H12.`).
+messages, prefixed `Can't paste: item 2: ` (e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1.
+Its wells are A1 to H12.`).
 
 **Where randomizations sit afterwards.** After any move or paste, `randomizations` is in column
 order, each one with stages has its `beforeId` set to the stage just after its last stage (or
@@ -1371,9 +1371,9 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
 - `addRandomization` before the second stage: `r1`, sitting there, with the defaults and the given
   seed and volume; a second one is `r2`; after removing `r1`, the next is `r3`. `beforeId` unknown,
   a stage inside a tip group, a seed of `0` and a volume of `-1` each throw.
-- `setRandomization` sets sources and wells, with any number of filler wells; `fill` given in any order comes back in deck order;
-  every row of section 5 it can give, with its message, leaving the plan unchanged; unchanged
-  values give back the same plan; `stages` and `beforeId` never change.
+- `setRandomization` sets sources and wells, with any number of filler wells; `fill` given in any
+  order comes back in deck order; every row of section 5 it can give, with its message, leaving the
+  plan unchanged; unchanged values give back the same plan; `stages` and `beforeId` never change.
 - `randomizationProblems`: each message of section 3, in order, using `sourceName`, with the
   singular forms; `[]` when it can run.
 - `sourceName`: a labeled source gives its label; `Drug A` alone gives `Drug A`; a well holding
@@ -1394,11 +1394,11 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
   well to fill from the share it fell in (in `fill`'s order); running again gives the same
   transfers; the pool is the same as with one filler well (the same seed gives every well to fill
   the same source, A1 or the filler, as with Res1 2 alone the filler).
-- **Shares:** a filler well with less than one transfer above its dead volume takes `0`, and the next
-  takes the wells; the last filler well takes all the rest even beyond its usable volume, which is
-  then an overdraw; a usable volume of exactly `n` transfers (and one within a millionth of a µL
-  under it, from rounding) gives `n`; filler wells listed in another order share in that order;
-  `[]` with no filler wells; `null` with `volume` `null`, and with a source's replicates `null`.
+- **Shares:** a filler well with less than one transfer above its dead volume takes `0`, and the
+  next takes the wells; the last filler well takes all the rest even beyond its usable volume, which
+  is then an overdraw; a usable volume of exactly `n` transfers (and one within a millionth of a µL
+  under it, from rounding) gives `n`; filler wells listed in another order share in that order; `[]`
+  with no filler wells; `null` with `volume` `null`, and with a source's replicates `null`.
 - **One liquid:** filler wells holding Media and Media with DMSO (any amount), or Media in one and
   Buffer in another, give `The filler wells hold different liquids.` (last in the order of
   problems); the same components in the same proportions at different volumes, and a filler well

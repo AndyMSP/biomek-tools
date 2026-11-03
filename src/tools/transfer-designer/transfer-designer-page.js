@@ -315,8 +315,8 @@ let movingWellCache = null;
 
 // The randomizations that are out of date (section 6), worked out once per plan and reused by the
 // headings, the problem count, the card and the Biomek files box, since each check reruns a
-// randomization on a copy: a Set of their IDs for each plan asked about. Plans are never changed, so
-// a plan's answer never goes stale; a WeakMap lets a plan no longer held be forgotten.
+// randomization on a copy: a Set of their IDs for each plan asked about. Plans are never changed,
+// so a plan's answer never goes stale; a WeakMap lets a plan no longer held be forgotten.
 const outOfDateByPlan = new WeakMap();
 
 // The page's elements that transfer-designer.html gives an id, looked up once.
@@ -3025,9 +3025,9 @@ function rowEndPlaceholders() {
 }
 
 // One source's row (section 7): its main component's swatch just before the randomization (gray if
-// it holds nothing then), its name (sourceName), its replicates box, or, for a filler well, how many
-// wells it fills (its share, from `shares`, draftFillerShares); the Filler toggle, which turns only
-// this row's on or off; and ×.
+// it holds nothing then), its name (sourceName), its replicates box, or, for a filler well, how
+// many wells it fills (its share, from `shares`, draftFillerShares); the Filler toggle, which turns
+// only this row's on or off; and ×.
 function createSourceRow(plan, entry, shares) {
   const where = wellName(plan, entry);
   const key = wellKey(entry);
