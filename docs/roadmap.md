@@ -588,8 +588,8 @@ added on 2026-10-28 (Andy).
       from what its source holds when it runs (Andy: changing every filler well to another liquid
       left the stage named for the old one); **Update also renames** a stage whose name would now
       differ. So changing what a source holds, or renaming its component, flags it too.
-    - **Not enough filler:** if the filler wells together don't hold enough, the last one is
-      overdrawn, shown and refused like any overdraw.
+    - **Not enough filler:** if the filler wells together don't hold enough, the last one draws
+      into its dead volume or is overdrawn, shown and refused like any contents problem.
     - **The Biomek files' format doesn't change** (the filler's transfers name different source
       wells; the Biomek orders a stage's transfers itself, B56358AF 22-25, so splitting by whole
       transfers is safe). Plan files do: today they allow one filler, so a new format version, with

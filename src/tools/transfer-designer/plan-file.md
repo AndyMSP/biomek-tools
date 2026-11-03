@@ -138,15 +138,16 @@ and are then replaced by the new ones. The plan's `stageOrder` is the stages in 
 Opening a file checks, in this order:
 1. **The text is JSON**, and holds an object.
 2. **The format**: `format` is `PLAN_FILE_FORMAT`.
-3. **The version**: `version` is `7`, `6`, `5`, `4`, `3`, `2` or `1`.
+3. **The version**: `version` is `8`, `7`, `6`, `5`, `4`, `3`, `2` or `1`.
 4. **The properties**: exactly those listed above for the file's version, none missing (except
-   `savedBy`) and none extra. So version 2 to 7 files need `experimentName`, and a version 1 file
-   can't have it; version 5 to 7 files need `wellLabels`, and a version 1 to 4 file can't have it;
-   version 6 and 7 files need `randomizations`, and a version 1 to 5 file can't have it. (Version 7
-   adds no property of its own: its change is inside each component, check 5.)
+   `savedBy`) and none extra. So version 2 to 8 files need `experimentName`, and a version 1 file
+   can't have it; version 5 to 8 files need `wellLabels`, and a version 1 to 4 file can't have it;
+   version 6 to 8 files need `randomizations`, and a version 1 to 5 file can't have it. (Versions 7
+   and 8 add no property of their own: version 7's change is inside each component, check 5, and
+   version 8's inside randomizations, check 13.)
    `components`, `startingContents`, `stages`, `operations` and `randomizations` are lists;
    `tipChanges`, `labwareLabels` and `wellLabels` are objects.
-5. **Components**, each an object with exactly `name`, `color` and, in a version 7 file,
+5. **Components**, each an object with exactly `name`, `color` and, in a version 7 or 8 file,
    `constituents` (a version 1 to 6 component can't have it), then added as `addComponent` would
    add it: a name and a color, each unique. The name must already be a name (`checkName`): it
    isn't trimmed, so it always matches the names in the starting contents. In a version 7 file, its
@@ -198,7 +199,7 @@ Opening a file checks, in this order:
     (`transfer-designer.md`), so strictly: a label with spaces at its ends, a blank one, or a
     labware listed with no wells is refused rather than tidied. A version 1 to 4 file opens with no
     well labels.
-13. **Randomizations** (versions 6 and 7): first, just enough form to renumber: each is an object, and
+13. **Randomizations** (versions 6 to 8): first, just enough form to renumber: each is an object, and
     its `beforeId` is text or `null`, and its `stages` a list of objects whose `stage` is text
     (else `setRandomizations`' own message for that form, after `randomizations: `); every stage ID
     named is one of the file's stages. Then their stage IDs (`beforeId`, each of `stages`' `stage`)
@@ -286,9 +287,9 @@ row of section 5 has at least one test.
 - A plan whose stages have IDs `"2"`, `"5"` and `"7"` opens with IDs `"1"`, `"2"` and `"3"`, its
   transfers and tip changes following them.
 - An `emptyPlan()`, saved and opened, gives a plan with the same contents, and is written as version
-  8 (the tests of the version written are updated from 7 to 8), with `"wellLabels": {}` and `"randomizations": []`. (The existing tests of the version written
-  and of a component's exact properties are updated to version 7 and the three properties: the
-  specification changed, not the tests' purpose.)
+  8, with `"wellLabels": {}` and `"randomizations": []`. (The existing tests of the version written
+  are updated to version 8, and those of a component's exact properties to the three properties:
+  the specification changed, not the tests' purpose.)
 - A component is written with its properties in the order `name`, `color`, `constituents`, and
   each constituent as `name`, `amount`, `unit`.
 - Constituents: a plan whose components carry `[]`, `[{ Dye 10 mM }]` and two constituents in
@@ -309,6 +310,9 @@ row of section 5 has at least one test.
   same plan (its filler wells, its one filler stage and that stage's transfers from each well).
 - A version 7 file holding a randomization with two filler wells opens; a version 7 file as saved
   before (one filler) opens as before.
+- A file whose randomization's filler stage entry names a filler well that isn't the first opens;
+  one with two entries naming filler wells of one randomization is refused with `randomizations: `
+  and `Randomization 1: its filler has two stages.`
 
 **Refusing**
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
