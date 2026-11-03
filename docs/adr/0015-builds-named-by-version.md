@@ -3,7 +3,7 @@
 Date: 2026-11-02
 
 ## Status
-Proposed (Andy, 2026-11-02: decided in a chat; accepted by merging its pull request).
+Accepted (Andy, 2026-11-02: decided in a chat, and accepted by merging #129).
 
 ## Context
 Every build of a tool was called the same thing, `transfer-designer.html`, so an old build and a new
@@ -31,6 +31,11 @@ said 0.1.0.
 The commit count alone was considered for the file name (Git's own `v0.1.0-488-g3cc65a9` form) and
 set aside: SemVer reads `0.1.0-488` as earlier than 0.1.0, and a count alone can't tell a branch's
 build from `main`'s.
+
+An automatic next version was also considered and declined (Andy, 2026-11-02): the build would have
+guessed the next minor version whenever `package.json` still held the last release, as tools such as
+`setuptools-scm` do, saving the step after a release. Andy chose to set the next version himself, so
+it's always his choice rather than a guess the build makes.
 
 ## Consequences
 - The file sent around always says which build it is, and the lab's releases keep a plain name.
