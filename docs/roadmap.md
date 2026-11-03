@@ -301,12 +301,12 @@ Last updated: 2026-11-01
   constituent of the same name alone; concentrations on the card only, not the deck. Written while
   Andy was driving, so the choices are listed in its pull request. **Built (#125, 2026-11-01)**:
   code, tests and REPL of `concentrations`, the transfer designer, plan files (version 7, versions
-  1 to 6 still opening) and the page; checked in headless Chrome. Still to check by Andy.
+  1 to 6 still opening) and the page; checked in headless Chrome. Tested by Andy and merged.
 - **A randomization's Volume is a text box** (Andy, 2026-11-01, from a preview): like Seed's, with
   `µL` after it, rather than a volume shown as text that turns into a box when clicked, which
   didn't look editable alone in the card. Transfer rows keep theirs. A very small change, done in
   the chat (CLAUDE.md, "Exception"): `transfer-designer-page.md`, section 7; **built (#126)**.
-- **Moving and copying in the Stages column is specified** (Draft, 2026-11-01; ADR 0014, Proposed),
+- **Moving and copying in the Stages column is specified** (Draft, 2026-11-01; ADR 0014, Accepted),
   from a preview Andy shaped on 2026-11-01, in the hands-off workflow: selecting, dragging, Ctrl+drag,
   Ctrl+C and Ctrl+V, and right-click menus, as in PowerPoint's slide panel; and Andy's **container
   rule** for tips (a tip group or randomization brings everything with it and goes only between tip
@@ -316,9 +316,9 @@ Last updated: 2026-11-01
   files and no plan files, so it doesn't affect the final Biomek runs. From the preview: box selection
   and Duplicate (Ctrl+D) were considered and declined, and clicking a gap to set where Ctrl+V pastes
   was tried and dropped (Andy, 2026-11-01). **Built (#128, 2026-11-02)**: code, tests and REPL of the
-  five functions, and the page; reviewed by a separate agent and checked in headless Chrome. Still to
-  check by Andy.
-- **Builds named by their version is specified** (Draft, 2026-11-02; ADR 0015, Proposed), after a
+  five functions, and the page; reviewed by a separate agent and checked in headless Chrome. Tested
+  by Andy and merged.
+- **Builds named by their version is specified** (Draft, 2026-11-02; ADR 0015, Accepted), after a
   build sent to Andy's manager turned out not to be the latest: each build's file is named by its
   version, following SemVer (`transfer-designer-v0.2.0-dev.488.html` between releases, the branch's
   name in place of `dev` off `main`, `.dirty` for changes not committed, `v0.2.0` for a release),
@@ -326,8 +326,8 @@ Last updated: 2026-11-01
   record it. `package.json` goes to 0.2.0, the version being worked towards. New
   `scripts/build-version.md`; both page specifications; the README's release steps. **Built (#129,
   2026-11-02)**: `scripts/build-version.js` with its tests and REPL topic, `build.js`, both pages,
-  and `package.json` at 0.2.0; checked by hand in a scratch clone and in headless Chrome. Still to
-  check by Andy.
+  and `package.json` at 0.2.0; checked by hand in a scratch clone and in headless Chrome. Tested by
+  Andy and merged.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -596,8 +596,10 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
 - **Some messages use internal terms** (v0.2.0, 2026-10-25). The transfer designer page names
   stages by place and name, and labware by label, but some messages from the shared modules' checks
   still use internal terms, such as "starting contents entry 3", and contents cards number transfers
-  (`#5`) by their place in the operation list, which the page doesn't show. Properly: collect every
-  message a user can meet and reword those into the page's terms.
+  (`#5`) by their place in the operation list, which the page doesn't show. Pasting copied stages
+  passes the logic's messages on too, so a pasted transfer that breaks the stage rule names the new
+  stage's internal ID and an operation number (2026-11-02; `transfer-designer.md`, section 5).
+  Properly: collect every message a user can meet and reword those into the page's terms.
 - **Capacities and dead volumes are stand-ins** (2026-10-30): `config/labware-types.js` has
   measured dead volumes for the deep well and the trough (`exp37.md`) but a guessed one for the
   flat plate, and guessed capacities for all three. Properly: each capacity copied from the
