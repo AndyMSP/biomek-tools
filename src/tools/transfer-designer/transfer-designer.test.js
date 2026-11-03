@@ -3093,7 +3093,7 @@ describe("transfer-designer", () => {
     return { ...trough(well), replicates: null, filler: true };
   }
 
-  // The usable volume the filler troughs hold in fillerPlan, in µL above the reservoir's dead volume.
+  // The usable volume each filler trough holds in fillerPlan: µL above the reservoir's dead volume.
   const FILLER_USABLE = 750;
 
   // The volume of each of fillerPlan's transfers, in µL.
@@ -3105,9 +3105,9 @@ describe("transfer-designer", () => {
   }
 
   // randomizingPlan with troughs 2, 3 and 4 each holding Media FILLER_USABLE above the reservoir's
-  // dead volume, and a randomization before stage 2 (not run): DEEP A1 at 6 replicates, then troughs
-  // 2, 3 and 4 as filler wells, fillerWellsToFill, seed 37, FILLER_VOLUME µL: { plan, id }. So the
-  // filler fills 18 wells, shared 7, 7 and 4 (section 6, "Several filler wells").
+  // dead volume, and a randomization before stage 2 (not run): DEEP A1 at 6 replicates, then
+  // troughs 2, 3 and 4 as filler wells, fillerWellsToFill, seed 37, FILLER_VOLUME µL: { plan, id }.
+  // So the filler fills 18 wells, shared 7, 7 and 4 (section 6, "Several filler wells").
   function fillerPlan(base = randomizingPlan()) {
     let plan = addToWells(base, [trough("2"), trough("3"), trough("4")], "Media", deadVolumeOf(RESERVOIR) + FILLER_USABLE);
     const added = addRandomization(plan, "2", { seed: 37, volume: FILLER_VOLUME });
@@ -3207,7 +3207,7 @@ describe("transfer-designer", () => {
     // Less than one transfer above its dead volume: 0, and the next takes the wells.
     const low = withTroughHolding(plan, "2", FILLER_VOLUME / 2);
     assert.deepEqual(counts(fillerShares(low, id)), [0, fit, spare - fit]);
-    // The last takes all the rest, beyond its usable volume: a contents problem on the filler stage.
+    // The last takes all the rest, beyond its usable volume: a contents problem on its stage.
     const run = runRandomization(low, id);
     assert.ok(stagesWithContentsProblem(run).has(fillerEntry(run, id).stage));
     // Exactly n transfers gives n, and so does a millionth of a µL under it, from rounding.
@@ -3292,9 +3292,9 @@ describe("transfer-designer", () => {
   test("one liquid: the same Media and DMSO mix reached through different transfers is one liquid", () => {
     let { plan, id } = fillerPlan();
     plan = addComponent(plan, "DMSO", "#f28e2b");
-    // Trough 2 holds a 99:1 mix at the start; trough 3 gets the same mix from trough 6 in stage 1, so
-    // its fractions come from arithmetic and differ from trough 2's only in their last digits. (Only
-    // the fractions matter to this check, so these volumes needn't follow the dead volume.)
+    // Trough 2 holds a 99:1 mix at the start; trough 3 gets the same mix from trough 6 in stage 1,
+    // so its fractions come from arithmetic and differ from trough 2's only in their last digits.
+    // (Only the fractions matter to this check, so these volumes needn't follow the dead volume.)
     plan = emptyWells(plan, [trough("2"), trough("3")]);
     plan = addToWells(plan, [trough("2")], "Media", 2970);
     plan = addToWells(plan, [trough("2")], "DMSO", 30);
@@ -3446,7 +3446,7 @@ describe("transfer-designer", () => {
 
   test("moving wells with filler wells: onto labware of another dead volume, or an empty source onto other labware, makes it out of date", () => {
     const { plan, id } = runFillerPlan();
-    // DEEP's dead volume differs from the reservoir's, so trough 3's usable volume, and its share, change.
+    // DEEP's dead volume differs from the reservoir's: trough 3's usable volume and share change.
     assert.notEqual(deadVolumeOf(DEEP), deadVolumeOf(RESERVOIR));
     const ontoDeep = moveWell(plan, trough("3"), deepWell("H1"));
     assert.equal(isRandomizationOutOfDate(ontoDeep, id), true);
@@ -3479,6 +3479,70 @@ describe("transfer-designer", () => {
     const updated = runRandomization(setRandomization(plan, first.id, { volume: 8 * FILLER_VOLUME }), first.id);
     assert.equal(isRandomizationOutOfDate(updated, first.id), false);
     assert.equal(isRandomizationOutOfDate(updated, second.id), true);
+  });
+
+  test("out of date: after its filler stage is removed, it's out of date, without throwing", () => {
+    const { plan, id } = runFillerPlan();
+    const removed = removeStage(plan, fillerEntry(plan, id).stage);
+    assert.equal(isRandomizationOutOfDate(removed, id), true);
+  });
+
+  test("the filler stage after changes: two replicate sources made fillers keep one stage", () => {
+    let { plan, id } = fillerPlan();
+    const taking = (well) => ({ ...trough(well), replicates: 9, filler: false });
+    const takers = [source("A1", 6), taking("2"), taking("3")];
+    plan = runRandomization(setRandomization(plan, id, { sources: takers }), id);
+    const [, second, third] = randomizationAt(plan, id).stages;
+    const fillers = [source("A1", 6), fillerTrough("2"), fillerTrough("3")];
+    plan = setRandomization(plan, id, { sources: fillers });
+    const run = runRandomization(plan, id);
+    const stages = randomizationAt(run, id).stages;
+    assert.equal(stages.length, 2);
+    assert.deepEqual(fillerEntry(run, id), second);
+    assert.equal(run.stageList.has(third.stage), false);
+    assert.equal(isRandomizationOutOfDate(run, id), false);
+  });
+
+  test("the filler stage after changes: an exact fit leaves only the replicate source's", () => {
+    const { plan, id } = runFillerPlan();
+    const old = fillerEntry(plan, id).stage;
+    const exact = setRandomization(plan, id, {
+      sources: [
+        source("A1", fillerWellsToFill().length),
+        fillerTrough("2"),
+        fillerTrough("3"),
+        fillerTrough("4"),
+      ],
+    });
+    const run = runRandomization(exact, id);
+    assert.deepEqual(
+      randomizationAt(run, id).stages.map(({ labware, well }) => ({ labware, well })),
+      [deepWell("A1")],
+    );
+    assert.equal(run.stageList.has(old), false);
+  });
+
+  test("out of date: a new volume not yet run, or an entry keyed to another filler well", () => {
+    const { plan, id } = runFillerPlan();
+    // A smaller volume that still fits the same whole transfers in each filler well, so only the
+    // transfers' volume differs.
+    const fit = Math.floor(FILLER_USABLE / FILLER_VOLUME);
+    const revolumed = setRandomization(plan, id, { volume: FILLER_USABLE / (fit + 0.9) });
+    assert.deepEqual(fillerShares(revolumed, id), fillerShares(plan, id));
+    assert.equal(isRandomizationOutOfDate(revolumed, id), true);
+    // Only the entry's source well differs: the same name and transfers, keyed to trough 3.
+    const stored = JSON.parse(JSON.stringify(plan.randomizations));
+    stored[0].stages.find((owned) => owned.labware === RESERVOIR).well = "3";
+    assert.equal(isRandomizationOutOfDate(setRandomizations(plan, stored), id), true);
+  });
+
+  test("pasting a randomization with two entries naming filler wells is refused", () => {
+    const { plan, id } = runFillerPlan();
+    const copied = copyOf(plan, [{ kind: "randomization", id }]);
+    copied.items[0].randomization.sources[0] = { ...source("A1", null), filler: true };
+    assert.throws(() => pasteItems(plan, copied, { kind: "between", index: 0 }), {
+      message: "Can't paste: item 1: its filler has two stages.",
+    });
   });
 
   test("fillerShares and isRandomizationOutOfDate throw for an unknown randomization", () => {

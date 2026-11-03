@@ -30,7 +30,14 @@ import {
 } from "../../shared/input-checks/input-checks.js";
 import { OperationList } from "../../shared/operation-list/operation-list.js";
 import { StageList } from "../../shared/stage-list/stage-list.js";
-import { replay } from "../../shared/contents-tracking/contents-tracking.js";
+// NEGLIGIBLE_MICROLITERS, contents tracking's allowance for arithmetic leftovers ("Tiny amounts"),
+// is used the same way here: added to a filler well's usable volume before counting its whole
+// transfers, so exactly n transfers' worth gives n, and as the most two filler wells' shares of a
+// component may differ by and still be one liquid (section 3, "The filler's shares", "Problems").
+import {
+  replay,
+  NEGLIGIBLE_MICROLITERS,
+} from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
 import { labwareNames, gridOf, checkWell } from "../../shared/deck/deck.js";
 import { START, tipGroups } from "../../shared/tip-groups/tip-groups.js";
@@ -885,13 +892,6 @@ const RANDOMIZATION_PROPERTIES = ["id", "beforeId", ...RANDOMIZATION_CHANGES, "s
 const SOURCE_PROPERTIES = ["labware", "well", "replicates", "filler"];
 const OWNED_STAGE_PROPERTIES = ["labware", "well", "stage"];
 
-// Contents tracking's allowance for arithmetic leftovers, 0.000001 ("Tiny amounts"), used the same
-// way here: added to a filler well's usable volume before counting its whole transfers, so exactly n
-// transfers' worth gives n, and as the most two filler wells' shares of a component may differ by
-// and still be one liquid (section 3, "The filler's shares" and "Problems"). Not in config/: it's
-// part of how amounts are compared, as in contents tracking.
-const TINY_AMOUNT = 0.000001;
-
 // The pool's problems (random-pool) that only follow from having no sources or no wells to fill,
 // so they aren't listed then (section 3, "Problems").
 const FOLLOW_ON_POOL_PROBLEMS = ["replicates-missing", "replicates-invalid", "too-many", "spare-without-filler"];
@@ -1006,10 +1006,10 @@ export function randomizationProblems(plan, id) {
 }
 
 // How many of the filler's wells each filler well fills (section 3, "The filler's shares"), as
-// [{ index, count }] in sources' order, `index` its place in sources from 0, e.g. three filler wells
-// each 750 µL above their dead volume, 100 µL transfers and 18 wells for the filler →
-// [{ index: 2, count: 7 }, { index: 3, count: 7 }, { index: 4, count: 4 }]. [] with no filler wells;
-// null while the volume or a source's replicates aren't known. Throws if there's no such
+// [{ index, count }] in sources' order, `index` its place in sources from 0, e.g. three filler
+// wells each 750 µL above their dead volume, 100 µL transfers and 18 wells for the filler →
+// [{ index: 2, count: 7 }, { index: 3, count: 7 }, { index: 4, count: 4 }]. [] with no filler
+// wells; null while the volume or a source's replicates aren't known. Throws if there's no such
 // randomization.
 export function fillerShares(plan, id) {
   const randomization = checkRandomizationExists(plan, id);
@@ -1023,7 +1023,7 @@ export function fillerShares(plan, id) {
 // never changes. Throws if there's no such randomization.
 export function isRandomizationOutOfDate(plan, id) {
   const randomization = checkRandomizationExists(plan, id);
-  if (randomization.stages.length === 0) {
+  if (ownedStagesIn(plan, randomization).length === 0) {
     return false;
   }
   if (randomizationProblems(plan, id).length > 0) {
@@ -1758,7 +1758,8 @@ function pastedPiece(plan, item, existing) {
 
 // Pastes a copied randomization (pastedPiece): its stages as new stages, each with its own tips;
 // then its values, checked as setRandomization checks them; then its stages' wells (on the deck, no
-// well twice, none a mix step), and not two of them its filler's. It gets the next free ID among `existing`.
+// well twice, none a mix step), and not two of them its filler's. It gets the next free ID
+// among `existing`.
 function pastedRandomization(plan, item, existing) {
   let pasting = plan;
   const groups = [];
@@ -2284,8 +2285,9 @@ function sharesOf(randomization, contentsOf) {
       return { index, count: left };
     }
     const { labware, well } = randomization.sources[index];
-    // TINY_AMOUNT allows for arithmetic leftovers, so exactly n transfers' worth gives n.
-    const fit = Math.floor((contentsOf().usableVolumeOf(labware, well) + TINY_AMOUNT) / volume);
+    // NEGLIGIBLE_MICROLITERS allows for arithmetic leftovers: exactly n transfers' worth gives n.
+    const usable = contentsOf().usableVolumeOf(labware, well);
+    const fit = Math.floor((usable + NEGLIGIBLE_MICROLITERS) / volume);
     const count = Math.min(fit, left);
     left -= count;
     return { index, count };
@@ -2294,7 +2296,7 @@ function sharesOf(randomization, contentsOf) {
 
 // True unless two filler wells that hold something just before the randomization hold different
 // liquids: different components, or a component's share of the well differing by more than
-// TINY_AMOUNT (section 3, "Problems"). Filler wells holding nothing are left out.
+// NEGLIGIBLE_MICROLITERS (section 3, "Problems"). Filler wells holding nothing are left out.
 // `contentsOf` gives what every well holds then, and is called only with two or more filler wells.
 function fillerWellsHoldOneLiquid(randomization, contentsOf) {
   const indexes = fillerIndexes(randomization);
@@ -2317,14 +2319,17 @@ function heldComponents(contents, { labware, well }) {
   return Object.entries(contents.componentsOf(labware, well)).filter(([, volume]) => volume > 0);
 }
 
-// True if two wells' shares of each component (volumeFractionsOf) are one liquid: the same components, each share
-// within TINY_AMOUNT of the other, e.g. { Media: 1 } and { Media: 1 } → true.
+// True if two wells' shares of each component (volumeFractionsOf) are one liquid: the same
+// components, each share within NEGLIGIBLE_MICROLITERS of the other, e.g. { Media: 1 } and
+// { Media: 1 } → true.
 function sameLiquid(first, second) {
   const names = Object.keys(first);
   return (
     names.length === Object.keys(second).length &&
     names.every(
-      (name) => Object.hasOwn(second, name) && Math.abs(first[name] - second[name]) <= TINY_AMOUNT,
+      (name) =>
+        Object.hasOwn(second, name) &&
+        Math.abs(first[name] - second[name]) <= NEGLIGIBLE_MICROLITERS,
     )
   );
 }
@@ -2388,9 +2393,9 @@ function contentsBefore(plan, randomization) {
 // sources' order, the filler's at its first filler well's place: { well, name, transfers }, `well`
 // being the source well its entry in `stages` names (the first filler well's, for the filler),
 // `name` the stage's name, and `transfers` each { source, destination } in fill's order, e.g.
-// [{ well: { labware: "Deep1", well: "A1" }, name: "Drug A", transfers: [{ source, destination }, …] }].
-// A source, or the filler, that gets no wells has no entry. `contents` is what every well holds just
-// before the randomization.
+// [{ well: { labware: "Deep1", well: "A1" }, name: "Drug A", transfers: [{ source, … }] }].
+// A source, or the filler, that gets no wells has no entry. `contents` is what every well holds
+// just before the randomization.
 function runStagesOf(plan, randomization, contents) {
   const { sources, fill } = randomization;
   const wellsByKey = new Map();
@@ -2414,8 +2419,8 @@ function runStagesOf(plan, randomization, contents) {
 }
 
 // The filler's entry of runStagesOf: its wells, in fill's order, shared out to the filler wells in
-// their order (section 3, step 1a), each drawing from the filler well it fell to; named as the first
-// filler well holding something is (or the first filler well, if none does).
+// their order (section 3, step 1a), each drawing from the filler well it fell to; named as the
+// first filler well holding something is (or the first filler well, if none does).
 function fillerRunStage(plan, randomization, contents, wells) {
   const shares = sharesOf(randomization, () => contents);
   const transfers = [];
@@ -2440,9 +2445,9 @@ function endOf({ labware, well }) {
 
 // For each of the randomization's stages in the plan, in order, the source well its entry is keyed
 // to after this run, or null if the run removes it (section 3, "Running", steps 3 and 4), as a Map
-// from stage ID. A source's entry stays its stage while it gets wells. The filler's stage is the first
-// entry naming any of its filler wells, re-keyed to the first filler well; every other entry naming
-// a filler well goes; so does one whose well is no longer a source.
+// from stage ID. A source's entry stays its stage while it gets wells. The filler's stage is the
+// first entry naming any of its filler wells, re-keyed to the first filler well; every other entry
+// naming a filler well goes; so does one whose well is no longer a source.
 function keptEntries(plan, randomization, runStages) {
   const fillerKeys = new Set(fillerIndexes(randomization).map((index) => wellKey(randomization.sources[index])));
   const fillerRun = runStages.find((runStage) => fillerKeys.has(wellKey(runStage.well)));
@@ -2465,11 +2470,13 @@ function keptEntries(plan, randomization, runStages) {
 }
 
 // What a randomization's stages are, as text to compare two plans by (section 3, "Out of date"):
-// for each of its stages, in order, its source well, its name and its transfers' source, destination
-// and volume, in order. Stage IDs are left out, since a run may make them fresh.
+// for each of its stages, in order, its source well, its name and its transfers' source,
+// destination and volume, in order. Stage IDs are left out, since a run may make them fresh. Only
+// its stages still in the plan count (ownedStagesIn): one removed by removeStage stays in its list
+// until a run.
 function stagesOutline(plan, randomization) {
   return JSON.stringify(
-    randomization.stages.map((owned) => ({
+    ownedStagesIn(plan, randomization).map((owned) => ({
       well: endOf(owned),
       name: plan.stageList.get(owned.stage).name,
       transfers: transfersIn(plan, owned.stage).map(({ source, destination, volume }) => [
@@ -2493,8 +2500,8 @@ function runPlace(plan, randomization) {
 }
 
 // Returns the plan with a new stage, on new tips, before `place`, for each of `runStages`
-// (runStagesOf) that no kept entry is keyed to (`kept`, from keptEntries), in order, named as it says;
-// the randomization's stages list its own first, each kept one re-keyed, then the new ones.
+// (runStagesOf) that no kept entry is keyed to (`kept`, from keptEntries), in order, named as it
+// says; the randomization's stages list its own first, each kept one re-keyed, then the new ones.
 // Randomizations that haven't run, earlier in the list and sitting at the same place, move onto its
 // first stage, so they stay above it.
 function withNewSourceStages(plan, randomization, runStages, kept, place) {
@@ -2544,9 +2551,9 @@ function withoutUnusedSourceStages(plan, id, keptByStage) {
 }
 
 // Returns the plan with `owned`, one of a randomization's stages ({ labware, well, stage }), set as
-// `runStage` says (runStagesOf; section 3, "Running", step 5): its name, its settings, its tips (its
-// own tip change, or START's if it's the first stage) and its transfers, each of the randomization's
-// volume, in order.
+// `runStage` says (runStagesOf; section 3, "Running", step 5): its name, its settings, its tips
+// (its own tip change, or START's if it's the first stage) and its transfers, each of the
+// randomization's volume, in order.
 function withSourceStageSet(plan, randomization, owned, runStage) {
   const stageId = owned.stage;
   let setting = plan;
