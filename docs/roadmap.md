@@ -567,6 +567,16 @@ added on 2026-10-28 (Andy).
       proportions just before the randomization (so Media and Media with 1% DMSO differ); filler
       wells holding nothing are left out, as they show as overdrawn. Otherwise it's a problem that
       stops Randomize, like the card's others: `The filler wells hold different liquids.`
+    - **A randomization out of date is flagged, not rerun** (Andy, 2026-11-02, from the preview:
+      the shares depend on what the filler wells hold, so an edit elsewhere, such as topping up a
+      trough or moving a well onto labware with another dead volume, could leave its stages
+      different from what it would make now). It's out of date when it has run and running it
+      again now would give different transfers, or it now has a problem. Then its heading reads
+      `needs update` (in red), its card says `The plan has changed since this last ran. Press
+      Update to bring its stages up to date.`, it counts as one problem in the problem count, and
+      the Biomek files wait: `A randomization (at stage 1, “Drug”) is out of date: open it and
+      press Update.` Rerunning it automatically after every edit was considered and declined: it
+      would change stages, perhaps a plate already checked, without the user asking.
     - **Not enough filler:** if the filler wells together don't hold enough, the last one is
       overdrawn, shown and refused like any overdraw.
     - **The Biomek files' format doesn't change** (the filler's transfers name different source
