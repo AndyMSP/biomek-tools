@@ -117,7 +117,8 @@ of the tools can still open it, or say why it can't.
 
 **Randomization**
 Part of a plan that spreads replicates of several sources at random over a set of wells to fill, on
-any number of plates, with a seed, and makes one stage per source, each on new tips, moving them.
+any number of plates, with a seed, and makes one stage per source, in the sources' order, moving
+them; each stage starts on new tips unless its source shares tips (see "Source group").
 It owns those stages: they change only through it. Its **sources** are the wells it moves liquid
 from; its **wells to fill**, the wells it fills; its **filler**, what fills the wells the other
 sources' replicates leave over: one or more sources, its **filler wells**, which should hold one
@@ -129,7 +130,16 @@ A place in the transfer designer's Stages column where a stage, a mix step or a 
 added. A seam inside a tip group (between two of its stages, or at its top or bottom) adds stages
 and mix steps with that group's tips, and between two stages can split the group with new tips; a
 seam between tip groups (above the first, between two, or above End) adds them with new tips, as a
-tip group of their own, or adds a randomization.
+tip group of their own, or adds a randomization. A randomization's card has seams of the same two
+kinds between its source groups and between their sources, where a source is dropped or two
+groups are joined or split.
+
+**Source group**
+Sources of one randomization, next to each other in its list, whose stages share one set of tips:
+the first starts new tips, and each after it shares them (Andy, 2026-11-05; ADR 0018). Every source
+starts in a group of its own. A randomization's first source always starts new tips, so its stages
+never share tips with stages outside it. The page shows each source group as a box in the
+randomization's card.
 
 **Stage**
 A group of operations that can run in any order and share one set of settings: the technique and
