@@ -67,7 +67,7 @@ Not in version 1:
     from the plan, not as a separate input, means the files can never be named after something
     other than the plan they hold (Andy, 2026-10-28).
 
-  It doesn't use the components' names or colors, or the labware labels.
+  It doesn't use the components' names, colors or osmolalities, or the labware labels.
 
   Stages are split into substages by the `substages` shared module (`substages.md`), and each row's
   mix volumes come from the `mix-volumes` shared module (`mix-volumes.md`), which the transfer

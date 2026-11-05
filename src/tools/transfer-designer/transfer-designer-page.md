@@ -395,20 +395,27 @@ card (dark, light text) shows:
   amount as section 13 shows amounts), e.g. `Dye` … `476 µM`, `Hy-Soy` … `2.5 g/L`. In the order
   `concentrationsOf` gives. Nothing of this for a well carrying nothing, so a plan without
   constituents sees no change;
-- if the well holds something and **any component in the plan has an osmolality** (ADR 0016;
-  `osmolalityOf`, `transfer-designer.md`): after the components and any Concentrations group, under
+- if the well holds something and **any component in the plan has an osmolality** (its
+  `osmolality` isn't `null`; 0, as entered for water, counts) (ADR 0016; `osmolalityOf`,
+  `transfer-designer.md`): after the components and any Concentrations group, under
   a thin rule like the group's, one line:
-  - with a value: `Osmolality` at the left and, at the right in the volume's monospace style, `≈`,
+  - with a value (`value` not `null`; 0 is a value, shown `≈ 0 mOsm/kg`): `Osmolality` at the left and, at the right in the volume's monospace style, `≈`,
     the value rounded to a whole number (section 13) and `mOsm/kg`, e.g. `≈ 305 mOsm/kg` (the `≈`
     because it's an estimate from the stocks' measured values; Andy, 2026-11-05);
   - with components missing a value: `Osmolality unknown: no value for Buffer B`, quieter (as the
     Concentrations heading), naming every component of the well without one, in the plan's
     component order: two joined by ` and ` (`no value for Buffer B and Drug stock`), three or more
-    by `, ` with ` and ` before the last (`no value for Buffer B, Drug stock and Water`). It's not
-    a problem (not in the problem color, not counted): the well's osmolality just isn't known.
+    by `, ` with ` and ` before the last (`no value for Buffer B, Drug stock and Water`), with no
+    quotes. The page joins the names with a small helper of its own, `listWithAnd(names)` (e.g.
+    `["A"]` → `A`, `["A", "B"]` → `A and B`, `["A", "B", "C"]` → `A, B and C`): no existing helper
+    joins names without quotes (`listNames` in `input-checks` and `listNamesWithAnd` in
+    `plan-file.js` and `transfer-designer.js` put each name in quotes, as messages about property
+    names do), so none of those is reused. It's not a problem (not in the problem color, not counted): the well's osmolality just isn't known.
 
   Nothing of this for an empty well, or in a plan where no component has an osmolality, so a plan
-  that doesn't use osmolality sees no change, and cards don't all say `unknown`;
+  that doesn't use osmolality sees no change, and cards don't all say `unknown`. In a plan whose
+  only osmolality is Water at 0, the line still shows: `≈ 0 mOsm/kg` for a well holding only Water,
+  and `Osmolality unknown: no value for …` for a well holding anything else;
 - (Andy, 2026-10-31: no total, usable-volume or capacity lines. The components add up to the
   total, the labware's limits are the same for every well of it, and holding only dead volume is
   neither a problem nor a warning: the stripes say it. The card shows only problems and warnings
@@ -1090,13 +1097,18 @@ the chips below, moved left if needed to stay inside the Start card:
   like the rest of the box, so a row with a bad amount is reported then, by `setConstituents`'s
   message, and the box stays open.
 - **Osmolality** (ADR 0016), under Contains: a field label `Osmolality` like the box's others, then
-  one row: a text box (an ordinary text box, as the Amount box, 72px), its placeholder `Not
-  measured`, then `mOsm/kg` in gray. It shows the component's osmolality as section 13 shows it,
-  or is empty when it has none. Its tooltip: `The stock's measured osmolality. Leave it empty if it
-  isn't known.` Enter in it saves the box. An empty box (or only spaces) means none (`null`);
-  otherwise its text, trimmed, is passed on as section 13 passes a typed volume on (as a number
-  when it's one, else as typed), so `-5` or `ten` is refused by `setOsmolality`'s message, and the
-  box stays open. `0` is a value (water), not none.
+  one row: a text box (an ordinary text box like the Amount box, but 72px wide), its placeholder
+  `Not measured`, then `mOsm/kg` in gray. It shows the component's stored osmolality as
+  `String(n)` (section 13), e.g. `300`, `290.5`, `1e-7`, or is empty when it has none. Its tooltip:
+  `The stock's measured osmolality. Leave it empty if it isn't known.` Enter in it saves the box.
+  **Reading it back**, one rule: the text is trimmed; empty (or only spaces) means none (`null`);
+  otherwise, if `Number(trimmed)` is a finite number, that number is passed on (so `300.0` gives
+  300, and exponent forms such as `1e-7` round-trip with what the box shows); otherwise the trimmed
+  text is passed on as typed, so `ten` is refused by `setOsmolality`'s message, as `-5` is (a
+  number below 0), and the box stays open. `0` is a value (water), not none. (This differs from
+  section 13's rule for a typed volume, which accepts only digits, `-` and a decimal part: a
+  volume is typed key by key and never shown in exponent form in a box, while this box shows
+  `String(n)`, which can be in exponent form.)
 - **Remove**: takes the component out at once with `removeComponent` (message `Removed Media from
   4 wells. Undo can bring it back.`, or `Removed Media. Undo can bring it back.`). No question
   first: Undo brings it back (Andy, 2026-10-31; every box's Remove works this way).
@@ -1107,8 +1119,9 @@ the chips below, moved left if needed to stay inside the Start card:
   carries, compared as JSON in order, then `setOsmolality`, under the new name, if the value passed
   on differs from the component's; message `Saved Media.`). If it was picked, the renamed component
   stays picked. A box counts as changed (section 10) when its name, color, rows (as typed) or
-  osmolality differ from the component's (the osmolality compared as the value it would pass on,
-  so `300` and `300.0` are the same).
+  osmolality differ from the component's. The osmolality box isn't changed when its text equals
+  what it first showed; otherwise it's compared as the value it would pass on (above), so `300.0`
+  and `300` are the same, and so are an emptied box and a component with none.
 
 ## 9. Transfers (a stage open)
 While a stage is open, transfers made on the deck go into it, with the next transfer's volume.
@@ -1335,8 +1348,9 @@ anything else is passed on as typed, so the logic's message says what's wrong.
   the unit; below 0.001 but not 0, in exponent form with one decimal, e.g. `4.0e-4`. (On the card
   the unit is chosen to fit the value, so an amount below 1 appears only in a family's smallest
   unit or a one-unit family.)
-- **Osmolality**: a component's (in its box and chip tooltip) as entered, at full precision, e.g.
-  `300`, `290.5`; a well's estimate (contents card) rounded to a whole number, e.g. `≈ 305`, with
+- **Osmolality**: a component's (in its box and chip tooltip) at full precision, as JavaScript's
+  `String(n)` writes the stored number, e.g. `300`, `290.5`, `1e-7` (section 8 says how the box
+  reads it back); a well's estimate (contents card) rounded to a whole number, e.g. `≈ 305`, with
   no thousands separator (`≈ 1250`), since osmometers read to 1 mOsm/kg and the value is an
   estimate.
 - **Counts** take a plural `s` except for 1: `1 well`, `3 wells`.
@@ -1560,7 +1574,10 @@ page's configuration (ADR 0009):
   line while no component has a value; `≈ 300 mOsm/kg` in a well of Media at 300; a 100 µL transfer
   of Water at 0 into 900 µL of Media giving `≈ 270 mOsm/kg`; with Water given no value, `Osmolality
   unknown: no value for Water`, and with two and three components missing, the `and` and comma
-  forms; the card at Start, at a stage and at End; a renamed component keeping its value; a plan
+  forms; a plan whose only osmolality is Water at 0 still showing the line: `≈ 0 mOsm/kg` in a well
+  of only Water, and `Osmolality unknown: no value for Media` in a well of Media; `1e-7` typed,
+  saved, and shown again as `1e-7`; a box reopened and closed without typing not counting as
+  changed; the card at Start, at a stage and at End; a renamed component keeping its value; a plan
   saved (version 9) and reopened, and reloaded, keeping the values, and a version 8 file opening
   with none;
 - moving and copying: a click, Shift-click (stages, then headings) and Ctrl-click selecting, each

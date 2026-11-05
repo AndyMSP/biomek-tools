@@ -212,7 +212,7 @@ Opening a file checks, in this order:
 11. **The experiment name** (version 2): `""`, or a name `checkExperimentName` accepts
     (`file-writer.md`), set with `setExperimentName`. It's never tidied: a name the tool would
     refuse is refused. A version 1 file opens with no experiment name.
-12. **Well labels** (versions 5 and 6): all at once, as `setWellLabels` checks and sets them
+12. **Well labels** (versions 5 to 9): all at once, as `setWellLabels` checks and sets them
     (`transfer-designer.md`), so strictly: a label with spaces at its ends, a blank one, or a
     labware listed with no wells is refused rather than tidied. A version 1 to 4 file opens with no
     well labels.
@@ -335,6 +335,11 @@ row of section 5 has at least one test.
   `component N: ` and `checkOsmolality`'s message, naming the component.
 - Checks within a component run in order: in a version 9 component with a bad constituent and a
   bad osmolality, the constituent is reported.
+- Older files open with no osmolality too: a version 6 file's components (`{ name, color }`) and a
+  version 1 file's open with `osmolality` `null`.
+- **Existing tests keep their files' versions.** The tests above that use a version 7 or 8 file
+  (in "Version 8" and "Refusing") stay as they are, with version 7 or 8 files, since those
+  versions still open; only new tests, and tests of what's written, use version 9.
 
 **Version 8** (2026-11-02)
 - A plan whose randomization has three filler wells, run, is saved (now as version 9) and opened as
@@ -383,8 +388,8 @@ row of section 5 has at least one test.
   `START` on `[1, 2, 3, 4]` and that tip change on `[1]`; the stages' settings have no probes.
   A version 2 stage without `probes` gets the missing-probes message; one with `[3, 1, 3]` gets
   `stage N: ` and the repeated-probe message. A version 2 tip change with `probes` is refused as
-  not having exactly its properties; so is a version 3 to 7 tip change without them, and a version
-  3 to 7 stage with `probes` is refused by the stage list as an extra setting.
+  not having exactly its properties; so is a version 3 to 9 tip change without them, and a version
+  3 to 9 stage with `probes` is refused by the stage list as an extra setting.
 - **Version 1:** a version 1 file (as saved before 2026-10-28, without `experimentName`, with probes
   in its stages) opens, with an experiment name of `""` and probes as for version 2; a version 1
   file *with* `experimentName` is refused as having an extra property; a version 2 file without it

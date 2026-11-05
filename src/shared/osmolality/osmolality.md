@@ -64,6 +64,10 @@ nothing (`{}`) gives `{ value: null, missing: [] }`.
 
 A share of 0 counts as not held: such a component is neither summed nor listed as missing.
 
+A component **has an osmolality** when its `osmolality` is not `null` (and not absent); 0 counts as
+a value. Likewise a well's result has a value when `value` is not `null`, so a `value` of 0 is a
+result, not a missing one (a well holding only Water at 0 gives `{ value: 0, missing: [] }`).
+
 ## 4. Interface
 The module exports two functions. Neither changes its inputs; `wellOsmolality` gives a new object,
 and a new `missing` list, each time.
@@ -89,8 +93,9 @@ show it.
 
 ## 6. Test cases
 Each becomes at least one unit test in `osmolality.test.js`, inside `describe("osmolality", …)`.
-Values are compared allowing a difference of up to 1e-12 of the value, as decimal arithmetic leaves
-leftovers. Nothing here depends on `config/`.
+A `value` is compared allowing an absolute difference of up to 1e-9 mOsm/kg, as decimal arithmetic
+leaves leftovers (a relative tolerance would allow no difference at all when the expected value is
+0). Nothing here depends on `config/`.
 
 **Checking an osmolality**
 - `0`, `300`, `290.5` and `2800` are accepted (no upper limit), and so is `null`.
@@ -101,6 +106,8 @@ leftovers. Nothing here depends on `config/`.
 - One component at share 1 with 300 gives `{ value: 300, missing: [] }`.
 - 0.9 Media at 300 and 0.1 Water at 0 give `value` 270; Water at 0 counts as a value, not as
   missing.
+- A well holding only Water at 0 (share 1) gives `{ value: 0, missing: [] }`: a result of 0 is a
+  value, not `null`.
 - Three components with values add up: 0.5 at 300, 0.25 at 600, 0.25 at 0 give 300.
 - A component without a value, held by the well, gives `value` `null` and lists it; two without
   values are both listed, in the order of `components`, not of the shares.

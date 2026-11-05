@@ -1380,11 +1380,14 @@ order of checks.
   `setOsmolality` keeps the constituents; `removeComponent` removes it with the component.
 - `osmolalityOf` with a well holding only Media at 300 gives `{ value: 300, missing: [] }`; after a
   transfer of 100 µL of Water (0) into a well holding 900 µL of Media (300), the well gives
-  `value` 270 (within 1e-12) at the snapshot after that transfer and 300 at the snapshot before it;
+  `value` 270 (within 1e-9 mOsm/kg, as `osmolality.md` compares) at the snapshot after that transfer and 300 at the snapshot before it;
   with Water given no osmolality instead, `{ value: null, missing: ["Water"] }` after the transfer
   and `{ value: 300, missing: [] }` before; an empty well gives `{ value: null, missing: [] }`.
 - `osmolalityOf` checks the well through the snapshot only, as `concentrationsOf` does: a well of
   `5` throws the snapshot's message naming `volumeFractionsOf`.
+- Osmolality never reaches the Biomek files: `writeRunFiles` (`file-writer.md`) gives identical
+  files (names and texts) for a plan with experiment name, starting contents and transfers whose
+  components have osmolalities (`300`, `0`) and for the same plan with every osmolality `null`.
 - The REPL's `transfer-designer` topic loads `setOsmolality` and `osmolalityOf`, with an example
   of each beside `concentrationsOf`'s (CLAUDE.md, "Keep the REPL complete").
 
