@@ -23,6 +23,10 @@
 > changes: a version 8 file holds what a version 7 file does, so where this specification says a
 > version 7 file, a version 8 file is meant too. Written in the hands-off workflow; it becomes
 > Final once built and tested by Andy.
+>
+> **Draft change (2026-11-05, cell density, item 16 of v0.2.0):** a new unit, cells/mL, in
+> `config/concentration-units.js` (`concentrations.md`, "Cells"). **No new format version**
+> (section 3, "Units in a file"); one test added (section 6). Written in the hands-off workflow.
 
 ## 1. Purpose
 `plan-file.js` turns a **plan** (`docs/glossary.md`) into the text of a **plan file**, and a plan
@@ -126,6 +130,17 @@ are like version 2 without `experimentName`, with `"version": 1`.
 
 The text is written with an indent of 2 spaces, so it's easy to read. Volumes are written at full
 precision; JSON keeps numbers exactly, so a plan reads back with the same volumes.
+
+### Units in a file
+A constituent's `unit` is checked against the configuration when the file opens
+(`setConstituents`, through `checkConstituents`), not by the format. So adding a unit to
+`config/concentration-units.js`, such as cells/mL (2026-11-05), **doesn't change the format** and
+needs no new version (ADR 0010: the version goes up only when what a plan file holds changes; a
+constituent is still `{ name, amount, unit }`). A file using a unit an older build doesn't know is
+refused by that build with `checkConstituents`' own message, which names the unit and lists the
+ones it knows (e.g. `component 2: The unit of "Cells" must be one of mM, µM, g/L, %, ×, but got
+"cells/mL".`), so it's clear why; the fix is the newer build. A unit made offered or display-only
+changes nothing in files either.
 
 ### Stage IDs are renumbered on opening
 The stage list makes its own IDs and can't be given one (`stage-list.md`, "IDs"). So opening a file
@@ -296,6 +311,10 @@ row of section 5 has at least one test.
 - Constituents: a plan whose components carry `[]`, `[{ Dye 10 mM }]` and two constituents in
   different families (Hy-Soy 4 g/L, Drug A 10 µM), saved and opened, gives the same constituents,
   in order, amounts at full precision (e.g. `0.1`).
+- Cells (2026-11-05): a plan whose component carries `Cells` at `1500000` in `CELL_DENSITY_UNIT`
+  (`config/concentration-units.js`), saved and opened, gives the same constituent; the file is
+  still written as `PLAN_FILE_VERSION` (unchanged), and the amount is written as JSON writes the
+  number (`1500000`).
 - Randomizations: a plan with a randomization that has run (and one that hasn't, sitting before a
   stage), saved and opened, gives the same randomizations, their `beforeId` and `stage`s following
   the renumbered stages (a file whose stages are `"2"`, `"5"` and `"7"`).
