@@ -1671,7 +1671,7 @@ page's configuration (ADR 0009):
   of only Water, and `Osmolality unknown: no value for Media` in a well of Media; `1e-7` typed,
   saved, and shown again as `1e-7`; a box reopened and closed without typing not counting as
   changed; the card at Start, at a stage and at End; a renamed component keeping its value; a plan
-  saved (version 9) and reopened, and reloaded, keeping the values, and a version 8 file opening
+  saved (version 10) and reopened, and reloaded, keeping the values, and a version 8 file opening
   with none;
 - moving and copying: a click, Shift-click (stages, then headings) and Ctrl-click selecting, each
   marked as the button goes down, and no text selected while pressing or dragging; a stage dragged

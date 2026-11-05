@@ -34,15 +34,12 @@
 >
 > **Draft change (2026-11-05, format version 10, shared tips; ADR 0018):** each randomization
 > source's `sharesTips` (`transfer-designer.md`, "Sharing tips"), and a randomization's stages may
-> share tip groups with each other (section 3, "Version 10"). **It assumes format version 9**
-> (osmolality, PR #134), which merges first: this change is written against it, so it opens
-> versions 1 to 10, and where the rest of this specification names the version written or the
-> newest version read, version 10 is meant, and where it says a version 7 or 8 file (its tests
-> included), versions 9 and 10 are meant too. **If this merges before #134**, it is renumbered to
-> version 9 (opening 1 to 9) and #134's osmolality becomes version 10, adding `sharesTips` to its
-> list of what older files lack. Shaped in a preview Andy approved on 2026-11-05 and written in the
-> hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull
-> request. It becomes Final once built and tested by Andy.
+> share tip groups with each other (section 3, "Version 10"), sections 2 to 6. Version 9
+> (osmolality) is on this branch, so version 10 adds `sharesTips` to it, and versions 1 to 9 open
+> with every source on new tips. **Built on #134 (merged into this branch); merge #134 first.**
+> Shaped in a preview Andy approved on 2026-11-05 and written in the hands-off workflow (CLAUDE.md,
+> "Workflows"), so the choices made for Andy are listed in its pull request. It becomes Final once
+> built and tested by Andy.
 
 ## 1. Purpose
 `plan-file.js` turns a **plan** (`docs/glossary.md`) into the text of a **plan file**, and a plan
@@ -62,7 +59,7 @@ never quietly tidied. The tool always writes valid files, so such a file was dam
 hand, and that's better reported than changed.
 
 ## 2. Scope
-Version 1 writes format version 9, and reads versions 9, 8, 7, 6, 5, 4, 3, 2 and 1 (below). Version 2
+Version 1 writes format version 10, and reads versions 10, 9, 8, 7, 6, 5, 4, 3, 2 and 1 (below). Version 2
 added the experiment name (Andy, 2026-10-28). Version 3 moved probes from the stages to the tip
 changes (Andy, 2026-10-30; ADR 0007, "Tip changes"). Version 4 adds each stage's mixes, `sourceMix`
 and `destinationMix` (Andy, 2026-10-30; ADR 0007, "Mixing"). Version 5 adds the well labels, and
@@ -70,16 +67,18 @@ version 6 the randomizations (Andy, 2026-11-01). Version 7 adds each component's
 0013; Andy, 2026-11-01). Version 8 lets a randomization have several filler wells (Andy,
 2026-11-02), so a tool that knows only version 7 refuses such a file as newer, rather than with a
 confusing message about two fillers; its properties are those of version 7. Version 9 adds each
-component's osmolality (ADR 0016; Andy, 2026-11-05). Older plans still open
+component's osmolality (ADR 0016; Andy, 2026-11-05). Version 10 adds whether each randomization
+source shares tips (ADR 0018; Andy, 2026-11-05). Older plans still open
 (ADR 0010, "Consequences"): version 1, with no experiment name; versions 1 and 2, with each tip
 change loading every probe its stages used, which is exactly where look-ahead loading put tips, so
 the same tips go on; versions 1 to 3, with no mixing, since plans couldn't mix before version 4;
 versions 1 to 4, with no well labels; versions 1 to 5, with no randomizations; versions 1 to 6, with
-components carrying no constituents; versions 1 to 8, with components having no osmolality.
+components carrying no constituents; versions 1 to 8, with components having no osmolality;
+versions 6 to 9, with every randomization source on new tips (`sharesTips` `false`).
 
 Not in version 1:
-- **Upgrading files in place.** A version 1 to 8 file stays as it is; saving the plan again writes
-  version 9.
+- **Upgrading files in place.** A version 1 to 9 file stays as it is; saving the plan again writes
+  version 10.
 - **Undo history, and how a plan was being viewed** (such as which stage is open). A plan file holds
   only the plan (ADR 0010; `plan-history.md`).
 
@@ -88,13 +87,13 @@ Not in version 1:
 ### The format name and version
 - **`PLAN_FILE_FORMAT`** is `"biomek-tools transfer plan"`, so a file can be recognized as a plan
   file.
-- **`PLAN_FILE_VERSION`** is `9`, the format version written: it goes up only when what a plan file
+- **`PLAN_FILE_VERSION`** is `10`, the format version written: it goes up only when what a plan file
   holds changes, not with every release of the tools (ADR 0010).
 
 They are constants in the module, not in `config/`: changing either one means changing how files are
 read and written, which is a change to the code.
 
-### What a plan file holds (version 9)
+### What a plan file holds (version 9; version 10 below)
 A plan file is written as one JSON object with these properties, in this order:
 
 ```json
@@ -184,20 +183,20 @@ and are then replaced by the new ones. The plan's `stageOrder` is the stages in 
 Opening a file checks, in this order:
 1. **The text is JSON**, and holds an object.
 2. **The format**: `format` is `PLAN_FILE_FORMAT`.
-3. **The version**: `version` is `9`, `8`, `7`, `6`, `5`, `4`, `3`, `2` or `1`.
+3. **The version**: `version` is `10`, `9`, `8`, `7`, `6`, `5`, `4`, `3`, `2` or `1`.
 4. **The properties**: exactly those listed above for the file's version, none missing (except
-   `savedBy`) and none extra. So version 2 to 9 files need `experimentName`, and a version 1 file
-   can't have it; version 5 to 9 files need `wellLabels`, and a version 1 to 4 file can't have it;
-   version 6 to 9 files need `randomizations`, and a version 1 to 5 file can't have it. (Versions 7
-   to 9 add no property of their own: version 7's and version 9's changes are inside each
-   component, check 5, and version 8's inside randomizations, check 13.)
+   `savedBy`) and none extra. So version 2 to 10 files need `experimentName`, and a version 1 file
+   can't have it; version 5 to 10 files need `wellLabels`, and a version 1 to 4 file can't have it;
+   version 6 to 10 files need `randomizations`, and a version 1 to 5 file can't have it. (Versions 7
+   to 10 add no property of their own: version 7's and version 9's changes are inside each
+   component, check 5, and version 8's and version 10's inside randomizations, check 13.)
    `components`, `startingContents`, `stages`, `operations` and `randomizations` are lists;
    `tipChanges`, `labwareLabels` and `wellLabels` are objects.
-5. **Components**, each an object with exactly `name`, `color`, in a version 7 to 9 file
-   `constituents` (a version 1 to 6 component can't have it), and in a version 9 file `osmolality`
+5. **Components**, each an object with exactly `name`, `color`, in a version 7 to 10 file
+   `constituents` (a version 1 to 6 component can't have it), and in a version 9 or 10 file `osmolality`
    (a version 1 to 8 component can't have it), then added as `addComponent` would
    add it: a name and a color, each unique. The name must already be a name (`checkName`): it
-   isn't trimmed, so it always matches the names in the starting contents. In a version 7 to 9
+   isn't trimmed, so it always matches the names in the starting contents. In a version 7 to 10
    file, its constituents are then set as `setConstituents` would set them (`transfer-designer.md`,
    "Constituents"), with one check first: if `constituents` is a list, each of its entries that is
    an object with a text `name` has that name checked by `checkName` (subject `constituent name`)
@@ -205,7 +204,7 @@ Opening a file checks, in this order:
    else (a list that isn't one, an entry that isn't an object, a name that isn't text) is left to
    `setConstituents`, whose messages say what's wrong. Then `setConstituents`. The family rule
    holds across the file's components, in file order, so a file with Hy-Soy in g/L in component 1
-   and in mM in component 2 is refused at component 2. In a version 9 file, its osmolality is then
+   and in mM in component 2 is refused at component 2. In a version 9 or 10 file, its osmolality is then
    set as `setOsmolality` would set it (`transfer-designer.md`, "Osmolality"): a number of mOsm/kg,
    0 or more, or `null`, so `-5` or `"300"` is refused, never tidied. A version 1 to 8 component
    opens with none (`null`). The per-component property list is version-aware (`name` and
@@ -232,7 +231,7 @@ Opening a file checks, in this order:
    (`addToWells` adds only volumes above 0, and an emptied well is left out), so opening refuses
    both. The plan's starting contents are then the file's, in its order.
 9. **Tip changes**: there's one at `"start"`; every other key is one of the file's stages, but not
-   the first in `stages`. In a version 3 to 9 file, each is an object with exactly `tipType`, one of
+   the first in `stages`. In a version 3 to 10 file, each is an object with exactly `tipType`, one of
    `TIP_TYPES`, and `probes`, set with `setTipProbes` (so checked as it checks them). In a version 1
    or 2 file, each is an object with exactly `tipType`, and its probes are **every probe its stages
    used**, smallest first: the stages from it up to the next tip change, in the file's stage order
@@ -245,20 +244,30 @@ Opening a file checks, in this order:
 11. **The experiment name** (version 2): `""`, or a name `checkExperimentName` accepts
     (`file-writer.md`), set with `setExperimentName`. It's never tidied: a name the tool would
     refuse is refused. A version 1 file opens with no experiment name.
-12. **Well labels** (versions 5 to 9): all at once, as `setWellLabels` checks and sets them
+12. **Well labels** (versions 5 to 10): all at once, as `setWellLabels` checks and sets them
     (`transfer-designer.md`), so strictly: a label with spaces at its ends, a blank one, or a
     labware listed with no wells is refused rather than tidied. A version 1 to 4 file opens with no
     well labels.
-13. **Randomizations** (versions 6 to 9): first, just enough form to renumber: each is an object,
-    and its `beforeId` is text or `null`, and its `stages` a list of objects whose `stage` is text
-    (else `setRandomizations`' own message for that form, after `randomizations: `); every stage ID
-    named is one of the file's stages. Then their stage IDs (`beforeId`, each of `stages`' `stage`)
-    are changed to the stages' new IDs (above), and they're checked and set all at once by
-    `setRandomizations` (`transfer-designer.md`). A version 1 to 5 file opens with no
-    randomizations. **Before renumbering, the sources' form by version** (version 10): if
-    `sources` is a list, each entry that is an object must, in a version 10 file, have
-    `sharesTips`, and in a version 6 to 9 file must not; anything else about a source is left to
-    `setRandomizations`. Then, in a version 6 to 9 file, each source gets `sharesTips: false`.
+13. **Randomizations** (versions 6 to 10), in these steps, in this order:
+    1. **Just enough form to renumber**: each is an object, and its `beforeId` is text or `null`,
+       and its `stages` a list of objects whose `stage` is text (else `setRandomizations`' own
+       message for that form, after `randomizations: `).
+    2. **Every stage ID named is one of the file's stages** (`beforeId` and each of `stages`'
+       `stage`).
+    3. **The sources' form by version** (new in version 10; after step 2, before step 4): if a
+       randomization's `sources` is a list, each entry that is an object (not `null`, not a list)
+       must, in a version 10 file, have `sharesTips`, and in a version 6 to 9 file must not.
+       Anything else about the sources is left to `setRandomizations` in step 5: `sources` that
+       isn't a list, or an entry that isn't an object, is skipped here and reported there with its
+       own message. Randomizations are taken in order and, within one, sources in order; the first
+       source found wrong is reported. Then, in a version 6 to 9 file, each source that is an
+       object gets `sharesTips: false`.
+    4. **Renumbering**: their stage IDs (`beforeId`, each of `stages`' `stage`) are changed to the
+       stages' new IDs (above).
+    5. **`setRandomizations`** (`transfer-designer.md`) checks and sets them all at once.
+
+    So a file with both a stage ID that isn't the file's and a source with the wrong form reports
+    the stage ID. A version 1 to 5 file opens with no randomizations.
 The first problem found is reported (section 5).
 
 ## 4. Interface
@@ -267,7 +276,7 @@ The module exports two constants and two functions.
 | Member | Description |
 |---|---|
 | `PLAN_FILE_FORMAT` | `"biomek-tools transfer plan"`. |
-| `PLAN_FILE_VERSION` | `9`, the version written. Versions 9 to 1 are read. |
+| `PLAN_FILE_VERSION` | `10`, the version written. Versions 10 to 1 are read. |
 | `planToText(plan, savedBy)` | Returns the plan file's text for `plan` (section 3). `savedBy` is text naming the tool and its version, e.g. `"transfer designer v0.2.0"`. Throws if `savedBy` isn't a name (`checkName`). |
 | `planFromText(text)` | Returns the plan in `text`, checked (section 3). Throws if anything in it is wrong, saying what and where. |
 
@@ -288,12 +297,12 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 |---|---|
 | Not JSON, or not an object | `it isn't a plan file: its contents aren't the JSON a plan file holds.` |
 | `format` isn't `PLAN_FILE_FORMAT` | `it isn't a transfer plan saved by this tool.` |
-| `version` is a whole number above `PLAN_FILE_VERSION` | `it was saved by a newer version of the tools (plan format 10). Open it with that version or a later one.` |
+| `version` is a whole number above `PLAN_FILE_VERSION` | `it was saved by a newer version of the tools (plan format 11). Open it with that version or a later one.` |
 | `version` is anything else | `its plan format version, "x", isn't one this tool knows.` |
 | A property is missing | `it's missing "stages".` With several, all are listed (`listNames`), in the order of section 3. |
 | An extra property | `it has "notes", which a plan file doesn't have.` With several, all are listed, in the order they appear. |
 | A property of the wrong kind | `"stages" must be a list.` / `"tipChanges" must be an object.` |
-| A component, stage or tip change isn't an object with exactly its properties | `component 2 must be an object with exactly "name", "color", "constituents" and "osmolality".` (in a version 9 file; `… "name", "color" and "constituents".` in versions 7 and 8; `… "name" and "color".` in versions 1 to 6. And `stage 1 … "id", "name" and "settings"`; `the tip change at "start" … "tipType" and "probes"` in versions 3 to 9, `… "tipType"` in versions 1 and 2.) |
+| A component, stage or tip change isn't an object with exactly its properties | `component 2 must be an object with exactly "name", "color", "constituents" and "osmolality".` (in a version 9 or 10 file; `… "name", "color" and "constituents".` in versions 7 and 8; `… "name" and "color".` in versions 1 to 6. And `stage 1 … "id", "name" and "settings"`; `the tip change at "start" … "tipType" and "probes"` in versions 3 to 10, `… "tipType"` in versions 1 and 2.) |
 | A component, stage, transfer or starting-contents entry is refused by its module | `component 2: …`, `stage 1: …`, `transfer 3: …`, `starting contents, entry 4: …`, then that module's message (for a component, `addComponent`'s, `setConstituents`'s or `setOsmolality`'s, e.g. `component 2: Constituent 1 needs name, amount and unit, but is missing "unit".`, or `component 2: The osmolality of Media must be a number of mOsm/kg, 0 or more, like 300, or none if it isn't known, but got -5.`). |
 | A constituent's name has spaces at its ends | `component 2: ` and `checkName`'s message (not trimmed). |
 | No stages | `it has no stages; a plan always has at least one.` |
@@ -315,7 +324,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | No tip change at `"start"` | `it has no tips at the start of the run.` |
 | A tip change at a stage that isn't in the file, or at the first stage | `a tip change is before stage "9", which isn't one of the file's stages.` / `a tip change is before stage "1", the first stage, which always starts with the tips at "start".` |
 | A tip type isn't in `TIP_TYPES` | `the tip change at "2" loads "BC50", which isn't one of "BC230", "BC1070".` |
-| A tip change's probes are refused (`setTipProbes`; versions 3 to 9) | `the tip change at "2": ` and its message, e.g. `Probe numbers must be whole numbers from 1 to 8, but got 9.` |
+| A tip change's probes are refused (`setTipProbes`; versions 3 to 10) | `the tip change at "2": ` and its message, e.g. `Probe numbers must be whole numbers from 1 to 8, but got 9.` |
 | A stage has no `probes` (versions 1 and 2) | `stage 2's settings are missing "probes", which a version 2 file's stages have.` (with the file's version) |
 | A stage's probes are refused (versions 1 and 2) | `stage 2: ` and `setTipProbes`'s message, e.g. `Probe 3 is listed more than once. List each probe once.` |
 | A stage's settings hold a mix (versions 1 to 3) | `stage 2's settings have "sourceMix", which a version 3 file's stages don't have.` (with the file's version, naming the first such setting) |
@@ -341,8 +350,8 @@ row of section 5 has at least one test.
 - A plan whose stages have IDs `"2"`, `"5"` and `"7"` opens with IDs `"1"`, `"2"` and `"3"`, its
   transfers and tip changes following them.
 - An `emptyPlan()`, saved and opened, gives a plan with the same contents, and is written as version
-  9, with `"wellLabels": {}` and `"randomizations": []`. (The existing tests of the version written
-  are updated to version 9, and those of a component's exact properties to the four properties:
+  10, with `"wellLabels": {}` and `"randomizations": []`. (The existing tests of the version written
+  are updated to version 10 (section 6, "Version 10"), and those of a component's exact properties to the four properties:
   the specification changed, not the tests' purpose.)
 - A component is written with its properties in the order `name`, `color`, `constituents`,
   `osmolality`, and each constituent as `name`, `amount`, `unit`.
@@ -379,7 +388,7 @@ row of section 5 has at least one test.
   versions still open; only new tests, and tests of what's written, use version 9.
 
 **Version 8** (2026-11-02)
-- A plan whose randomization has three filler wells, run, is saved (now as version 9) and opened as
+- A plan whose randomization has three filler wells, run, is saved (now as version 10) and opened as
   the same plan (its filler wells, its one filler stage and that stage's transfers from each well).
 - A version 7 file holding a randomization with two filler wells opens; a version 7 file as saved
   before (one filler) opens as before.
@@ -404,11 +413,40 @@ row of section 5 has at least one test.
   is refused with `randomizations: ` and `Randomization 1: stage "N" shares tips with a stage outside
   the randomization. …`; one whose sources say A2 shares but whose stages don't (saved before a
   run) opens, out of date.
-- The newer-version test uses version 11.
+- **Check 13's order** (section 3): a version 10 file whose randomization names stage `"9"` (not
+  one of the file's) and whose source lacks `sharesTips` reports the stage
+  (`randomization 1 names stage "9", …`); a version 10 file whose source lacks `sharesTips` and
+  which `setRandomizations` would also refuse (e.g. its `seed` is `-1`) reports the missing
+  `sharesTips`.
+- **A source that isn't an object** is skipped by the version check and left to
+  `setRandomizations`: a version 9 file, and a version 6 file, whose randomization's second source
+  is `null` (and one where it's `5`) is refused with `randomizations: ` and `setRandomizations`'
+  message for a source that isn't an object, not with a `sharesTips` message; so is a version 10
+  file whose second source is `null`. A version 9 file whose `sources` is `{}` is refused with
+  `setRandomizations`' message for `sources` that isn't a list.
+- **Existing tests whose version numbers change** (the specification changed, not the tests'
+  purpose; each keeps what it tests):
+  - "the format and version are the specification's": `PLAN_FILE_VERSION` is `10`.
+  - "an empty plan, saved and opened, … is written as version 9 …": version 10, in its name and its
+    check.
+  - "a randomization with three filler wells, run, is saved (now as version 9) …": version 10.
+  - "saving an opened version 4 file writes version 9 …" and "saving an opened version 3 file
+    writes version 9 …": version 10, in their names and checks.
+  - "a version above this one was saved by a newer version of the tools": version `11`, with the
+    message `… (plan format 11). Open it with that version or a later one.`
+  - The helper `asVersion8` (a version 10 file as a version 8 file) also drops `sharesTips` from
+    each randomization source, so version 8 and 7 files made from a run randomization stay as they
+    were saved. A new helper, `asVersion9` (the same, keeping each component's `osmolality`, with
+    `"version": 9`), makes the version 9 files of the tests above.
+  - The three tests that name "a version 9 component" (osmolality refused or missing, and a bad
+    constituent before a bad osmolality) open a version 9 file made by `asVersion9`, as their names
+    say; their messages don't change (a version 10 component has the same four properties).
+  - No other test's version or message changes: tests of version 1 to 8 files keep their files'
+    versions.
 
 **Refusing**
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
-- `version` `10` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
+- `version` `11` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
   message.
 - **Version 6:** a version 6 file (as saved before constituents, its components `{ name, color }`)
   opens, every component carrying `[]`; a version 6 file whose component *has* `constituents` is
@@ -444,8 +482,8 @@ row of section 5 has at least one test.
   `START` on `[1, 2, 3, 4]` and that tip change on `[1]`; the stages' settings have no probes.
   A version 2 stage without `probes` gets the missing-probes message; one with `[3, 1, 3]` gets
   `stage N: ` and the repeated-probe message. A version 2 tip change with `probes` is refused as
-  not having exactly its properties; so is a version 3 to 9 tip change without them, and a version
-  3 to 9 stage with `probes` is refused by the stage list as an extra setting.
+  not having exactly its properties; so is a version 3 to 10 tip change without them, and a version
+  3 to 10 stage with `probes` is refused by the stage list as an extra setting.
 - **Version 1:** a version 1 file (as saved before 2026-10-28, without `experimentName`, with probes
   in its stages) opens, with an experiment name of `""` and probes as for version 2; a version 1
   file *with* `experimentName` is refused as having an extra property; a version 2 file without it
