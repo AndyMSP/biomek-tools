@@ -360,7 +360,8 @@ Last updated: 2026-11-05
   `moveSource` and `removeSources`, a run putting its stages in the sources' order with new tips
   only where a source group starts, and a randomization's stages allowed to share tip groups with
   each other but never with stages outside it (`transfer-designer.md`, "Sharing tips"); plan files
-  version 10 (`plan-file.md`, assuming #134's version 9 merges first); copied items version 3; the
+  version 10 (`plan-file.md`, built on #134's version 9, merged into this branch: merge #134
+  first); copied items version 3; the
   card's boxes, seams and dragging (`transfer-designer-page.md`, section 7); glossary "Source
   group". It changes what goes into the Biomek files (fewer tip changes) but not their format.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
@@ -662,6 +663,19 @@ added on 2026-10-28 (Andy).
       in the stage worklist, so Andy decides by merging. Like the filler (item 13), it needn't come
       before the final Biomek runs, since the file writer already writes tip changes as the plan has
       them.
+    - **For Andy: some saved plans will open out of date** (found in the specification review,
+      2026-11-05). Before this change a run left stages it had already made where they were, so a
+      randomization's stage order could differ from its sources' order (e.g. after unmarking its
+      first filler well, or turning Filler on for a row above sources that already had stages).
+      Since a run now puts stages in the sources' order, such a plan (versions 6 to 9) opens with
+      the randomization out of date, and Update reorders its stages, which changes the order of
+      their rows and Transfer From File files in the Biomek files (the same transfers).
+    - **A regression fixture** (`tests/fixtures/shared-tips/`), captured from the code before this
+      change was built: a randomized plan and its Biomek files. Tests show the build gives the same
+      files when no source shares tips. It's not a golden file: nobody has verified those files.
+    - **When merged with `tips-in-end` (#135)**: add a test that a run whose sources A1 to A3 share
+      tips counts the group's tips once in `tipsUsed` (one set of tips for the three stages, not
+      three). Whichever of the two pull requests merges second adds it.
     **Specified** (Draft, 2026-11-05): see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
