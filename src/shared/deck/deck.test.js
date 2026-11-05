@@ -17,6 +17,7 @@ import {
   labwareTypeOf,
   capacityOf,
   deadVolumeOf,
+  growthAreaOf,
   checkWell,
   wellsInBox,
 } from "./deck.js";
@@ -77,9 +78,10 @@ describe("deck", () => {
     }
   });
 
-  test("every labware type has exactly grid, capacity and deadVolume", () => {
+  test("every labware type has grid, capacity and deadVolume, and nothing else but, optionally, growthArea", () => {
     for (const [key, type] of Object.entries(LABWARE_TYPES)) {
-      assert.deepEqual(Object.keys(type).sort(), ["capacity", "deadVolume", "grid"], key);
+      const keys = Object.keys(type).filter((property) => property !== "growthArea").sort();
+      assert.deepEqual(keys, ["capacity", "deadVolume", "grid"], key);
     }
   });
 
@@ -95,6 +97,14 @@ describe("deck", () => {
       assert.ok(type.capacity > 0, `capacity of ${key}`);
       assert.equal(typeof type.deadVolume, "number", `deadVolume of ${key}`);
       assert.ok(type.deadVolume >= 0 && type.deadVolume <= type.capacity, `deadVolume of ${key}`);
+    }
+  });
+
+  test("every growthArea present is a finite number above 0", () => {
+    for (const [key, type] of Object.entries(LABWARE_TYPES)) {
+      if (Object.hasOwn(type, "growthArea")) {
+        assert.ok(Number.isFinite(type.growthArea) && type.growthArea > 0, `growthArea of ${key}`);
+      }
     }
   });
 
@@ -154,8 +164,16 @@ describe("deck", () => {
     }
   });
 
-  test("gridOf, labwareTypeOf, capacityOf and deadVolumeOf refuse a labware that isn't on the deck", () => {
-    for (const lookUp of [gridOf, labwareTypeOf, capacityOf, deadVolumeOf]) {
+  test("growthAreaOf gives each entry's type's growthArea, or null for a type without one", () => {
+    for (const entry of DECK) {
+      const type = LABWARE_TYPES[entry.labwareType];
+      const expected = Object.hasOwn(type, "growthArea") ? type.growthArea : null;
+      assert.equal(growthAreaOf(entry.name), expected, entry.name);
+    }
+  });
+
+  test("gridOf, labwareTypeOf, capacityOf, deadVolumeOf and growthAreaOf refuse a labware that isn't on the deck", () => {
+    for (const lookUp of [gridOf, labwareTypeOf, capacityOf, deadVolumeOf, growthAreaOf]) {
       assert.throws(() => lookUp("Bench"), { message: noLabwareMessage("Bench") }, lookUp.name);
     }
   });

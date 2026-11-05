@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import {
   CONCENTRATION_UNITS,
   DEFAULT_CONCENTRATION_UNIT,
+  CELL_DENSITY_UNIT,
 } from "../../../config/concentration-units.js";
 import {
   checkConstituents,
@@ -18,6 +19,8 @@ import {
   unitsOf,
   wellConcentrations,
   bestUnit,
+  isCellFamily,
+  seedingDensity,
 } from "./concentrations.js";
 
 // The configuration's entry for the unit with symbol `unit`, e.g. entryOf("mM").factor → 1e-3.
@@ -419,6 +422,69 @@ describe("concentrations", () => {
     });
   });
 
+  // Cells (concentrations.md, "Cells"): the unit is always CELL_DENSITY_UNIT from the file.
+  describe("cells", () => {
+    const cellFamily = familyOf(CELL_DENSITY_UNIT);
+
+    test("a list with cells is accepted, the amount in exponent form too", () => {
+      const cells = [constituent("Cells", 1500000, CELL_DENSITY_UNIT)];
+      assert.deepEqual(checkConstituents(cells), cells);
+      assert.deepEqual(checkConstituents([constituent("Cells", 1.5e6, CELL_DENSITY_UNIT)]), cells);
+    });
+
+    test("isCellFamily is true only for the cells' family, and never throws", () => {
+      assert.equal(isCellFamily(cellFamily), true);
+      for (const family of FAMILIES.filter((candidate) => candidate !== cellFamily)) {
+        assert.equal(isCellFamily(family), false);
+      }
+      for (const other of ["volume", "", null, 5]) {
+        assert.equal(isCellFamily(other), false);
+      }
+    });
+
+    test("the cells' family has the one unit", () => {
+      assert.deepEqual(unitsOf(cellFamily), [CELL_DENSITY_UNIT]);
+    });
+
+    test("a well 10% from a suspension carries a tenth of its cells", () => {
+      const result = wellConcentrations({ Suspension: 0.1, Media: 0.9 }, [
+        component("Suspension", [constituent("Cells", 1500000, CELL_DENSITY_UNIT)]),
+        component("Media", []),
+      ]);
+      assert.equal(result.length, 1);
+      assert.equal(result[0].name, "Cells");
+      assert.equal(result[0].family, cellFamily);
+      assertClose(result[0].value, 0.1 * 1500000);
+    });
+
+    test("cells from two components add", () => {
+      const result = wellConcentrations({ A: 0.1, B: 0.2 }, [
+        component("A", [constituent("Cells", 1500000, CELL_DENSITY_UNIT)]),
+        component("B", [constituent("Cells", 500000, CELL_DENSITY_UNIT)]),
+      ]);
+      assert.equal(result.length, 1);
+      assertClose(result[0].value, 0.1 * 1500000 + 0.2 * 500000);
+    });
+
+    test("cells are never rescaled", () => {
+      for (const value of [0.5, 1500, 1.5e9]) {
+        assert.deepEqual(bestUnit(cellFamily, value), { amount: value, unit: CELL_DENSITY_UNIT });
+      }
+    });
+
+    test("seedingDensity is the cell density times the volume in mL over the growth area", () => {
+      assert.equal(seedingDensity(150000, 100, 0.32), (150000 * (100 / 1000)) / 0.32);
+      assert.equal(seedingDensity(150000, 100, 0.32), 46875);
+      assert.equal(seedingDensity(0, 100, 0.32), 0);
+    });
+
+    test("doubling the volume doubles the seeding density; doubling the area halves it", () => {
+      const base = seedingDensity(150000, 100, 0.32);
+      assertClose(seedingDensity(150000, 200, 0.32), 2 * base);
+      assertClose(seedingDensity(150000, 100, 0.64), base / 2);
+    });
+  });
+
   // Checks of config/concentration-units.js itself (concentrations.md, section 7; ADR 0009).
   describe("config/concentration-units.js", () => {
     test("every entry has exactly unit, family, factor and offered, well formed", () => {
@@ -458,6 +524,14 @@ describe("concentrations", () => {
       const entry = CONCENTRATION_UNITS.find((candidate) => candidate.unit === DEFAULT_CONCENTRATION_UNIT);
       assert.ok(entry);
       assert.equal(entry.offered, true);
+    });
+
+    test("CELL_DENSITY_UNIT is an offered unit, with factor 1, the only unit of its family", () => {
+      const entry = CONCENTRATION_UNITS.find((candidate) => candidate.unit === CELL_DENSITY_UNIT);
+      assert.ok(entry);
+      assert.equal(entry.offered, true);
+      assert.equal(entry.factor, 1);
+      assert.deepEqual(entriesOf(entry.family), [entry]);
     });
   });
 });

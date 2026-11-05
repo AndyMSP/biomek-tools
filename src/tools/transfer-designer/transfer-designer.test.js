@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
-import { gridOf, capacityOf, deadVolumeOf } from "../../shared/deck/deck.js";
+import { gridOf, capacityOf, deadVolumeOf, growthAreaOf } from "../../shared/deck/deck.js";
 import { GRID_96, GRID_1X12_NUMBERED } from "../../shared/well-grid/well-grid.js";
 import {
   DEFAULT_MIX as CONFIGURED_DEFAULT_MIX,
@@ -22,6 +22,7 @@ import {
 import { checkName } from "../../shared/input-checks/input-checks.js";
 import { tipGroups as sharedTipGroups } from "../../shared/tip-groups/tip-groups.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
+import { writeRunFiles } from "../../shared/file-writer/file-writer.js";
 import {
   NEW_STAGE_NAME,
   NEW_MIX_STEP_NAME,
@@ -61,6 +62,7 @@ import {
   setTipType,
   setTipProbes,
   removeTipChange,
+  tipsUsed,
   tipGroups,
   addComponent,
   renameComponent,
@@ -98,6 +100,7 @@ import {
   concentrationsOf,
   setOsmolality,
   osmolalityOf,
+  seedingDensitiesOf,
   columnBoxes,
   moveItems,
   copyOf,
@@ -112,9 +115,8 @@ import {
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
 import { assignPool } from "../../shared/random-pool/random-pool.js";
-import { CONCENTRATION_UNITS } from "../../../config/concentration-units.js";
-import { familyOf, unitsOf } from "../../shared/concentrations/concentrations.js";
-import { writeRunFiles } from "../../shared/file-writer/file-writer.js";
+import { CONCENTRATION_UNITS, CELL_DENSITY_UNIT } from "../../../config/concentration-units.js";
+import { familyOf, unitsOf, seedingDensity } from "../../shared/concentrations/concentrations.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
 const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_96).map(
@@ -335,6 +337,29 @@ function waterIntoMediaPlan(media, water) {
     volume: 100,
     stage: "1",
   });
+}
+
+// A labware with a growth area and one without, found in DECK by growthAreaOf, never named.
+const GROWING = DECK.find((entry) => growthAreaOf(entry.name) !== null).name;
+const NOT_GROWING = DECK.find(
+  (entry) => growthAreaOf(entry.name) === null && gridOf(entry.name) === GRID_96,
+).name;
+
+// The well { labware, well }, e.g. wellOn("Plate1", "A1").
+function wellOn(labware, well) {
+  return { labware, well };
+}
+
+// planWithContents plus a component "Suspension" carrying Cells at 1500000 in CELL_DENSITY_UNIT.
+function planWithCells() {
+  const plan = addComponent(planWithContents(), "Suspension", "#f28e2b");
+  return setConstituents(plan, "Suspension", [constituentOf("Cells", 1500000, CELL_DENSITY_UNIT)]);
+}
+
+// The plan with `well` holding `volume` µL: 10% Suspension and 90% Media.
+function withCellsIn(plan, well, volume) {
+  const withSuspension = addToWells(plan, [well], "Suspension", volume * 0.1);
+  return addToWells(withSuspension, [well], "Media", volume * 0.9);
 }
 
 describe("transfer-designer", () => {
@@ -1757,6 +1782,220 @@ describe("transfer-designer", () => {
     });
   });
 
+  // --- Tips used ---
+
+  // A plan with `count` stages (planWithStages) that writeRunFiles accepts once it has transfers:
+  // named, with a component Media filling the reservoir's trough 1, which transferTo draws from.
+  function tipsPlanWithStages(count) {
+    let plan = addComponent(planWithStages(count), "Media", "#4e79a7");
+    plan = addToWells(plan, [trough("1")], "Media", capacityOf(RESERVOIR));
+    return setExperimentName(plan, "Exp36");
+  }
+
+  // Section 3's example (transfer-designer.md, "Tips used"), with the first and second tip types:
+  // START tips of the first type on [1, 2, 3, 4] before stages 1 and 2, the second type on [1, 2]
+  // before stage 3, the first on all eight probes before stage 4, and the second on [1] before
+  // stage 5, which has no transfers; stages 1 to 4 have one transfer each.
+  function tipsExamplePlan() {
+    let plan = setTipProbes(tipsPlanWithStages(5), START, [1, 2, 3, 4]);
+    plan = setTipProbes(setTipType(addTipChange(plan, "3"), "3", TIP_TYPES[1]), "3", [1, 2]);
+    // A new tip change copies the tips in use there (the second type, here), so its type is set.
+    plan = setTipProbes(setTipType(addTipChange(plan, "4"), "4", TIP_TYPES[0]), "4", probesFor(8));
+    plan = setTipProbes(setTipType(addTipChange(plan, "5"), "5", TIP_TYPES[1]), "5", [1]);
+    return withTransfersIn(plan, ["1", "2", "3", "4"]);
+  }
+
+  // A plan using only the second tip type: the START tips set to it, and stage 1 with a transfer.
+  function secondTypeOnlyPlan() {
+    return withTransfersIn(setTipType(tipsPlanWithStages(1), START, TIP_TYPES[1]), ["1"]);
+  }
+
+  // Two stages run as the second tip type then the first: the START tips set to the second type
+  // before stage 1, and a tip change to the first type (on the probes it copies) before stage 2,
+  // each stage with a transfer.
+  function secondTypeFirstPlan() {
+    const plan = setTipType(addTipChange(setTipType(tipsPlanWithStages(2), START, TIP_TYPES[1]), "2"), "2", TIP_TYPES[0]);
+    return withTransfersIn(plan, ["1", "2"]);
+  }
+
+  // Two tip groups of the first type on the same probes (the second tip change copies the first),
+  // each with a transfer.
+  function twoSameGroupsPlan() {
+    return withTransfersIn(addTipChange(tipsPlanWithStages(2), "2"), ["1", "2"]);
+  }
+
+  // Three stages: the START group (stage 1) with a transfer, and a group of the first type on all
+  // eight probes holding stage 2, without transfers, and stage 3, with `stage3Transfer` deciding
+  // whether stage 3 has one.
+  function partlyEmptyGroupPlan(stage3Transfer) {
+    const plan = setTipProbes(addTipChange(tipsPlanWithStages(3), "2"), "2", probesFor(8));
+    return withTransfersIn(plan, stage3Transfer ? ["1", "3"] : ["1"]);
+  }
+
+  // Two stages: the START group (stage 1) without transfers, and a tip change before stage 2, with a
+  // transfer, of `tipType` on `probes`.
+  function emptyStartGroupPlan(tipType, probes) {
+    const plan = setTipType(addTipChange(tipsPlanWithStages(2), "2"), "2", tipType);
+    return withTransfersIn(setTipProbes(plan, "2", probes), ["2"]);
+  }
+
+  // Stage 1 without transfers, then a mix step on tips of its own mixing PLATE A1, which holds half
+  // its capacity of Media, so it mixes enough (no mix problem) and its draw is covered: { plan, id }.
+  function mixStepGroupPlan() {
+    const base = addToWells(tipsPlanWithStages(1), [plateWell("A1")], "Media", capacityOf(PLATE) / 2);
+    const { plan, id } = addMixStepWithNewTips(base, null);
+    return { plan: mixWells(plan, id, [plateWell("A1")]), id };
+  }
+
+  // The tips Stages.csv loads (transfer-designer.md, section 6, "it matches the Biomek files"): from
+  // the rows whose NewTip is 1, the number of probes in LoadProbes, added up by TipType, in
+  // TIP_TYPES order, e.g. [{ tipType: "BC230", count: 4 }].
+  function tipsLoadedByFiles(plan) {
+    const { files } = writeRunFiles(plan, new Date(2026, 9, 28, 1, 57, 32));
+    const [header, ...rows] = files.find((file) => file.name === "Stages.csv").text.split("\r\n");
+    const columns = header.split(",");
+    const counts = new Map();
+    for (const row of rows.filter((line) => line !== "")) {
+      // A comma inside double quotes is part of its field, so split only at commas followed by an
+      // even number of quotes.
+      const fields = row.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+      const field = (name) => fields[columns.indexOf(name)];
+      if (field("NewTip") === "1") {
+        const probes = field("LoadProbes").replaceAll('"', "").split(",");
+        counts.set(field("TipType"), (counts.get(field("TipType")) ?? 0) + probes.length);
+      }
+    }
+    return TIP_TYPES.filter((tipType) => counts.has(tipType)).map((tipType) => ({
+      tipType,
+      count: counts.get(tipType),
+    }));
+  }
+
+  // The tips counted from tipGroups: for each group with a transfer in any of its stages, its
+  // probes, added up by tip type, in TIP_TYPES order.
+  function tipsFromGroups(plan) {
+    const counts = new Map();
+    for (const group of tipGroups(plan)) {
+      if (group.stages.some((id) => transfersIn(plan, id).length > 0)) {
+        counts.set(group.tipType, (counts.get(group.tipType) ?? 0) + group.probes.length);
+      }
+    }
+    return TIP_TYPES.filter((tipType) => counts.has(tipType)).map((tipType) => ({
+      tipType,
+      count: counts.get(tipType),
+    }));
+  }
+
+  // Whether TIP_TYPES has a second tip type, for the tests that use one (skipped otherwise).
+  const NO_SECOND_TIP_TYPE = TIP_TYPES.length < 2;
+
+  test("tipsUsed of a new plan, with no transfers, is []", () => {
+    assert.deepEqual(tipsUsed(emptyPlan().plan), []);
+  });
+
+  test("tipsUsed of one stage with a transfer on the START tips counts DEFAULT_PROBE_COUNT tips of the first type", () => {
+    assert.deepEqual(tipsUsed(withTransfersIn(planWithStages(1), ["1"])), [
+      { tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT },
+    ]);
+  });
+
+  test("tipsUsed of section 3's example gives the first type 12 and the second 2, in TIP_TYPES order", { skip: NO_SECOND_TIP_TYPE }, () => {
+    assert.deepEqual(tipsUsed(tipsExamplePlan()), [
+      { tipType: TIP_TYPES[0], count: 12 },
+      { tipType: TIP_TYPES[1], count: 2 },
+    ]);
+  });
+
+  test("tipsUsed of a plan using only the second tip type gives only that type", { skip: NO_SECOND_TIP_TYPE }, () => {
+    assert.deepEqual(tipsUsed(secondTypeOnlyPlan()), [
+      { tipType: TIP_TYPES[1], count: DEFAULT_PROBE_COUNT },
+    ]);
+  });
+
+  test("tipsUsed lists tip types in TIP_TYPES order, not run order", { skip: NO_SECOND_TIP_TYPE }, () => {
+    assert.deepEqual(tipsUsed(secondTypeFirstPlan()), [
+      { tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT },
+      { tipType: TIP_TYPES[1], count: DEFAULT_PROBE_COUNT },
+    ]);
+  });
+
+  test("tipsUsed counts two tip groups of the same type and probes, each with transfers, twice", () => {
+    assert.deepEqual(tipsUsed(twoSameGroupsPlan()), [
+      { tipType: TIP_TYPES[0], count: 2 * DEFAULT_PROBE_COUNT },
+    ]);
+  });
+
+  test("tipsUsed counts nothing for a tip group without transfers, and adding one makes it count in full", () => {
+    assert.deepEqual(tipsUsed(partlyEmptyGroupPlan(false)), [
+      { tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT },
+    ]);
+    assert.deepEqual(tipsUsed(partlyEmptyGroupPlan(true)), [
+      { tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT + 8 },
+    ]);
+  });
+
+  test("tipsUsed leaves out the START tips when their group has no transfers: the first type on other probes", () => {
+    assert.deepEqual(tipsUsed(emptyStartGroupPlan(TIP_TYPES[0], [7, 8])), [
+      { tipType: TIP_TYPES[0], count: 2 },
+    ]);
+  });
+
+  test("tipsUsed leaves out the START tips when their group has no transfers: the second type", { skip: NO_SECOND_TIP_TYPE }, () => {
+    assert.deepEqual(tipsUsed(emptyStartGroupPlan(TIP_TYPES[1], [1, 2, 3])), [
+      { tipType: TIP_TYPES[1], count: 3 },
+    ]);
+  });
+
+  test("tipsUsed counts a tip group whose only stage is a mix step mixing one well", () => {
+    const { plan, id } = mixStepGroupPlan();
+    assert.deepEqual(tipsUsed(plan), [
+      { tipType: tipChangeAt(plan, id).tipType, count: tipChangeAt(plan, id).probes.length },
+    ]);
+  });
+
+  test("tipsUsed counts a run randomization through its stages' tip changes: the sum over tipGroups with transfers", () => {
+    const { plan } = runRandomizationPlan();
+    assert.ok(tipGroups(plan).length > 2, "the randomization's stages have tip changes of their own");
+    assert.deepEqual(tipsUsed(plan), tipsFromGroups(plan));
+  });
+
+  test("tipsUsed counts a plan with a contents problem as it stands", () => {
+    const plan = withTransfersIn(planWithStages(1), ["1"]);
+    assert.ok(stagesWithContentsProblem(plan).size > 0, "the plan has a contents problem");
+    assert.deepEqual(tipsUsed(plan), [{ tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT }]);
+  });
+
+  test("tipsUsed matches the tips the Biomek files load", () => {
+    const plans = [
+      ["one stage with a transfer", withTransfersIn(tipsPlanWithStages(1), ["1"])],
+      ["two groups of the same type and probes", twoSameGroupsPlan()],
+      ["a group without transfers", partlyEmptyGroupPlan(false)],
+      ["a group with a stage without transfers", partlyEmptyGroupPlan(true)],
+      ["the START group without transfers", emptyStartGroupPlan(TIP_TYPES[0], [7, 8])],
+      ["a mix step's group", mixStepGroupPlan().plan],
+      ["a run randomization", setExperimentName(runRandomizationPlan().plan, "Exp36")],
+    ];
+    if (!NO_SECOND_TIP_TYPE) {
+      plans.push(
+        ["section 3's example", tipsExamplePlan()],
+        ["only the second type", secondTypeOnlyPlan()],
+        ["the second type run before the first", secondTypeFirstPlan()],
+        ["the START group without transfers, second type", emptyStartGroupPlan(TIP_TYPES[1], [1, 2, 3])],
+      );
+    }
+    for (const [name, plan] of plans) {
+      assert.deepEqual(tipsUsed(plan), tipsLoadedByFiles(plan), name);
+    }
+  });
+
+  test("changing the list tipsUsed returned doesn't change the next one", () => {
+    const plan = withTransfersIn(planWithStages(1), ["1"]);
+    const first = tipsUsed(plan);
+    first[0].count = 99;
+    first.push({ tipType: "BC50", count: 1 });
+    assert.deepEqual(tipsUsed(plan), [{ tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT }]);
+  });
+
   // --- Components and starting contents ---
 
   test("addComponent adds a component last, with its name trimmed", () => {
@@ -2196,6 +2435,139 @@ describe("transfer-designer", () => {
     assert.equal(withNone.components.every((component) => component.osmolality === null), true);
     const timestamp = new Date(2026, 10, 5, 9, 7, 2);
     assert.deepEqual(writeRunFiles(withValues, timestamp), writeRunFiles(withNone, timestamp));
+  });
+
+  test("concentrationsOf gives a well's cells in the cells' family", () => {
+    let plan = planWithCells();
+    plan = addToWells(plan, [trough("3")], "Suspension", 100);
+    plan = addToWells(plan, [trough("3")], "Media", 900);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = concentrationsOf(plan, start, trough("3"));
+    assert.equal(result.length, 1);
+    assert.equal(result[0].family, familyOf(CELL_DENSITY_UNIT));
+    assertWithin(result[0].value, 0.1 * 1500000);
+  });
+
+  // --- Seeding densities (labware found in DECK by its growth area, never named) ---
+
+  test("seedingDensitiesOf gives a well's cells per cm² of its growth area", () => {
+    const volume = capacityOf(GROWING) / 2;
+    const plan = withCellsIn(planWithCells(), wellOn(GROWING, "A1"), volume);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = seedingDensitiesOf(plan, start, wellOn(GROWING, "A1"));
+    assert.equal(result.length, 1);
+    assert.equal(result[0].name, "Cells");
+    assert.deepEqual(Object.keys(result[0]).sort(), ["name", "value"]);
+    assertWithin(result[0].value, seedingDensity(0.1 * 1500000, volume, growthAreaOf(GROWING)));
+  });
+
+  test("seedingDensitiesOf gives only cells, and [] for no cells, an empty well or labware without a growth area", () => {
+    const volume = capacityOf(GROWING) / 2;
+    let plan = setConstituents(planWithCells(), "Dye", [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    plan = withCellsIn(plan, wellOn(GROWING, "A1"), volume);
+    plan = addToWells(plan, [wellOn(GROWING, "A1")], "Dye", 10);
+    plan = addToWells(plan, [wellOn(GROWING, "A2")], "Dye", 10);
+    plan = withCellsIn(plan, wellOn(NOT_GROWING, "A1"), capacityOf(NOT_GROWING) / 2);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = seedingDensitiesOf(plan, start, wellOn(GROWING, "A1"));
+    assert.deepEqual(
+      result.map((entry) => entry.name),
+      ["Cells"],
+    );
+    assert.deepEqual(seedingDensitiesOf(plan, start, wellOn(GROWING, "A2")), []);
+    assert.deepEqual(seedingDensitiesOf(plan, start, wellOn(GROWING, "A3")), []);
+    assert.deepEqual(seedingDensitiesOf(plan, start, wellOn(NOT_GROWING, "A1")), []);
+    // The same well's cells are still there as a cell density.
+    assert.equal(concentrationsOf(plan, start, wellOn(NOT_GROWING, "A1")).length, 1);
+  });
+
+  test("seedingDensitiesOf adds cells from two components before working out the density", () => {
+    let plan = addComponent(planWithCells(), "Second suspension", "#76b7b2");
+    plan = setConstituents(plan, "Second suspension", [constituentOf("Cells", 500000, CELL_DENSITY_UNIT)]);
+    const well = wellOn(GROWING, "A1");
+    // Half the well's capacity, from config/, so a change there never breaks this test.
+    const total = capacityOf(GROWING) / 2;
+    plan = addToWells(plan, [well], "Suspension", total * 0.1);
+    plan = addToWells(plan, [well], "Second suspension", total * 0.2);
+    plan = addToWells(plan, [well], "Media", total * 0.7);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = seedingDensitiesOf(plan, start, well);
+    assert.equal(result.length, 1);
+    const cellDensity = 0.1 * 1500000 + 0.2 * 500000;
+    assertWithin(result[0].value, seedingDensity(cellDensity, total, growthAreaOf(GROWING)));
+  });
+
+  test("seedingDensitiesOf counts the whole well, dead volume included", () => {
+    const well = wellOn(GROWING, "A1");
+    const plan = addToWells(planWithCells(), [well], "Suspension", deadVolumeOf(GROWING));
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = seedingDensitiesOf(plan, start, well);
+    assertWithin(
+      result[0].value,
+      seedingDensity(1500000, deadVolumeOf(GROWING), growthAreaOf(GROWING)),
+    );
+    assert.ok(result[0].value > 0);
+  });
+
+  test("adding Media keeps the seeding density; taking half the well away halves it", () => {
+    const well = wellOn(GROWING, "A1");
+    const volume = capacityOf(GROWING) / 2;
+    let plan = withCellsIn(planWithCells(), well, volume);
+    // A trough of Media well over its dead volume, so the transfer draws the full volume.
+    plan = addToWells(plan, [trough("5")], "Media", deadVolumeOf(RESERVOIR) + 1000);
+    plan = addTransfer(plan, {
+      type: "transfer",
+      source: trough("5"),
+      destination: well,
+      volume: capacityOf(GROWING) / 4,
+      stage: "1",
+    });
+    // Half the well, taken in a stage of its own (a well can't be a source and a destination in
+    // one stage), and within its usable volume.
+    const taken = (volume + capacityOf(GROWING) / 4) / 2;
+    assert.ok(taken <= volume + capacityOf(GROWING) / 4 - deadVolumeOf(GROWING));
+    plan = addStage(plan, null).plan;
+    plan = addTransfer(plan, {
+      type: "transfer",
+      source: well,
+      destination: wellOn(GROWING, "A2"),
+      volume: taken,
+      stage: "2",
+    });
+    const before = seedingDensitiesOf(plan, replay(plan.startingContents, plan.operationList, 0), well);
+    const afterMedia = replay(plan.startingContents, plan.operationList, 1);
+    const afterTaking = replay(plan.startingContents, plan.operationList, 2);
+    assert.ok(
+      concentrationsOf(plan, afterMedia, well)[0].value <
+        concentrationsOf(plan, replay(plan.startingContents, plan.operationList, 0), well)[0].value,
+    );
+    assertWithin(seedingDensitiesOf(plan, afterMedia, well)[0].value, before[0].value);
+    assertWithin(seedingDensitiesOf(plan, afterTaking, well)[0].value, before[0].value / 2);
+  });
+
+  test("seedingDensitiesOf throws as concentrationsOf does, then as growthAreaOf does", () => {
+    const plan = planWithCells();
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    assert.throws(() => seedingDensitiesOf(plan, start, undefined), {
+      message: "The labware given to volumeFractionsOf must be text, but got undefined.",
+    });
+    const deckNames = DECK.map((entry) => `"${entry.name}"`).join(", ");
+    assert.throws(() => seedingDensitiesOf(plan, start, { labware: "Bench", well: "A1" }), {
+      message: `There's no labware "Bench" on the deck. The deck has ${deckNames}.`,
+    });
+  });
+
+  test("seedingDensitiesOf doesn't change its inputs", () => {
+    const well = wellOn(GROWING, "A1");
+    const plan = withCellsIn(planWithCells(), well, capacityOf(GROWING) / 2);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const planBefore = planToText(plan, "test");
+    const startBefore = JSON.stringify(start.volumeFractionsOf(well.labware, well.well));
+    const endBefore = JSON.stringify(well);
+    seedingDensitiesOf(plan, start, well);
+    assert.equal(planToText(plan, "test"), planBefore);
+    assert.equal(JSON.stringify(start.volumeFractionsOf(well.labware, well.well)), startBefore);
+    assert.equal(JSON.stringify(well), endBefore);
   });
 
   // --- Labware ---
