@@ -372,7 +372,10 @@ Last updated: 2026-11-05
   (`deck.md`), `seedingDensitiesOf` (`transfer-designer.md`), units and plan files
   (`plan-file.md`: no new version), and the page's unit menu, amount box, chips and contents card
   (`transfer-designer-page.md`); glossary "Cell density", "Growth area", "Seeding density". It
-  changes no Biomek files.
+  changes no Biomek files. **Built (#136, 2026-11-05)**: code and tests of `concentrations`,
+  `deck`, the transfer designer and plan files, the REPL, and the page; the specifications and
+  the build each reviewed by a separate agent, and checked in headless Chrome. Still to check by
+  Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -666,7 +669,7 @@ added on 2026-10-28 (Andy).
       only on BCFlat96; having none keeps cells/cm² off a type. BCFlat96's is Andy's stand-in
       ("Technical debt").
     - It changes no Biomek files and no plan-file format.
-    **Specified** (Draft, 2026-11-05): see "Where things stand".
+    **Specified** (Draft, 2026-11-05) and **Built (#136, 2026-11-05)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
