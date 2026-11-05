@@ -397,6 +397,8 @@ Last updated: 2026-11-05
   (version 10, versions 1 to 9 still opening) and copied items (version 3), and the card's boxes
   of shared tips on the page; the specifications and the build each reviewed by a separate agent,
   and checked in headless Chrome. Still to check by Andy.
+- **Decided: pasting amounts from Excel** (Andy, 2026-11-05; item 19, below): a table of how much
+  of each component goes into each labeled well becomes one stage per component. Next, a preview.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -743,6 +745,23 @@ added on 2026-10-28 (Andy).
       three). Whichever of the two pull requests merges second adds it. Added here, after merging
       #135 into this branch (2026-11-05).
     **Specified** (Draft, 2026-11-05) and **Built (#137, 2026-11-05)**: see "Where things stand".
+19. **Pasting amounts from Excel** (Andy, 2026-11-05): a table copied from a spreadsheet, saying how
+    much of each component goes into each well, becomes transfers, so a plate's recipe made in
+    Excel doesn't have to be dragged in by hand. Decided so far (Andy, 2026-11-05):
+    - **The table's shape:** a header row, then one row per destination. The first column is a
+      **well label** (`Dest Well Label`); each other column is a **component**, its header exactly
+      the component's name in the plan (e.g. `Media`); each cell is how much of that component to
+      add to that row's wells.
+    - **A row fills every well with its label**, since labels may repeat: a row for `Cond 3` adds
+      its amounts to each of three replicate wells labeled `Cond 3`.
+    - **Each column draws from the well holding that component**, found by its name. When more
+      than one well holds it, the user picks which.
+    - **One stage per column, in column order, each on new tips**, like a randomization's sources,
+      so the order of addition is the columns' order and no component carries into the next.
+    - **Amounts are volumes in µL** for now (Andy had no preference). Final concentrations, turned
+      into volumes from each stock's constituents, could come later.
+    Still to shape in a preview: how a paste is started, where its stages go, their settings (mode,
+    tip type, probes), and what a table the tool can't use says.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -769,7 +788,10 @@ final Biomek runs, so they test the files as they will be:
 12. Sources sharing tips in a randomization (item 18), added on 2026-11-05: preview,
     specifications, then build. It changes what goes into the Biomek files but not their format,
     so it needn't come before the final runs.
-13. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+13. Pasting amounts from Excel (item 19), added on 2026-11-05: preview, specifications, then
+    build. It writes ordinary stages and transfers, so it changes neither the Biomek files' format
+    nor what a given plan writes, and needn't come before the final runs.
+14. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's source with the keyboard** (2026-11-05, from the shared-tips topic):
