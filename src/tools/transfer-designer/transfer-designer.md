@@ -343,6 +343,10 @@ new for it (`plan-file.md`).
   - **Every such tip change counts in full**, even when the one before it loaded the same tip type
     on the same probes: the Biomek unloads all tips and loads new ones at each (ADR 0007, "The
     method").
+  - **Randomizations count through their stages only:** a randomization's own `tipType` and
+    `probes` (its settings for the stages it makes) are never read. Only the tip changes of its
+    stages, as they stand in the plan, count, like any others; a randomization that hasn't run has
+    no stages, so it counts nothing.
   - **Problems don't matter:** a plan with an overdraw, a mix problem or a randomization out of date
     is counted as it stands, though the file writer refuses it until the problem is fixed.
   - **Order:** by tip type, in `TIP_TYPES` order (`config/`, below), leaving out a tip type the run
@@ -1323,7 +1327,10 @@ order of checks.
 - Changing the `probes` list given to `setTipProbes` afterwards doesn't change the plan.
 - `removeTipChange` merges the two tip groups; for `START` it throws.
 - `tipsUsed` (tip types named from `TIP_TYPES`, not written out, and counts from `probesFor`, so
-  changing `config/` breaks no test; CLAUDE.md, "Tests follow `config/`"):
+  changing `config/` breaks no test; CLAUDE.md, "Tests follow `config/`"). "The first tip type" is
+  `TIP_TYPES[0]` and "the second" `TIP_TYPES[1]`; each test that uses the second runs only when
+  `TIP_TYPES` has at least 2 entries (and is skipped otherwise), so shortening the list breaks no
+  test:
   - a new plan (no transfers) gives `[]`;
   - one stage with a transfer and the `START` tips on `probesFor(DEFAULT_PROBE_COUNT)` gives one
     entry, the first tip type, counting `DEFAULT_PROBE_COUNT`;
@@ -1334,14 +1341,25 @@ order of checks.
   - a tip group whose stages have no transfers counts nothing, and adding one transfer to it makes
     it count; a group with a transfer stage without transfers and one with transfers counts in
     full;
+  - the `START` tip group's stages have no transfers and a later tip group's do (a tip change
+    loading the second tip type, or the first on other probes, before a later stage with a
+    transfer): only the later group counts, and the `START` tips count nothing;
   - a group whose only stage is a mix step mixing one well counts;
   - a randomization that has run counts the tips of its stages' tip changes, with nothing done for
     it: the count equals the sum over `tipGroups` with transfers;
   - a plan with a contents problem is still counted;
-  - **it matches the Biomek files:** for each of the plans above that has transfers (given an
-    experiment name, and without problems), the counts equal the sum, by `TipType`, of the number
-    of probes in each tip-change row's `LoadProbes` in `writeRunFiles`' `Stages.csv`
-    (`file-writer.md`), so the two can't drift apart;
+  - **it matches the Biomek files:** for each of the plans above that has transfers, except the
+    one with a contents problem, the counts equal what `writeRunFiles(plan, timestamp)`
+    (`file-writer.md`) loads, so the two can't drift apart. The timestamp is a fixed `Date` (e.g.
+    `new Date(2026, 9, 28, 1, 57, 32)`), and each plan is given an experiment name and set up to
+    have no problems, so `writeRunFiles` accepts it: every transfer's draw is covered by starting
+    contents, and the mix-step plan gets starting contents so its mixed well holds enough to mix
+    (no mix problem) and the mix step's draw is covered. To read the files: take `Stages.csv`'s
+    rows (after the header) whose `NewTip` is `1` (the tip-change rows); strip the double quotes
+    from each one's `LoadProbes` (the file writer quotes a field holding a comma, e.g.
+    `"1,2,3,4"`; a single probe is written `1`, unquoted); count its comma-separated probe numbers;
+    and add the counts up by the row's `TipType`. The result, in `TIP_TYPES` order, equals
+    `tipsUsed(plan)`;
   - changing the list it returned doesn't change the next one.
 
 **Components and starting contents**
