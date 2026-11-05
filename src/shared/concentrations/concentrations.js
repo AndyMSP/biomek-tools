@@ -8,11 +8,15 @@
 // between units: everything is added in the family's base unit (factor 1 in
 // config/concentration-units.js) and scaled only for display.
 //
+// Cells are a constituent like any other, in cells/mL (CELL_DENSITY_UNIT), a family of their own
+// that is never rescaled; for wells on labware cells grow on, the module also works out a well's
+// seeding density, its cells per cm² of growth area (concentrations.md, "Cells").
+//
 // It's shared because the arithmetic belongs to no one tool: the transfer designer uses it for its
 // contents card, and a later tool may use it for a report. It never changes its inputs.
 // Specification: concentrations.md.
 
-import { CONCENTRATION_UNITS } from "../../../config/concentration-units.js";
+import { CONCENTRATION_UNITS, CELL_DENSITY_UNIT } from "../../../config/concentration-units.js";
 import { describeValue } from "../error-messages/error-messages.js";
 import {
   isObject,
@@ -105,6 +109,23 @@ export function bestUnit(family, value) {
   const chosen =
     units.find((entry) => value / entry.factor >= 1 - BOUNDARY_TOLERANCE) ?? smallest;
   return { amount: value / chosen.factor, unit: chosen.unit };
+}
+
+// Whether `family` is the cells' family, the family of CELL_DENSITY_UNIT in the configuration,
+// e.g. isCellFamily("cells") → true, isCellFamily("molar") → false. Never throws: anything that
+// isn't the cells' family, such as "volume" or 5, gives false.
+export function isCellFamily(family) {
+  return family === familyOf(CELL_DENSITY_UNIT);
+}
+
+// A well's seeding density in cells/cm²: its `cellDensity` (cells/mL) times its `volume` (µL,
+// turned into mL) divided by its `growthArea` (cm²), assuming every cell settles onto the bottom,
+// e.g. seedingDensity(150000, 100, 0.32) → 46875. Inputs aren't checked (concentrations.md,
+// section 4); the volume is converted first, then multiplied and divided, in that order, so tests
+// can compare exactly.
+export function seedingDensity(cellDensity, volume, growthArea) {
+  const volumeInMilliliters = volume / 1000;
+  return (cellDensity * volumeInMilliliters) / growthArea;
 }
 
 // --- Helpers used only inside this module ---

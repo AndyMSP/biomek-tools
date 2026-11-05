@@ -1,7 +1,7 @@
 // deck.js — answers questions about the deck description in config/deck.js (the labware on the
 // general-purpose method's standard deck, ADR 0007, each with its name and its labware type) and
-// about the labware types in config/labware-types.js (each with its well grid, its capacity and
-// its dead volume).
+// about the labware types in config/labware-types.js (each with its well grid, its capacity, its
+// dead volume and, for a type cells grow on, its growth area).
 //
 // It's shared because the transfer designer (to draw labware and check wells), contents tracking
 // (capacities and dead volumes) and the file writer (to look up labware types) all need the deck
@@ -53,6 +53,13 @@ export function capacityOf(name) {
 // Throws if the labware isn't on the deck.
 export function deadVolumeOf(name) {
   return findType(name).deadVolume;
+}
+
+// The growth area of the labware called `name`, in cm², from its labware type, or null if the type
+// has none, e.g. "Plate" → 0.32, "Res" → null. Having none is what keeps cells per cm² off a type
+// (deck.md, "The labware types"). Throws if the labware isn't on the deck.
+export function growthAreaOf(name) {
+  return findType(name).growthArea ?? null;
 }
 
 // Throws if `end` isn't a well on the deck: an object { labware, well } whose labware is on the

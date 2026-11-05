@@ -39,7 +39,7 @@ import {
   NEGLIGIBLE_MICROLITERS,
 } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
-import { labwareNames, gridOf, checkWell } from "../../shared/deck/deck.js";
+import { labwareNames, gridOf, checkWell, growthAreaOf } from "../../shared/deck/deck.js";
 import { START, tipGroups } from "../../shared/tip-groups/tip-groups.js";
 import { checkExperimentName } from "../../shared/file-writer/file-writer.js";
 import {
@@ -53,6 +53,8 @@ import {
   familyOf,
   unitsOf,
   wellConcentrations,
+  isCellFamily,
+  seedingDensity,
 } from "../../shared/concentrations/concentrations.js";
 
 // START and tipGroups live in the tip-groups shared module, which the file writer uses too. They're
@@ -633,6 +635,26 @@ export function setConstituents(plan, name, constituents) {
 // has no record of is simply empty.
 export function concentrationsOf(plan, snapshot, end) {
   return wellConcentrations(snapshot.volumeFractionsOf(end?.labware, end?.well), plan.components);
+}
+
+// The seeding densities of the well `end` ({ labware, well }) in `snapshot`, a ContentsSnapshot of
+// this plan: one { name, value } per entry of concentrationsOf in the cells' family, `value` in
+// cells/cm² of the well's growth area, in concentrationsOf's order (transfer-designer.md, section
+// 3, "Seeding densities"), e.g. [{ name: "Cells", value: 46875 }]. [] when the well's labware has no
+// growth area or the well carries no cells. The well's volume is everything it holds, dead volume
+// included, since those cells settle too. Throws as concentrationsOf does, then as growthAreaOf does.
+export function seedingDensitiesOf(plan, snapshot, end) {
+  const concentrations = concentrationsOf(plan, snapshot, end);
+  // Looked up even for a well carrying no cells, so whether it throws never depends on the
+  // well's contents.
+  const growthArea = growthAreaOf(end.labware);
+  if (growthArea === null) {
+    return [];
+  }
+  const volume = snapshot.totalVolumeOf(end.labware, end.well);
+  return concentrations
+    .filter((entry) => isCellFamily(entry.family))
+    .map((entry) => ({ name: entry.name, value: seedingDensity(entry.value, volume, growthArea) }));
 }
 
 // Returns the plan with component `oldName` called `newName` (spaces at its ends removed), in the

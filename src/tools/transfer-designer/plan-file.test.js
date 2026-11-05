@@ -39,7 +39,7 @@ import {
   setConstituents,
 } from "./transfer-designer.js";
 import { PLAN_FILE_FORMAT, PLAN_FILE_VERSION, planToText, planFromText } from "./plan-file.js";
-import { CONCENTRATION_UNITS } from "../../../config/concentration-units.js";
+import { CONCENTRATION_UNITS, CELL_DENSITY_UNIT } from "../../../config/concentration-units.js";
 import { familyOf, unitsOf } from "../../shared/concentrations/concentrations.js";
 
 // Units for the constituent tests, named by symbol as concentrations.md, section 6, allows, with
@@ -338,6 +338,18 @@ describe("plan-file", () => {
     );
     assert.deepEqual(opened.components[2].constituents.map((entry) => entry.name), ["Hy-Soy", "Drug A"]);
     assert.equal(opened.components[2].constituents[1].amount, 0.1);
+  });
+
+  test("cells, saved and opened, give the same constituent, in a file of the same version", () => {
+    const cells = { name: "Cells", amount: 1500000, unit: CELL_DENSITY_UNIT };
+    const plan = setConstituents(fullPlan(), "Dye", [cells]);
+    const text = planToText(plan, SAVED_BY);
+    const file = JSON.parse(text);
+    assert.equal(file.version, PLAN_FILE_VERSION);
+    assert.match(text, /"amount": 1500000,/);
+    const opened = planFromText(text);
+    const component = opened.components.find((candidate) => candidate.name === "Dye");
+    assert.deepEqual(component.constituents, [cells]);
   });
 
   test('a plan with no name saves "experimentName": "" and opens with none', () => {
