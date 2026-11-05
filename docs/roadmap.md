@@ -351,7 +351,8 @@ Last updated: 2026-11-05
   `config/concentration-units.js` (M `offered: true`; the module and its tests read the offered
   units from the file, so neither changes), a dated note in ADR 0013, and the page's checks
   (`transfer-designer-page.md`, section 16). It changes no Biomek files, and existing plan files
-  still open.
+  still open. **Built (#133, 2026-11-05)**: the configuration only; the menu, module and tests
+  already follow it. Still to check by Andy.
 - **Decided: osmolality** (Andy, 2026-11-05; item 15, below; ADR 0016, Proposed): a measured
   property of a whole solution, not a constituent. Each component may have its stock's measured
   osmolality (mOsm/kg), and every well's is estimated as the share-weighted sum of its components',
@@ -620,7 +621,7 @@ added on 2026-10-28 (Andy).
       to smallest.
     - **Nothing else changes:** no Biomek files, and plan files keep their format (a file could
       already hold a constituent in M, as display-only units are accepted when opened).
-    **Specified** (Draft, 2026-11-05): see "Where things stand".
+    **Specified** (Draft, 2026-11-05) and **Built (#133, 2026-11-05)**: see "Where things stand".
 15. **Osmolality** (Andy, 2026-11-05; ADR 0016): what a well's osmolality is, so a plan shows when
     adding drugs, buffers or DMSO stocks moves a well away from the medium's. Decided so far (Andy,
     2026-11-05):
