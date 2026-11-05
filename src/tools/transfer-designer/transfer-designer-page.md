@@ -1185,8 +1185,8 @@ closes it, as a click outside would (below). Its ✎ is shown pressed while it's
 - `Remove` acts at once, not through Save, and asks no question (Andy, 2026-10-31: Undo brings
   back what it removed, so the question only slowed things down).
 
-**A stage's box** is 320px wide (other boxes are 280px), so its menus show their whole names, such
-as `Non-Contact`. From the top:
+**A stage's box** is 320px wide (other boxes are 280px, except a component's, also 320px, so its
+Contains rows fit; section 15), so its menus show their whole names, such as `Non-Contact`. From the top:
 - **Name** (a text box).
 - **A grid** with the stage's ends as columns, headed `Aspirate` and `Dispense`, and its settings
   as rows, each labeled once at the left (Andy, 2026-10-29: simpler and less cluttered, with no
@@ -1423,7 +1423,9 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **Tip group boxes:** 12px corners; light blue (`#EEF3FA`, border `#9DB7DB`), alternating with light
   sand (`#F5F1E8`, border `#D9D2C3`). Start, the boxes and End 18px apart, leaving room for the
   seams between tip groups (section 7).
-- **Editing boxes:** 280px wide; a stage's 320px (section 10). In a stage's box, the grid's column
+- **Editing boxes:** 280px wide; a stage's and a component's 320px (sections 8 and 10; a
+  component's from 2026-11-05, so a Contains row's name box keeps room once the amount box and
+  unit menu grew for cells, found in the build review). In a stage's box, the grid's column
   headings and row labels look like the box's other field names (12px, semibold, gray, capitals);
   the label column is as wide as its widest label, and the two end columns share the rest equally,
   8px apart; the menus there have 4px side padding instead of 10px, so whole mode names fit.
@@ -1438,7 +1440,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **What a chip carries** (section 8): 12px gray (`#5E5E58`), 2px after the name, never wrapped;
   the same gray when the chip is picked.
 - **A component's Contains rows** (section 8): a grid per row, the name box taking what's left,
-  then the amount box 64px (from 2026-11-05, was 56px, so `1500000` shows whole), the unit menu
+  then the amount box 72px with 6px side padding (from 2026-11-05, was 56px, so `1500000` shows
+  whole; 64px with the usual 10px padding cut it to `15000…`, found in the build review), the unit menu
   92px (from 2026-11-05, was 76px, so `cells/mL` shows whole; its right padding 2px, so `g/L` and
   `mM` show whole), then `×` 26px; 6px apart; rows 6px apart and 6px above `+ Add`; `×` plain (no border,
   gray, 16px) like a transfer row's.

@@ -5980,6 +5980,8 @@ function createEditingBox(plan) {
   // A stage's box is wider than the others, so its menus show whole mode names (section 15); a mix
   // step's has no menus, so it's as wide as the others (section 10).
   box.classList.toggle("stage-box", editingBox.kind === "stage" && !isMixStepBox);
+  // A component's box is as wide, so its Contains rows' name boxes keep room (section 15).
+  box.classList.toggle("component-box", editingBox.kind === "component");
   box.setAttribute("role", "dialog");
   const what = isMixStepBox ? "mix step" : editingBox.kind === "tip" ? "new tips" : editingBox.kind;
   box.setAttribute("aria-label", `Edit ${what}`);
