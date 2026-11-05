@@ -109,6 +109,11 @@
 > "Workflows"), so the choices made for Andy are listed in its pull request. They become Final once
 > built and tested by Andy.
 
+> **Draft change (2026-11-05, M offered):** M is an offered unit (`concentrations.md`, section 7),
+> so a Contains row's unit menu reads M, mM, µM, g/L, %, × (section 8, from the configuration; no
+> page rule changes), and section 16 checks it. Written in the hands-off workflow (CLAUDE.md,
+> "Workflows"). It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -1500,8 +1505,10 @@ page's configuration (ADR 0009):
   a saved plan reopens with the same mixing, and its Biomek files have the mix columns;
 - constituents: a component's box with no rows (`Contains nothing at a known concentration.`),
   `+ Add` pre-filling the component's name, a second row blank; name, amount and unit typed and
-  chosen, Enter in the amount box saving; `×` taking a row out; Save, then Undo and Redo of the
-  rows; a bad amount (`ten`, blank, `0`) refused with the message and the box kept open; a unit of
+  chosen, Enter in the amount box saving; the unit menu listing the offered units in the
+  configuration's order (today M, mM, µM, g/L, %, ×), and a constituent saved at `1 M` showing
+  `1 M` on the chip and, diluted 1 in 20 in a well, `50 mM` on the contents card; `×` taking a
+  row out; Save, then Undo and Redo of the rows; a bad amount (`ten`, blank, `0`) refused with the message and the box kept open; a unit of
   another family for a name another component carries refused, naming that component; the chip's
   text (`10 mM`; `Hy-Soy 4 g/L +2`) and tooltip; the contents card: no group for a well carrying
   nothing; one constituent at 25% of the well (10 mM → `2.5 mM`); the same constituent from two
