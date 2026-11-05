@@ -85,6 +85,11 @@ import {
   placeRandomization,
   randomizationProblems,
   fillerShares,
+  sourceGroups,
+  setSourceSharesTips,
+  moveSource,
+  removeSources,
+  tipSetsToMake,
   isRandomizationOutOfDate,
   sourceName,
   runRandomization,
@@ -2752,17 +2757,18 @@ function newCard(plan, id, returnTo) {
 }
 
 // A randomization as its card shows it, for editing: its sources with their replicates as typed
-// text, its wells to fill, its seed and volume as text, each end's mode and Mix (as a stage's box
+// text and whether each shares the tips before it, its wells to fill, its seed and volume as text, each end's mode and Mix (as a stage's box
 // holds them), its tip type and probes, and the open tab.
 function draftOf(randomization, tab) {
   const { settings } = randomization;
   return {
     tab,
-    sources: randomization.sources.map(({ labware, well, replicates, filler }) => ({
+    sources: randomization.sources.map(({ labware, well, replicates, filler, sharesTips }) => ({
       labware,
       well,
       replicatesText: replicates === null ? "" : String(replicates),
       filler,
+      sharesTips,
     })),
     fill: randomization.fill.map(({ labware, well }) => ({ labware, well })),
     seedText: randomization.seed === null ? "" : String(randomization.seed),
@@ -2787,11 +2793,12 @@ function draftChanges(plan) {
     Object.assign(settings, stageEndSettings(stored, boxEnd, draft[boxEnd.mode], draft[boxEnd.mix]));
   }
   return {
-    sources: draft.sources.map(({ labware, well, replicatesText, filler }) => ({
+    sources: draft.sources.map(({ labware, well, replicatesText, filler, sharesTips }) => ({
       labware,
       well,
       replicates: filler ? null : replicatesValue(replicatesText),
       filler,
+      sharesTips,
     })),
     fill: draft.fill.map(({ labware, well }) => ({ labware, well })),
     seed: seedValue(draft.seedText),
@@ -2889,6 +2896,17 @@ function stagesToMake(plan) {
   return takers + (fillerFills ? 1 : 0);
 }
 
+// Randomize's tooltip (section 7), for a draft with no problem: "Makes 12 stages, with new tips
+// before each." when no source shares tips; once any does, "Makes 12 stages, on 4 sets of new
+// tips.", the count from tipSetsToMake on the draft.
+function randomizeTooltip(plan) {
+  const stages = countOf(stagesToMake(plan), "stage");
+  if (!card.draft.sources.some((entry) => entry.sharesTips)) {
+    return `Makes ${stages}, with new tips before each.`;
+  }
+  return `Makes ${stages}, on ${countOf(tipSetsToMake(draftPlan(plan), card.id), "set")} of new tips.`;
+}
+
 // The open randomization's card (section 7): the tabs and the open tab's contents, Each transfer,
 // Seed, and the footer with its first problem and buttons. Escape in it closes it, as on the page.
 function createRandomizationCard(plan, randomization) {
@@ -2948,8 +2966,8 @@ function createCardTabs() {
 }
 
 // The Sources tab (section 7): a note with none; otherwise All sources (with two or more sources
-// taking replicates), a row per source (the first SOURCES_SHOWN unless shown in full), and Show all
-// / Show fewer.
+// taking replicates), the sources in boxes of sources that share tips (the first SOURCES_SHOWN rows
+// unless shown in full), and Show all / Show fewer.
 function createSourcesTab(plan) {
   const { draft } = card;
   if (draft.sources.length === 0) {
@@ -2960,11 +2978,8 @@ function createSourcesTab(plan) {
     parts.push(createAllSourcesRow());
   }
   const inFull = sourcesShownInFull.has(card.id);
-  const shown = inFull ? draft.sources : draft.sources.slice(0, SOURCES_SHOWN);
-  const list = createElement("ul", "", "source-list");
-  const shares = draftFillerShares(plan);
-  list.append(...shown.map((entry) => createSourceRow(plan, entry, shares)));
-  parts.push(list);
+  const shownCount = inFull ? draft.sources.length : Math.min(SOURCES_SHOWN, draft.sources.length);
+  parts.push(createSourceGroups(plan, shownCount));
   if (draft.sources.length > SOURCES_SHOWN) {
     const toggle = createElement(
       "button",
@@ -2985,6 +3000,214 @@ function createSourcesTab(plan) {
     parts.push(toggle);
   }
   return parts;
+}
+
+// --- A randomization's sources sharing tips (section 7, "Boxes of sources that share tips") ---
+
+// The data type a dragged source row carries, so only the Sources list accepts it: no text box can
+// take it, and the list refuses any drag that doesn't carry it.
+const SOURCE_DRAG_TYPE = "application/x-biomek-tools-source";
+
+// The source row being dragged, as { from }, its place in the draft's sources, or null.
+let sourceDrag = null;
+
+// The Sources list (section 7): a box per source group of the draft's sources (sourceGroups) that
+// has a shown row, showing its rows among the first `shownCount`, with a seam between boxes above
+// the first, between each two and below the last. Every seam stands for a place in the whole list's
+// groups, as moveSource takes it, so a seam means the same place folded or not.
+function createSourceGroups(plan, shownCount) {
+  const { sources } = card.draft;
+  const groups = sourceGroups(sources);
+  const shownGroups = groups.filter((group) => group[0] < shownCount);
+  const shares = draftFillerShares(plan);
+  const container = createElement("div", "", "source-groups");
+  container.addEventListener("dragover", refuseOtherDrops, true);
+  container.addEventListener("drop", refuseOtherDrops, true);
+  container.append(createSourceSeamBetween(plan, groups, 0, false));
+  shownGroups.forEach((group, index) => {
+    container.append(createSourceGroupBox(plan, group, index, shownCount, shares));
+    const joins = index + 1 < shownGroups.length;
+    container.append(createSourceSeamBetween(plan, groups, index + 1, joins));
+  });
+  return container;
+}
+
+// One box of sources sharing tips (section 7): light blue or, for odd `index`, light sand, headed
+// "New tips" or "New tips · shared by 3 sources" (counting every source of the group, shown or
+// not), then its shown rows, each between two seams inside the box. `group` is the group's indexes
+// in the draft's sources. The seam below its last shown row stands for the group's end, hidden rows
+// included.
+function createSourceGroupBox(plan, group, index, shownCount, shares) {
+  const { sources } = card.draft;
+  const box = createElement("div", "", "source-group");
+  box.classList.toggle("sand", index % 2 === 1);
+  const heading = createElement("div", "", "source-group-heading");
+  const text = group.length === 1 ? "New tips" : `New tips · shared by ${group.length} sources`;
+  heading.append(createElement("span", "", "tip-icon"), createElement("span", text));
+  const list = createElement("ul", "", "source-list");
+  // A seam inside this box, just before its source at `position`, with `button` or none.
+  const seamAt = (position, button) =>
+    createSourceSeam("li", { kind: "inGroup", index, position }, button);
+  const shown = group.filter((sourceIndex) => sourceIndex < shownCount);
+  list.append(seamAt(0, null));
+  shown.forEach((sourceIndex, position) => {
+    list.append(createSourceRow(plan, sources[sourceIndex], shares));
+    const lower = shown[position + 1];
+    list.append(lower === undefined ? seamAt(group.length, null) : seamAt(position + 1, createSplitButton(plan, lower)));
+  });
+  box.append(heading, list);
+  return box;
+}
+
+// The seam between source groups just above group `index` of `groups` (below the last for its
+// length), whose tip button, when `joins`, joins the group above and the group below (section 7).
+function createSourceSeamBetween(plan, groups, index, joins) {
+  const button = joins ? createJoinButton(plan, groups[index][0], groups[index - 1].at(-1)) : null;
+  return createSourceSeam("div", { kind: "between", index }, button);
+}
+
+// A seam of the Sources list (section 7): its line, shown while pointed at, and `button` (a tip
+// button) or none, as an element of `tag` ("li" inside a box's list, "div" between boxes). `place`
+// is where a source dropped on it goes (moveSource's place), kept on it for dropping.
+function createSourceSeam(tag, place, button) {
+  const seam = createElement(tag, "", place.kind === "between" ? "source-seam between" : "source-seam");
+  if (tag === "li") {
+    // A seam isn't one of the list's items; its button still is reachable.
+    seam.setAttribute("role", "presentation");
+  }
+  seam.dataset.sourcePlace = JSON.stringify(place);
+  seam.append(createElement("span", "", "source-seam-line"));
+  if (button !== null) {
+    seam.append(button);
+  }
+  seam.addEventListener("dragover", (event) => overSourceSeam(event, seam));
+  seam.addEventListener("dragleave", () => seam.classList.remove("drop-target"));
+  seam.addEventListener("drop", (event) => dropOnSourceSeam(event, seam));
+  return seam;
+}
+
+// The tip button joining two boxes (section 7): the source at `lowerIndex`, the lower box's first,
+// shares the tips of the upper box, whose last source is at `upperIndex`. Its tooltip and
+// accessible name are e.g. "Drug B shares the tips of Drug A".
+function createJoinButton(plan, lowerIndex, upperIndex) {
+  const { sources } = card.draft;
+  const label = `${sourceName(plan, card.id, sources[lowerIndex])} shares the tips of ${sourceName(plan, card.id, sources[upperIndex])}`;
+  return createSourceTipButton(label, sources[lowerIndex], true);
+}
+
+// The tip button splitting a box (section 7): the source at `lowerIndex` and the sources after it
+// in its box get new tips. Its tooltip and accessible name are e.g. "New tips for Drug C and the
+// sources below it in this box".
+function createSplitButton(plan, lowerIndex) {
+  const entry = card.draft.sources[lowerIndex];
+  const label = `New tips for ${sourceName(plan, card.id, entry)} and the sources below it in this box`;
+  return createSourceTipButton(label, entry, false);
+}
+
+// A tip button on a Sources list seam (section 7): a white circle with the tip icon, with `label`
+// as its tooltip and accessible name, setting `entry`'s sharesTips to `shares` in the draft. Its
+// focus key names `entry`'s well, so a join and the split that replaces it keep the focus.
+function createSourceTipButton(label, entry, shares) {
+  const button = createElement("button", "", "source-tip-button");
+  button.type = "button";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.dataset.focusKey = `tips:${wellKey(entry)}`;
+  button.append(createElement("span", "", "tip-icon"));
+  button.addEventListener("click", () => {
+    const { sources } = card.draft;
+    card.draft.sources = setSourceSharesTips(sources, sources.indexOf(entry), shares);
+    redrawCard();
+  });
+  return button;
+}
+
+// The draft's sources without those `isRemoved` picks, each box they leave keeping its tips
+// (removeSources), e.g. removeDraftSources(sources, (entry) => entry === removed).
+function removeDraftSources(sources, isRemoved) {
+  const indexes = sources.flatMap((entry, index) => (isRemoved(entry) ? [index] : []));
+  return removeSources(sources, indexes);
+}
+
+// Makes a source row draggable (section 7, "Moving a source"): by its grip or any part outside its
+// controls, never from its replicates box, Filler button or ×, so pressing there works as usual.
+function makeSourceRowDraggable(row, entry) {
+  row.draggable = true;
+  // Decided at each press, before the browser decides whether a drag can start.
+  row.addEventListener("pointerdown", (event) => {
+    row.draggable = !(event.target instanceof Element) || event.target.closest("input, button") === null;
+  });
+  row.addEventListener("dragstart", (event) => beginSourceDrag(event, row, entry));
+  row.addEventListener("dragend", endSourceDrag);
+}
+
+// Starts dragging `entry`'s row: notes where it came from, carries SOURCE_DRAG_TYPE only, and,
+// once the browser has taken the drag's picture, fades the row and shows every seam's line faintly.
+function beginSourceDrag(event, row, entry) {
+  if (event.target !== row) {
+    event.preventDefault();
+    return;
+  }
+  sourceDrag = { from: card.draft.sources.indexOf(entry) };
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData(SOURCE_DRAG_TYPE, String(sourceDrag.from));
+  const list = row.closest(".source-groups");
+  requestAnimationFrame(() => {
+    if (sourceDrag !== null) {
+      row.classList.add("source-dragged");
+      list?.classList.add("sources-dragging");
+    }
+  });
+}
+
+// Ends a source row's drag, dropped or not: forgets it and takes away its marks.
+function endSourceDrag() {
+  sourceDrag = null;
+  if (card === null || card.element === null) {
+    return;
+  }
+  for (const marked of card.element.querySelectorAll(".source-dragged, .sources-dragging, .drop-target")) {
+    marked.classList.remove("source-dragged", "sources-dragging", "drop-target");
+  }
+}
+
+// A drag over a Sources list seam: a source row's drag can drop here, and the seam shows its line
+// strongly; any other drag can't.
+function overSourceSeam(event, seam) {
+  if (sourceDrag === null) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  seam.classList.add("drop-target");
+}
+
+// A source row dropped on a Sources list seam: moves the source there in the draft (moveSource, by
+// the container rule) and redraws the card.
+function dropOnSourceSeam(event, seam) {
+  if (sourceDrag === null) {
+    return;
+  }
+  event.preventDefault();
+  const { from } = sourceDrag;
+  endSourceDrag();
+  card.draft.sources = moveSource(card.draft.sources, from, JSON.parse(seam.dataset.sourcePlace));
+  redrawCard();
+}
+
+// Caught first on the Sources list: refuses any drag or drop on it except a source row's on a seam,
+// so a drag from elsewhere can't drop here (not even text into a replicates box), and a source can't
+// be dropped on a row.
+function refuseOtherDrops(event) {
+  const onSeam = event.target instanceof Element && event.target.closest(".source-seam") !== null;
+  if (sourceDrag !== null && onSeam) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "none";
+  if (event.type === "drop") {
+    event.stopPropagation();
+  }
 }
 
 // The All sources row (section 7): one box setting every source's replicates as it's typed (not the
@@ -3026,17 +3249,22 @@ function rowEndPlaceholders() {
   );
 }
 
-// One source's row (section 7): its main component's swatch just before the randomization (gray if
-// it holds nothing then), its name (sourceName), its replicates box, or, for a filler well, how
-// many wells it fills (its share, from `shares`, draftFillerShares); the Filler toggle, which turns
-// only this row's on or off; and ×.
+// One source's row (section 7): the grip it's dragged by, its main component's swatch just before
+// the randomization (gray if it holds nothing then), its name (sourceName), its replicates box, or,
+// for a filler well, how many wells it fills (its share, from `shares`, draftFillerShares); the
+// Filler toggle, which turns only this row's on or off; and ×.
 function createSourceRow(plan, entry, shares) {
   const where = wellName(plan, entry);
   const key = wellKey(entry);
   const row = createElement("li", "", "source-row");
   const name = createElement("span", sourceName(plan, card.id, entry), "source-name");
   name.title = where;
-  row.append(createSwatch(mainComponentColor(plan, shownSnapshot, entry)), name);
+  const grip = createElement("span", "⠿", "source-grip");
+  grip.title = "Drag to move this source";
+  // The grip is for the mouse only: moving a source with the keyboard isn't offered yet.
+  grip.setAttribute("aria-hidden", "true");
+  row.append(grip, createSwatch(mainComponentColor(plan, shownSnapshot, entry)), name);
+  makeSourceRowDraggable(row, entry);
   if (entry.filler) {
     row.append(createElement("span", fillerShareText(shares, card.draft.sources.indexOf(entry)), "filler-count"));
   } else {
@@ -3066,7 +3294,7 @@ function createSourceRow(plan, entry, shares) {
   remove.type = "button";
   remove.setAttribute("aria-label", `Remove source ${where}`);
   remove.addEventListener("click", () => {
-    card.draft.sources = card.draft.sources.filter((other) => other !== entry);
+    card.draft.sources = removeDraftSources(card.draft.sources, (other) => other === entry);
     draftChangedOnDeck();
   });
   row.append(filler, remove);
@@ -3097,7 +3325,8 @@ function createFillTab(plan) {
 }
 
 // The card's Tips (section 7): a menu of tip types and one of probe counts ("1 probe" … "8
-// probes", choosing probesFor), for the new tips before each of its stages.
+// probes", choosing probesFor), for each set of new tips its stages load: one before each box of
+// sources, so before each stage when no source shares tips.
 function createCardTipsField() {
   const { draft } = card;
   const field = createElement("div", "", "card-field");
@@ -3224,8 +3453,9 @@ function createCardFooter(plan, randomization) {
   run.disabled = problem !== null;
   if (problem === null) {
     run.title = hasRun
-      ? "Applies these settings to its stages. The same seed keeps the same wells; a new seed shuffles again."
-      : `Makes ${countOf(stagesToMake(plan), "stage")}, with new tips before each.`;
+      ? "Applies these settings to its stages. The same seed and source order keep the same wells; " +
+        "a new seed or a new order shuffles again."
+      : randomizeTooltip(plan);
   }
   run.addEventListener("click", runOpenRandomization);
   buttons.append(close, run);
@@ -3401,9 +3631,9 @@ function pickWell(end) {
   const isSource = draft.sources.some((entry) => wellKey(entry) === key);
   if (draft.tab === "sources") {
     if (isSource) {
-      draft.sources = draft.sources.filter((entry) => wellKey(entry) !== key);
+      draft.sources = removeDraftSources(draft.sources, (entry) => wellKey(entry) === key);
     } else {
-      draft.sources.push({ labware: end.labware, well: end.well, replicatesText: "", filler: false });
+      draft.sources.push({ labware: end.labware, well: end.well, replicatesText: "", filler: false, sharesTips: false });
       draft.fill = draft.fill.filter((other) => wellKey(other) !== key);
     }
   } else if (isSource) {
@@ -3436,11 +3666,11 @@ function pickSourceBox(wells, firstWell) {
   const sources = new Set(draft.sources.map(wellKey));
   const inBox = new Set(wells.map(wellKey));
   if (sources.has(wellKey(firstWell))) {
-    draft.sources = draft.sources.filter((entry) => !inBox.has(wellKey(entry)));
+    draft.sources = removeDraftSources(draft.sources, (entry) => inBox.has(wellKey(entry)));
   } else {
     const adding = wells.filter((end) => !sources.has(wellKey(end)));
     draft.sources.push(
-      ...adding.map(({ labware, well }) => ({ labware, well, replicatesText: "", filler: false })),
+      ...adding.map(({ labware, well }) => ({ labware, well, replicatesText: "", filler: false, sharesTips: false })),
     );
     draft.fill = draft.fill.filter((end) => !inBox.has(wellKey(end)));
   }

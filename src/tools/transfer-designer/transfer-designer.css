@@ -1776,6 +1776,145 @@ input.replicates-box::placeholder {
   font-size: 12px;
 }
 
+/* The Sources list's boxes of sources that share tips (section 7): light blue alternating with light
+   sand, like the Stages column's tip groups, smaller. */
+.source-group {
+  padding: 4px 6px 0;
+  border: 1px solid var(--blue-border);
+  border-radius: 10px;
+  background: var(--blue-tint);
+}
+
+.source-group.sand {
+  border-color: var(--sand-border);
+  background: var(--sand-tint);
+}
+
+.source-group-heading {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.source-group-heading .tip-icon {
+  width: 5px;
+  height: 11px;
+  border-width: 1px;
+}
+
+/* A seam of the Sources list: 6px inside a box, 12px between boxes. Its line and tip button show
+   only while it's pointed at or its button has focus, floating over the rows. */
+.source-seam {
+  position: relative;
+  height: 6px;
+  z-index: 2;
+}
+
+.source-seam.between {
+  height: 12px;
+}
+
+.source-seam-line {
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--blue);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.source-seam:hover,
+.source-seam:focus-within {
+  z-index: 3;
+}
+
+.source-seam:hover .source-seam-line,
+.source-seam:focus-within .source-seam-line {
+  opacity: 0.35;
+}
+
+button.source-tip-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
+  margin: -11px 0 0 -11px;
+  border: 1px solid var(--blue-border);
+  border-radius: 50%;
+  background: var(--panel-background);
+  color: var(--blue);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.source-tip-button .tip-icon {
+  width: 5px;
+  height: 11px;
+  border-width: 1px;
+}
+
+.source-seam:hover .source-tip-button,
+.source-seam:focus-within .source-tip-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* A source row is dragged by its grip or any part outside its controls (section 7): the grab
+   pointer shows only there. */
+.source-row[draggable] {
+  cursor: grab;
+}
+
+.source-row input {
+  cursor: text;
+}
+
+.source-row button {
+  cursor: pointer;
+}
+
+.source-grip {
+  flex: none;
+  width: 10px;
+  margin-right: -4px;
+  color: var(--muted-text);
+  font-size: 12px;
+  line-height: 1;
+  user-select: none;
+}
+
+/* While a source row is dragged: it fades, every seam's line shows faintly, the tip buttons hide,
+   and the seam under the pointer shows its line 4px thick at full strength. */
+.source-row.source-dragged {
+  opacity: 0.4;
+}
+
+.sources-dragging .source-seam-line {
+  opacity: 0.15;
+}
+
+.sources-dragging .source-tip-button {
+  display: none;
+}
+
+.sources-dragging .source-seam.drop-target .source-seam-line {
+  height: 4px;
+  margin-top: -2px;
+  opacity: 1;
+}
+
 .fill-summary {
   display: flex;
   align-items: center;
