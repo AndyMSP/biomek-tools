@@ -136,6 +136,16 @@ describe("osmolality", () => {
       });
     });
 
+    test("a component named like an object's built-in property is treated like any other", () => {
+      const components = [
+        { name: "Media", osmolality: 300 },
+        { name: "constructor", osmolality: 0 },
+        { name: "toString", osmolality: null },
+      ];
+      assertResult(wellOsmolality({ Media: 1 }, components), 300, []);
+      assertResult(wellOsmolality({ Media: 0.5, constructor: 0.5 }, components), 150, []);
+    });
+
     test("the inputs aren't changed, and each call gives a new missing list", () => {
       const shares = { Media: 0.5, Water: 0.5 };
       const components = [

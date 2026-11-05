@@ -58,6 +58,10 @@ fraction of the well, 0 to 1, by component name) and the plan's **components** (
   for every component with a share above 0, share × osmolality, added up in the order of
   `components`. Otherwise `null`.
 
+A component's share is the shares' **own** property of its name, else 0, so a component named like
+a built-in property of JavaScript objects (`constructor`, `toString`) is treated like any other
+(found in the build review, 2026-11-05).
+
 For example, a well 90% Media (300 mOsm/kg) and 10% Water (0) gives `{ value: 270, missing: [] }`;
 90% Media and 10% Buffer B (no value) gives `{ value: null, missing: ["Buffer B"] }`. A well holding
 nothing (`{}`) gives `{ value: null, missing: [] }`.
@@ -117,6 +121,9 @@ leaves leftovers (a relative tolerance would allow no difference at all when the
 - A share above 0 whose name isn't one of `components` is listed in `missing`, after the
   components, and `value` is `null`.
 - A well with no shares, `{}`, gives `{ value: null, missing: [] }`.
+- A component named `constructor` (or `toString`) that the well doesn't hold isn't listed and
+  doesn't change the value: `{ Media: 1 }` with Media at 300 and `constructor` at 0 gives
+  `{ value: 300, missing: [] }`; one it holds counts like any other.
 - The inputs aren't changed; two calls give different `missing` lists (a new one each time).
 
 **The REPL**
