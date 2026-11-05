@@ -4440,6 +4440,16 @@ describe("transfer-designer", () => {
     });
   });
 
+  test("copied items: a version 2 copy whose second owned stage's tips are null is refused", () => {
+    const { plan: apartPlan, id } = sharingPlan([false, false, false, false]);
+    const plan = runRandomization(apartPlan, id);
+    const older = copiedAsVersion(copyOf(plan, [randomizationItem(id)]), 2);
+    older.items[0].stages[1].tips = null;
+    assert.throws(() => pasteItems(plan, older, between(0)), {
+      message: "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.",
+    });
+  });
+
   test("copied items version 3 whose sources and stages disagree paste as the copy gives, out of date, and Update brings them together", () => {
     let { plan, id } = sharingPlan([false, false, false, false]);
     plan = runRandomization(plan, id);
