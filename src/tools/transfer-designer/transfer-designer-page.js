@@ -92,6 +92,8 @@ import {
   canRemoveRandomization,
   setConstituents,
   concentrationsOf,
+  setOsmolality,
+  osmolalityOf,
   columnBoxes,
   moveItems,
   copyOf,
@@ -4407,7 +4409,10 @@ function createPalette(plan) {
     chip.append(createSwatch(component.color), createElement("span", component.name));
     if (component.constituents.length > 0) {
       chip.append(createElement("span", chipCarriesText(component), "chip-carries"));
-      chip.title = `Contains ${component.constituents.map(constituentText).join(", ")}`;
+    }
+    const tooltip = chipTooltip(component);
+    if (tooltip !== "") {
+      chip.title = tooltip;
     }
     chip.addEventListener("click", () => pickBrush({ kind: "component", name: component.name }));
     holder.append(chip, createPencil("component", component.name, `Edit ${component.name}`));
@@ -4431,6 +4436,20 @@ function chipCarriesText(component) {
   const amount = `${formatAmount(first.amount)} ${first.unit}`;
   const named = first.name === component.name ? amount : `${first.name} ${amount}`;
   return rest.length === 0 ? named : `${named} +${rest.length}`;
+}
+
+// A chip's tooltip (section 8): "Contains …" listing every constituent, then, on a line of its own,
+// the component's osmolality as its box shows it, with no "≈" since it's the measured value, e.g.
+// "Contains Dye 10 mM\nOsmolality 300 mOsm/kg"; "" for a component with neither.
+function chipTooltip(component) {
+  const lines = [];
+  if (component.constituents.length > 0) {
+    lines.push(`Contains ${component.constituents.map(constituentText).join(", ")}`);
+  }
+  if (component.osmolality !== null) {
+    lines.push(`Osmolality ${osmolalityText(component.osmolality)} mOsm/kg`);
+  }
+  return lines.join("\n");
 }
 
 // A constituent as a tooltip lists it: its name, amount and unit, e.g. "Hy-Soy 4 g/L".
@@ -5459,7 +5478,7 @@ function hideContentsCard() {
 
 // The contents card's lines for a well (section 6): its label first if it has one, then its name,
 // smaller under the label ("Empty" under it if it holds nothing), each component's swatch, name,
-// volume and share, then only problems and warnings: each contents problem of the well by its kind,
+// volume and share, any Concentrations group and the Osmolality line, then only problems and warnings: each contents problem of the well by its kind,
 // whether it's off plan, and how much of it the open stage mixes; last, a hint (cardHint).
 // No total, usable-volume or capacity lines (Andy, 2026-10-31): the components add up to the total,
 // the labware's limits are the same for every well of it, and the problem lines carry the numbers.
@@ -5488,6 +5507,9 @@ function contentsCardLines(plan, end) {
   const concentrations = concentrationsOf(plan, shownSnapshot, end);
   if (concentrations.length > 0) {
     lines.push(createConcentrationsGroup(concentrations));
+  }
+  if (showsOsmolality(plan, end)) {
+    lines.push(createOsmolalityLine(osmolalityOf(plan, shownSnapshot, end)));
   }
   for (const problem of shownSnapshot.listProblems()) {
     if (problem.labware === end.labware && problem.well === end.well) {
@@ -5540,6 +5562,43 @@ function createConcentrationsGroup(concentrations) {
   }
   group.append(list);
   return group;
+}
+
+// True if the contents card shows an Osmolality line for the well `end` (section 6): it holds
+// something in the shown snapshot, and some component of the plan has an osmolality (0 counts), so
+// a plan that doesn't use osmolality sees no change.
+function showsOsmolality(plan, end) {
+  const holdsSomething = shownSnapshot.totalVolumeOf(end.labware, end.well) > 0;
+  return holdsSomething && plan.components.some((component) => component.osmolality !== null);
+}
+
+// The contents card's Osmolality line (section 6) for a well's osmolality `{ value, missing }`
+// (osmolalityOf): under a thin rule, "Osmolality" at the left and "≈ 305 mOsm/kg" at the right, the
+// value rounded to a whole number (section 13); or, with components missing a value, the quieter
+// "Osmolality unknown: no value for Buffer B and Drug stock". 0 is a value: "≈ 0 mOsm/kg".
+function createOsmolalityLine({ value, missing }) {
+  const line = createElement("div", "", "card-osmolality");
+  if (value !== null) {
+    line.append(
+      createElement("span", "Osmolality"),
+      createElement("span", `≈ ${formatOsmolalityEstimate(value)} mOsm/kg`, "card-volume"),
+    );
+  } else {
+    line.classList.add("unknown");
+    line.textContent = `Osmolality unknown: no value for ${listWithAnd(missing)}`;
+  }
+  return line;
+}
+
+// `names` joined for reading, without quotes: one as it is, two with " and ", three or more with
+// ", " and " and " before the last, e.g. ["A"] → "A", ["A", "B"] → "A and B", ["A", "B", "C"] →
+// "A, B and C". (listNames and listNamesWithAnd elsewhere put each name in quotes, as messages about
+// property names do, so they don't fit here; section 6.)
+function listWithAnd(names) {
+  if (names.length <= 1) {
+    return names.join("");
+  }
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
 // A contents problem of the well, in words for the contents card (section 6), by its kind: a draw
@@ -5803,13 +5862,18 @@ function constituentOfRow(row) {
   return { name: row.name, amount: volumeValue(row.amount), unit: row.unit };
 }
 
-// What a box edits, before any changes: a component's name, color and constituents (as rows of
-// text, section 8); a stage's name, modes and whether each end mixes; a mix step's name; a tip
+// What a box edits, before any changes: a component's name, color, constituents (as rows of
+// text, section 8) and osmolality (as the text its box shows, "" for none); a stage's name, modes and whether each end mixes; a mix step's name; a tip
 // change's tip type and probes.
 function originalFor(plan, kind, key) {
   if (kind === "component") {
     const component = plan.components.find((candidate) => candidate.name === key);
-    return { name: component.name, color: component.color, rows: component.constituents.map(rowOf) };
+    return {
+      name: component.name,
+      color: component.color,
+      rows: component.constituents.map(rowOf),
+      osmolality: component.osmolality === null ? "" : osmolalityText(component.osmolality),
+    };
   }
   if (kind === "stage" && isMixStep(plan, key)) {
     // A mix step's box edits only its name (section 10).
@@ -5847,7 +5911,8 @@ function isBoxDirty() {
     return (
       draft.name !== original.name ||
       draft.color !== original.color ||
-      JSON.stringify(draft.rows) !== JSON.stringify(original.rows)
+      JSON.stringify(draft.rows) !== JSON.stringify(original.rows) ||
+      isOsmolalityChanged(original.osmolality, draft.osmolality)
     );
   }
   if (kind === "stage") {
@@ -5863,6 +5928,17 @@ function isBoxDirty() {
     draft.tipType !== original.tipType ||
     JSON.stringify(draft.probes) !== JSON.stringify(original.probes)
   );
+}
+
+// True if a component box's osmolality text `typed` changes the osmolality shown first as
+// `shown` (section 8): not when the text is the same; otherwise when the value it would pass on
+// differs from the shown one's, so "300.0" and "300" are the same, and so are an emptied box and a
+// component with none.
+function isOsmolalityChanged(shown, typed) {
+  if (typed === shown) {
+    return false;
+  }
+  return osmolalityValue(typed) !== osmolalityValue(shown);
 }
 
 // Draws the open editing box under its ✎ (floating over what's below), presses the ✎, keeps the box
@@ -5959,7 +6035,8 @@ function createEditingBox(plan) {
   return box;
 }
 
-// A component's box (section 8): Name, Color swatches and More colors / Fewer colors.
+// A component's box (section 8): Name, Color swatches and More colors / Fewer colors, Contains and
+// Osmolality.
 function componentBoxFields(plan) {
   const { draft, original } = editingBox;
   const nameField = createNameField(draft.name, "Name");
@@ -5992,7 +6069,30 @@ function componentBoxFields(plan) {
     redrawEditingBox();
   });
   colorField.append(swatches, more);
-  return [nameField, colorField, createContainsField(draft)];
+  return [nameField, colorField, createContainsField(draft), createOsmolalityField(draft)];
+}
+
+// A component's Osmolality field (section 8; ADR 0016): its label, then a 112px text box showing the
+// draft's osmolality text (placeholder "Not measured"), updating the draft as typed in, and
+// "mOsm/kg" in gray. Enter in it saves the box, as in any of the box's text boxes.
+function createOsmolalityField(draft) {
+  const field = createElement("div", "", "osmolality-field");
+  const box = document.createElement("input");
+  box.type = "text";
+  box.id = "editing-box-osmolality";
+  box.className = "osmolality-box";
+  box.value = draft.osmolality;
+  box.placeholder = "Not measured";
+  box.title = "The stock's measured osmolality. Leave it empty if it isn't known.";
+  box.addEventListener("input", () => {
+    draft.osmolality = box.value;
+  });
+  const label = createElement("label", "Osmolality");
+  label.htmlFor = box.id;
+  const row = createElement("div", "", "osmolality-row");
+  row.append(box, createElement("span", "mOsm/kg", "osmolality-unit"));
+  field.append(label, row);
+  return field;
 }
 
 // A component's Contains field (section 8; ADR 0013): the draft's constituent rows, each a Name
@@ -6440,10 +6540,11 @@ function saveEditingBox() {
   showMessage(saved.message, "ok");
 }
 
-// A component's Save: renames it, recolors it and sets its constituents (when the rows, with each
-// amount passed on as section 13 does, differ from what it carries, compared as JSON in order), as
-// one edit, returning { plan, message }. If it was picked, it stays picked. Throws as
-// renameComponent, setComponentColor and setConstituents do.
+// A component's Save: renames it, recolors it, sets its constituents (when the rows, with each
+// amount passed on as section 13 does, differ from what it carries, compared as JSON in order) and
+// its osmolality (when the value the box passes on differs from its own), as one edit, returning
+// { plan, message }. If it was picked, it stays picked. Throws as renameComponent,
+// setComponentColor, setConstituents and setOsmolality do.
 function saveComponentDraft(plan, name, draft) {
   let saved = renameComponent(plan, name, draft.name);
   const newName = draft.name.trim();
@@ -6455,7 +6556,11 @@ function saveComponentDraft(plan, name, draft) {
   if (JSON.stringify(constituents) !== JSON.stringify(component.constituents)) {
     saved = setConstituents(saved, newName, constituents);
   }
-  // Both edits passed, so the picked component can follow the new name.
+  const osmolality = osmolalityValue(draft.osmolality);
+  if (osmolality !== component.osmolality) {
+    saved = setOsmolality(saved, newName, osmolality);
+  }
+  // Every edit passed, so the picked component can follow the new name.
   if (brush.pick.kind === "component" && brush.pick.name === name) {
     brush.pick = { kind: "component", name: newName };
   }
@@ -6779,6 +6884,32 @@ function volumeShown(volume) {
 // decimal part), otherwise the text as typed, so the logic's message says what's wrong.
 function volumeValue(text) {
   return /^-?(\d+\.?\d*|\.\d+)$/.test(text) ? Number(text) : text;
+}
+
+// A component's osmolality as its box reads it back (section 8): the text trimmed; empty (or only
+// spaces) is none, null; a finite number is passed on as that number (so "300.0" gives 300 and
+// "1e-7" round-trips with what the box shows); anything else is passed on as typed, trimmed, so
+// setOsmolality's message says what's wrong, e.g. osmolalityValue(" 300 ") → 300,
+// osmolalityValue("") → null, osmolalityValue("ten") → "ten".
+function osmolalityValue(text) {
+  const trimmed = text.trim();
+  if (trimmed === "") {
+    return null;
+  }
+  const number = Number(trimmed);
+  return Number.isFinite(number) ? number : trimmed;
+}
+
+// A component's osmolality as its box and chip tooltip show it (section 13): at full precision, as
+// String writes it, e.g. 300 → "300", 290.5 → "290.5", 1e-7 → "1e-7".
+function osmolalityText(osmolality) {
+  return String(osmolality);
+}
+
+// A well's estimated osmolality as the contents card shows it (section 13): rounded to a whole
+// number, with no thousands separator, e.g. 304.6 → "305", 1250.2 → "1250".
+function formatOsmolalityEstimate(value) {
+  return String(Math.round(value));
 }
 
 // A volume for cards, lists and messages: rounded to 2 decimal places, e.g. 33.33; below 0.01 µL

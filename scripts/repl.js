@@ -47,6 +47,7 @@ import {
   wellConcentrations,
   bestUnit,
 } from "../src/shared/concentrations/concentrations.js";
+import { checkOsmolality, wellOsmolality } from "../src/shared/osmolality/osmolality.js";
 import {
   writeRunFiles,
   checkExperimentName,
@@ -133,6 +134,8 @@ import {
   setRandomizations,
   setConstituents,
   concentrationsOf,
+  setOsmolality,
+  osmolalityOf,
   columnBoxes,
   moveItems,
   copyOf,
@@ -381,6 +384,16 @@ const TOPICS = {
       'bestUnit("volume", 1)',
     ],
   },
+  osmolality: {
+    loaded: { checkOsmolality, wellOsmolality },
+    examples: [
+      'checkOsmolality(300, "Media")',
+      'checkOsmolality(-5, "Media")',
+      'const osmComponents = [{ name: "Media", osmolality: 300 }, { name: "Water", osmolality: 0 }, { name: "Buffer B", osmolality: null }]',
+      "wellOsmolality({ Media: 0.9, Water: 0.1 }, osmComponents)",
+      'wellOsmolality({ Media: 0.9, "Buffer B": 0.1 }, osmComponents)',
+    ],
+  },
   "file-writer": {
     loaded: { writeRunFiles, checkExperimentName, folderNameFor },
     examples: [
@@ -525,6 +538,8 @@ const TOPICS = {
       setRandomizations,
       setConstituents,
       concentrationsOf,
+      setOsmolality,
+      osmolalityOf,
       columnBoxes,
       moveItems,
       copyOf,
@@ -634,6 +649,11 @@ const TOPICS = {
       'dyed = addToWells(dyed, [{ labware: "Plate1", well: "A1" }], "Dye stock", 20)',
       'concentrationsOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A1" })',
       'concentrationsOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A2" })',
+'dyed = setOsmolality(dyed, "Media", 300)',
+      'osmolalityOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A1" })',
+      'dyed = setOsmolality(dyed, "Dye stock", 0)',
+      'osmolalityOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A1" })',
+      'setOsmolality(dyed, "Media", -5)',
       'let column = addStageWithNewTips(addStage(emptyPlan().plan, null).plan, null).plan',
       'column = addStage(column, null).plan',
       "columnBoxes(column)",

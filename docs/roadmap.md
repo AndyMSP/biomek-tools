@@ -353,6 +353,18 @@ Last updated: 2026-11-05
   (`transfer-designer-page.md`, section 16). It changes no Biomek files, and existing plan files
   still open. **Built (#133, 2026-11-05)**: the configuration only; the menu, module and tests
   already follow it. Still to check by Andy.
+- **Decided: osmolality** (Andy, 2026-11-05; item 15, below; ADR 0016, Proposed): a measured
+  property of a whole solution, not a constituent. Each component may have its stock's measured
+  osmolality (mOsm/kg), and every well's is estimated as the share-weighted sum of its components',
+  shown on the contents card as `≈ 305 mOsm/kg`, only when every component in the well has a value
+  (otherwise `Osmolality unknown: no value for Buffer B`). **Specified** (Draft, 2026-11-05, in the
+  hands-off workflow): the new shared module `osmolality` (`src/shared/osmolality/osmolality.md`),
+  `setOsmolality` and `osmolalityOf` (`transfer-designer.md`, "Osmolality"), plan files version 9
+  (`plan-file.md`), the component's box, chip tooltip and contents card
+  (`transfer-designer-page.md`), glossary "Osmolality". It changes no Biomek files. **Built (#134,
+  2026-11-05)**: code, tests and REPL of `osmolality`, the transfer designer, plan files (version
+  9, versions 1 to 8 still opening) and the page; the specifications and the build each reviewed
+  by a separate agent, and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -613,6 +625,25 @@ added on 2026-10-28 (Andy).
     - **Nothing else changes:** no Biomek files, and plan files keep their format (a file could
       already hold a constituent in M, as display-only units are accepted when opened).
     **Specified** (Draft, 2026-11-05) and **Built (#133, 2026-11-05)**: see "Where things stand".
+15. **Osmolality** (Andy, 2026-11-05; ADR 0016): what a well's osmolality is, so a plan shows when
+    adding drugs, buffers or DMSO stocks moves a well away from the medium's. Decided so far (Andy,
+    2026-11-05):
+    - **A measured property, not a constituent.** Modeling it as a constituent was rejected: "it's
+      something that is actually a part of the constituents rather than an additional thing".
+      Osmolality (per kg of water) is the term, not osmolarity (per liter): osmometers measure it.
+    - **Start from measured stocks, mix by volume.** Professionally it's measured (freezing-point
+      osmometers, including 96-well ones), and calculating it from solutes underestimates it
+      (ADR 0016, with sources), so each component's value is its stock's measured one, and a
+      well's is the share-weighted sum: only the mixing step is approximate, which is small for
+      media near 300 mOsm/kg. Shown with `≈`.
+    - **Entered once per component**, in its own field in the component's box, separate from
+      `Contains`. Optional; water is entered as 0 like anything else (no automatic zero).
+    - **Shown only when every component in the well has a value**; otherwise the card says which
+      have none, e.g. `Osmolality unknown: no value for Buffer B`.
+    - **Saved in plan files and undone** like other component edits: plan format version 9, with
+      versions 1 to 8 still opening (no osmolality). No Biomek file changes, so it needn't come
+      before the final runs.
+    **Specified** (Draft, 2026-11-05) and **Built (#134, 2026-11-05)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -630,7 +661,9 @@ final Biomek runs, so they test the files as they will be:
    It doesn't change the Biomek files' format, so it needn't come before the final runs.
 8. M as an offered unit (item 14), added on 2026-11-05: specifications, then build. It doesn't
    change the Biomek files, so it needn't come before the final runs.
-9. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+9. Osmolality (item 15), added on 2026-11-05: specifications, then build. It doesn't change the
+   Biomek files, so it needn't come before the final runs.
+10. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen
@@ -688,6 +721,12 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **A component named like a built-in property breaks concentrations** (found 2026-11-05, reviewing
+  the osmolality build): `wellConcentrations` reads a well's share as `shares[name]`, so a
+  component named `constructor` or `toString` gets JavaScript's built-in function instead of no
+  share. Osmolality reads only the shares' own properties (#134); doing it properly means the same
+  in `concentrations`, specification first, with a failing test, on its own branch. Nobody is
+  likely to name a component that way, so it waits.
 - **A randomization's stages are protected by the page only** (2026-11-01): the transfer
   designer's ordinary edits (adding or removing a transfer, changing a stage's settings, removing
   a stage or its tip change) don't refuse an owned stage; the page simply doesn't offer them, and

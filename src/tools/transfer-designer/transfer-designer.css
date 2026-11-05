@@ -2132,6 +2132,23 @@ button.quiet-danger:disabled {
   margin-bottom: 6px;
 }
 
+/* A component's Osmolality row (sections 8 and 15): the text box 112px, then "mOsm/kg" 12px gray,
+   6px apart. */
+.osmolality-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editing-box input[type="text"].osmolality-box {
+  width: 112px;
+}
+
+.osmolality-unit {
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
 .tip-type-buttons {
   display: flex;
   gap: 6px;
@@ -2312,6 +2329,25 @@ button.quiet-danger:disabled {
 
 .contents-card .card-concentrations li {
   gap: 12px;
+}
+
+/* The Osmolality line (sections 6 and 15): spaced and ruled as the Concentrations group;
+   "Osmolality" left, the value right in the volume's monospace style, 12px between; the unknown
+   line 12px at 60% opacity, wrapping within the card. */
+.contents-card .card-osmolality {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(246, 245, 241, 0.2);
+}
+
+.contents-card .card-osmolality.unknown {
+  display: block;
+  font-size: 12px;
+  opacity: 0.6;
+  overflow-wrap: anywhere;
 }
 
 .contents-card .card-problem {

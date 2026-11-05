@@ -74,6 +74,13 @@
 > the choices made for Andy are listed in its pull request. It becomes Final once built and tested
 > by Andy.
 
+> **Draft change (2026-11-05, osmolality; ADR 0016):** each component may have an **osmolality**
+> (`docs/glossary.md`), its stock's measured value in mOsm/kg, and a well's osmolality is estimated
+> from its components' (the new shared module `osmolality`): `setOsmolality` and `osmolalityOf`
+> (sections 1 to 6), from what Andy decided on 2026-11-05. Plan files hold it from format version 9
+> (`plan-file.md`). Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made
+> for Andy are listed in its pull request. It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
 and every edit that can be made to one, each checked so that a plan is always valid. A tool shows a
@@ -87,7 +94,8 @@ It builds on the shared modules, and doesn't repeat what they do:
   dead volume, an overdraw, an overfill);
 - `mix-volumes`: how much each row mixes, and mix problems;
 - `deck`: the labware on the deck, their grids, and which wells exist;
-- `concentrations`: what a well's mixture carries, from what its components carry (ADR 0013).
+- `concentrations`: what a well's mixture carries, from what its components carry (ADR 0013);
+- `osmolality`: a well's estimated osmolality, from its components' measured ones (ADR 0016).
 
 Beside it in this tool are two other logic modules, `plan-history` (undo and redo of plans) and
 `plan-file` (saving and opening plans; ADR 0010), and the page (`transfer-designer-page.md`).
@@ -95,10 +103,10 @@ Beside it in this tool are two other logic modules, `plan-history` (undo and red
 ## 2. Scope
 Version 1 creates an empty plan; adds, removes, changes, moves and copies stages (and moves and
 copies tip groups and randomizations); adds, removes and changes transfers, tip changes,
-components (with their constituents), starting contents, labware labels, well labels and the
-experiment name; and answers questions about a plan: its stage order, its tip groups, the stages
-with a contents problem or a mix problem, where each stage ends, the labware it uses, and what
-each well carries (its concentrations).
+components (with their constituents and osmolality), starting contents, labware labels, well
+labels and the experiment name; and answers questions about a plan: its stage order, its tip
+groups, the stages with a contents problem or a mix problem, where each stage ends, the labware it
+uses, and what each well carries (its concentrations and osmolality).
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Moving a transfer** to another stage, or within its stage (ADR 0014). A transfer can be removed
@@ -127,9 +135,10 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
 
 ```js
 {
-  components:       [{ name: "Media", color: "#4e79a7", constituents: [] },
+  components:       [{ name: "Media", color: "#4e79a7", constituents: [], osmolality: 300 },
                      { name: "Dye stock", color: "#f28e2b",
-                       constituents: [{ name: "Dye", amount: 10, unit: "mM" }] }, …],
+                       constituents: [{ name: "Dye", amount: 10, unit: "mM" }],
+                       osmolality: null }, …],
   startingContents: [{ labware: "Res", well: "1", components: { Media: 12000 } }, …],
   operationList:    /* an OperationList */,
   stageList:        /* a StageList */,
@@ -147,9 +156,10 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   they were added. Each has a `name` (a name: text, not blank, no whitespace at the start or end,
   as `checkName` in `input-checks`) and a `color` (text, e.g. `"#4e79a7"`; which colors are
   offered is up to the tool) and `constituents` (`concentrations.md`, section 3: a list of
-  `{ name, amount, unit }`, in the user's order, possibly empty; "Constituents", below), its
-  properties in that order (`name`, `color`, `constituents`), since plan files write them as
-  they are. No two
+  `{ name, amount, unit }`, in the user's order, possibly empty; "Constituents", below) and
+  `osmolality` (a number of mOsm/kg, 0 or more, or `null` for none; "Osmolality", below), its
+  properties in that order (`name`, `color`, `constituents`, `osmolality`), since plan files
+  write them as they are. No two
   components share a name, or a color, so they can always be told apart where colors are drawn. A
   component may be in the list without being in any well yet.
 - **`startingContents`**: what each well holds before the run, in the form `contents-tracking`
@@ -362,6 +372,27 @@ snapshot (it already has one for the point it shows) and asks per well. The well
 snapshot alone (`end?.labware` and `end?.well` are passed to `volumeFractionsOf`, so an `end` that
 isn't an object gets the snapshot's message for a labware of `undefined`); `deck.checkWell` isn't
 used, since a well the snapshot has no record of is simply empty.
+
+### Osmolality
+A component's **osmolality** (`docs/glossary.md`; ADR 0016) is its stock's measured osmolality, in
+mOsm/kg, or `null` when it has none. It's a property of the whole component, set on its own,
+separate from its constituents (Andy, 2026-11-05: osmolality isn't a constituent). A new component
+has none, `null`; water is given `0` by the user like any other value, never automatically.
+
+`setOsmolality` sets it, checked by `checkOsmolality` (`osmolality.md`): a finite number, 0 or
+more, or `null` to remove it. There's no upper limit (`osmolality.md`, section 2: a concentrated
+stock can be far above 300 mOsm/kg, and a limit would refuse some real stock). Setting the value
+the component already has gives the same plan back, as an unchanged experiment name does.
+
+Renaming a component keeps its osmolality; changing its color or constituents doesn't touch it;
+removing a component removes it with the component.
+
+**A well's osmolality.** At any point in the plan: `osmolalityOf` gives `wellOsmolality`
+(`osmolality.md`) of the well's volume fractions in a contents snapshot of the plan
+(`contents-tracking.md`, `volumeFractionsOf`) and the plan's components: `{ value, missing }`, an
+estimate in mOsm/kg when every component the well holds has an osmolality, else `value` `null` and
+the names of those that have none. A tool makes the snapshot and asks per well, and the well is
+checked by the snapshot alone, exactly as for `concentrationsOf` (above).
 
 ### Contents problems
 `contents-tracking` reports each transfer that asks a well for more than its usable volume (a
@@ -872,7 +903,7 @@ given; "returns the plan with …" means a new plan.
 **Components and starting contents**
 | Function | Returns |
 |---|---|
-| `addComponent(plan, name, color)` | the plan with a new component last. If `name` is text, spaces at its ends are removed first. Throws if the name isn't a name or is used, or the color isn't text or is used. |
+| `addComponent(plan, name, color)` | the plan with a new component last, carrying no constituents and with no osmolality (`null`). If `name` is text, spaces at its ends are removed first. Throws if the name isn't a name or is used, or the color isn't text or is used. |
 | `renameComponent(plan, oldName, newName)` | the plan with the component renamed, in the list and in every well. `newName` is trimmed as in `addComponent`; if it's then `oldName`, the plan is returned unchanged. Throws as for a new name. |
 | `setComponentColor(plan, name, color)` | the plan with the component drawn in `color`. Throws if the color isn't text, or another component has it. |
 | `removeComponent(plan, name)` | the plan without the component, in the list or in any well. |
@@ -881,9 +912,11 @@ given; "returns the plan with …" means a new plan.
 | `emptyWells(plan, wells)` | the plan with `wells` empty at the start. Never throws for a well that's already empty. |
 | `setConstituents(plan, name, constituents)` | the plan with component `name` carrying `constituents` (section 3, "Constituents"), replacing what it carried; names trimmed as `checkConstituents` does. Throws if there's no such component, then as `checkConstituents` does, then if a constituent's family differs from its name's family in another component. |
 | `concentrationsOf(plan, snapshot, end)` | the well's concentrations (section 3, "Constituents"): `wellConcentrations(snapshot.volumeFractionsOf(end?.labware, end?.well), plan.components)`, a list of `{ name, family, value }` (`concentrations.md`), `[]` for a well carrying nothing. `snapshot` is a `ContentsSnapshot` of this plan; `end` is `{ labware, well }`, checked by `snapshot.volumeFractionsOf` only. |
+| `setOsmolality(plan, name, osmolality)` | the plan with component `name` having `osmolality` (section 3, "Osmolality"): a number of mOsm/kg, 0 or more, or `null` for none. The same plan if it already has that value. Throws if there's no such component, then as `checkOsmolality` does (`osmolality.md`). |
+| `osmolalityOf(plan, snapshot, end)` | the well's osmolality (section 3, "Osmolality"): `wellOsmolality(snapshot.volumeFractionsOf(end?.labware, end?.well), plan.components)`, `{ value, missing }` (`osmolality.md`), e.g. `{ value: 270, missing: [] }` or `{ value: null, missing: ["Buffer B"] }`; `{ value: null, missing: [] }` for an empty well. `snapshot` and `end` as for `concentrationsOf`. |
 
-`renameComponent`, `setComponentColor`, `removeComponent` and `setConstituents` throw first if
-there's no component with that name.
+`renameComponent`, `setComponentColor`, `removeComponent`, `setConstituents` and `setOsmolality`
+throw first if there's no component with that name.
 
 **Labware**
 | Function | Returns |
@@ -986,6 +1019,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `addToWells`: volume not a number above 0 | `The volume to add must be a number of microliters above 0, like 100, but got 0.` |
 | `setConstituents`: the list, an entry, a name, an amount or a unit is wrong | `checkConstituents`'s messages (`concentrations.md`, section 5). |
 | `setConstituents`: a constituent's family differs from its name's in another component | `Hy-Soy is in g/L in Feeding media. Give it a unit of that kind (g/L, mg/L), or a different name.` The component and unit are the first other component's carrying that name (section 3, "Constituents"); the units listed are `unitsOf` that unit's family (`concentrations.md`), joined by `, `. |
+| `setOsmolality`: not a number of mOsm/kg, 0 or more, or `null` | `checkOsmolality`'s message (`osmolality.md`, section 5), naming the component, e.g. `The osmolality of Media must be a number of mOsm/kg, 0 or more, like 300, or none if it isn't known, but got -5.` |
 | `setLabel`: label isn't text | `A label must be text, like "Assay plate", but got 5.` |
 | `setLabel`: another labware has that label | `Deep already has the label "Drug plate". Choose a different one.` |
 | `setLabels`: `labels` isn't an object (including `null` and lists) | `The labels must be an object of labware names and labels, like { Plate: "Assay plate" }, but got a list.` |
@@ -1081,6 +1115,7 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
 - `addToWells`: the component exists, then the volume, then each well in turn.
 - `setConstituents`: the component exists, then `checkConstituents` (the whole list), then each
   constituent's family against the other components, in list order.
+- `setOsmolality`: the component exists, then `checkOsmolality`.
 - `setLabel`: the labware, then the label is text, then (after trimming) no other labware has it.
 - `setWellLabel`: the well (`deck.checkWell`'s order), then the label is text.
 - `setRandomization`: the randomization, then `changes`' form, then in this order whichever are
@@ -1329,6 +1364,32 @@ order of checks.
 - `concentrationsOf` checks the well through the snapshot only: a well of `5` throws the
   snapshot's message naming `volumeFractionsOf`; an `end` of `undefined` throws its labware
   message.
+
+**Osmolality** (2026-11-05)
+- `addComponent` gives the new component `osmolality: null`, its properties in the order `name`,
+  `color`, `constituents`, `osmolality`. (The existing tests that compare a component to `{ name,
+  color, constituents }` are updated to this shape: the specification changed, not the tests'
+  purpose.)
+- `setOsmolality` sets `300`, then `290.5`; `0` is kept as `0`, not as none; `null` removes it; a
+  value above 1000 (e.g. `2800`) is accepted. Setting the value it already has (also `null` on a
+  component with none) gives back the same plan object.
+- `setOsmolality` throws for a component not in the plan (reported before a bad value), and passes
+  on `checkOsmolality`'s message for `-5`, `"300"`, `NaN`, `Infinity` and `undefined`, naming the
+  component.
+- `renameComponent` keeps the osmolality; `setComponentColor` and `setConstituents` keep it, and
+  `setOsmolality` keeps the constituents; `removeComponent` removes it with the component.
+- `osmolalityOf` with a well holding only Media at 300 gives `{ value: 300, missing: [] }`; after a
+  transfer of 100 µL of Water (0) into a well holding 900 µL of Media (300), the well gives
+  `value` 270 (within 1e-9 mOsm/kg, as `osmolality.md` compares) at the snapshot after that transfer and 300 at the snapshot before it;
+  with Water given no osmolality instead, `{ value: null, missing: ["Water"] }` after the transfer
+  and `{ value: 300, missing: [] }` before; an empty well gives `{ value: null, missing: [] }`.
+- `osmolalityOf` checks the well through the snapshot only, as `concentrationsOf` does: a well of
+  `5` throws the snapshot's message naming `volumeFractionsOf`.
+- Osmolality never reaches the Biomek files: `writeRunFiles` (`file-writer.md`) gives identical
+  files (names and texts) for a plan with experiment name, starting contents and transfers whose
+  components have osmolalities (`300`, `0`) and for the same plan with every osmolality `null`.
+- The REPL's `transfer-designer` topic loads `setOsmolality` and `osmolalityOf`, with an example
+  of each beside `concentrationsOf`'s (CLAUDE.md, "Keep the REPL complete").
 
 **Labware**
 - `labwareUsed` lists starting contents', transfers' and well labels' labware in deck order; a
