@@ -1097,8 +1097,8 @@ the chips below, moved left if needed to stay inside the Start card:
   like the rest of the box, so a row with a bad amount is reported then, by `setConstituents`'s
   message, and the box stays open.
 - **Osmolality** (ADR 0016), under Contains: a field label `Osmolality` like the box's others, then
-  one row: a text box (an ordinary text box like the Amount box, but 72px wide), its placeholder
-  `Not measured`, then `mOsm/kg` in gray. It shows the component's stored osmolality as
+  one row: a text box (an ordinary text box like the Amount box, but 112px wide, so its
+  placeholder shows whole), its placeholder `Not measured`, then `mOsm/kg` in gray. It shows the component's stored osmolality as
   `String(n)` (section 13), e.g. `300`, `290.5`, `1e-7`, or is empty when it has none. Its tooltip:
   `The stock's measured osmolality. Leave it empty if it isn't known.` Enter in it saves the box.
   **Reading it back**, one rule: the text is trimmed; empty (or only spaces) means none (`null`);
@@ -1438,8 +1438,9 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   what's above it, a 1px rule in the light text at 20% opacity, 6px under the rule); `Osmolality`
   left, the value right in the monospace volume style, 12px between; the unknown line 12px at 60%
   opacity, wrapping within the card.
-- **A component's Osmolality row** (section 8): the text box 72px, then `mOsm/kg` 12px gray
-  (`#5E5E58`), 6px apart.
+- **A component's Osmolality row** (section 8): the text box 112px (72px cut its placeholder to
+  `Not mea`; found in the build review, 2026-11-05), then `mOsm/kg` 12px gray (`#5E5E58`), 6px
+  apart.
 - **What a chip carries** (section 8): 12px gray (`#5E5E58`), 2px after the name, never wrapped;
   the same gray when the chip is picked.
 - **A component's Contains rows** (section 8): a grid per row, the name box taking what's left,

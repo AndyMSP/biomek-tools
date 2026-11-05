@@ -2132,7 +2132,7 @@ button.quiet-danger:disabled {
   margin-bottom: 6px;
 }
 
-/* A component's Osmolality row (sections 8 and 15): the text box 72px, then "mOsm/kg" 12px gray,
+/* A component's Osmolality row (sections 8 and 15): the text box 112px, then "mOsm/kg" 12px gray,
    6px apart. */
 .osmolality-row {
   display: flex;
@@ -2141,7 +2141,7 @@ button.quiet-danger:disabled {
 }
 
 .editing-box input[type="text"].osmolality-box {
-  width: 72px;
+  width: 112px;
 }
 
 .osmolality-unit {
