@@ -3801,6 +3801,7 @@ describe("transfer-designer", () => {
     // Deep1 A1's and A2's Transfer From File files, named by their stages' places among the stages
     // with transfers.
     const withTransfers = stageOrder(shared).filter((id) => transfersIn(shared, id).length > 0);
+    // The Transfer From File file of the stage for Deep1 `well`, e.g. "Stage02_A.csv".
     const fileOf = (well) => {
       const { stage } = randomizationAt(shared, "r1").stages.find((owned) => owned.well === well);
       return `Stage${String(withTransfers.indexOf(stage) + 1).padStart(2, "0")}_A.csv`;
@@ -3816,9 +3817,11 @@ describe("transfer-designer", () => {
     assert.equal(rows[first].newTip, "0");
     assert.equal(rows[first + 1].newTip, "0");
     assert.ok(rows[first + 1].transferFile.endsWith(`\\${fileOf("A2")}`));
+    // How many of `list`'s rows are tip changes.
     const tipChanges = (list) => list.filter((row) => row.newTip === "1").length;
     assert.equal(tipChanges(rows), tipChanges(before) - 1);
     // Every transfer row and Transfer From File file as in the fixture.
+    // The text of `list`'s transfer rows, in order.
     const transferRows = (list) => list.filter((row) => row.newTip === "0").map((row) => row.line);
     assert.deepEqual(transferRows(rows), transferRows(before));
     assert.deepEqual(files.map((file) => file.name), FIXTURE_FILE_NAMES);
@@ -3861,6 +3864,7 @@ describe("transfer-designer", () => {
   });
 
   test("sourceGroups refuses what isn't a list of sources, naming the list or the first wrong entry", () => {
+    // The message for a list that isn't one of sources, naming `got`.
     const message = (got) =>
       `The sources must be a list of objects, each with "sharesTips" true or false, but got ${got}.`;
     assert.throws(() => sourceGroups(5), { message: message("5") });
@@ -4081,18 +4085,21 @@ describe("transfer-designer", () => {
     let withTwo = addToWells(randomizingPlan(), [trough("2"), trough("3")], "Media", capacityOf(RESERVOIR));
     withTwo = addToWells(withTwo, [deepWell("A4")], "Drug A", capacityOf(DEEP));
     const added = addRandomization(withTwo, "2", { seed: 37, volume: 10 });
+    // The sources, trough 3's sharesTips being `shares`.
     const sources = (shares) => [
       source("A1", 4),
       { ...fillerTrough("2"), sharesTips: false },
       { ...fillerTrough("3"), sharesTips: shares },
       source("A4", 4, false, true),
     ];
+    // The plan run with sources(shares).
     const run = (shares) =>
       runRandomization(setRandomization(added.plan, added.id, { sources: sources(shares), fill: wellsToFill() }), added.id);
     // Trough 3 starting a group of its own: A4, sharing trough 3's tips, starts them, since trough 3
     // has no stage. Trough 3 sharing: A4 is in the filler's group, sharing its tips.
     const apart = run(false);
     const together = run(true);
+    // The filler's stage in `planned`.
     const fillerOf = (planned) => fillerEntry(planned, added.id).stage;
     assert.deepEqual(randomizationAt(apart, added.id).stages.map((owned) => owned.well), ["A1", "2", "A4"]);
     assert.deepEqual(randomizationAt(together, added.id).stages, randomizationAt(apart, added.id).stages);
@@ -4177,6 +4184,7 @@ describe("transfer-designer", () => {
     const reordered = setRandomization(plan, id, { sources: [a3, a1, a2] });
     assert.equal(isRandomizationOutOfDate(reordered, id), true);
     const run = runRandomization(reordered, id);
+    // The stage for DEEP `well` in `planned`.
     const stageOf = (planned, well) => stageFor(planned, id, well);
     const ids = ["A3", "A1", "A2"].map((well) => stageOf(plan, well));
     assert.deepEqual(randomizationAt(run, id).stages.map((owned) => owned.stage), ids);
@@ -4299,6 +4307,7 @@ describe("transfer-designer", () => {
     const stored = file.randomizations[0].stages;
     file.randomizations[0].stages = [res1, deep, res2].map((stage) => stored.find((owned) => owned.stage === stage));
     const opened = planFromText(JSON.stringify(file));
+    // The source wells of the randomization's stages in `planned`, in its order.
     const wellsInOrder = (planned) => randomizationAt(planned, added.id).stages.map((owned) => owned.well);
     assert.deepEqual(wellsInOrder(opened), ["1", "A1", "2"]);
     assert.equal(isRandomizationOutOfDate(opened, added.id), true);
@@ -4334,6 +4343,7 @@ describe("transfer-designer", () => {
   test("moving and copying a randomization with shared tips keeps its tip groups; copied items version 3", () => {
     let { plan, id } = sharingPlan();
     plan = runRandomization(plan, id);
+    // How many stages each tip group of `randomization`'s box holds in `planned`.
     const groupsIn = (planned, randomization) =>
       columnBoxes(planned).find((box) => box.id === randomization).tipGroups.map((group) => group.stages.length);
     assert.deepEqual(groupsIn(plan, id), [3, 1]);
@@ -4390,7 +4400,9 @@ describe("transfer-designer", () => {
     let { plan, id } = sharingPlan();
     plan = runRandomization(plan, id);
     const startBefore = tipChangeAt(plan, START);
+    // Checks `randomization` in `planned` is at the top, on START's tips, with its sharing kept.
     const check = (planned, randomization) => {
+      // The stage for DEEP `well`.
       const stage = (well) => stageFor(planned, randomization, well);
       assert.equal(stageOrder(planned)[0], stage("A1"));
       assert.deepEqual(tipChangeAt(planned, START), sharingTips());

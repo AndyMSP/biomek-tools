@@ -2106,6 +2106,7 @@ function groupsOfSources(sources) {
 // Throws unless `sources` is a list of objects each with a sharesTips of true or false, naming the
 // list, or the first entry that isn't one.
 function checkSourceList(sources) {
+  // True if `source` is an object with a sharesTips of true or false.
   const isSource = (source) => isObject(source) && typeof source.sharesTips === "boolean";
   if (Array.isArray(sources) && sources.every(isSource)) {
     return;
