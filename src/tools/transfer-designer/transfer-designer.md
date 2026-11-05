@@ -1385,6 +1385,8 @@ order of checks.
   and `{ value: 300, missing: [] }` before; an empty well gives `{ value: null, missing: [] }`.
 - `osmolalityOf` checks the well through the snapshot only, as `concentrationsOf` does: a well of
   `5` throws the snapshot's message naming `volumeFractionsOf`.
+- The REPL's `transfer-designer` topic loads `setOsmolality` and `osmolalityOf`, with an example
+  of each beside `concentrationsOf`'s (CLAUDE.md, "Keep the REPL complete").
 
 **Labware**
 - `labwareUsed` lists starting contents', transfers' and well labels' labware in deck order; a
