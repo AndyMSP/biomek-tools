@@ -1190,6 +1190,24 @@ button.entry-row {
   font-size: 13px;
 }
 
+/* End's count can run long with its tips (section 7, "End's tips"), so it shrinks to the room left
+   beside "End" and wraps, right-aligned. Each part stays whole, so a line breaks only after a "·".
+   The name keeps its own width, so "End" is never cut short. */
+.entry[data-entry="end"] .entry-name {
+  flex: none;
+}
+
+.entry-count.end-count {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  text-align: right;
+}
+
+.end-count-part {
+  white-space: nowrap;
+}
+
 /* The open card's contents, under its heading line. */
 .entry-body {
   position: relative;
