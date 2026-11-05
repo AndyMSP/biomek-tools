@@ -916,7 +916,7 @@ const RANDOMIZATION_CHANGES = ["sources", "fill", "seed", "volume", "settings", 
 const RANDOMIZATION_PROPERTIES = ["id", "beforeId", ...RANDOMIZATION_CHANGES, "stages"];
 
 // The properties of a source, and of an entry of a randomization's stages, exactly.
-const SOURCE_PROPERTIES = ["labware", "well", "replicates", "filler"];
+const SOURCE_PROPERTIES = ["labware", "well", "replicates", "filler", "sharesTips"];
 const OWNED_STAGE_PROPERTIES = ["labware", "well", "stage"];
 
 // The pool's problems (random-pool) that only follow from having no sources or no wells to fill,
@@ -1045,7 +1045,8 @@ export function fillerShares(plan, id) {
 
 // True if randomization `id` has run and either has problems now or a run now would give different
 // stages (section 3, "Out of date"): a different number of stages, or, for any of them in order, a
-// different source well, name or list of transfers (source, destination and volume). Stage IDs
+// different source well, name, list of transfers (source, destination and volume) or whether it
+// starts new tips. Stage IDs
 // aren't compared, since a run may make them fresh. The run is a trial on the plan given, which
 // never changes. Throws if there's no such randomization.
 export function isRandomizationOutOfDate(plan, id) {
@@ -1093,9 +1094,10 @@ function nameOfSource(plan, contentsOf, source) {
 }
 
 // Returns the plan with randomization `id` run, as one edit (section 3, "Running"): one stage per
-// source that gets wells, in source order, named as its source is, each on new tips, moving `volume`
-// from its source to each of its wells; stages of sources that no longer get wells removed.
-// Throws its first problem's message if it has any.
+// source that gets wells, in source order, named as its source is, moving `volume` from its source to
+// each of its wells, with new tips only where a source group starts (sources sharing tips share
+// them); stages of sources that no longer get wells removed. Throws its first problem's message if it
+// has any.
 export function runRandomization(plan, id) {
   checkRandomizationExists(plan, id);
   const problems = randomizationProblems(plan, id);
@@ -1114,6 +1116,8 @@ export function runRandomization(plan, id) {
     const runStage = runStages.find((candidate) => wellKey(candidate.well) === wellKey(owned));
     running = withSourceStageSet(running, randomization, owned, runStage);
   }
+  running = withStagesInSourceOrder(running, id);
+  running = withTipsBySourceGroup(running, id);
   return withRunPlaceNoted(running, id);
 }
 
@@ -1165,17 +1169,124 @@ export function setRandomizations(plan, randomizations) {
   return updated;
 }
 
+// --- Randomizations: sources sharing tips ---
+
+// The source groups of `sources` (section 3, "Sharing tips"): lists of indexes into `sources`, a group
+// starting at each source whose sharesTips is false (and at the first source, whatever its
+// sharesTips), e.g. sharesTips false, true, true, false, true → [[0, 1, 2], [3, 4]]; [] for no
+// sources. `sources` is any list of objects each with a sharesTips of true or false. Throws if it
+// isn't one.
+export function sourceGroups(sources) {
+  checkSourceList(sources);
+  return groupsOfSources(sources);
+}
+
+// Returns `sources` with source `index` sharing the tips before it (`shares` true: it joins the group
+// above) or starting new tips (false: it splits its group there), the first source always false;
+// the same list if nothing differs, e.g. setSourceSharesTips(sources, 2, true). Entries whose
+// sharesTips doesn't change are the same objects. Throws, in this order, if `sources` isn't a list
+// of objects each with sharesTips true or false, there's no source at `index`, `shares` isn't true
+// or false, or the first source is set to share.
+export function setSourceSharesTips(sources, index, shares) {
+  checkSourceList(sources);
+  checkSourceIndex(sources, index);
+  if (typeof shares !== "boolean") {
+    throw new Error(`Whether a source shares tips must be true or false, but got ${describeValue(shares)}.`);
+  }
+  if (index === 0 && shares) {
+    throw new Error(
+      "The first source always starts on new tips, so it can't share tips: a randomization never " +
+        "shares tips with stages outside it.",
+    );
+  }
+  const values = sources.map((source, place) => (place === index ? shares : source.sharesTips));
+  return sourcesArranged(sources, [...sources], values);
+}
+
+// Returns `sources` with the source at `from` moved to `place`, a place in the list's source groups
+// before the move, by the container rule (section 3, "Sharing tips"): { kind: "between", index }
+// gives it new tips of its own, just before group `index`; { kind: "inGroup", index, position } puts
+// it in group `index` just before its source at `position`, sharing that group's tips (at the
+// group's top it starts the group, and the old first shares). A group it leaves keeps its tips. The
+// same list if nothing differs, e.g. with groups [[0, 1], [2, 3]], moveSource(sources, 3,
+// { kind: "inGroup", index: 0, position: 1 }) gives sources 0, 3, 1, 2 with 3 and 1 sharing 0's
+// tips. Throws, in this order, if the list, `from`, the place's form and range, or its position
+// isn't valid.
+export function moveSource(sources, from, place) {
+  checkSourceList(sources);
+  checkSourceIndex(sources, from);
+  const groups = groupsOfSources(sources);
+  checkSourcePlace(groups, place);
+  const moved = sources[from];
+  const values = new Map(sources.map((source, index) => [source, index === 0 ? false : source.sharesTips]));
+  // Taking it out: a group it starts keeps its tips, handed to the source just after it.
+  const next = sources[from + 1];
+  if (!values.get(moved) && next !== undefined && values.get(next)) {
+    values.set(next, false);
+  }
+  const remaining = sources.filter((source) => source !== moved);
+  const { at, shares, startsGroup } = sourcePlaceInRemaining(sources, groups, remaining, from, place);
+  if (startsGroup !== null) {
+    values.set(startsGroup, true);
+  }
+  values.set(moved, shares);
+  const order = [...remaining.slice(0, at), moved, ...remaining.slice(at)];
+  return sourcesArranged(sources, order, order.map((source) => values.get(source)));
+}
+
+// Returns `sources` without those at `indexes` (each once, in any order), each group they leave
+// keeping its tips: the first source left of a group whose first was taken out starts it. The first
+// source left is always false. The same list if nothing differs, e.g. removeSources(sources, []).
+// Throws if the list isn't valid, or `indexes` isn't a list of its indexes, each once.
+export function removeSources(sources, indexes) {
+  checkSourceList(sources);
+  checkSourceIndexes(sources, indexes);
+  const removing = new Set(indexes);
+  const order = [];
+  const values = [];
+  let groupStartRemoved = false;
+  sources.forEach((source, index) => {
+    const startsGroup = index === 0 || !source.sharesTips;
+    if (removing.has(index)) {
+      groupStartRemoved = groupStartRemoved || startsGroup;
+      return;
+    }
+    order.push(source);
+    values.push(startsGroup || groupStartRemoved ? false : source.sharesTips);
+    groupStartRemoved = false;
+  });
+  return sourcesArranged(sources, order, values);
+}
+
+// How many sets of new tips a run of randomization `id` now would load (section 3, "Sets of new tips
+// a run makes"): the tip groups among the stages a trial run gives it, e.g. A1, A2 and A3 sharing and
+// the filler on new tips → 2; null while it has problems. The plan given never changes. Throws if
+// there's no such randomization.
+export function tipSetsToMake(plan, id) {
+  checkRandomizationExists(plan, id);
+  if (randomizationProblems(plan, id).length > 0) {
+    return null;
+  }
+  const trial = runRandomization(plan, id);
+  return randomizationAt(trial, id).stages.filter((owned) => isFirstOfTipGroup(trial, owned.stage)).length;
+}
+
 // --- Moving and copying ---
 
 // What copied items say they are, and the version of their form this module writes and reads
 // (transfer-designer.md, "Moving and copying"). Exported, so a tool can recognize copied items on
 // the system clipboard by the same text.
 export const COPIED_ITEMS_FORMAT = "biomek-tools copied items";
-export const COPIED_ITEMS_VERSION = 2;
+export const COPIED_ITEMS_VERSION = 3;
 
-// The versions of copied items this module reads: version 1 (before several filler wells) and the
-// one it writes, with the same checks (section 3, "Copied items version 2").
-const COPIED_ITEMS_VERSIONS_READ = [1, COPIED_ITEMS_VERSION];
+// The versions of copied items this module reads: version 1 (before several filler wells), version
+// 2 (before sources sharing tips; section 3, "Copied items version 2") and the one it writes
+// ("Copied items version 3").
+const COPIED_ITEMS_VERSIONS_READ = [1, 2, COPIED_ITEMS_VERSION];
+
+// The first version of copied items whose randomizations' sources hold sharesTips, and whose owned
+// stages' tips may be null (sharing the tips of the stage before).
+const FIRST_COPIED_VERSION_SHARING_TIPS = 3;
 
 // The kinds of item (docs/glossary.md, "Item"), as items name them.
 const ITEM_KINDS = ["stage", "tipGroup", "randomization"];
@@ -1192,8 +1303,8 @@ const COPIED_OWNED_STAGE_PROPERTIES = ["labware", "well", "stage", "tips"];
 
 // The column's boxes, in order, between Start and End (section 3, "Moving and copying"): each an
 // ordinary tip group, { kind: "tipGroup", key, tipType, probes, stages }, or a randomization,
-// { kind: "randomization", id, tipGroups }, with its stages' tip groups (one stage each, in stage
-// order; [] while it has none). A randomization without stages sits just before the box whose first
+// { kind: "randomization", id, tipGroups }, with its stages' tip groups (in stage order, each holding
+// one or more of its stages, as its sources share tips; [] while it has none). A randomization without stages sits just before the box whose first
 // stage is its beforeId (last for null), several at one place in the order of `randomizations`.
 // e.g. [{ kind: "tipGroup", key: "start", tipType: "BC230", probes: [1, 2, 3, 4], stages: ["1", "2"] },
 // { kind: "randomization", id: "r1", tipGroups: [{ key: "5", … }] }].
@@ -1259,7 +1370,7 @@ export function moveItems(plan, items, place) {
 
 // The copied items for `items` (each { kind, id }, of this plan), in column order, as plain data
 // that survives JSON (section 3, "Moving and copying"), e.g. copyOf(plan, [{ kind: "stage", id:
-// "2" }]) → { format: "biomek-tools copied items", version: 2, items: [{ kind: "stage", stage: {
+// "2" }]) → { format: "biomek-tools copied items", version: 3, items: [{ kind: "stage", stage: {
 // name, settings, transfers }, tips: { tipType, probes }, group: 1 }] }. A stage entry's `group`
 // numbers the tip group it came from, from 1 in column order, so a paste keeps stages from
 // different tip groups apart. Doesn't change the plan. Throws, as moveItems does, if `items` isn't
@@ -1302,9 +1413,9 @@ export function pasteItems(plan, copied, place) {
   const pieces = [];
   const created = [];
   copiedItems.forEach((item, index) => {
-    checkCopiedItemForm(item, index + 1);
+    checkCopiedItemForm(item, index + 1, copied.version);
     const result = withPrefix(`Can't paste: item ${index + 1}: `, () =>
-      pastedPiece(working, item, [...plan.randomizations, ...created]),
+      pastedPiece(working, itemAsVersion3(item, copied.version), [...plan.randomizations, ...created]),
     );
     working = result.plan;
     pieces.push(result.piece);
@@ -1364,7 +1475,10 @@ function columnPlaces(boxes) {
       box.stages.forEach((id, place) => stages.set(id, { boxIndex, order: place + 1 }));
     } else {
       randomizations.set(box.id, boxIndex);
-      box.tipGroups.forEach((group, place) => stages.set(group.stages[0], { boxIndex, order: place + 1 }));
+      // Its tip groups may hold several stages each (sources sharing tips), so every stage is noted.
+      box.tipGroups
+        .flatMap((group) => group.stages)
+        .forEach((id, place) => stages.set(id, { boxIndex, order: place + 1 }));
     }
   });
   return { stages, groupStarts, randomizations };
@@ -1456,7 +1570,7 @@ function checkNoOwnedStageAlone(plan, entries) {
 
 // The column as boxes that can be rearranged, one per box of `boxes`, in order: an ordinary tip
 // group as { kind: "tipGroup", tips, stages }, a randomization as { kind: "randomization",
-// randomization, groups }, each of `groups` { tips, stages } with one stage. `tips` is
+// randomization, groups }, each of `groups` { tips, stages }, one of its tip groups. `tips` is
 // { tipType, probes }.
 function layoutOf(plan, boxes) {
   return boxes.map((box) =>
@@ -1651,14 +1765,15 @@ function withOperationsInStageOrder(plan) {
 }
 
 // The key of the tip group stage `id` is in (tipGroups' key), e.g. "start" or "3"; a randomization's
-// stages are each in a tip group of their own, so each has its own key.
+// stages sharing tips share a key, so copies of them paste as one tip group.
 function tipGroupKeyOf(plan, id) {
   return tipGroups(plan).find((group) => group.stages.includes(id)).key;
 }
 
 // One copied item for a checked item `entry` (section 3, "Copied items"): a stage with the tips of
 // its tip group, a tip group with its tips and stages, or a randomization with its values and its
-// stages, each with its source's well and its own tips.
+// stages, each with its source's well and the tips of the tip group it starts, or null for one that
+// shares the tips of the stage before it.
 function copiedItem(plan, boxes, entry) {
   if (entry.kind === "stage") {
     return { kind: "stage", stage: copiedStage(plan, entry.id), tips: tipsInUseAt(plan, entry.id) };
@@ -1673,7 +1788,7 @@ function copiedItem(plan, boxes, entry) {
     labware,
     well,
     stage: copiedStage(plan, stage),
-    tips: tipsInUseAt(plan, stage),
+    tips: isFirstOfTipGroup(plan, stage) ? tipsInUseAt(plan, stage) : null,
   }));
   return { kind: "randomization", randomization: values, stages };
 }
@@ -1715,10 +1830,13 @@ function checkCopiedForm(copied) {
   return copied.items;
 }
 
-// Throws unless copied item number `number` is in its form (section 3, "Copied items"): a stage, a
-// tip group (at least one stage) or a randomization, each part with exactly its properties. Values
-// are checked later, by the edits that would make them.
-function checkCopiedItemForm(item, number) {
+// Throws unless copied item number `number`, of copied items `version`, is in its form (section 3,
+// "Copied items"): a stage, a tip group (at least one stage) or a randomization, each part with
+// exactly its properties. In versions 1 and 2, a randomization's sources that are objects have no
+// sharesTips, and every owned stage has tips; from version 3, an owned stage's tips may be null,
+// except the first's. Values (and sources that aren't objects) are checked later, by the edits that
+// would make them.
+function checkCopiedItemForm(item, number, version) {
   // True if `stage` is a copied stage in its form: { name, settings, transfers }, each transfer
   // { source, destination, volume }.
   const isStage = (stage) =>
@@ -1743,12 +1861,21 @@ function checkCopiedItemForm(item, number) {
       item.stages.length > 0 &&
       item.stages.every(isStage);
   } else if (isObject(item) && item.kind === "randomization") {
+    const sharing = version >= FIRST_COPIED_VERSION_SHARING_TIPS;
+    // From version 3 an owned stage after the first may share the tips before it (tips null).
+    const hasTips = (owned, index) => isTips(owned.tips) || (sharing && index > 0 && owned.tips === null);
+    // Before version 3 a source that's an object has no sharesTips.
+    const sourcesInForm =
+      sharing ||
+      !Array.isArray(item.randomization?.sources) ||
+      item.randomization.sources.every((source) => !isObject(source) || !Object.hasOwn(source, "sharesTips"));
     inForm =
       hasExactly(item, COPIED_RANDOMIZATION_PROPERTIES) &&
       hasExactly(item.randomization, RANDOMIZATION_CHANGES) &&
+      sourcesInForm &&
       Array.isArray(item.stages) &&
       item.stages.every(
-        (owned) => hasExactly(owned, COPIED_OWNED_STAGE_PROPERTIES) && isStage(owned.stage) && isTips(owned.tips),
+        (owned, index) => hasExactly(owned, COPIED_OWNED_STAGE_PROPERTIES) && isStage(owned.stage) && hasTips(owned, index),
       );
   }
   if (!inForm) {
@@ -1756,6 +1883,21 @@ function checkCopiedItemForm(item, number) {
       `Can't paste: item ${number} isn't a stage, tip group or randomization as the transfer designer copies them.`,
     );
   }
+}
+
+// Copied `item`, in its form for copied items `version`, as a version 3 item: a version 1 or 2
+// randomization's sources that are objects get sharesTips false (each on new tips, as every source
+// was then); anything else is given back as it is.
+function itemAsVersion3(item, version) {
+  if (item.kind !== "randomization" || version >= FIRST_COPIED_VERSION_SHARING_TIPS) {
+    return item;
+  }
+  const { sources } = item.randomization;
+  if (!Array.isArray(sources)) {
+    return item;
+  }
+  const upgraded = sources.map((source) => (isObject(source) ? { ...source, sharesTips: false } : source));
+  return { ...item, randomization: { ...item.randomization, sources: upgraded } };
 }
 
 // Pastes one copied `item` (in its form) into `plan`, its stages added as new stages, last in the
@@ -1783,8 +1925,8 @@ function pastedPiece(plan, item, existing) {
   return pastedRandomization(plan, item, existing);
 }
 
-// Pastes a copied randomization (pastedPiece): its stages as new stages, each with its own tips;
-// then its values, checked as setRandomization checks them; then its stages' wells (on the deck, no
+// Pastes a copied randomization (pastedPiece): its stages as new stages, in the tip groups the copy
+// gives (a stage with tips starts one; one with tips null joins the one before); then its values, checked as setRandomization checks them; then its stages' wells (on the deck, no
 // well twice, none a mix step), and not two of them its filler's. It gets the next free ID
 // among `existing`.
 function pastedRandomization(plan, item, existing) {
@@ -1794,7 +1936,11 @@ function pastedRandomization(plan, item, existing) {
   for (const entry of item.stages) {
     const added = withCopiedStage(pasting, entry.stage);
     pasting = added.plan;
-    groups.push({ tips: checkedTips(entry.tips), stages: [added.id] });
+    if (entry.tips === null) {
+      groups.at(-1).stages.push(added.id);
+    } else {
+      groups.push({ tips: checkedTips(entry.tips), stages: [added.id] });
+    }
     owned.push({ labware: entry.labware, well: entry.well, stage: added.id });
   }
   const values = checkedRandomizationValues(item.randomization, { sources: [], fill: [] });
@@ -1941,6 +2087,144 @@ export function moveWell(plan, from, to) {
     Object.entries(changes).filter(([part, value]) => value !== plan[part]),
   );
   return withParts(plan, changed);
+}
+
+// --- Randomizations: sources sharing tips: helpers ---
+
+// The source groups of a checked list of sources (sourceGroups), e.g. [[0, 1, 2], [3]].
+function groupsOfSources(sources) {
+  const groups = [];
+  sources.forEach((source, index) => {
+    if (index === 0 || !source.sharesTips) {
+      groups.push([]);
+    }
+    groups.at(-1).push(index);
+  });
+  return groups;
+}
+
+// Throws unless `sources` is a list of objects each with a sharesTips of true or false, naming the
+// list, or the first entry that isn't one.
+function checkSourceList(sources) {
+  const isSource = (source) => isObject(source) && typeof source.sharesTips === "boolean";
+  if (Array.isArray(sources) && sources.every(isSource)) {
+    return;
+  }
+  const got = Array.isArray(sources) ? sources.find((source) => !isSource(source)) : sources;
+  throw new Error(
+    `The sources must be a list of objects, each with "sharesTips" true or false, but got ${describeValue(got)}.`,
+  );
+}
+
+// Throws unless `index` is a place in `sources`, e.g. 'There's no source at index 7: the list has 4
+// sources (indexes 0 to 3).'
+function checkSourceIndex(sources, index) {
+  if (Number.isInteger(index) && index >= 0 && index < sources.length) {
+    return;
+  }
+  const start = `There's no source at index ${describeValue(index)}: `;
+  if (sources.length === 0) {
+    throw new Error(`${start}the list has no sources.`);
+  }
+  if (sources.length === 1) {
+    throw new Error(`${start}the list has 1 source (index 0).`);
+  }
+  throw new Error(`${start}the list has ${sources.length} sources (indexes 0 to ${sources.length - 1}).`);
+}
+
+// Throws unless `indexes` is a list of places in `sources`, each at most once, e.g. 'The sources to
+// remove must be a list of indexes from 0 to 3, each once, but got [1, 1].'
+function checkSourceIndexes(sources, indexes) {
+  const valid =
+    Array.isArray(indexes) &&
+    new Set(indexes).size === indexes.length &&
+    indexes.every((index) => Number.isInteger(index) && index >= 0 && index < sources.length);
+  if (valid) {
+    return;
+  }
+  const got = Array.isArray(indexes) ? `[${indexes.map((index) => JSON.stringify(index) ?? String(index)).join(", ")}]` : describeValue(indexes);
+  if (sources.length === 0) {
+    throw new Error(`There are no sources to remove, but got ${got}.`);
+  }
+  if (sources.length === 1) {
+    throw new Error(`The sources to remove must be a list of index 0, at most once, but got ${got}.`);
+  }
+  throw new Error(
+    `The sources to remove must be a list of indexes from 0 to ${sources.length - 1}, each once, but got ${got}.`,
+  );
+}
+
+// Throws unless `place` is a place in the source groups `groups` (moveSource): its form and range,
+// then, inside a group, its position.
+function checkSourcePlace(groups, place) {
+  const formError = new Error(
+    `The place must be between source groups (index 0 to ${groups.length}) or inside one, ` +
+      `but got ${JSON.stringify(place) ?? String(place)}.`,
+  );
+  if (!isObject(place) || !Number.isInteger(place.index) || place.index < 0) {
+    throw formError;
+  }
+  if (place.kind === "between") {
+    if (place.index > groups.length) {
+      throw formError;
+    }
+    return;
+  }
+  if (place.kind !== "inGroup" || place.index >= groups.length) {
+    throw formError;
+  }
+  const { length } = groups[place.index];
+  if (!Number.isInteger(place.position) || place.position < 0 || place.position > length) {
+    throw new Error(
+      `Source group ${place.index} has positions 0 to ${length}, but got ${describeValue(place.position)}.`,
+    );
+  }
+}
+
+// Where moveSource puts the source at `from`, in `remaining` (the list without it): { at, shares,
+// startsGroup }, `at` its index in `remaining`, `shares` its sharesTips, and `startsGroup` the source
+// that now shares its tips because it landed at the top of that source's group, or null. A place
+// pointing at the moved source means the next source that isn't it (section 3, "Sharing tips").
+function sourcePlaceInRemaining(sources, groups, remaining, from, place) {
+  const moved = sources[from];
+  if (place.kind === "between") {
+    const first = place.index < groups.length ? groups[place.index][0] : sources.length;
+    const anchor = sources.slice(first).find((source) => source !== moved);
+    return { at: anchor === undefined ? remaining.length : remaining.indexOf(anchor), shares: false, startsGroup: null };
+  }
+  const members = groups[place.index].map((index) => sources[index]).filter((source) => source !== moved);
+  if (members.length === 0) {
+    // A group's only source, moved within its own group, stays a group of its own.
+    return { at: from, shares: false, startsGroup: null };
+  }
+  const anchor = groups[place.index]
+    .slice(place.position)
+    .map((index) => sources[index])
+    .find((source) => source !== moved);
+  if (anchor === undefined) {
+    return { at: remaining.indexOf(members.at(-1)) + 1, shares: true, startsGroup: null };
+  }
+  if (anchor === members[0]) {
+    return { at: remaining.indexOf(anchor), shares: false, startsGroup: anchor };
+  }
+  return { at: remaining.indexOf(anchor), shares: true, startsGroup: null };
+}
+
+// The list of sources `order` (entries of `original`) with `values` as their sharesTips, the first
+// always false: `original` itself if every entry is in the same place with the same sharesTips;
+// otherwise a new list, each entry whose sharesTips is unchanged the same object, each other a
+// shallow copy with only sharesTips changed.
+function sourcesArranged(original, order, values) {
+  const shares = values.map((value, index) => (index === 0 ? false : value));
+  const unchanged =
+    order.length === original.length &&
+    order.every((source, index) => source === original[index] && shares[index] === source.sharesTips);
+  if (unchanged) {
+    return original;
+  }
+  return order.map((source, index) =>
+    source.sharesTips === shares[index] ? source : { ...source, sharesTips: shares[index] },
+  );
 }
 
 // --- Moving wells: helpers ---
@@ -2133,9 +2417,10 @@ function checkedRandomizationValues(changes, current) {
   return values;
 }
 
-// A copy of `sources`, checked: a list; each source's form, well, replicates and filler in turn;
-// then no well twice, then each filler well without replicates, in order. Any number of sources may
-// be filler wells (section 3).
+// A copy of `sources`, checked: a list; each source's form, well, replicates, filler and sharesTips
+// in turn; then no well twice, then each filler well without replicates, in order, then the first
+// source's sharesTips (false: it starts on new tips). Any number of sources may be filler wells
+// (section 3).
 function checkedSources(sources) {
   if (!Array.isArray(sources)) {
     throw new Error(`A randomization's sources must be a list, but got ${describeValue(sources)}.`);
@@ -2150,11 +2435,23 @@ function checkedSources(sources) {
       );
     }
   });
-  return sources.map(({ labware, well, replicates, filler }) => ({ labware, well, replicates, filler }));
+  if (sources.length > 0 && sources[0].sharesTips) {
+    throw new Error(
+      'Source 1 is the first source, so it starts on new tips: its "sharesTips" must be false. ' +
+        "A randomization never shares tips with stages outside it.",
+    );
+  }
+  return sources.map(({ labware, well, replicates, filler, sharesTips }) => ({
+    labware,
+    well,
+    replicates,
+    filler,
+    sharesTips,
+  }));
 }
 
-// Throws if source number `number` isn't an object with exactly its four properties, isn't a well on
-// the deck, or has replicates or a filler that aren't valid.
+// Throws if source number `number` isn't an object with exactly its five properties, isn't a well on
+// the deck, or has replicates, a filler or a sharesTips that aren't valid.
 function checkSource(source, number) {
   if (!hasExactly(source, SOURCE_PROPERTIES)) {
     throw new Error(
@@ -2172,6 +2469,11 @@ function checkSource(source, number) {
   if (typeof filler !== "boolean") {
     throw new Error(
       `Source ${number}'s "filler" must be true or false, but got ${describeValue(filler)}.`,
+    );
+  }
+  if (typeof source.sharesTips !== "boolean") {
+    throw new Error(
+      `Source ${number}'s "sharesTips" must be true or false, but got ${describeValue(source.sharesTips)}.`,
     );
   }
 }
@@ -2497,8 +2799,9 @@ function keptEntries(plan, randomization, runStages) {
 }
 
 // What a randomization's stages are, as text to compare two plans by (section 3, "Out of date"):
-// for each of its stages, in order, its source well, its name and its transfers' source,
-// destination and volume, in order. Stage IDs are left out, since a run may make them fresh. Only
+// for each of its stages, in order, its source well, its name, its transfers' source, destination
+// and volume, in order, and whether it starts new tips (shared tips, 2026-11-05). Stage IDs are left
+// out, since a run may make them fresh. Only
 // its stages still in the plan count (ownedStagesIn): one removed by removeStage stays in its list
 // until a run.
 function stagesOutline(plan, randomization) {
@@ -2511,6 +2814,7 @@ function stagesOutline(plan, randomization) {
         endOf(destination),
         volume,
       ]),
+      startsNewTips: isFirstOfTipGroup(plan, owned.stage),
     })),
   );
 }
@@ -2578,9 +2882,9 @@ function withoutUnusedSourceStages(plan, id, keptByStage) {
 }
 
 // Returns the plan with `owned`, one of a randomization's stages ({ labware, well, stage }), set as
-// `runStage` says (runStagesOf; section 3, "Running", step 5): its name, its settings, its tips
-// (its own tip change, or START's if it's the first stage) and its transfers, each of the
-// randomization's volume, in order.
+// `runStage` says (runStagesOf; section 3, "Running", step 5): its name, its settings and its
+// transfers, each of the randomization's volume, in order. Its tips are set later
+// (withTipsBySourceGroup, step 7).
 function withSourceStageSet(plan, randomization, owned, runStage) {
   const stageId = owned.stage;
   let setting = plan;
@@ -2588,12 +2892,6 @@ function withSourceStageSet(plan, randomization, owned, runStage) {
     setting = renameStage(setting, stageId, runStage.name);
   }
   setting = changeStageSettings(setting, stageId, randomization.settings);
-  const tipKey = stageOrder(setting)[0] === stageId ? START : stageId;
-  if (tipKey !== START && !Object.hasOwn(setting.tipChanges, stageId)) {
-    setting = addTipChange(setting, stageId);
-  }
-  setting = setTipType(setting, tipKey, randomization.tipType);
-  setting = setTipProbes(setting, tipKey, randomization.probes);
   let operationList = setting.operationList;
   for (const position of positionsInStage(setting, stageId).reverse()) {
     operationList = operationList.remove(position);
@@ -2609,6 +2907,68 @@ function withSourceStageSet(plan, randomization, owned, runStage) {
       stage: stageId,
     })),
   );
+}
+
+// The place in `sources` (from 0) of the source each of a run randomization's stages is for, as a
+// Map from stage ID, e.g. Map { "3" → 0, "4" → 1 }. After a run's steps 3 to 5, every entry names a
+// source; the filler's names the first filler well.
+function sourceIndexByStage(randomization) {
+  const indexByWell = new Map(randomization.sources.map((source, index) => [wellKey(source), index]));
+  return new Map(randomization.stages.map((owned) => [owned.stage, indexByWell.get(wellKey(owned))]));
+}
+
+// Returns the plan with randomization `id`'s stages put in its sources' order (section 3, "Running",
+// step 6), consecutive, starting where its first stage now is; every other stage keeps its place.
+// A randomization without stages that sat before its old first stage now sits before its new one.
+// The operation list follows the new stage order. The same plan if they're in that order already.
+function withStagesInSourceOrder(plan, id) {
+  const randomization = randomizationAt(plan, id);
+  const order = plan.stageOrder;
+  const indexOf = sourceIndexByStage(randomization);
+  const current = order.filter((stage) => indexOf.has(stage));
+  const sorted = [...current].sort((first, second) => indexOf.get(first) - indexOf.get(second));
+  if (JSON.stringify(sorted) === JSON.stringify(current)) {
+    return plan;
+  }
+  const start = order.indexOf(current[0]);
+  const stageOrder = [...order.slice(0, start), ...sorted, ...order.slice(start + current.length)];
+  const randomizations = plan.randomizations.map((candidate) =>
+    candidate.stages.length === 0 && candidate.beforeId === current[0]
+      ? { ...candidate, beforeId: sorted[0] }
+      : candidate,
+  );
+  return withOperationsInStageOrder(withParts(plan, { stageOrder, randomizations }));
+}
+
+// Returns the plan with randomization `id`'s tips set by source group (section 3, "Running", step
+// 7): the first of each group's stages in stage order loads the randomization's tipType and probes
+// (its own tip change, or START's if it's the plan's first stage, with no tip change keyed by it);
+// each other stage of the group has no tip change, so it shares those tips. Tip changes outside the
+// randomization don't change.
+function withTipsBySourceGroup(plan, id) {
+  const randomization = randomizationAt(plan, id);
+  const indexOf = sourceIndexByStage(randomization);
+  const groupOfSource = new Map();
+  groupsOfSources(randomization.sources).forEach((group, groupIndex) => {
+    for (const index of group) {
+      groupOfSource.set(index, groupIndex);
+    }
+  });
+  const tips = { tipType: randomization.tipType, probes: [...randomization.probes] };
+  let tipChanges = plan.tipChanges;
+  let previousGroup = null;
+  for (const stage of plan.stageOrder.filter((candidate) => indexOf.has(candidate))) {
+    const group = groupOfSource.get(indexOf.get(stage));
+    if (group === previousGroup) {
+      tipChanges = withoutKey(tipChanges, stage);
+    } else if (plan.stageOrder[0] === stage) {
+      tipChanges = withKey(withoutKey(tipChanges, stage), START, tips);
+    } else {
+      tipChanges = withKey(tipChanges, stage, tips);
+    }
+    previousGroup = group;
+  }
+  return withParts(plan, { tipChanges: sameOrNew(plan.tipChanges, tipChanges) });
 }
 
 // Returns the plan with randomization `id`'s stages listed in stage order, and its beforeId the
@@ -2688,7 +3048,7 @@ function checkNoRandomizationNeedsTips(plan, key) {
   if (isJustAfterRandomization(plan, key)) {
     throw new Error(
       `This tip change keeps ${stageNamedInText(plan, key)}, off the ` +
-        "randomization's tips. A randomization never shares tips.",
+        "randomization's tips. A randomization never shares tips with other stages.",
     );
   }
   const sitting = plan.randomizations.some(
@@ -2759,8 +3119,9 @@ function checkStoredOrder(randomization, values) {
 }
 
 // A stored randomization's stages, checked (section 5's order): a list of { labware, well, stage };
-// each stage in the plan, none twice, no well twice; consecutive and in stage order; each the only
-// stage of its tip group; none a mix step. Returns copies. A stage's well needn't be one of the
+// each stage in the plan, none twice, no well twice; consecutive and in stage order; sharing no tip
+// group with a stage outside it (its first stage starts a tip group, and so does the stage just
+// after its last); none a mix step. Its stages may share tip groups with each other. Returns copies. A stage's well needn't be one of the
 // sources: setRandomization leaves a dropped source's stage until the next run.
 function checkedOwnedStages(plan, stages) {
   const formMessage = `its stages must be a list of objects with exactly ${listNamesWithAnd(OWNED_STAGE_PROPERTIES)}.`;
@@ -2787,12 +3148,19 @@ function checkedOwnedStages(plan, stages) {
   if (places.some((place, index) => index > 0 && place !== places[index - 1] + 1)) {
     throw new Error("its stages must come one after another, in stage order.");
   }
-  for (const owned of stages) {
-    const next = order[order.indexOf(owned.stage) + 1];
-    const alone = isFirstOfTipGroup(plan, owned.stage) && (next === undefined || isFirstOfTipGroup(plan, next));
-    if (!alone) {
-      throw new Error(`stage ${describeValue(owned.stage)} must be the only stage of its tip group.`);
+  if (stages.length > 0) {
+    const first = stages[0].stage;
+    const last = stages.at(-1).stage;
+    const after = order[order.indexOf(last) + 1];
+    const sharing = !isFirstOfTipGroup(plan, first) ? first : after !== undefined && !isFirstOfTipGroup(plan, after) ? last : null;
+    if (sharing !== null) {
+      throw new Error(
+        `stage ${describeValue(sharing)} shares tips with a stage outside the randomization. ` +
+          "A randomization never shares tips with other stages.",
+      );
     }
+  }
+  for (const owned of stages) {
     if (isMixStep(plan, owned.stage)) {
       throw new Error(`stage ${describeValue(owned.stage)} is a mix step.`);
     }
