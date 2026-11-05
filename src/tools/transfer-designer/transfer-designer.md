@@ -1593,6 +1593,11 @@ order of checks.
   - a group whose only stage is a mix step mixing one well counts;
   - a randomization that has run counts the tips of its stages' tip changes, with nothing done for
     it: the count equals the sum over `tipGroups` with transfers;
+  - a randomization whose sources A1 to A3 share tips (the filler on new tips of its own) counts
+    that group's tips once: running it adds the tips of two tip changes to its tip type's count
+    (A1 to A3's, and the filler's, each loading the randomization's probes), where the same
+    randomization with no source sharing adds four (counts from the randomization's tip type and
+    probes, not written out);
   - a plan with a contents problem is still counted;
   - **it matches the Biomek files:** for each of the plans above that has transfers, except the
     one with a contents problem, the counts equal what `writeRunFiles(plan, timestamp)`
