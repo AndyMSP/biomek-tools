@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-02
+Last updated: 2026-11-05
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -345,6 +345,11 @@ Last updated: 2026-11-02
   (`transfer-designer-page.md`), glossary "Randomization". **Built (#132, 2026-11-03)**: code,
   tests and REPL, and the page; the specifications and the build each reviewed by a separate
   agent, and checked in headless Chrome. Still to check by Andy.
+- **Decided: End shows the tips the run uses** (Andy, 2026-11-05; item 17, below), counted per
+  tip type after the transfer count, e.g. `24 transfers done · 32 BC230 tips · 8 BC1070 tips`.
+  **Specified** (Draft, 2026-11-05, in the hands-off workflow): `tipsUsed` (`transfer-designer.md`,
+  "Tip changes and tip groups") and End's count and tooltip (`transfer-designer-page.md`, section
+  7). It changes no Biomek files.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -597,6 +602,15 @@ added on 2026-10-28 (Andy).
       transfers is safe). Plan files do: today they allow one filler, so a new format version, with
       older files still opening.
     **Specified** (Draft, 2026-11-03) and **built (#132)**: see "Where things stand".
+17. **Tips used, in End** (Andy, 2026-11-05): the End box says how many tips the plan uses,
+    counted per tip type, after the transfer count, e.g. `24 transfers done · 32 BC230 tips · 8
+    BC1070 tips`; only the tip types the plan uses are shown. The count is the sum of the tips every
+    tip change loads (one per probe it loads), by tip type. Decided in the hands-off workflow
+    (2026-11-05; the reasons are in its pull request): it counts what the Biomek files load, so the
+    `START` tips count and a tip group without transfers doesn't (the file writer writes no tip
+    change for it); tip types in `config/tip-types.js` order; `1 BC230 tip`; with no transfers,
+    `0 transfers done` alone; a tooltip saying what's counted. It changes no Biomek files.
+    **Specified** (Draft, 2026-11-05): see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
