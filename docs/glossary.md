@@ -31,6 +31,9 @@ How moving and copying treat tips (Andy, 2026-11-01; ADR 0014). Containers are o
 and randomizations. A container moved or copied brings its tips and stages with it, and goes only
 between tip groups. A stage put inside a tip group takes that group's tips; one put between tip
 groups keeps the tips it had, as a tip group of its own. A tip group a stage leaves keeps its tips.
+The same rule orders a randomization's sources in its card (Andy, 2026-11-05; ADR 0018): there the
+containers are its source groups and the sources go inside them, so a source dropped inside a source
+group shares its tips, and one dropped between source groups starts new tips of its own.
 
 **Constituent**
 Something a component carries at a known concentration: a name, an amount and a unit, such as

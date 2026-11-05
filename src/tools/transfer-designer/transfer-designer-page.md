@@ -871,8 +871,12 @@ From the top:
         accessible name `New tips for Drug C and the sources below it in this box`.
       - Seams above the first box, below the last, and at a box's top and bottom have no button.
     - **Moving a source** (Andy, 2026-11-05): each row starts with a **grip**, `⠿` (12px gray, 10px
-      wide; tooltip `Drag to move this source`), and the whole row can be dragged (the browser's
-      drag and drop; the grab pointer over it). While a row is dragged it fades to 40%, every seam's
+      wide; tooltip `Drag to move this source`), and the row can be dragged (the browser's drag and
+      drop; the grab pointer over it) **from its grip or from any part of it outside its controls**
+      (its swatch, its name and the gaps between them), **never from its replicates box, its Filler
+      button or its `×`**: pressing in the replicates box places the cursor or selects its text, as
+      in any text box, and pressing a button presses it, so no drag starts there (the grab pointer
+      shows only where a drag can start). While a row is dragged it fades to 40%, every seam's
       line shows faintly (15%), the tip buttons are hidden, and the seam under the pointer shows
       its line 4px thick at full strength. Dropping on a seam moves the source there with
       `moveSource`, by the **container rule** (ADR 0014): a seam inside a box puts it in that box,
@@ -896,7 +900,13 @@ From the top:
       sources). Every seam stands for a place in the whole list's groups (`moveSource`'s places are
       always worked out on the whole draft): the seam below the last shown box is `between` it and
       the next group of the whole list, so a source dropped there lands after that box's hidden
-      rows too, with new tips.
+      rows too, with new tips. Likewise **the seam inside a box cut by the fold, below its last
+      shown row**, is `inGroup` at the **group's full length** (its end, hidden rows included), not
+      at the number of its rows shown: a source dropped there joins the box's tips after all its
+      sources, hidden ones too. (Decided in the hands-off workflow, 2026-11-05: the box's bottom
+      seam stands for the box's end, as the seam below it stands for the place after the whole box,
+      so both bottom seams mean the same place they mean when the list is unfolded, and the box's
+      heading already counts its hidden sources.)
     - The **All sources** row stays above the boxes, outside them.
     - Moving a source with the keyboard isn't offered yet (roadmap, "Later"); the join and split
       buttons can be reached and pressed from the keyboard.
@@ -919,7 +929,8 @@ From the top:
   `Dispense` columns, a **Mode** row of menus and a **Mix** row of checkboxes (`Can't mix` for a
   mode that can't), mixing with `DEFAULT_MIX`. Then **Tips**: a menu of tip types and a menu of
   probe counts (`1 probe` … `8 probes`, choosing `probesFor`; showing how many `probes` holds),
-  `BC230 on 4 probes`, for the new tips before each of its stages. Then **Volume**: a text box
+  `BC230 on 4 probes`, for each set of new tips its stages load: one before each box of sources
+  (below), so before each stage when no source shares tips. Then **Volume**: a text box
   like Seed's, 80px wide, then `µL` in gray; its accessible name `Volume per transfer in µL`.
   What's typed changes the card's draft at once, as Seed's box does (Andy, 2026-11-01: never typed
   at the deck). (Andy, 2026-11-01: it was a button that turned into a box when clicked, as a
@@ -932,8 +943,10 @@ From the top:
   0.`); then `Remove` (quiet red text at the left), `Close` (action) and the main button,
   **Randomize** (not run yet; tooltip `Makes 12 stages, with new tips before each.`: one per source
   taking replicates, and one for the filler if it fills any well, however many filler wells it has;
-  when sources share tips, `Makes 12 stages, on 4 sets of new tips.`, counting the source groups
-  holding at least one source that gets a stage)
+  **when any source of the draft shares tips** (any `sharesTips` `true`), `Makes 12 stages, on 4
+  sets of new tips.` instead, the count being `tipSetsToMake` of the draft (`transfer-designer.md`,
+  "Sets of new tips a run makes"); when no source shares, the first wording, as before; while the
+  draft has a problem, the tooltip isn't shown, as Randomize is disabled)
   or **Update** (run; tooltip `Applies these settings to its stages. The same seed and source order
   keep the same wells; a new seed or a new order shuffles again.`), disabled while there's a problem. With no problem, a card
   that has run, has no unsaved changes and is out of date shows, in the problem's place and in red,
@@ -1613,7 +1626,12 @@ page's configuration (ADR 0009):
   run randomization shows `Discard` and enables Update, and Update makes the shared stages one tip
   group in the column (one tip change), the stage after the randomization keeping its tips; a
   reordered run randomization's stages following the new order after Update, with new wells for the
-  same seed; Randomize's tooltip counting sets of tips; a not-run randomization's sharing kept after
+  same seed; Randomize's tooltip: `with new tips before each` with no source sharing, `on N sets of
+  new tips` (from `tipSetsToMake`) once any source shares, and back after splitting them all; a drag
+  started from the grip and from the name, and none from the replicates box (selecting its text
+  with the mouse moves nothing), the Filler button or `×`; with the list folded and a box cut by the
+  fold, a source dropped on that box's seam below its last shown row landing at the box's end,
+  after its hidden rows, sharing its tips; a not-run randomization's sharing kept after
   Close, reload, and saving and opening; Undo of Update bringing back the old tips; removing a
   shared box's first source with `×` and by unpicking it on the deck; the boxes with more than
   `SOURCES_SHOWN` sources, folded and shown; the

@@ -4,7 +4,9 @@ Date: 2026-11-01
 
 ## Status
 Accepted (Andy, 2026-11-01: decided while shaping a preview on 2026-10-31 and 2026-11-01, and
-accepted by merging #123).
+accepted by merging #123). Amended by ADR 0018 (2026-11-05, Proposed): a randomization's stages
+were each "on new tips"; its sources can now share tips, so its stages may share tips with each
+other, never with stages outside it.
 
 ## Context
 v0.2.0's item 9, the randomizer link, asks that a randomized plate reach the Biomek without anyone

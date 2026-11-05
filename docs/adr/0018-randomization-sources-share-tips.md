@@ -58,3 +58,12 @@ randomization's layout).
   with a stage outside it.
 - Cross-contamination between shared sources is the user's choice; the tool doesn't judge which
   sources are safe to share.
+- **It amends ADR 0012**, whose randomization made one stage per source "each on new tips", and
+  **ADR 0014**, whose randomization's stages were "each on tips of its own": a randomization's
+  stages may now share tips with each other, never with stages outside it. Their Status lines point
+  here; their text is left as it was decided.
+- **Plans saved before this change may open out of date**: a run then left stages it had already
+  made where they were, so a randomization's stage order could differ from its sources' order (e.g.
+  after unmarking its first filler well). Now a run puts them in the sources' order, so such a
+  randomization reads as out of date, and Update reorders its stages, changing the order of their
+  rows and files in the Biomek files (`transfer-designer.md`, "Out of date").
