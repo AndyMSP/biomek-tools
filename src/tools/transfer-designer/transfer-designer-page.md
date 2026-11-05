@@ -109,6 +109,14 @@
 > "Workflows"), so the choices made for Andy are listed in its pull request. They become Final once
 > built and tested by Andy.
 
+> **Draft changes (2026-11-05, shared tips, item 18 of v0.2.0; ADR 0018):** from a preview Andy
+> approved on 2026-11-05: a randomization card's Sources list shows its sources in boxes of sources
+> that share tips, with seams whose tip button joins two boxes or splits one, and rows dragged by a
+> grip to move a source by the container rule; a change of sharing or order alone makes Update
+> available (sections 7, 15 and 16; `transfer-designer.md`, "Sharing tips"). Written in the
+> hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull
+> request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -733,7 +741,9 @@ A randomization is an entry in the column between tip groups, where it sits: a b
 like a tip group's, with seams between tip groups above and below it as for any box.
 - **Its box** has 12px corners, a 1px blue border (`#9DB7DB`) and the page's background inside,
   so it reads as a group of tip groups. **Not set up yet** (no stages): a dashed border, and only
-  its heading. **Run**: a solid border, its heading, then its stages' tip group boxes, as usual.
+  its heading. **Run**: a solid border, its heading, then its stages' tip group boxes, as usual
+  (as `columnBoxes` gives them; since 2026-11-05 one may hold several of its stages, when their
+  sources share tips, each heading counting its tips as any tip group's does).
   It **collapses to its heading** unless its card is open or one of its stages is the open entry
   (Andy, 2026-11-01: a randomization of 68 stages would fill the column). The timeline's `‹` and
   `›` (section 11) step into and through its stages as any others, opening the box.
@@ -782,6 +792,11 @@ first closes it as `Close` would. Its changes are a **draft**, until:
 - The card's problems are worked out on the draft: the page applies it to a copy of the plan
   (`setRandomization`, with values it would refuse as `null`) and asks `randomizationProblems`,
   putting a box's own message first while it holds what isn't valid.
+- The card **is changed** (its draft differs from the randomization) exactly when applying the
+  draft gives a different plan (`setRandomization` gives back the same plan when nothing changes),
+  so changing only a source's sharing, or only the sources' order, counts as a change (Andy,
+  2026-11-05: Update must be offered for it). The page keeps no separate record of sharing: it's in
+  the draft's sources and the plan's.
 
 From the top:
 - **Two tabs**, `Sources` and `Wells to fill`, each with a count in a small gray pill; the open tab
@@ -798,8 +813,64 @@ From the top:
   (`fillerShares`, worked out on the draft as the problems are, below): `7 wells`, `1 well`, `0
   wells` (on an exact fit the filler gets none, and no stage), or `?` while a replicate count isn't
   a whole number yet or the volume isn't set, updating as replicates, the volume and wells are
-  changed (Andy, 2026-11-01 and 2026-11-02). The filler wells are used in the order of their rows,
-  which is the order they were picked in; to change it, remove a row and pick its well again.
+  changed (Andy, 2026-11-01 and 2026-11-02). The filler wells are used in the order of their rows
+  (since 2026-11-05 a row can be dragged to change it, below).
+  - **Boxes of sources that share tips** (Andy, 2026-11-05, from a preview he approved; ADR 0018;
+    `transfer-designer.md`, "Sharing tips"). The rows are grouped in **boxes**, one per **source
+    group** (`sourceGroups` of the draft's sources): a box holds the sources whose stages share one
+    set of tips. Every source picked starts in a box of its own (new tips, as before this change),
+    and the first source always starts new tips (a randomization never shares tips with stages
+    outside it). Only the sharing is set here: the tip type and probes stay the card's one **Tips**
+    setting (Andy: not per source).
+    - **A box** is a rounded box (10px corners, 1px border, padding 4px 6px 0) in light blue
+      (`#EEF3FA`, border `#9DB7DB`), alternating with light sand (`#F5F1E8`, border `#D9D2C3`), as the
+      Stages column's tip groups (section 15). Its **heading**, at its top left, 11px semibold gray:
+      the tip icon (5px by 11px), then `New tips` for a box of one source, or `New tips · shared by 3
+      sources`.
+    - **Seams**, as in the Stages column: **inside a box**, a 6px seam above its first row, between
+      each two rows and below its last; **between boxes**, a 12px seam above the first box, between
+      each two boxes and below the last. Pointing at a seam shows its line (2px blue at 35%
+      opacity, 4px in from its sides). The **tip button** (a 22px white circle, 1px `#9DB7DB` border,
+      the tip icon in blue) sits centered on the line, showing only while its seam is pointed at or
+      it has keyboard focus (it's still in the tab order):
+      - on a seam **between two boxes** it **joins** them: the lower box's sources share the upper
+        box's tips (the lower box's first source's `sharesTips` becomes `true`, with
+        `setSourceSharesTips`). Tooltip and accessible name `Drug B shares the tips of Drug A` (the
+        lower box's first source, then the upper box's last, by `sourceName`).
+      - on a seam **between two rows in a box** it **splits** the box there: the lower source and
+        the sources after it in the box get new tips (its `sharesTips` becomes `false`). Tooltip and
+        accessible name `New tips for Drug C and the sources below it in this box`.
+      - Seams above the first box, below the last, and at a box's top and bottom have no button.
+    - **Moving a source** (Andy, 2026-11-05): each row starts with a **grip**, `⠿` (12px gray, 10px
+      wide; tooltip `Drag to move this source`), and the whole row can be dragged (the browser's
+      drag and drop; the grab pointer over it). While a row is dragged it fades to 40%, every seam's
+      line shows faintly (15%), the tip buttons are hidden, and the seam under the pointer shows
+      its line 4px thick at full strength. Dropping on a seam moves the source there with
+      `moveSource`, by the **container rule** (ADR 0014): a seam inside a box puts it in that box,
+      sharing its tips (on the seam above the box's first row, it becomes the box's first, on the
+      box's tips, and the old first shares them); a seam between boxes (or above the first, or below
+      the last) gives it new tips of its own. Taking a box's first source out hands the box's tips
+      to the next source in it. Dropping anywhere else moves nothing. A drag of a source can't be
+      dropped anywhere outside the Sources list (nor a drag from elsewhere onto it).
+    - **Reordering changes the random layout** (Andy accepted it, 2026-11-05): the pool numbers
+      sources by their place in the list, so after a move, Update gives different wells even with
+      the same seed. Nothing on the card warns of it beyond Update's own tooltip (below).
+    - Joining, splitting and moving change only the card's **draft**, as any other change in the
+      card does: no message, and no undo of its own. The draft's sources are saved with
+      `setRandomization` (their `sharesTips` included), so a randomization that hasn't run keeps its
+      sharing when its card closes, and a run one counts as changed (so `Discard` shows, and it must
+      be updated or discarded before closing). Removing a source (its `×`, or unpicking its well on
+      the deck) uses `removeSources`, so its box keeps its tips; a source picked on the deck is added
+      last, in a box of its own (`sharesTips` `false`).
+    - With more than `SOURCES_SHOWN` sources and the list folded, the boxes are those of the shown
+      rows (a box cut by the fold shows only its shown rows, but its heading counts all its
+      sources). Every seam stands for a place in the whole list's groups (`moveSource`'s places are
+      always worked out on the whole draft): the seam below the last shown box is `between` it and
+      the next group of the whole list, so a source dropped there lands after that box's hidden
+      rows too, with new tips.
+    - The **All sources** row stays above the boxes, outside them.
+    - Moving a source with the keyboard isn't offered yet (roadmap, "Later"); the join and split
+      buttons can be reached and pressed from the keyboard.
   - With two or more sources that take replicates, a first row, **All sources**, set apart by a
     line, with one box (accessible name `Replicates for every source`): typing in it sets every
     source's replicates as you type (not the filler's). It shows their number when they all match,
@@ -831,13 +902,16 @@ From the top:
   `The seed must be a whole number from 1 to 999,999.`, `The volume must be a number of µL above
   0.`); then `Remove` (quiet red text at the left), `Close` (action) and the main button,
   **Randomize** (not run yet; tooltip `Makes 12 stages, with new tips before each.`: one per source
-  taking replicates, and one for the filler if it fills any well, however many filler wells it has)
-  or **Update** (run; tooltip `Applies these settings to its stages. The same seed keeps the same
-  wells; a new seed shuffles again.`), disabled while there's a problem. With no problem, a card
+  taking replicates, and one for the filler if it fills any well, however many filler wells it has;
+  when sources share tips, `Makes 12 stages, on 4 sets of new tips.`, counting the source groups
+  holding at least one source that gets a stage)
+  or **Update** (run; tooltip `Applies these settings to its stages. The same seed and source order
+  keep the same wells; a new seed or a new order shuffles again.`), disabled while there's a problem. With no problem, a card
   that has run, has no unsaved changes and is out of date shows, in the problem's place and in red,
   `The plan has changed since this last ran. Press Update to bring its stages up to date.` (Update
   stays enabled; Andy, 2026-11-02). Randomize and Update save the draft and run it
-  (`runRandomization`), as one undoable edit, close the card and open its first stage (message
+  (`runRandomization`, which puts its stages in the sources' order and gives new tips only where a
+  box of sources starts; the page does nothing more to the stages or tips), as one undoable edit, close the card and open its first stage (message
   `Randomized: 12 stages with 96 transfers (seed 37). Undo takes the change out again.`). After
   Update the message is `Updated: 12 stages with 96 transfers (seed 37). Undo takes the change out
   again.`. `Remove` acts at once (`removeRandomization`), as every Remove does: `Removed the
@@ -1395,7 +1469,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **Randomizations:** the box 12px corners, 1px `#9DB7DB` border, 8px padding, the page's
   background; dashed while not set up. The heading 15px, its dice icon 20px; status 13px gray. The
   tabs' counts 11px in a gray pill (`#ECEAE3`), blue on the open tab's. A source row 30px tall, its
-  swatch 12px. Its `Filler` button 26px tall, 12px text.
+  swatch 12px. Its `Filler` button 26px tall, 12px text. The Sources list's boxes, seams, tip
+  buttons and grip as section 7 gives them (2026-11-05).
 - **The name box:** 140px wide, at least 30px tall, the shadow `0 6px 20px` at 20% of the text
   color.
 - **⟳ badges** (section 6): a 14px circle centered on the well's top-right edge (at 45° from its
@@ -1465,6 +1540,21 @@ page's configuration (ADR 0009):
   transfer, Tips and Volume; each problem message; Randomize: stages in source order, named, each on
   new tips, the stage after keeping its tips, every well filled once; Update with the same seed (same
   wells) and a new one; a source removed and added; Remove before and after running, and Undo; the
+  Sources list's boxes (2026-11-05): every new source in a box of its own, blue and sand
+  alternating, the headings `New tips` and `New tips · shared by 3 sources`; the tip button on a
+  seam between boxes joining them and on a seam inside a box splitting it, each showing only while
+  pointed at, with its tooltip, and reached with Tab; no button above the first box or the first
+  row; dragging a row by its grip onto a seam inside another box (it shares that box's tips), onto
+  the seam above a box's first row (it becomes first, the old first shares), and onto a seam
+  between boxes (new tips of its own); dragging a box's first source away (the next keeps the
+  tips); the drop line while dragging; a drop elsewhere moving nothing; only sharing changed on a
+  run randomization shows `Discard` and enables Update, and Update makes the shared stages one tip
+  group in the column (one tip change), the stage after the randomization keeping its tips; a
+  reordered run randomization's stages following the new order after Update, with new wells for the
+  same seed; Randomize's tooltip counting sets of tips; a not-run randomization's sharing kept after
+  Close, reload, and saving and opening; Undo of Update bringing back the old tips; removing a
+  shared box's first source with `×` and by unpicking it on the deck; the boxes with more than
+  `SOURCES_SHOWN` sources, folded and shown; the
   box collapsing, and opening when its stage is reached with `›`; its stages' cards with no ✎, no
   seams, no `×`, and a deck click's message; saving and opening, and reloading, keep it;
 - well labels: right-click a plate well and a trough, and the menu key on a focused well, with
