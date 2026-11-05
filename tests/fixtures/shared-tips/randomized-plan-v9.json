@@ -1,0 +1,537 @@
+{
+  "format": "biomek-tools transfer plan",
+  "version": 9,
+  "savedBy": "transfer designer v0.2.0",
+  "experimentName": "Exp36",
+  "components": [
+    {
+      "name": "Media",
+      "color": "#59a14f",
+      "constituents": [],
+      "osmolality": null
+    },
+    {
+      "name": "Drug A",
+      "color": "#4e79a7",
+      "constituents": [],
+      "osmolality": null
+    },
+    {
+      "name": "Drug B",
+      "color": "#e15759",
+      "constituents": [],
+      "osmolality": null
+    },
+    {
+      "name": "Drug C",
+      "color": "#f28e2b",
+      "constituents": [],
+      "osmolality": null
+    }
+  ],
+  "startingContents": [
+    {
+      "labware": "Res1",
+      "well": "1",
+      "components": {
+        "Media": 2030
+      }
+    },
+    {
+      "labware": "Res1",
+      "well": "2",
+      "components": {
+        "Media": 10000
+      }
+    },
+    {
+      "labware": "Res1",
+      "well": "3",
+      "components": {
+        "Media": 10000
+      }
+    },
+    {
+      "labware": "Deep1",
+      "well": "A1",
+      "components": {
+        "Drug A": 500
+      }
+    },
+    {
+      "labware": "Deep1",
+      "well": "A2",
+      "components": {
+        "Drug B": 500
+      }
+    },
+    {
+      "labware": "Deep1",
+      "well": "A3",
+      "components": {
+        "Drug C": 500
+      }
+    }
+  ],
+  "stages": [
+    {
+      "id": "1",
+      "name": "Seeding",
+      "settings": {
+        "sourceTechnique": "Operation",
+        "sourceLiquidType": "Medium",
+        "destinationTechnique": "Operation",
+        "destinationLiquidType": "Medium",
+        "sourceMix": null,
+        "destinationMix": null
+      }
+    },
+    {
+      "id": "3",
+      "name": "Drug A",
+      "settings": {
+        "sourceTechnique": "Operation",
+        "sourceLiquidType": "Medium",
+        "destinationTechnique": "Operation",
+        "destinationLiquidType": "Medium",
+        "sourceMix": null,
+        "destinationMix": null
+      }
+    },
+    {
+      "id": "4",
+      "name": "Drug B",
+      "settings": {
+        "sourceTechnique": "Operation",
+        "sourceLiquidType": "Medium",
+        "destinationTechnique": "Operation",
+        "destinationLiquidType": "Medium",
+        "sourceMix": null,
+        "destinationMix": null
+      }
+    },
+    {
+      "id": "5",
+      "name": "Drug C",
+      "settings": {
+        "sourceTechnique": "Operation",
+        "sourceLiquidType": "Medium",
+        "destinationTechnique": "Operation",
+        "destinationLiquidType": "Medium",
+        "sourceMix": null,
+        "destinationMix": null
+      }
+    },
+    {
+      "id": "6",
+      "name": "Media",
+      "settings": {
+        "sourceTechnique": "Operation",
+        "sourceLiquidType": "Medium",
+        "destinationTechnique": "Operation",
+        "destinationLiquidType": "Medium",
+        "sourceMix": null,
+        "destinationMix": null
+      }
+    },
+    {
+      "id": "2",
+      "name": "Top up",
+      "settings": {
+        "sourceTechnique": "Operation",
+        "sourceLiquidType": "Medium",
+        "destinationTechnique": "Operation",
+        "destinationLiquidType": "Medium",
+        "sourceMix": null,
+        "destinationMix": null
+      }
+    }
+  ],
+  "operations": [
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Res1",
+        "well": "3"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B2"
+      },
+      "volume": 100,
+      "stage": "1"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Res1",
+        "well": "3"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B3"
+      },
+      "volume": 100,
+      "stage": "1"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Res1",
+        "well": "3"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B4"
+      },
+      "volume": 100,
+      "stage": "1"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Res1",
+        "well": "3"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B5"
+      },
+      "volume": 100,
+      "stage": "1"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Res1",
+        "well": "3"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B6"
+      },
+      "volume": 100,
+      "stage": "1"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Deep1",
+        "well": "A1"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B6"
+      },
+      "volume": 20,
+      "stage": "3"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Deep1",
+        "well": "A1"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "C2"
+      },
+      "volume": 20,
+      "stage": "3"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Deep1",
+        "well": "A1"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "C4"
+      },
+      "volume": 20,
+      "stage": "3"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Deep1",
+        "well": "A2"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B2"
+      },
+      "volume": 20,
+      "stage": "4"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Deep1",
+        "well": "A2"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B4"
+      },
+      "volume": 20,
+      "stage": "4"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Deep1",
+        "well": "A2"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "C6"
+      },
+      "volume": 20,
+      "stage": "4"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Deep1",
+        "well": "A3"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B3"
+      },
+      "volume": 20,
+      "stage": "5"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Deep1",
+        "well": "A3"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "B5"
+      },
+      "volume": 20,
+      "stage": "5"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Res1",
+        "well": "1"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "C3"
+      },
+      "volume": 20,
+      "stage": "6"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Res1",
+        "well": "2"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "C5"
+      },
+      "volume": 20,
+      "stage": "6"
+    },
+    {
+      "type": "transfer",
+      "source": {
+        "labware": "Res1",
+        "well": "3"
+      },
+      "destination": {
+        "labware": "Plate1",
+        "well": "D2"
+      },
+      "volume": 100,
+      "stage": "2"
+    }
+  ],
+  "tipChanges": {
+    "2": {
+      "tipType": "BC230",
+      "probes": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "3": {
+      "tipType": "BC230",
+      "probes": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "4": {
+      "tipType": "BC230",
+      "probes": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "5": {
+      "tipType": "BC230",
+      "probes": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "6": {
+      "tipType": "BC230",
+      "probes": [
+        1,
+        2,
+        3,
+        4
+      ]
+    },
+    "start": {
+      "tipType": "BC230",
+      "probes": [
+        1,
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  "labwareLabels": {},
+  "wellLabels": {},
+  "randomizations": [
+    {
+      "id": "r1",
+      "beforeId": "2",
+      "sources": [
+        {
+          "labware": "Deep1",
+          "well": "A1",
+          "replicates": 3,
+          "filler": false
+        },
+        {
+          "labware": "Deep1",
+          "well": "A2",
+          "replicates": 3,
+          "filler": false
+        },
+        {
+          "labware": "Deep1",
+          "well": "A3",
+          "replicates": 2,
+          "filler": false
+        },
+        {
+          "labware": "Res1",
+          "well": "1",
+          "replicates": null,
+          "filler": true
+        },
+        {
+          "labware": "Res1",
+          "well": "2",
+          "replicates": null,
+          "filler": true
+        }
+      ],
+      "fill": [
+        {
+          "labware": "Plate1",
+          "well": "B2"
+        },
+        {
+          "labware": "Plate1",
+          "well": "B3"
+        },
+        {
+          "labware": "Plate1",
+          "well": "B4"
+        },
+        {
+          "labware": "Plate1",
+          "well": "B5"
+        },
+        {
+          "labware": "Plate1",
+          "well": "B6"
+        },
+        {
+          "labware": "Plate1",
+          "well": "C2"
+        },
+        {
+          "labware": "Plate1",
+          "well": "C3"
+        },
+        {
+          "labware": "Plate1",
+          "well": "C4"
+        },
+        {
+          "labware": "Plate1",
+          "well": "C5"
+        },
+        {
+          "labware": "Plate1",
+          "well": "C6"
+        }
+      ],
+      "seed": 37,
+      "volume": 20,
+      "settings": {
+        "sourceTechnique": "Operation",
+        "sourceLiquidType": "Medium",
+        "destinationTechnique": "Operation",
+        "destinationLiquidType": "Medium",
+        "sourceMix": null,
+        "destinationMix": null
+      },
+      "tipType": "BC230",
+      "probes": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "stages": [
+        {
+          "labware": "Deep1",
+          "well": "A1",
+          "stage": "3"
+        },
+        {
+          "labware": "Deep1",
+          "well": "A2",
+          "stage": "4"
+        },
+        {
+          "labware": "Deep1",
+          "well": "A3",
+          "stage": "5"
+        },
+        {
+          "labware": "Res1",
+          "well": "1",
+          "stage": "6"
+        }
+      ]
+    }
+  ]
+}
