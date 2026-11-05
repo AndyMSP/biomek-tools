@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-02
+Last updated: 2026-11-05
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -345,6 +345,15 @@ Last updated: 2026-11-02
   (`transfer-designer-page.md`), glossary "Randomization". **Built (#132, 2026-11-03)**: code,
   tests and REPL, and the page; the specifications and the build each reviewed by a separate
   agent, and checked in headless Chrome. Still to check by Andy.
+- **Decided: a randomization's sources can share tips** (Andy, 2026-11-05; item 18, below; ADR
+  0018, Proposed), from a preview he approved. **Specified** (Draft, 2026-11-05, in the hands-off
+  workflow): `sharesTips` on each source, source groups, `sourceGroups`, `setSourceSharesTips`,
+  `moveSource` and `removeSources`, a run putting its stages in the sources' order with new tips
+  only where a source group starts, and a randomization's stages allowed to share tip groups with
+  each other but never with stages outside it (`transfer-designer.md`, "Sharing tips"); plan files
+  version 10 (`plan-file.md`, assuming #134's version 9 merges first); copied items version 3; the
+  card's boxes, seams and dragging (`transfer-designer-page.md`, section 7); glossary "Source
+  group". It changes what goes into the Biomek files (fewer tip changes) but not their format.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -597,6 +606,35 @@ added on 2026-10-28 (Andy).
       transfers is safe). Plan files do: today they allow one filler, so a new format version, with
       older files still opening.
     **Specified** (Draft, 2026-11-03) and **built (#132)**: see "Where things stand".
+18. **Sources sharing tips in a randomization** (Andy, 2026-11-05): a randomization is a point of
+    heavy tip use (each source's stage starts on new tips), so each source can share the tips of
+    the source before it, letting related sources (one drug at rising concentrations, lowest first)
+    run on one set of tips. Decided (Andy, 2026-11-05, in a preview he approved):
+    - **Per source, only whether a tip change comes before it**; the randomization's one Tips
+      setting (tip type and probes) stays. The first source always starts new tips: a
+      randomization never shares tips with stages outside it.
+    - **On the card**, the Sources list shows **boxes of sources that share tips**, light blue
+      alternating with light sand like the Stages column's tip groups, each headed `New tips` or
+      `New tips · shared by 3 sources`; every source starts in a box of its own. Seams as in the
+      Stages column: a tip button between two boxes joins them, one between two sources in a box
+      splits it.
+    - **Reordering**: a source's row is dragged by a ⠿ grip onto a seam, by the container rule
+      (ADR 0014): inside a box it shares that box's tips (above the first, it becomes the first and
+      the old first shares); between boxes it gets new tips of its own; a box's first source moved
+      away hands the box's tips to the next.
+    - **Reordering changes the random layout** even with the same seed (the pool numbers sources
+      by their place; Andy accepted it); it counts as a change, and Update reruns. A run puts
+      existing stages in the new order too (found while building the preview: a run kept them
+      where they were).
+    - Decided in the hands-off workflow (2026-11-05; reasons in its pull request): the filler's
+      one stage belongs to its first filler well's group and place; a source that gets no stage
+      leaves its group's other stages sharing; sharing and order changes are part of the draft,
+      so they make Update available; plan files version 10 and copied items version 3.
+    - **The Biomek files' format doesn't change**, but what goes in them does: fewer tip-change rows
+      in the stage worklist, so Andy decides by merging. Like the filler (item 13), it needn't come
+      before the final Biomek runs, since the file writer already writes tip changes as the plan has
+      them.
+    **Specified** (Draft, 2026-11-05): see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -615,6 +653,13 @@ final Biomek runs, so they test the files as they will be:
 8. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
+- **Moving a randomization's source with the keyboard** (2026-11-05, from the shared-tips topic):
+  sources are reordered only by dragging. The join and split buttons work from the keyboard, so
+  sharing can be set without a mouse, and order can be changed by removing a source and picking it
+  again. Doing it properly: keyboard shortcuts on a focused row (e.g. Alt+↑ and Alt+↓ moving it one
+  place, by the same container rule), tried in a preview first.
+- **Setting every source's sharing at once** from the All sources row (2026-11-05): considered for
+  the shared-tips topic; Andy didn't ask for it after trying the preview, so left out (YAGNI).
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen
   constituent's concentration in every well. For now they're on the contents card only (ADR 0013),
   to see whether the card is enough in use.
