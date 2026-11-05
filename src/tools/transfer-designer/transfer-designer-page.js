@@ -1926,13 +1926,14 @@ function createEntry(plan, key, open, problems) {
 }
 
 // The badge, name and count of an entry: Start ("0", "N wells filled"), a stage (its place, "N
-// transfers"), a mix step (its place, "N wells mixed") or End ("✓", "N transfers done").
+// transfers"), a mix step (its place, "N wells mixed") or End ("✓" and no count: createEntry builds
+// End's count with createEndCount).
 function entryHeading(plan, key) {
   if (key === START) {
     return { badge: "0", name: "Start", count: `${countOf(plan.startingContents.length, "well")} filled` };
   }
   if (key === END) {
-    return { badge: "✓", name: "End", count: endCountParts(plan).join(" · ") };
+    return { badge: "✓", name: "End", count: null };
   }
   const count = transfersIn(plan, key).length;
   return {
