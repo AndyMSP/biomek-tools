@@ -516,7 +516,8 @@ here don't refuse them; roadmap, "Technical debt"). Two rules keep its stages of
 stages outside it whatever else is edited:
 - `removeTipChange` refuses the tip change of the stage just after a randomization's last stage:
   `This tip change keeps stage 7, “Media”, off the randomization's tips. A randomization never
-  shares tips.`
+  shares tips with other stages.` (Until 2026-11-05 it ended `A randomization never shares tips.`;
+  its stages may now share tips with each other, so the message says with whom.)
 - `removeStage`, removing the stage just after a randomization's last stage, gives the next stage
   a tip change loading the tips the removed one used, if it has none.
 - `removeTipChange` also refuses the tip change of a stage a randomization without stages sits
@@ -590,6 +591,18 @@ tips. The rules:
   - **`removeSources(sources, indexes)`**: the sources at `indexes` (each once; any order) taken
     out; each group they leave keeps its tips: the first source left of a group whose first was
     taken out starts it (`false`). After it the first source's `sharesTips` is `false`.
+    `removeSources(sources, [])` gives back the same list (only if its first source's `sharesTips`
+    is already `false`; see the next point).
+  - **The first source is always made `false`** by `setSourceSharesTips`, `moveSource` and
+    `removeSources`, so their result never holds a first source sharing tips, even when the list
+    given did (a caller's list may; `sourceGroups` reads such a first source as starting a group
+    anyway). **A result that differs from the list given only by that is a change**: a new list,
+    its first entry a shallow copy with `sharesTips` `false`, not the same list. (Decided in the
+    hands-off workflow, 2026-11-05: "the same list" means "nothing differs", so a caller saving
+    the result with `setRandomization`, which refuses a first source sharing tips, always gets a
+    list it accepts; the other choice would hand back a list `setRandomization` refuses.) E.g.
+    `setSourceSharesTips(list, 2, true)` on a list whose first source holds `true` and whose source
+    2 already shares gives a new list whose first source holds `false`.
   - Adding a source is the caller's: it appends `{ …, sharesTips: false }` (new tips of its own).
 
 **Running** (`runRandomization`), when it has no problems (below), as one edit:
@@ -689,10 +702,28 @@ or is the plan's first stage; Andy, 2026-11-05, shared tips: so stored sharing t
 don't follow, such as from `setRandomization` without a run, reads as out of date). Stage IDs
 aren't compared, since a run may make them fresh. (Since stages are compared in stage order and a
 run puts them in the sources' order, sources reordered without a run also read as out of date.)
+**Plans saved before this change whose stages aren't in their sources' order** (plan files
+versions 6 to 9, and copied items versions 1 and 2): before 2026-11-05 a run left stages it had
+already made where they were and put new ones just before the place, so a randomization's stage
+order could differ from its sources' order, e.g. a first filler well unmarked so it takes
+replicates (its old filler stage stays first, as its own, and the new filler stage comes after the
+other sources'), or a filler toggled on a row above sources that already had stages. Such a
+randomization now **opens out of date** (a trial run puts its stages in the sources' order, so its
+stages in order name different source wells), and **Update reorders its stages**, which changes
+the order of their rows and Transfer From File files in the Biomek files (the same transfers, in
+the sources' order). Nothing reorders them without Update.
 One that hasn't run is never out of date. Throws if there's no randomization `id`. (A plan saved
 before names were compared, whose sources' contents changed after a run, opens out of date; one
 Update clears it.) A tool shows it and lets the user run it again; nothing
 reruns it by itself (Andy: it could rearrange a plate already checked).
+
+**Sets of new tips a run makes** (`tipSetsToMake(plan, id)`, for a caller describing a run before
+it's made): the number of tip groups among the stages a trial run (as "Out of date" makes one, on a
+copy, thrown away) gives the randomization: the source groups that get at least one stage. E.g.
+A1, A2 and A3 sharing and the filler on new tips: `2`; every source on new tips: the number of
+stages. `null` while it can't run (it has problems). Throws if there's no randomization `id`. (A
+count of `sourceGroups` alone would be wrong where a source gets no stage, such as a filler on an
+exact fit that starts a group of its own.)
 
 **A source's name** (`sourceName`; for a new stage, and for the caller to show): its well label if
 it has one (section 3, "Well labels"); otherwise the component it holds most of just before the
@@ -854,8 +885,15 @@ version 3; the first entry's `tips` is never `null`).
 
 **Copied items version 3** (2026-11-05, shared tips): each randomization's sources have
 `sharesTips`, and an owned stage's `tips` may be `null`. `copyOf` writes version 3; `pasteItems`
-reads versions 1 to 3. In version 1 and 2 copies, each source is read with `sharesTips` `false`, and
-every owned stage's `tips` must be an object, as before. In version 3, a randomization's sources
+reads versions 1 to 3. In version 1 and 2 copies, each source that is an object must not have
+`sharesTips` (one that has it is refused with the form message, `Can't paste: item 2 isn't a stage,
+tip group or randomization as the transfer designer copies them.`, as a plan file version 6 to 9
+refuses it; a source that isn't an object is left to `setRandomization`'s checks), and is then read
+with `sharesTips` `false`; every owned stage's `tips` must be an object, as before. In version 3,
+**whether its stages share isn't checked against its sources**, as for plan files: a copy whose
+sources' `sharesTips` disagree with which owned stages have `tips` `null` (e.g. A2 sharing but its
+stage with tips of its own, or the reverse) pastes, with its stages in the tip groups the copy
+gives, and the pasted randomization is out of date, so Update brings them together. In version 3, a randomization's sources
 must have exactly `labware`, `well`, `replicates`, `filler` and `sharesTips` (checked by
 `setRandomization`'s rules), and its first owned stage's `tips` can't be `null`
 (`Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies
@@ -1079,6 +1117,7 @@ throw first if there's no component with that name.
 | `removeSources(sources, indexes)` | `sources` without those at `indexes`, each group they leave keeping its tips. Throws as section 5 says. |
 | `fillerShares(plan, id)` | how many of the filler's wells each filler well fills, `[{ index, count }]` in `sources`' order (section 3, "The filler's shares"); `[]` with no filler wells; `null` if the volume or the spare wells aren't known yet. |
 | `isRandomizationOutOfDate(plan, id)` | `true` if the randomization has run and has problems now, or a run now would give different stages (section 3, "Out of date"). |
+| `tipSetsToMake(plan, id)` | how many sets of new tips a run now would load for the randomization: the tip groups among the stages a trial run gives it (section 3, "Sets of new tips a run makes"); `null` while it has problems. |
 | `sourceName(plan, id, source)` | a source's name (section 3), e.g. `"Cond 1"`, `"Drug A +2"` or `"Deep A1"`. |
 | `runRandomization(plan, id)` | the plan with the randomization run (section 3). Throws its first problem's message if it has any. |
 | `removeRandomization(plan, id)` | the plan without the randomization and its stages. Throws if there's no such randomization, or its stages are all the plan's stages. |
@@ -1189,7 +1228,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `filler` isn't `true` or `false` | `Source 2's "filler" must be true or false, but got "yes".` |
 | a filler well has replicates | `Source 3 is a filler well, so its replicates must be null, but got 4.` |
 | `setRandomizations`: two entries in `stages` name filler wells of one randomization | `Randomization 2: its filler has two stages.` (An entry naming a filler well that isn't the first is accepted, as a plan between `setRandomization` and a run holds it; the filler stage's transfers may draw from any of its filler wells.) |
-| `fillerShares`, `isRandomizationOutOfDate`: no such randomization | `There's no randomization "r9" in the plan.` (as for the other randomization functions) |
+| `fillerShares`, `isRandomizationOutOfDate`, `tipSetsToMake`: no such randomization | `There's no randomization "r9" in the plan.` (as for the other randomization functions) |
 | seed not a whole number from 1 to 999,999, or `null` | `A randomization's seed must be a whole number from 1 to 999,999, or null, but got 0.` |
 | volume not a number above 0, or `null` | `A randomization's volume must be a number of µL above 0, or null, but got 0.` |
 | settings refused | the stage list's message, or the mixing rule's (section 3), unchanged |
@@ -1198,19 +1237,19 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `runRandomization` with problems | the first problem's message (section 3) |
 | `removeRandomization`: its stages are all the plan's stages | `This randomization's stages are all the plan's stages, and a plan needs at least one. Add a stage outside it first.` |
 | `removeTipChange`: the tip change of a stage a randomization without stages sits before | `A randomization sits before stage 2, “Top up”, between tip groups, so these tips can't be removed.` |
-| `removeTipChange`: the tip change after a randomization | `This tip change keeps stage 7, “Media”, off the randomization's tips. A randomization never shares tips.` |
+| `removeTipChange`: the tip change after a randomization | `This tip change keeps stage 7, “Media”, off the randomization's tips. A randomization never shares tips with other stages.` (`… never shares tips.` until 2026-11-05) |
 | `setRandomizations`: not a list, or a randomization isn't an object with exactly its ten properties | `The randomizations must be a list, but got 5.` / `Randomization 2 must be an object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".` |
 | `setRandomizations`: an ID isn't `"r"` and a whole number of at least 1, or is repeated | `Randomization 2's ID must be "r" and a whole number, like "r1", but got "x".` / `Randomizations 1 and 3 both have the ID "r2".` |
 | `setRandomizations`: `fill` not in deck order, or `probes` not smallest first | `Randomization 2: its wells to fill must be in deck order, but Plate1 B3 comes before Plate1 B2.` / `Randomization 2: its probes must be listed smallest first.` |
 | `setRandomizations`: `stages` isn't a list of `{ labware, well, stage }`, names a stage not in the plan, names one stage twice, or gives one well two stages | `Randomization 2: its stages must be a list of objects with exactly "labware", "well" and "stage".` / `Randomization 2: its stage "9" isn't in the plan.` / `Stage "5" belongs to two randomizations, 1 and 2.` (or, in one, `Randomization 2: stage "5" is listed twice.`) / `Randomization 2: Deep A4 has two stages.` (A stage whose well is no longer a source is accepted: `setRandomization` leaves it until the next run, so a plan between those edits saves and opens.) |
 | `setRandomizations`: its stages aren't consecutive, aren't in stage order, share a tip group with a stage outside it (its first stage doesn't start a tip group, or the stage just after its last doesn't), or one is a mix step | `Randomization 2: its stages must come one after another, in stage order.` / `Randomization 2: stage "5" shares tips with a stage outside the randomization. A randomization never shares tips with other stages.` (naming its first stage, or its last stage when the stage after it is the one sharing) / `Randomization 2: stage "5" is a mix step.` (Until 2026-11-05 each stage had to be the only stage of its tip group, `stage "5" must be the only stage of its tip group.`; now its stages may share tip groups with each other. Whether they share as its sources say isn't checked here: a plan saved after `setRandomization` and before a run can differ, and `isRandomizationOutOfDate` reports it.) |
 | `sourceGroups`, `setSourceSharesTips`, `moveSource`, `removeSources`: `sources` isn't a list of objects each with `sharesTips` `true` or `false` | `The sources must be a list of objects, each with "sharesTips" true or false, but got 5.` (naming the list, or the first entry that isn't one) |
-| `setSourceSharesTips`, `moveSource`: the index isn't one of the list's | `There's no source at index 7: the list has 4 sources (indexes 0 to 3).` |
+| `setSourceSharesTips`, `moveSource`: the index isn't one of the list's | `There's no source at index 7: the list has 4 sources (indexes 0 to 3).` (one source: `the list has 1 source (index 0).`; none: `There's no source at index 0: the list has no sources.`) |
 | `setSourceSharesTips`: `shares` isn't `true` or `false` | `Whether a source shares tips must be true or false, but got "yes".` |
 | `setSourceSharesTips`: the first source set to share | `The first source always starts on new tips, so it can't share tips: a randomization never shares tips with stages outside it.` |
 | `moveSource`: a place that isn't one of the two forms, or its index is outside the list's groups | `The place must be between source groups (index 0 to 3) or inside one, but got {"kind":"between","index":9}.` (the largest real index; the place as JSON) |
 | `moveSource`: `inGroup`'s position is outside its group | `Source group 1 has positions 0 to 2, but got 5.` |
-| `removeSources`: `indexes` isn't a list of the list's indexes, each once | `The sources to remove must be a list of indexes from 0 to 3, each once, but got [1, 1].` |
+| `removeSources`: `indexes` isn't a list of the list's indexes, each once | `The sources to remove must be a list of indexes from 0 to 3, each once, but got [1, 1].` (one source: `… a list of index 0, at most once, but got [1].`; none: `There are no sources to remove, but got [0].`) |
 | `setRandomizations`: `beforeId` isn't a place it can sit | `Randomization 2: ` and `addRandomization`'s message |
 
 | `moveItems`, `copyOf`, `copyItems`: `items` isn't a non-empty list | `The things to move must be a list of stages, tip groups or randomizations, but got 5.` (`copy` for `copyOf` and `copyItems`) |
@@ -1591,7 +1630,7 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
   by the first stage is named after what it holds then).
 - `runRandomization` with A1 and A2 at 8 replicates and A3 the filler (4 wells): three stages, in
   source order, named after their sources, just before the second stage, each the only stage of
-  its tip group, with `settings`, `tipType` and `probes`; 8, 8 and 4 transfers of `volume` from
+  its tip group (as no source shares tips; "Sharing tips" below tests sharing), with `settings`, `tipType` and `probes`; 8, 8 and 4 transfers of `volume` from
   each source, into every well to fill exactly once; the stage after keeps its tips;
   `randomizationOf` gives `r1` for each new stage and `null` for the others; `stages` and
   `beforeId` as section 3 says; the assignment matches `assignPool` with the same pool.
@@ -1681,8 +1720,31 @@ an example that adds, sets up and runs one; and a topic of its own for `random-p
 
 **Sharing tips** (2026-11-05). Existing tests whose sources lack `sharesTips` are given
 `sharesTips: false` on every source (the specification changed, not the tests' purpose); the
+two existing tests of `removeTipChange`'s message after a randomization expect its new ending,
+`A randomization never shares tips with other stages.` (the message changed, section 5); the
 Randomizations set-up above serves, with Deep A4 holding `Drug A` at a second concentration where
 four sources are needed.
+- **Regression fixture** (`tests/fixtures/shared-tips/`, whose `README.md` says how it was made).
+  It was captured from the code before this change was built, so these tests show that a
+  randomization whose sources all start new tips gives the same Biomek files as before. **It's a
+  regression fixture, not a golden file**: Andy hasn't verified its files, so it shows "unchanged",
+  not "correct". Never edit it to make a test pass. The tests, in `transfer-designer.test.js`
+  (they use `plan-file` and `file-writer` to read and write, as the page does):
+  - `randomized-plan-v9.json`, opened with `planFromText`, then `writeRunFiles(plan, new
+    Date(2026, 10, 5, 9, 30, 0))`, gives exactly the files in `biomek-files-before/`: the same
+    names, in the same order (`Setup.csv`, `Stages.csv`, `Stage01_A.csv` to `Stage06_A.csv`), and
+    each file's text equal character for character (line endings included) to the fixture file's.
+  - The same after Update with nothing changed: the opened plan's randomization `r1` isn't out of
+    date, and after `runRandomization(plan, "r1")` the files are again exactly the fixture's.
+  - **With two adjacent sources sharing:** the opened plan, `setRandomization` with Deep1 A2's
+    `sharesTips` `true` (sharing Deep1 A1's tips), then `runRandomization`: in `Stages.csv`, the
+    rows of the tip group holding Deep1 A1's and Deep1 A2's stages begin with exactly one
+    tip-change row (`NewTip` `1`, with `TipType` and `LoadProbes` as in the fixture) followed by
+    the two stages' transfer rows (`NewTip` `0`) with no tip-change row between them; there's one
+    fewer row with `NewTip` `1` overall than in the fixture's `Stages.csv` (the column names are
+    `file-writer.md`'s, section 3, "`Stages.csv`, the stage worklist"); every transfer row and
+    every Transfer From File file is as in the fixture (the same wells to each source, since
+    sharing changes no well's source).
 - **`sourceGroups`:** `[]` for no sources; `false, true, true, false, true` gives `[[0, 1, 2], [3,
   4]]`; every `false` gives one group per source; a first source with `true` (as a caller's list
   might hold) still starts a group; refusals with their messages.
@@ -1701,7 +1763,20 @@ four sources are needed.
   `sharesTips` (a group's first moved to `between` just above its own group, while the next shares
   it) isn't the same list; refusals with their messages, in the order of checks.
 - **`removeSources`:** removing a group's first hands its tips to the next; removing every source of
-  a group removes the group; removing the list's first leaves the new first `false`; refusals.
+  a group removes the group; removing the list's first leaves the new first `false`;
+  `removeSources(s, [])` gives the same list `s`; refusals, including with a list of one source and
+  an empty list (their messages, section 5).
+- **The first source made `false`:** given a list whose first source holds `true`,
+  `setSourceSharesTips` (on another source, its value unchanged), `moveSource` (a place that moves
+  nothing) and `removeSources(s, [])` each give a new list, not the same one, whose first entry is a
+  copy with `sharesTips` `false` and every other entry the same object.
+- **No source at an index:** `setSourceSharesTips` and `moveSource` with index `7` on four
+  sources, `1` on one source and `0` on none give the three forms of the message.
+- **`tipSetsToMake`:** A1, A2 and A3 sharing and the filler on new tips: `2`; every source on new
+  tips: the number of stages a run makes (`4`); on an exact fit with the filler starting a group of
+  its own: the groups that get a stage only (A1 to A3 sharing: `1`); A2 sharing but A3 not: `3`;
+  `null` with a problem (no seed); the same before and after a run; the plan given unchanged;
+  throws for `r9` with its message.
 - **A run with shared tips** (A1, A2, A3 at 4 replicates, A4 the filler; A2 and A3 sharing A1's
   tips, A4 not): four stages in source order; A1's stage has a tip change (or `START`) loading
   `tipType` and `probes`; A2's and A3's have none, so `tipGroups` gives one group of three stages
@@ -1733,7 +1808,16 @@ four sources are needed.
   alone in its tip group, the same tip changes); running twice with nothing changed gives the same
   stage order and tip changes.
 - **`setRandomization`:** a source with `sharesTips` missing, `"yes"`, or `true` on the first source
-  is refused with its message; changing only `sharesTips` gives a new plan (not the same plan).
+  is refused with its message; changing only `sharesTips` gives a new plan (not the same plan), and
+  so does changing only the sources' order (the same sources and values, A3, A1, A2 for A1, A2,
+  A3).
+- **Plans saved before this change, stages out of the sources' order** (section 3, "Out of
+  date"): a run randomization set with `setRandomizations` as a pre-change run could leave it:
+  sources Res1 1 (taking 2 replicates), Res1 2 (the filler) and Deep A1 (2 replicates), every
+  `sharesTips` `false`, its stages in the order Res1 1, Deep A1, Res1 2 (each on tips of its own),
+  as unmarking the first of two filler wells and running again left it: accepted;
+  `isRandomizationOutOfDate` is `true`; a run puts its stages in the order Res1 1, Res1 2, Deep A1
+  (the same stage IDs and transfers) and it's no longer out of date.
 - **`setRandomizations`:** accepts a run randomization whose stages share tip groups with each
   other; refuses one whose first stage shares the tip group of the stage before it, and one whose
   last stage shares with the stage after it, each with `stage "N" shares tips with a stage outside
@@ -1749,6 +1833,21 @@ four sources are needed.
   version 4 copy is refused as newer; copying one stage of a shared group gives an ordinary stage
   with that group's tips; copying two stages of one shared group and pasting `between` boxes gives
   one tip group.
+- **To the top of the plan:** a run randomization whose sources A1, A2 and A3 share (A1 new tips)
+  and whose filler is on new tips, sitting below a tip group, moved (`moveItems`) to `between` 0:
+  its first stage's tips are `START`'s (`tipType` and `probes`), no tip change is keyed by it, A2's
+  and A3's stages have no tip change, the filler's stage has its own, and the old first tip group's
+  first stage gets a tip change loading the tips `START` had; it isn't out of date. Copied
+  (`copyItems`) to `between` 0: the same for the copy, the original unchanged.
+- **Copied items version 1 and 2 with `sharesTips`:** a version 1 copy, and a version 2 copy, whose
+  randomization's source has `sharesTips` (`false` or `true`) is refused with the form message,
+  `Can't paste: item N isn't a stage, tip group or randomization as the transfer designer copies
+  them.`; a version 2 source that is `null` is refused with `setRandomization`'s message for a
+  source that isn't an object, after `Can't paste: item N: `.
+- **Copied items version 3 disagreeing:** a version 3 copy whose sources say A2 shares A1's tips
+  but whose A2 stage has `tips` (its own tip group), and one whose sources say no source shares but
+  whose A2 stage has `tips` `null`: each pastes, with its stages in the tip groups the copy gives,
+  and the pasted randomization is out of date; Update puts its tips as its sources say.
 - **Moving wells:** moving a source that shares tips keeps its `sharesTips`.
 
 **The REPL** (`scripts/repl.js`): `sourceGroups`, `setSourceSharesTips`, `moveSource` and
