@@ -7,14 +7,15 @@
 // quantity at different scales, and `factor` says how many of the family's base unit one of the
 // unit is (molar: base M; mass: base g/L). Units in a family of their own (percent, ×) have factor
 // 1 and are never rescaled. `offered` units are the ones the menu shows when a stock is entered:
-// the lab's own habits (Andy, 2026-11-01: g/L, mM, µM, % and × are what the protocols use); the
-// others are display only, chosen by the page when a dilution calls for them. Data only (ADR 0009).
+// the lab's own habits (Andy, 2026-11-01: g/L, mM, µM, % and × are what the protocols use; M added
+// on 2026-11-05, so a stock given in molar can be entered as it's written); the others (nM, mg/L)
+// are display only, chosen by the page when a dilution calls for them. Data only (ADR 0009).
 // The concentrations module's tests check this file (concentrations.md, "Configuration").
 
 // The units, each family from largest to smallest: its symbol as shown, its family, its factor,
 // and whether the menu offers it.
 export const CONCENTRATION_UNITS = [
-  { unit: "M", family: "molar", factor: 1, offered: false },
+  { unit: "M", family: "molar", factor: 1, offered: true },
   { unit: "mM", family: "molar", factor: 1e-3, offered: true },
   { unit: "µM", family: "molar", factor: 1e-6, offered: true },
   { unit: "nM", family: "molar", factor: 1e-9, offered: false },

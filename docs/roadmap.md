@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-02
+Last updated: 2026-11-05
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -345,6 +345,14 @@ Last updated: 2026-11-02
   (`transfer-designer-page.md`), glossary "Randomization". **Built (#132, 2026-11-03)**: code,
   tests and REPL, and the page; the specifications and the build each reviewed by a separate
   agent, and checked in headless Chrome. Still to check by Andy.
+- **Decided: M is an offered unit** (Andy, 2026-11-05; item 14, below), so it can be picked from
+  the unit menu when a constituent is entered; nM and mg/L stay display only. **Specified** (Draft,
+  2026-11-05, in the hands-off workflow): `concentrations.md` (sections 3, 5 and 7) and
+  `config/concentration-units.js` (M `offered: true`; the module and its tests read the offered
+  units from the file, so neither changes), a dated note in ADR 0013, and the page's checks
+  (`transfer-designer-page.md`, section 16). It changes no Biomek files, and existing plan files
+  still open. **Built (#133, 2026-11-05)**: the configuration only; the menu, module and tests
+  already follow it. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -597,6 +605,14 @@ added on 2026-10-28 (Andy).
       transfers is safe). Plan files do: today they allow one filler, so a new format version, with
       older files still opening.
     **Specified** (Draft, 2026-11-03) and **built (#132)**: see "Where things stand".
+14. **M as an offered unit** (Andy, 2026-11-05): M can be picked from the unit menu when a
+    constituent is entered, so a stock written in molar is entered as written. Decided so far:
+    - **Only M is added:** nM and mg/L stay display only (Andy, 2026-11-05: "they are ok as is").
+    - **The menu reads M, mM, µM, g/L, %, ×**: the configuration's order, molar units from largest
+      to smallest.
+    - **Nothing else changes:** no Biomek files, and plan files keep their format (a file could
+      already hold a constituent in M, as display-only units are accepted when opened).
+    **Specified** (Draft, 2026-11-05) and **Built (#133, 2026-11-05)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -612,7 +628,9 @@ final Biomek runs, so they test the files as they will be:
    done first anyway, on 2026-11-02, while the runs wait for Andy to be at the Biomek.
 7. A filler of several wells (item 13), added on 2026-11-02: preview, specifications, then build.
    It doesn't change the Biomek files' format, so it needn't come before the final runs.
-8. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+8. M as an offered unit (item 14), added on 2026-11-05: specifications, then build. It doesn't
+   change the Biomek files, so it needn't come before the final runs.
+9. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen
