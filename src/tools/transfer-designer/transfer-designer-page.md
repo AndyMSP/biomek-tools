@@ -114,8 +114,9 @@
 > taking `1.5e6` as well as `1500000`); on labware with a growth area (today the 96-well flat
 > plates), the contents card gives a well's cells in cells/cm²; cell figures in powers of ten,
 > e.g. `4.69 × 10⁴ cells/cm²` (sections 6, 8, 13, 15 and 16). Written in the hands-off workflow
-> (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request. They
-> become Final once built and tested by Andy.
+> (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request. It
+> assumes PR #133 (M offered) is merged first, so the unit lists here include M. They become Final
+> once built and tested by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -394,11 +395,14 @@ card (dark, light text) shows:
   style, its amount and unit in the unit that fits it best (`bestUnit`, `concentrations.md`; the
   amount as section 13 shows amounts), e.g. `Dye` … `476 µM`, `Hy-Soy` … `2.5 g/L`. In the order
   `concentrationsOf` gives. Nothing of this for a well carrying nothing, so a plan without
-  constituents sees no change. **Cells** (2026-11-05; `concentrations.md`, "Cells"): an entry in
-  the cells' family (`isCellFamily`) is shown as a cell figure (section 13), e.g. `Cells` …
-  `1.5 × 10⁵ cells/mL`; but on labware whose type has a growth area (`growthAreaOf`, `deck.md`;
-  today the 96-well flat plates), its line shows the well's **seeding density** instead, from
-  `seedingDensitiesOf` (`transfer-designer.md`), e.g. `Cells` … `4.69 × 10⁴ cells/cm²`: one line
+  constituents sees no change. **Cells** (2026-11-05; `concentrations.md`, "Cells"): the page
+  goes through `concentrationsOf`'s entries as above; an entry whose family is the cells' family
+  (`isCellFamily`) is shown as a cell figure (section 13), e.g. `Cells` … `1.5 × 10⁵ cells/mL`;
+  but when the well's labware has a growth area (`growthAreaOf(labware) !== null`, `deck.md`;
+  today the 96-well flat plates; the page needs the area for the tooltip anyway), its line shows
+  the well's **seeding density** instead: the entry of `seedingDensitiesOf`
+  (`transfer-designer.md`) with the same name (safe: within a plan a constituent's name has one
+  family, so the name picks out one entry), e.g. `Cells` … `4.69 × 10⁴ cells/cm²`: one line
   per constituent, in its place in the list, not a second line (Andy, 2026-11-05: on a plate,
   cells/cm² is the number the lab seeds by; a deep well or trough holds a suspension, so it keeps
   cells/mL). The line's tooltip (its `title`) says `Assumes every cell settles onto the well's
@@ -1048,8 +1052,9 @@ A chip's text is the component's name and, after it, **what it carries**, small 
 has constituents: the first constituent's amount and unit (section 13; a cell figure for cells,
 e.g. `Cells 1.5 × 10⁶ cells/mL`), with the constituent's name
 first unless it's the component's own name, then ` +N` for the rest, e.g. `Dye stock` `10 mM`,
-`Feeding media` `Hy-Soy 4 g/L +2`; on one line, never wrapped. The chip's tooltip lists them all:
-`Contains Hy-Soy 4 g/L, Yeast 0.5 g/L, Glutamine 1 g/L`. A component carrying nothing has neither.
+`Feeding media` `Hy-Soy 4 g/L +2`; on one line, never wrapped. The chip's tooltip lists them all,
+in the same number formats (a cell figure for cells): `Contains Hy-Soy 4 g/L, Yeast 0.5 g/L,
+Glutamine 1 g/L`, `Contains Cells 1.5 × 10⁶ cells/mL`. A component carrying nothing has neither.
 
 **Adding components.** `+ New` becomes a text box (`Component name`). Enter adds the typed name
 (spaces at the ends removed) with `addComponent`, picks it, and opens a fresh box for the next name,
@@ -1308,15 +1313,20 @@ volume that's a number (digits, optionally `-`, and a decimal part) is passed on
 anything else is passed on as typed, so the logic's message says what's wrong.
 
 **Typing an amount** (a constituent's, in a component's box; 2026-11-05). Its text, spaces at the
-ends removed, is passed on as a number when it's a number in plain or exponent form: optionally
-`-`, digits with an optional decimal part (or a decimal part alone, `.5`), then optionally `e` or
-`E`, an optional `+` or `-`, and digits; e.g. `10`, `0.5`, `.5`, `1.5e6`, `1.5E6`, `2e+5`, `5e-3`,
-`-1` (then refused by the logic as not above 0). Anything else, e.g. `ten`, `1,500,000`, `1.5x10^6`,
-`e6` or blank, is passed on as typed, so `checkConstituents`' message says what's wrong. (Before
-2026-11-05 it followed a typed volume's rule, which has no exponent form, so `1.5e6` was refused.)
-Typed volumes keep their own rule above: a volume is never a power of ten. A row's amount box
-shows a saved amount as JavaScript writes the number, e.g. `1500000` (and `1e+21` for a huge one,
-which reads back the same).
+ends removed, is passed on as a number (`Number(text)`) when it matches, whole, the pattern
+`^-?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$`: optionally `-`, then digits with an optional decimal
+point and decimal part (`5`, `5.`, `0.5`) or a decimal part alone (`.5`), then optionally `e` or `E`,
+an optional `+` or `-`, and digits. E.g. `10`, `0.5`, `.5`, `5.`, `1.5e6`, `1.5E6`, `2e+5`, `5e-3`,
+`-1` (then refused by the logic as not above 0). Anything else, e.g. `ten`, `1,500,000`,
+`1.5x10^6`, `e6` or blank, is passed on as typed, so `checkConstituents`' message says what's
+wrong. A number too large for JavaScript, e.g. `1e400`, becomes `Infinity`, which the logic refuses
+with its "above 0" message (`concentrations.md`, section 5). The rule applies to an amount in **every
+unit**, not only cells/mL, so e.g. `5e-3` mM now works: a small change in behavior (before
+2026-11-05 an amount followed a typed volume's rule, which has no exponent form, so `1.5e6` and
+`5e-3` were refused). Typed volumes keep their own rule above: a volume is never a power of ten.
+Like the page's other text rules, this one is page code (`transfer-designer-page.js`), checked by hand (section 16).
+A row's amount box shows a saved amount as JavaScript writes the number, e.g. `1500000` (and
+`1e+21` for a huge one, which reads back the same).
 
 **Numbers shown:**
 - **Volumes** (cards, lists, messages): rounded to 2 decimal places, e.g. `33.33`; a volume below
@@ -1330,16 +1340,19 @@ which reads back the same).
   the unit; below 0.001 but not 0, in exponent form with one decimal, e.g. `4.0e-4`. (On the card
   the unit is chosen to fit the value, so an amount below 1 appears only in a family's smallest
   unit or a one-unit family.)
-- **Cell figures** (2026-11-05: an amount in the cells' family, on a chip, and a cell density or a
-  seeding density on the contents card): from 1000 up, in powers of ten, as labs write cell counts:
-  3 significant figures with trailing zeros dropped, then ` × 10` and the exponent in superscript
-  digits (`⁰¹²³⁴⁵⁶⁷⁸⁹`, and `⁻` if ever needed), then a space and the unit, e.g. `1.5 × 10⁶
-  cells/mL`, `4.69 × 10⁴ cells/cm²`, `1 × 10⁵ cells/mL`, `9.99 × 10³` for 9990; the figures and
-  exponent are those of the number's exponent form with 2 decimals (JavaScript's
-  `toExponential(2)`), so 99960 gives `1 × 10⁵`, not `10 × 10⁴`. Below 1000, as an amount (above),
-  e.g. `500 cells/mL`. The `×` is the multiplication sign, with a space each side. (Chosen over
-  `47,000 cells/cm²`: a cell count is read as a power of ten, and a plain number of six or seven
-  digits is easy to misread by a factor of ten.)
+- **Cell figures** (2026-11-05: an amount in the cells' family, on a chip and in its tooltip, and
+  a cell density or a seeding density on the contents card), in powers of ten, as labs write cell
+  counts. The rule: work out `value.toExponential(2)` (JavaScript's exponent form with 2 decimals,
+  e.g. `"4.69e+4"`). If its exponent is 3 or more, write its mantissa (the part before `e`) as
+  `Number()` gives it, so trailing zeros are dropped, then ` × 10`, then the exponent in superscript
+  digits (`⁰¹²³⁴⁵⁶⁷⁸⁹`, the `+` dropped), then a space and the unit. Otherwise (exponent 2 or less),
+  write the value as an amount (above), then a space and the unit. E.g. 46875 → `4.69 × 10⁴
+  cells/cm²`, 1500000 → `1.5 × 10⁶ cells/mL`, 999.6 → `1 × 10³ cells/mL` (its exponent form is
+  `1.00e+3`), 999.4 → `999 cells/mL`, 99960 → `1 × 10⁵ cells/mL`, 500 → `500 cells/mL`. The `×`
+  is the multiplication sign, with a space each side. (Chosen over `47,000 cells/cm²`: a cell count
+  is read as a power of ten, and a plain number of six or seven digits is easy to misread by a
+  factor of ten.) Like the page's other number formats, this formatter is page code (`transfer-designer-page.js`),
+  checked by hand (section 16).
 - **Counts** take a plural `s` except for 1: `1 well`, `3 wells`.
 
 ## 14. Configuration
@@ -1551,9 +1564,12 @@ page's configuration (ADR 0009):
   the trough it came from; g/L diluted a hundredfold shown in mg/L; `%` and `×` shown as they are;
   the card at Start, at a stage and at End; a renamed component keeping its rows; a plan saved
   (version 7) and reopened, and reloaded, keeping them, and a version 6 file opening with none;
-- cells (2026-11-05): `cells/mL` in the unit menu, last, shown whole; amounts `1.5e6`, `1.5E6` and
-  `1500000` each saved as the same number, and `1,500,000` and `1.5x10^6` refused with the
-  amount message, the box kept open; the chip `Cells 1.5 × 10⁶ cells/mL` (or `1.5 × 10⁶ cells/mL`
+- cells (2026-11-05): the unit menu reading `M, mM, µM, g/L, %, ×, cells/mL`, `cells/mL` shown
+  whole; typing an amount (section 13): `1.5e6`, `1.5E6` and `1500000` each saved as the same
+  number, `.5` and `5.` saved as 0.5 and 5, `5e-3` in mM saved, and `e6`, `1,500,000` and
+  `1.5x10^6` refused with the amount message, the box kept open, and `1e400` refused with the
+  "above 0" message; cell figures (section 13): amounts of 999.6, 999.4 and 99960 cells/mL shown
+  as `1 × 10³ cells/mL`, `999 cells/mL` and `1 × 10⁵ cells/mL`; the chip `Cells 1.5 × 10⁶ cells/mL` (or `1.5 × 10⁶ cells/mL`
   for a component named Cells); a suspension at 1.5 × 10⁶ cells/mL in a trough showing `1.5 × 10⁶
   cells/mL` there; 10 µL of it into a flat-plate well holding 90 µL of Media showing
   1.5 × 10⁵ cells/mL × 0.1 mL ÷ the flat plate's growth area in cells/cm² (`4.69 × 10⁴

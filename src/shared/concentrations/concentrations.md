@@ -8,7 +8,8 @@
 > family of their own, in **cells/mL** (`CELL_DENSITY_UNIT`), and a well's **seeding density** in
 > cells/cm² of its growth area: `isCellFamily` and `seedingDensity` (sections 1 to 7), decided with
 > Andy on 2026-11-05. Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices
-> made for Andy are listed in its pull request. It becomes Final once built and tested by Andy.
+> made for Andy are listed in its pull request. It assumes PR #133 (M offered) is merged first, so
+> the unit lists here include M. It becomes Final once built and tested by Andy.
 
 ## 1. Purpose
 `concentrations.js` works out what a well's mixture carries, from what its components carry.
@@ -161,7 +162,7 @@ from 1, in the list's order.
 | The name isn't a name | `checkName`'s messages, naming `constituent name`; the name is trimmed first |
 | The same name twice | `"Dye" is listed twice. List each constituent once.` The trimmed name; reported at the later entry, in table order: after its object, missing, extra and name checks, before its amount and unit checks. |
 | The amount isn't a number above 0 (including `NaN`, `Infinity`, `0`, text) | `The amount of "Dye" must be a number above 0, like 10, but got "ten".` |
-| The unit isn't in the configuration | `The unit of "Dye" must be one of mM, µM, g/L, %, ×, but got "mg/mL".` (the offered units, in the configuration's order) |
+| The unit isn't in the configuration | `The unit of "Dye" must be one of M, mM, µM, g/L, %, ×, cells/mL, but got "mg/mL".` (the offered units, in the configuration's order) |
 
 Each constituent's checks run in table order before the next constituent's.
 

@@ -145,7 +145,7 @@ tip group of their own, or adds a randomization.
 **Seeding density**
 How many cells a well puts on each cm² of its growth area: its cell density times its volume,
 divided by its growth area, **assuming every cell settles onto the bottom** (`concentrations.md`,
-"Cells"). 100 µL at 1.5 × 10⁵ cells/mL over 0.32 cm² is 4.69 × 10⁴ cells/cm². Adding medium to
+"Cells"). 100 µL at 1.5 × 10⁵ cells/mL over a bottom of, say, 0.32 cm² is 4.69 × 10⁴ cells/cm². Adding medium to
 the well lowers its cell density but not its seeding density. Only for wells on labware with a
 growth area.
 

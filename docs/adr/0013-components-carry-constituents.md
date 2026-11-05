@@ -58,9 +58,9 @@ never rescaled (no cells/µL or cells/L: the lab counts in cells/mL).
 
 **On labware cells grow on, a well's cells are shown per cm²** (its seeding density): cell density
 × the well's volume ÷ the well's **growth area**, assuming every cell settles onto the bottom.
-Whether a labware type has a growth area is configuration (`config/labware-types.js`); a type
-without one shows cells in cells/mL like any concentration. For now only the 96-well flat plate
-has one, a stand-in value (roadmap, "Technical debt").
+A labware type has a growth area (configuration, `config/labware-types.js`) only if cells are
+grown on it, and cells/cm² is shown only there; on a type without one, cells show in cells/mL like
+any concentration.
 
 Consequences: adding a unit doesn't change the plan-file format (units are checked against the
 configuration, not the format), so no new version; a file with cells is refused by an older build

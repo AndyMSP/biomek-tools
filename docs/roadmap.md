@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-02
+Last updated: 2026-11-05
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -606,6 +606,7 @@ added on 2026-10-28 (Andy).
       older files still opening.
     **Specified** (Draft, 2026-11-03) and **built (#132)**: see "Where things stand".
 16. **Cell density** (Andy, 2026-11-05): seeding cells with the tool needs a well's cells per cm².
+    It follows items 14 (M as an offered unit) and 15 (osmolality), so its unit lists include M.
     Decided so far (Andy, 2026-11-05):
     - **Cells are a constituent** of a component (a cell suspension really carries cells), in a
       new offered unit, **cells/mL**, e.g. `Cells 1.5e6 cells/mL`, the amount from a cell count.
@@ -634,7 +635,9 @@ final Biomek runs, so they test the files as they will be:
    done first anyway, on 2026-11-02, while the runs wait for Andy to be at the Biomek.
 7. A filler of several wells (item 13), added on 2026-11-02: preview, specifications, then build.
    It doesn't change the Biomek files' format, so it needn't come before the final runs.
-8. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+8. Cell density (item 16), added on 2026-11-05: specifications, then build. It doesn't change the
+   Biomek files, so it needn't come before the final runs.
+9. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen

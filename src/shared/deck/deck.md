@@ -69,16 +69,19 @@ BCFlat96: { grid: "GRID_96", capacity: 360, deadVolume: 20, growthArea: 0.32 }
 - `growthArea` (only on some types; 2026-11-05): the area of one well's bottom that cells grow on,
   in cm² (`docs/glossary.md`, "Growth area"), so a tool can give a well's cells per cm²
   (`concentrations.md`, "Cells"). A type with no `growthArea` property has none, and **having none
-  is what keeps cells per cm² off it**: today only `BCFlat96` has one (Andy, 2026-11-05), so deep
-  wells and reservoir troughs show cells in cells/mL. Its value is in the file once.
+  is what keeps cells per cm² off it**: today only `BCFlat96` has one (Andy, 2026-11-05), so a
+  caller gives no seeding density for deep wells and troughs. Its value is in the file once.
 
 The numbers are measured or copied, never worked out by the tool; each value's comment says where
 it came from. A stand-in says so (roadmap, "Technical debt"). `BCFlat96`'s growth area is Andy's
 stand-in (2026-11-05), to be confirmed against the plate's datasheet. So in
 `config/labware-types.js`, `BCFlat96` gains `growthArea: 0.32`, its comment line saying
 `growthArea: Andy's stand-in (2026-11-05), not checked; to be confirmed against the plate's
-datasheet.`, and the file's header comment gains a `growthArea` item: the area of one well's bottom
-in cm², only on types cells are grown on; a type without it gets no cells per cm².
+datasheet.`, and the file's header comment changes: its first line gains `, and for some, its
+growth area` (so it reads "each with its well grid, its capacity and its dead volume, and for some,
+its growth area"); it gains a `growthArea` item: the area of one well's bottom in cm², only on types
+cells are grown on; a type without it gets no cells per cm²; and `Both numbers are measured or
+copied, …` becomes `The numbers are measured or copied, …`, the rest of that sentence unchanged.
 
 **A well on the deck** is `{ labware, well }`, as in the operation list: `labware` is a name from the
 deck description, and `well` a well name on that labware's grid (e.g. `"A1"`, or `"5"` on a
@@ -185,3 +188,9 @@ These tests use the real configuration files. Where a test needs a labware of a 
 one in `DECK` by `gridOf(entry.name)` rather than naming it, so the tests still pass when the deck
 changes. The tests of other modules that pick labware the same way (`substages`, `mix-volumes`)
 do likewise, since `DECK` entries no longer carry a `grid`.
+
+**The REPL**
+- `growthAreaOf` joins the deck topic of `scripts/repl.js` (CLAUDE.md, "Keep the REPL complete"):
+  in its `loaded` functions, after `deadVolumeOf`, and in its examples, after
+  `deadVolumeOf("Res1")`, `growthAreaOf("Plate1")` (the flat plate's growth area) and
+  `growthAreaOf("Res1")` (`null`: a trough has none).
