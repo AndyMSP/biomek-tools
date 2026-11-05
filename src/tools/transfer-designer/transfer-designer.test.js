@@ -7,6 +7,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
@@ -86,6 +87,11 @@ import {
   fillerShares,
   isRandomizationOutOfDate,
   sourceName,
+  sourceGroups,
+  setSourceSharesTips,
+  moveSource,
+  removeSources,
+  tipSetsToMake,
   runRandomization,
   removeRandomization,
   canRemoveRandomization,
@@ -2895,9 +2901,10 @@ describe("transfer-designer", () => {
     return { labware: DEEP, well };
   }
 
-  // A source, e.g. source("A1", 8) or source("A3", null, true) for the filler.
-  function source(well, replicates, filler = false) {
-    return { labware: DEEP, well, replicates, filler };
+  // A source, e.g. source("A1", 8), source("A3", null, true) for the filler, or source("A2", 8,
+  // false, true) for one sharing the tips of the source before it.
+  function source(well, replicates, filler = false, sharesTips = false) {
+    return { labware: DEEP, well, replicates, filler, sharesTips };
   }
 
   // The 20 wells to fill: PLATE's B2 to B11 and C2 to C11, in deck order.
@@ -3041,7 +3048,7 @@ describe("transfer-designer", () => {
       [{ fill: 5 }, "A randomization's wells to fill must be a list, but got 5."],
       [
         { sources: [source("A1", 1), { labware: DEEP, well: "A2" }] },
-        'Source 2 must be an object with exactly "labware", "well", "replicates" and "filler".',
+        'Source 2 must be an object with exactly "labware", "well", "replicates", "filler" and "sharesTips".',
       ],
       [
         { sources: [source("A1", 1), source("Z9", 1)] },
@@ -3060,7 +3067,7 @@ describe("transfer-designer", () => {
         `${PLATE} B2 is a well to fill twice. List each once.`,
       ],
       [
-        { sources: [source("A1", 1), { ...plateWell("B2"), replicates: 1, filler: false }] },
+        { sources: [source("A1", 1), { ...plateWell("B2"), replicates: 1, filler: false, sharesTips: false }] },
         `${PLATE} B2 is both a source and a well to fill. A well can be only one.`,
       ],
       [
@@ -3129,7 +3136,7 @@ describe("transfer-designer", () => {
     const remaining = [/is a source twice/, /is a well to fill twice/];
     let changes = { ...allBad };
     assert.throws(() => setRandomization(plan, id, changes), remaining[0]);
-    changes = { ...changes, sources: [source("A1", 1), { ...plateWell("C2"), replicates: 1, filler: false }] };
+    changes = { ...changes, sources: [source("A1", 1), { ...plateWell("C2"), replicates: 1, filler: false, sharesTips: false }] };
     assert.throws(() => setRandomization(plan, id, changes), remaining[1]);
     changes = { ...changes, fill: [plateWell("B2")] };
     // The well in both is judged on the result: C2 is still a well to fill until fill is given.
@@ -3374,7 +3381,7 @@ describe("transfer-designer", () => {
     const { plan: setUp, id } = setUpRandomization(plan);
     plan = runRandomization(setUp, id);
     assert.throws(() => removeTipChange(plan, "2"), {
-      message: "This tip change keeps stage 5, “New stage”, off the randomization's tips. A randomization never shares tips.".replace(
+      message: "This tip change keeps stage 5, “New stage”, off the randomization's tips. A randomization never shares tips with other stages.".replace(
         "stage 5, “New stage”",
         `stage ${stageOrder(plan).indexOf("2") + 1}, “${plan.stageList.get("2").name}”`,
       ),
@@ -3405,7 +3412,7 @@ describe("transfer-designer", () => {
     assert.equal(randomizationAt(added, id).beforeId, newId);
     // So its tips are kept: removing stage 2's tips is now allowed, and the new stage's isn't.
     removeTipChange(added, "2");
-    assert.throws(() => removeTipChange(added, newId), /never shares tips/);
+    assert.throws(() => removeTipChange(added, newId), /never shares tips with other stages\.$/);
   });
 
   test("placeRandomization moves one that hasn't run; one that has throws", () => {
@@ -3567,15 +3574,31 @@ describe("transfer-designer", () => {
         JSON.stringify(randomizations).slice(0, 80),
       );
     }
-    // Alone in its tip group, and not a mix step.
+    // Sharing no tip group with a stage outside it (its stages may share with each other, since
+    // 2026-11-05), and not a mix step.
     const shared = removeTipChange(addStage(randomizingPlan(), null).plan, "2");
     const sharedSetUp = setUpRandomization(shared, "1");
     const sharedRun = runRandomization(sharedSetUp.plan, "r1");
     const owned = randomizationAt(sharedRun, "r1").stages;
     const joined = withParts(sharedRun, { tipChanges: { ...sharedRun.tipChanges } });
     delete joined.tipChanges[owned[1].stage];
-    assert.throws(() => setRandomizations(joined, sharedRun.randomizations), {
-      message: `Randomization 1: stage "${owned[0].stage}" must be the only stage of its tip group.`,
+    assert.equal(setRandomizations(joined, sharedRun.randomizations).randomizations.length, 1);
+    const middle = runRandomizationPlan().plan;
+    const middleFirst = randomizationAt(middle, "r1").stages[0].stage;
+    const firstShares = withParts(middle, { tipChanges: { ...middle.tipChanges } });
+    delete firstShares.tipChanges[middleFirst];
+    assert.throws(() => setRandomizations(firstShares, middle.randomizations), {
+      message:
+        `Randomization 1: stage "${middleFirst}" shares tips with a stage outside the randomization. ` +
+        "A randomization never shares tips with other stages.",
+    });
+    const after = stageOrder(sharedRun)[stageOrder(sharedRun).indexOf(owned.at(-1).stage) + 1];
+    const lastShares = withParts(sharedRun, { tipChanges: { ...sharedRun.tipChanges } });
+    delete lastShares.tipChanges[after];
+    assert.throws(() => setRandomizations(lastShares, sharedRun.randomizations), {
+      message:
+        `Randomization 1: stage "${owned.at(-1).stage}" shares tips with a stage outside the randomization. ` +
+        "A randomization never shares tips with other stages.",
     });
     const asMixStep = changeStageSettings(
       removeTransfersOf(sharedRun, owned[0].stage),
@@ -3606,7 +3629,7 @@ describe("transfer-designer", () => {
 
   // A filler well on the reservoir: trough `well`, replicates null, filler true.
   function fillerTrough(well) {
-    return { ...trough(well), replicates: null, filler: true };
+    return { ...trough(well), replicates: null, filler: true, sharesTips: false };
   }
 
   // The usable volume each filler trough holds in fillerPlan: µL above the reservoir's dead volume.
@@ -3874,7 +3897,7 @@ describe("transfer-designer", () => {
     const { plan, id } = runFillerPlan();
     const old = fillerEntry(plan, id).stage;
     const unmarked = setRandomization(plan, id, {
-      sources: [source("A1", 6), { ...trough("2"), replicates: 2, filler: false }, fillerTrough("3"), fillerTrough("4")],
+      sources: [source("A1", 6), { ...trough("2"), replicates: 2, filler: false, sharesTips: false }, fillerTrough("3"), fillerTrough("4")],
     });
     const run = runRandomization(unmarked, id);
     const stages = randomizationAt(run, id).stages;
@@ -3922,7 +3945,7 @@ describe("transfer-designer", () => {
   test("copying: a run randomization with three filler wells pastes with the same filler wells and one filler stage; version 1 pastes", () => {
     const { plan, id } = runFillerPlan();
     const copied = copyOf(plan, [{ kind: "randomization", id }]);
-    assert.equal(copied.version, 2);
+    assert.equal(copied.version, 3);
     const end = { kind: "between", index: columnBoxes(plan).length };
     const { plan: pasted, placed } = copyItems(plan, [{ kind: "randomization", id }], end);
     const copy = randomizationAt(pasted, placed[0].id);
@@ -3931,9 +3954,20 @@ describe("transfer-designer", () => {
     const fillerCopy = fillerEntry(pasted, copy.id);
     assert.deepEqual(sourceTroughs(pasted, fillerCopy.stage), sourceTroughs(plan, fillerEntry(plan, id).stage));
     // A version 1 copy pastes as before.
-    const { plan: fromVersion1 } = pasteItems(plan, { ...copied, version: 1 }, end);
+    const { plan: fromVersion1 } = pasteItems(plan, copiedAsVersion(copied, 1), end);
     assert.equal(fromVersion1.randomizations.length, 2);
   });
+
+  // Copied items (copyOf's, version 3) as an older version, 1 or 2, holds them: each randomization's
+  // sources without sharesTips. Its owned stages must all have tips (none sharing).
+  function copiedAsVersion(copied, version) {
+    const older = JSON.parse(JSON.stringify(copied));
+    older.version = version;
+    for (const item of older.items.filter((candidate) => candidate.kind === "randomization")) {
+      item.randomization.sources = item.randomization.sources.map(({ sharesTips, ...rest }) => rest);
+    }
+    return older;
+  }
 
   test("setRandomizations: a filler stage entry naming a filler well that isn't the first is accepted; two filler entries are refused", () => {
     const { plan, id } = runFillerPlan();
@@ -3982,7 +4016,7 @@ describe("transfer-designer", () => {
     plan = addToWells(plan, [trough("5"), trough("6")], "Media", deadVolumeOf(RESERVOIR));
     plan = addToWells(plan, [trough("6")], "Media", 3 * FILLER_VOLUME);
     const first = addRandomization(plan, "2", { seed: 3, volume: 5 * FILLER_VOLUME });
-    plan = setRandomization(first.plan, first.id, { sources: [{ ...trough("1"), replicates: 1, filler: false }], fill: [trough("5")] });
+    plan = setRandomization(first.plan, first.id, { sources: [{ ...trough("1"), replicates: 1, filler: false, sharesTips: false }], fill: [trough("5")] });
     plan = runRandomization(plan, first.id);
     const second = addRandomization(plan, null, { seed: 4, volume: FILLER_VOLUME });
     plan = setRandomization(second.plan, second.id, {
@@ -4005,7 +4039,7 @@ describe("transfer-designer", () => {
 
   test("the filler stage after changes: two replicate sources made fillers keep one stage", () => {
     let { plan, id } = fillerPlan();
-    const taking = (well) => ({ ...trough(well), replicates: 9, filler: false });
+    const taking = (well) => ({ ...trough(well), replicates: 9, filler: false, sharesTips: false });
     const takers = [source("A1", 6), taking("2"), taking("3")];
     plan = runRandomization(setRandomization(plan, id, { sources: takers }), id);
     const [, second, third] = randomizationAt(plan, id).stages;
@@ -4066,6 +4100,769 @@ describe("transfer-designer", () => {
     for (const action of [() => fillerShares(plan, "r9"), () => isRandomizationOutOfDate(plan, "r9")]) {
       assert.throws(action, { message: `There's no randomization "r9" in the plan.` });
     }
+  });
+
+  // --- Sharing tips (2026-11-05; transfer-designer.md, section 3, "Sharing tips") ---
+
+  // The regression fixture (tests/fixtures/shared-tips/README.md): a randomized plan saved before
+  // shared tips was built, and the Biomek files it gave then.
+  const SHARED_TIPS_FIXTURE = new URL("../../../tests/fixtures/shared-tips/", import.meta.url);
+
+  // The fixture's timestamp: the one its Biomek files were written with.
+  const FIXTURE_TIMESTAMP = new Date(2026, 10, 5, 9, 30, 0);
+
+  // The fixture's plan, opened with planFromText.
+  function fixturePlan() {
+    return planFromText(readFileSync(new URL("randomized-plan-v9.json", SHARED_TIPS_FIXTURE), "utf8"));
+  }
+
+  // The text of one of the fixture's Biomek files, e.g. fixtureFile("Stages.csv").
+  function fixtureFile(name) {
+    return readFileSync(new URL(`biomek-files-before/${name}`, SHARED_TIPS_FIXTURE), "utf8");
+  }
+
+  // The names of the fixture's Biomek files, in the order writeRunFiles gave them.
+  const FIXTURE_FILE_NAMES = [
+    "Setup.csv",
+    "Stages.csv",
+    ...["01", "02", "03", "04", "05", "06"].map((number) => `Stage${number}_A.csv`),
+  ];
+
+  // Stages.csv's rows (CRLF line endings), each as its fields' text, without the header and the
+  // empty text after the last line ending. The fields this test reads (NewTip, TipType, LoadProbes,
+  // TransferFile) come before any quoted field holding a comma except LoadProbes, which is read
+  // whole.
+  function stageRows(text) {
+    return text
+      .split("\r\n")
+      .slice(1, -1)
+      .map((line) => {
+        const match = /^(\d),([^,]*),("[^"]*"|[^,]*),([^,]*),/.exec(line);
+        return { line, newTip: match[1], tipType: match[2], loadProbes: match[3], transferFile: match[4] };
+      });
+  }
+
+  test("regression fixture: the opened plan gives exactly the captured Biomek files", () => {
+    const { files } = writeRunFiles(fixturePlan(), FIXTURE_TIMESTAMP);
+    assert.deepEqual(files.map((file) => file.name), FIXTURE_FILE_NAMES);
+    for (const file of files) {
+      assert.equal(file.text, fixtureFile(file.name), file.name);
+    }
+  });
+
+  test("regression fixture: Update with nothing changed gives exactly the captured Biomek files again", () => {
+    const plan = fixturePlan();
+    assert.equal(isRandomizationOutOfDate(plan, "r1"), false);
+    const { files } = writeRunFiles(runRandomization(plan, "r1"), FIXTURE_TIMESTAMP);
+    assert.deepEqual(files.map((file) => file.name), FIXTURE_FILE_NAMES);
+    for (const file of files) {
+      assert.equal(file.text, fixtureFile(file.name), file.name);
+    }
+  });
+
+  test("regression fixture: with Deep1 A2 sharing Deep1 A1's tips, one tip-change row goes and nothing else changes", () => {
+    const plan = fixturePlan();
+    const sources = randomizationAt(plan, "r1").sources.map((entry, index) =>
+      index === 1 ? { ...entry, sharesTips: true } : entry,
+    );
+    assert.equal(sources[1].well, "A2");
+    const shared = runRandomization(setRandomization(plan, "r1", { sources }), "r1");
+    const { files } = writeRunFiles(shared, FIXTURE_TIMESTAMP);
+    const rows = stageRows(files.find((file) => file.name === "Stages.csv").text);
+    const before = stageRows(fixtureFile("Stages.csv"));
+    // Deep1 A1's and A2's Transfer From File files, named by their stages' places among the stages
+    // with transfers.
+    const withTransfers = stageOrder(shared).filter((id) => transfersIn(shared, id).length > 0);
+    // The Transfer From File file of the stage for Deep1 `well`, e.g. "Stage02_A.csv".
+    const fileOf = (well) => {
+      const { stage } = randomizationAt(shared, "r1").stages.find((owned) => owned.well === well);
+      return `Stage${String(withTransfers.indexOf(stage) + 1).padStart(2, "0")}_A.csv`;
+    };
+    const first = rows.findIndex((row) => row.transferFile.endsWith(`\\${fileOf("A1")}`));
+    const beforeFirst = before.findIndex((row) => row.transferFile.endsWith(`\\${fileOf("A1")}`));
+    // Exactly one tip-change row, as in the fixture, then the two stages' transfer rows.
+    assert.equal(rows[first - 1].newTip, "1");
+    assert.deepEqual(
+      [rows[first - 1].tipType, rows[first - 1].loadProbes],
+      [before[beforeFirst - 1].tipType, before[beforeFirst - 1].loadProbes],
+    );
+    assert.equal(rows[first].newTip, "0");
+    assert.equal(rows[first + 1].newTip, "0");
+    assert.ok(rows[first + 1].transferFile.endsWith(`\\${fileOf("A2")}`));
+    // How many of `list`'s rows are tip changes.
+    const tipChanges = (list) => list.filter((row) => row.newTip === "1").length;
+    assert.equal(tipChanges(rows), tipChanges(before) - 1);
+    // Every transfer row and Transfer From File file as in the fixture.
+    // The text of `list`'s transfer rows, in order.
+    const transferRows = (list) => list.filter((row) => row.newTip === "0").map((row) => row.line);
+    assert.deepEqual(transferRows(rows), transferRows(before));
+    assert.deepEqual(files.map((file) => file.name), FIXTURE_FILE_NAMES);
+    for (const file of files.filter((candidate) => candidate.name.startsWith("Stage0"))) {
+      assert.equal(file.text, fixtureFile(file.name), file.name);
+    }
+  });
+
+  // A list of sources for the list functions, from a picture of its groups, e.g. "A B | C D": A and
+  // B share tips, C starts new tips and D shares them. Each source is { name, sharesTips }.
+  function sourceList(picture) {
+    return picture.split(" | ").flatMap((group) =>
+      group.split(" ").map((name, place) => ({ name, sharesTips: place > 0 })),
+    );
+  }
+
+  // The picture of a list of sources (sourceList's form), e.g. "A B | C D"; a first source sharing
+  // tips is shown with a "+" before it.
+  function pictureOf(sources) {
+    return sources
+      .map((entry, index) => `${index > 0 && !entry.sharesTips ? "| " : ""}${index === 0 && entry.sharesTips ? "+" : ""}${entry.name}`)
+      .join(" ");
+  }
+
+  // A list of four sources whose first shares tips, as a caller's list might hold it: "+A B | C D".
+  function firstSharingList() {
+    const list = sourceList("A B | C D");
+    return [{ ...list[0], sharesTips: true }, ...list.slice(1)];
+  }
+
+  test("sourceGroups: none, mixed sharing, every source on new tips, and a first source sharing", () => {
+    assert.deepEqual(sourceGroups([]), []);
+    const shares = [false, true, true, false, true];
+    assert.deepEqual(
+      sourceGroups(shares.map((sharesTips) => ({ sharesTips }))),
+      [[0, 1, 2], [3, 4]],
+    );
+    assert.deepEqual(sourceGroups(sourceList("A | B | C")), [[0], [1], [2]]);
+    assert.deepEqual(sourceGroups(firstSharingList()), [[0, 1], [2, 3]]);
+  });
+
+  test("sourceGroups refuses what isn't a list of sources, naming the list or the first wrong entry", () => {
+    // The message for a list that isn't one of sources, naming `got`.
+    const message = (got) =>
+      `The sources must be a list of objects, each with "sharesTips" true or false, but got ${got}.`;
+    assert.throws(() => sourceGroups(5), { message: message("5") });
+    assert.throws(() => sourceGroups([{ sharesTips: false }, { sharesTips: "yes" }]), { message: message("an object") });
+    assert.throws(() => sourceGroups([{ sharesTips: false }, null]), { message: message("null") });
+  });
+
+  test("setSourceSharesTips: joining, splitting, an unchanged value, and what's kept", () => {
+    const list = sourceList("A B | C D | E");
+    assert.equal(pictureOf(setSourceSharesTips(list, 2, true)), "A B C D | E");
+    assert.equal(pictureOf(setSourceSharesTips(list, 1, false)), "A | B | C D | E");
+    assert.equal(pictureOf(setSourceSharesTips(list, 3, false)), "A B | C | D | E");
+    assert.equal(setSourceSharesTips(list, 1, true), list);
+    assert.equal(setSourceSharesTips(list, 0, false), list);
+    // Entries whose value didn't change are the same objects; other properties are kept.
+    const withText = list.map((entry) => ({ ...entry, replicatesText: "4" }));
+    const joined = setSourceSharesTips(withText, 2, true);
+    assert.deepEqual(joined.map((entry, index) => entry === withText[index]), [true, true, false, true, true]);
+    assert.deepEqual(joined[2], { name: "C", sharesTips: true, replicatesText: "4" });
+    assert.deepEqual(withText[2].sharesTips, false);
+  });
+
+  test("setSourceSharesTips refuses, in order: the list, the index, the value, the first source sharing", () => {
+    const list = sourceList("A | B");
+    assert.throws(() => setSourceSharesTips(5, 9, "yes"), { message: /^The sources must be a list of objects/ });
+    assert.throws(() => setSourceSharesTips(list, 9, "yes"), {
+      message: "There's no source at index 9: the list has 2 sources (indexes 0 to 1).",
+    });
+    assert.throws(() => setSourceSharesTips(list, 0, "yes"), {
+      message: 'Whether a source shares tips must be true or false, but got "yes".',
+    });
+    assert.throws(() => setSourceSharesTips(list, 0, true), {
+      message:
+        "The first source always starts on new tips, so it can't share tips: a randomization never shares tips with stages outside it.",
+    });
+  });
+
+  test("no source at an index: setSourceSharesTips and moveSource give each form of the message", () => {
+    const cases = [
+      [sourceList("A | B | C | D"), 7, "There's no source at index 7: the list has 4 sources (indexes 0 to 3)."],
+      [sourceList("A"), 1, "There's no source at index 1: the list has 1 source (index 0)."],
+      [[], 0, "There's no source at index 0: the list has no sources."],
+    ];
+    for (const [list, index, message] of cases) {
+      assert.throws(() => setSourceSharesTips(list, index, false), { message });
+      assert.throws(() => moveSource(list, index, { kind: "between", index: 0 }), { message });
+    }
+  });
+
+  test("moveSource: the specification's three examples", () => {
+    const list = sourceList("A B | C D");
+    assert.equal(pictureOf(moveSource(list, 3, { kind: "inGroup", index: 0, position: 1 })), "A D B | C");
+    assert.equal(pictureOf(moveSource(list, 0, { kind: "between", index: 2 })), "B | C D | A");
+    assert.deepEqual(sourceGroups(moveSource(list, 0, { kind: "between", index: 2 })), [[0], [1, 2], [3]]);
+    assert.equal(pictureOf(moveSource(list, 2, { kind: "inGroup", index: 0, position: 0 })), "C A B | D");
+  });
+
+  test("moveSource between groups: at each index the source gets new tips of its own", () => {
+    const list = sourceList("A B | C D | E");
+    assert.equal(pictureOf(moveSource(list, 3, { kind: "between", index: 0 })), "D | A B | C | E");
+    assert.equal(pictureOf(moveSource(list, 1, { kind: "between", index: 1 })), "A | B | C D | E");
+    assert.equal(pictureOf(moveSource(list, 0, { kind: "between", index: 3 })), "B | C D | E | A");
+  });
+
+  test("moveSource into a group: at its top it starts the group and the old first shares; elsewhere it shares", () => {
+    const list = sourceList("A B | C D | E");
+    assert.equal(pictureOf(moveSource(list, 4, { kind: "inGroup", index: 1, position: 0 })), "A B | E C D");
+    assert.equal(pictureOf(moveSource(list, 4, { kind: "inGroup", index: 1, position: 1 })), "A B | C E D");
+    assert.equal(pictureOf(moveSource(list, 4, { kind: "inGroup", index: 1, position: 2 })), "A B | C D E");
+    assert.equal(pictureOf(moveSource(list, 0, { kind: "inGroup", index: 2, position: 1 })), "B | C D | E A");
+  });
+
+  test("moveSource: a group's first moved away hands its tips to the next; its only source leaves no empty group", () => {
+    const list = sourceList("A B | C D | E");
+    assert.equal(pictureOf(moveSource(list, 2, { kind: "inGroup", index: 0, position: 2 })), "A B C | D | E");
+    const moved = moveSource(list, 4, { kind: "inGroup", index: 0, position: 1 });
+    assert.equal(pictureOf(moved), "A E B | C D");
+    assert.equal(sourceGroups(moved).length, 2);
+  });
+
+  test("moveSource to the very top gives it new tips, and the old first keeps its own", () => {
+    const moved = moveSource(sourceList("A B | C"), 2, { kind: "between", index: 0 });
+    assert.equal(pictureOf(moved), "C | A B");
+  });
+
+  test("moveSource: a place pointing at the moved source gives the same list", () => {
+    const list = sourceList("A B | C | D E");
+    assert.equal(moveSource(list, 1, { kind: "inGroup", index: 0, position: 1 }), list);
+    assert.equal(moveSource(list, 1, { kind: "inGroup", index: 0, position: 2 }), list);
+    assert.equal(moveSource(list, 0, { kind: "inGroup", index: 0, position: 0 }), list);
+    assert.equal(moveSource(list, 2, { kind: "between", index: 1 }), list);
+    assert.equal(moveSource(list, 2, { kind: "between", index: 2 }), list);
+    assert.equal(moveSource(list, 2, { kind: "inGroup", index: 1, position: 0 }), list);
+    assert.equal(moveSource(list, 2, { kind: "inGroup", index: 1, position: 1 }), list);
+  });
+
+  test("moveSource: a move that changes only sharesTips isn't the same list", () => {
+    const list = sourceList("A | B C");
+    const moved = moveSource(list, 1, { kind: "between", index: 1 });
+    assert.notEqual(moved, list);
+    assert.equal(pictureOf(moved), "A | B | C");
+    assert.equal(moved[0], list[0]);
+    assert.equal(moved[1], list[1]);
+  });
+
+  test("moveSource refuses, in order: the list, the index, the place's form and range, its position", () => {
+    const list = sourceList("A B | C D");
+    assert.throws(() => moveSource(5, 9, null), { message: /^The sources must be a list of objects/ });
+    assert.throws(() => moveSource(list, 9, null), { message: "There's no source at index 9: the list has 4 sources (indexes 0 to 3)." });
+    for (const place of [null, { kind: "between", index: 9 }, { kind: "inGroup", index: 2, position: 0 }, { kind: "inTipGroup", index: 0, position: 0 }, { kind: "between", index: -1 }]) {
+      assert.throws(() => moveSource(list, 0, place), {
+        message: `The place must be between source groups (index 0 to 2) or inside one, but got ${JSON.stringify(place)}.`,
+      });
+    }
+    assert.throws(() => moveSource(list, 0, { kind: "inGroup", index: 1, position: 5 }), {
+      message: "Source group 1 has positions 0 to 2, but got 5.",
+    });
+  });
+
+  test("removeSources: a group's first hands its tips on, a whole group goes, the list's first, and none", () => {
+    const list = sourceList("A B C | D E | F");
+    assert.equal(pictureOf(removeSources(list, [3])), "A B C | E | F");
+    assert.equal(pictureOf(removeSources(list, [4, 3])), "A B C | F");
+    assert.equal(pictureOf(removeSources(list, [0])), "B C | D E | F");
+    assert.equal(pictureOf(removeSources(list, [0, 1])), "C | D E | F");
+    assert.equal(pictureOf(removeSources(list, [1, 5])), "A C | D E");
+    assert.equal(removeSources(list, []), list);
+    const removed = removeSources(list, [4]);
+    assert.equal(removed[0], list[0]);
+  });
+
+  test("removeSources refuses indexes that aren't the list's, each once, with each form of the message", () => {
+    const four = sourceList("A B | C D");
+    assert.throws(() => removeSources(four, [1, 1]), {
+      message: "The sources to remove must be a list of indexes from 0 to 3, each once, but got [1, 1].",
+    });
+    assert.throws(() => removeSources(four, 1), {
+      message: "The sources to remove must be a list of indexes from 0 to 3, each once, but got 1.",
+    });
+    assert.throws(() => removeSources(sourceList("A"), [1]), {
+      message: "The sources to remove must be a list of index 0, at most once, but got [1].",
+    });
+    assert.throws(() => removeSources([], [0]), { message: "There are no sources to remove, but got [0]." });
+    assert.throws(() => removeSources(5, [0]), { message: /^The sources must be a list of objects/ });
+  });
+
+  test("the first source made false: each list function given a first source sharing gives a new list", () => {
+    for (const result of [
+      (list) => setSourceSharesTips(list, 1, true),
+      (list) => moveSource(list, 1, { kind: "inGroup", index: 0, position: 1 }),
+      (list) => removeSources(list, []),
+    ]) {
+      const list = firstSharingList();
+      const made = result(list);
+      assert.notEqual(made, list);
+      assert.notEqual(made[0], list[0]);
+      assert.deepEqual(made[0], { name: "A", sharesTips: false });
+      assert.deepEqual(made.slice(1).map((entry, index) => entry === list[index + 1]), [true, true, true]);
+    }
+  });
+
+  // The tips the shared-tips plan's randomization loads: the last tip type, on the first two probes,
+  // so they can be told from the START tips where the configuration allows.
+  function sharingTips() {
+    return { tipType: TIP_TYPES.at(-1), probes: [1, 2] };
+  }
+
+  // randomizingPlan with DEEP A4 holding Drug A at a second concentration (half Drug A, half Media),
+  // and a randomization sitting before stage `beforeId`, set up with A1, A2 and A3 at 4 replicates and
+  // A4 the filler, each source's sharesTips from `shares`, the 20 wells to fill, seed 37, 10 µL and
+  // sharingTips(): { plan, id }.
+  function sharingPlan(shares = [false, true, true, false], { beforeId = "2", base = randomizingPlan() } = {}) {
+    let plan = addToWells(base, [deepWell("A4")], "Drug A", capacityOf(DEEP) / 2);
+    plan = addToWells(plan, [deepWell("A4")], "Media", capacityOf(DEEP) / 2);
+    const { plan: added, id } = addRandomization(plan, beforeId, { seed: 37, volume: 10 });
+    const set = setRandomization(added, id, {
+      sources: [
+        source("A1", 4, false, shares[0]),
+        source("A2", 4, false, shares[1]),
+        source("A3", 4, false, shares[2]),
+        source("A4", null, true, shares[3]),
+      ],
+      fill: wellsToFill(),
+      ...sharingTips(),
+    });
+    return { plan: set, id };
+  }
+
+  // The stage a run randomization made for its source `well` on DEEP, e.g. "4".
+  function stageFor(plan, id, well) {
+    return randomizationAt(plan, id).stages.find((owned) => owned.well === well).stage;
+  }
+
+  test("a run with shared tips: one tip group for A1 to A3, the filler's alone, nothing outside joined", () => {
+    const { plan: setUp, id } = sharingPlan();
+    const plan = runRandomization(setUp, id);
+    const stages = randomizationAt(plan, id).stages.map((owned) => owned.stage);
+    assert.deepEqual(randomizationAt(plan, id).stages.map((owned) => owned.well), ["A1", "A2", "A3", "A4"]);
+    assert.deepEqual(tipChangeAt(plan, stages[0]), sharingTips());
+    assert.equal(tipChangeAt(plan, stages[1]), null);
+    assert.equal(tipChangeAt(plan, stages[2]), null);
+    assert.deepEqual(tipChangeAt(plan, stages[3]), sharingTips());
+    const groups = tipGroups(plan);
+    assert.deepEqual(groups.map((group) => group.stages), [["1"], stages.slice(0, 3), [stages[3]], ["2"]]);
+    const box = columnBoxes(plan).find((candidate) => candidate.kind === "randomization");
+    assert.deepEqual(box.tipGroups.map((group) => group.stages), [stages.slice(0, 3), [stages[3]]]);
+    assert.deepEqual(tipChangeAt(plan, "2"), tipChangeAt(setUp, "2"));
+    assert.deepEqual(tipChangeAt(plan, START), tipChangeAt(setUp, START));
+  });
+
+  test("tipsUsed: a run whose sources A1 to A3 share tips counts that group's tips once", () => {
+    const { tipType, probes } = sharingTips();
+    // How many tips of the randomization's tip type `planned` uses.
+    const countOf = (planned) => tipsUsed(planned).find((entry) => entry.tipType === tipType)?.count ?? 0;
+    // How many tips running the randomization set up with `shares` adds to that count.
+    const addedByRun = (shares) => {
+      const { plan, id } = sharingPlan(shares);
+      return countOf(runRandomization(plan, id)) - countOf(plan);
+    };
+    assert.equal(addedByRun([false, true, true, false]), 2 * probes.length);
+    assert.equal(addedByRun([false, false, false, false]), 4 * probes.length);
+  });
+
+  test("the filler's place: its stage is in its first filler well's group, at its place", () => {
+    // The first filler well sharing the tips of the source above it.
+    let { plan, id } = sharingPlan([false, false, false, true]);
+    plan = runRandomization(plan, id);
+    assert.equal(tipChangeAt(plan, stageFor(plan, id, "A4")), null);
+    // A later filler well marked as sharing: the filler's stage is unchanged, and the source after
+    // it (sharing) is in the filler's group.
+    let withTwo = addToWells(randomizingPlan(), [trough("2"), trough("3")], "Media", capacityOf(RESERVOIR));
+    withTwo = addToWells(withTwo, [deepWell("A4")], "Drug A", capacityOf(DEEP));
+    const added = addRandomization(withTwo, "2", { seed: 37, volume: 10 });
+    // The sources, trough 3's sharesTips being `shares`.
+    const sources = (shares) => [
+      source("A1", 4),
+      { ...fillerTrough("2"), sharesTips: false },
+      { ...fillerTrough("3"), sharesTips: shares },
+      source("A4", 4, false, true),
+    ];
+    // The plan run with sources(shares).
+    const run = (shares) =>
+      runRandomization(setRandomization(added.plan, added.id, { sources: sources(shares), fill: wellsToFill() }), added.id);
+    // Trough 3 starting a group of its own: A4, sharing trough 3's tips, starts them, since trough 3
+    // has no stage. Trough 3 sharing: A4 is in the filler's group, sharing its tips.
+    const apart = run(false);
+    const together = run(true);
+    // The filler's stage in `planned`.
+    const fillerOf = (planned) => fillerEntry(planned, added.id).stage;
+    assert.deepEqual(randomizationAt(apart, added.id).stages.map((owned) => owned.well), ["A1", "2", "A4"]);
+    assert.deepEqual(randomizationAt(together, added.id).stages, randomizationAt(apart, added.id).stages);
+    for (const planned of [apart, together]) {
+      assert.notEqual(tipChangeAt(planned, fillerOf(planned)), null);
+    }
+    assert.deepEqual(stagesById(together), stagesById(apart));
+    assert.notEqual(tipChangeAt(apart, stageFor(apart, added.id, "A4")), null);
+    assert.equal(tipChangeAt(together, stageFor(together, added.id, "A4")), null);
+  });
+
+  test("the filler's place on an exact fit: the group's first stage that exists starts its tips", () => {
+    const exactFill = wellsToFill().slice(0, 12);
+    // The filler sharing A2's tips, and A3 sharing the filler's: A2 and A3 share.
+    let { plan, id } = sharingPlan([false, false, true, true]);
+    plan = runRandomization(setRandomization(plan, id, { fill: exactFill }), id);
+    assert.deepEqual(randomizationAt(plan, id).stages.map((owned) => owned.well), ["A1", "A2", "A3"]);
+    assert.notEqual(tipChangeAt(plan, stageFor(plan, id, "A2")), null);
+    assert.equal(tipChangeAt(plan, stageFor(plan, id, "A3")), null);
+    // A filler with no stage at the start of a group: the group's next stage starts its tips.
+    let reordered = sharingPlan([false, false, false, false]);
+    plan = setRandomization(reordered.plan, reordered.id, {
+      sources: [source("A1", 4), source("A4", null, true), source("A2", 4, false, true), source("A3", 4)],
+      fill: exactFill,
+    });
+    plan = runRandomization(plan, reordered.id);
+    assert.deepEqual(randomizationAt(plan, reordered.id).stages.map((owned) => owned.well), ["A1", "A2", "A3"]);
+    for (const well of ["A1", "A2", "A3"]) {
+      assert.deepEqual(tipChangeAt(plan, stageFor(plan, reordered.id, well)), sharingTips(), well);
+    }
+  });
+
+  test("tipSetsToMake: shared, unshared, an exact fit, a problem, before and after a run, and r9", () => {
+    const shared = sharingPlan();
+    const before = snapshot(shared.plan);
+    assert.equal(tipSetsToMake(shared.plan, shared.id), 2);
+    assert.equal(snapshot(shared.plan), before);
+    assert.equal(tipSetsToMake(runRandomization(shared.plan, shared.id), shared.id), 2);
+    const apart = sharingPlan([false, false, false, false]);
+    assert.equal(tipSetsToMake(apart.plan, apart.id), 4);
+    const exact = setRandomization(shared.plan, shared.id, { fill: wellsToFill().slice(0, 12) });
+    assert.equal(tipSetsToMake(exact, shared.id), 1);
+    const a3Apart = sharingPlan([false, true, false, false]);
+    assert.equal(tipSetsToMake(a3Apart.plan, a3Apart.id), 3);
+    assert.equal(tipSetsToMake(setRandomization(shared.plan, shared.id, { seed: null }), shared.id), null);
+    assert.throws(() => tipSetsToMake(shared.plan, "r9"), { message: `There's no randomization "r9" in the plan.` });
+  });
+
+  test("rerunning with new sharing: out of date, a run takes out or gives back A2's tips, each one undo", () => {
+    const { plan: setUp, id } = sharingPlan([false, false, false, false]);
+    const plan = runRandomization(setUp, id);
+    const a2 = stageFor(plan, id, "A2");
+    assert.notEqual(tipChangeAt(plan, a2), null);
+    const sharing = setRandomization(plan, id, {
+      sources: setSourceSharesTips(randomizationAt(plan, id).sources, 1, true),
+    });
+    assert.equal(isRandomizationOutOfDate(sharing, id), true);
+    const shared = runRandomization(sharing, id);
+    assert.equal(tipChangeAt(shared, a2), null);
+    assert.equal(isRandomizationOutOfDate(shared, id), false);
+    assert.deepEqual(stagesById(shared), stagesById(plan));
+    assert.deepEqual(randomizationAt(shared, id).stages, randomizationAt(plan, id).stages);
+    const apart = setRandomization(shared, id, {
+      sources: setSourceSharesTips(randomizationAt(shared, id).sources, 1, false),
+    });
+    assert.equal(isRandomizationOutOfDate(apart, id), true);
+    const apartRun = runRandomization(apart, id);
+    assert.deepEqual(tipChangeAt(apartRun, a2), sharingTips());
+    let history = new PlanHistory(plan);
+    history = history.record(shared);
+    history = history.record(apartRun);
+    assert.equal(history.undo().present, shared);
+    assert.equal(history.undo().undo().present, plan);
+  });
+
+  test("reordering: out of date; a run puts the stages in the new order where the first was, with the reordered pool's wells", () => {
+    let { plan, id } = runRandomizationPlan();
+    // A randomization that hasn't run, sitting before the run one's first stage.
+    const sitting = addRandomization(plan, randomizationAt(plan, id).stages[0].stage, { seed: 1, volume: 1 });
+    plan = sitting.plan;
+    const [a1, a2, a3] = randomizationAt(plan, id).sources;
+    const reordered = setRandomization(plan, id, { sources: [a3, a1, a2] });
+    assert.equal(isRandomizationOutOfDate(reordered, id), true);
+    const run = runRandomization(reordered, id);
+    // The stage for DEEP `well` in `planned`.
+    const stageOf = (planned, well) => stageFor(planned, id, well);
+    const ids = ["A3", "A1", "A2"].map((well) => stageOf(plan, well));
+    assert.deepEqual(randomizationAt(run, id).stages.map((owned) => owned.stage), ids);
+    assert.deepEqual(stageOrder(run), ["1", ...ids, "2"]);
+    assert.deepEqual(blocksOf(run), stageOrder(run).filter((stage) => transfersIn(run, stage).length > 0));
+    assert.deepEqual(tipChangeAt(run, "2"), tipChangeAt(plan, "2"));
+    assert.deepEqual(tipChangeAt(run, START), tipChangeAt(plan, START));
+    assert.equal(isRandomizationOutOfDate(run, id), false);
+    // The wells each source gets follow assignPool of the reordered pool.
+    const assignment = assignPool({
+      items: [
+        { key: "source 1", replicates: null },
+        { key: "source 2", replicates: 8 },
+        { key: "source 3", replicates: 8 },
+      ],
+      filler: "source 1",
+      wells: wellsToFill().map((_, index) => `well ${index + 1}`),
+      seed: 37,
+    });
+    const expected = Object.fromEntries(ids.map((stage) => [stage, []]));
+    for (const { well, key } of assignment) {
+      const end = wellsToFill()[Number(well.split(" ")[1]) - 1];
+      expected[ids[Number(key.split(" ")[1]) - 1]].push(`${end.labware} ${end.well}`);
+    }
+    assert.deepEqual(destinationsByStage(run, id), expected);
+    // The randomization that hasn't run still sits above it.
+    assert.equal(randomizationAt(run, sitting.id).beforeId, ids[0]);
+    const boxes = columnBoxes(run).map((box) => box.id ?? box.key);
+    assert.ok(boxes.indexOf(sitting.id) === boxes.indexOf(id) - 1);
+  });
+
+  test("reordering with shared tips: A3 moved to the top of its group starts the tips, A1 and A2 share them", () => {
+    let { plan, id } = sharingPlan([false, true, true, false]);
+    plan = runRandomization(plan, id);
+    const sources = moveSource(randomizationAt(plan, id).sources, 2, { kind: "inGroup", index: 0, position: 0 });
+    const run = runRandomization(setRandomization(plan, id, { sources }), id);
+    assert.deepEqual(randomizationAt(run, id).stages.map((owned) => owned.well), ["A3", "A1", "A2", "A4"]);
+    assert.deepEqual(tipChangeAt(run, stageFor(run, id, "A3")), sharingTips());
+    assert.equal(tipChangeAt(run, stageFor(run, id, "A1")), null);
+    assert.equal(tipChangeAt(run, stageFor(run, id, "A2")), null);
+  });
+
+  test("at the top of the plan: the new first stage takes START's tips, and no tip change is keyed by it", () => {
+    let { plan, id } = sharingPlan([false, false, false, false], { beforeId: "1" });
+    plan = runRandomization(plan, id);
+    const firstBefore = stageOrder(plan)[0];
+    assert.equal(firstBefore, stageFor(plan, id, "A1"));
+    const [a1, a2, a3, a4] = randomizationAt(plan, id).sources;
+    // A3 first, A1 sharing its tips.
+    const reordered = [a3, { ...a1, sharesTips: true }, a2, a4];
+    const run = runRandomization(setRandomization(plan, id, { sources: reordered }), id);
+    const a3Stage = stageFor(run, id, "A3");
+    assert.equal(stageOrder(run)[0], a3Stage);
+    assert.deepEqual(tipChangeAt(run, START), sharingTips());
+    assert.equal(tipChangeAt(run, a3Stage), null);
+    assert.equal(tipChangeAt(run, firstBefore), null);
+    assert.equal(isRandomizationOutOfDate(run, id), false);
+  });
+
+  test("unchanged: with every source on new tips, a run gives each stage its own tips, and running twice changes nothing", () => {
+    const { plan: setUp, id } = sharingPlan([false, false, false, false]);
+    const plan = runRandomization(setUp, id);
+    for (const { stage } of randomizationAt(plan, id).stages) {
+      assert.deepEqual(tipChangeAt(plan, stage), sharingTips(), stage);
+      assert.deepEqual(tipGroups(plan).find((group) => group.stages.includes(stage)).stages, [stage]);
+    }
+    const again = runRandomization(plan, id);
+    assert.deepEqual(stageOrder(again), stageOrder(plan));
+    assert.deepEqual(again.tipChanges, plan.tipChanges);
+    assert.equal(again.stageOrder, plan.stageOrder);
+    assert.equal(again.tipChanges, plan.tipChanges);
+  });
+
+  test("setRandomization: sharesTips missing, \"yes\" or true on the first source is refused; sharing or order alone is a change", () => {
+    const { plan, id } = sharingPlan([false, false, false, false]);
+    const sources = randomizationAt(plan, id).sources;
+    const { sharesTips, ...withoutSharing } = sources[1];
+    assert.throws(() => setRandomization(plan, id, { sources: [sources[0], withoutSharing] }), {
+      message: 'Source 2 must be an object with exactly "labware", "well", "replicates", "filler" and "sharesTips".',
+    });
+    assert.throws(() => setRandomization(plan, id, { sources: [sources[0], { ...sources[1], sharesTips: "yes" }] }), {
+      message: `Source 2's "sharesTips" must be true or false, but got "yes".`,
+    });
+    assert.throws(() => setRandomization(plan, id, { sources: [{ ...sources[0], sharesTips: true }, sources[1]] }), {
+      message:
+        'Source 1 is the first source, so it starts on new tips: its "sharesTips" must be false. A randomization never shares tips with stages outside it.',
+    });
+    // The first source's sharing is checked after its replicates and the repeats.
+    assert.throws(
+      () => setRandomization(plan, id, { sources: [{ ...sources[0], sharesTips: true }, sources[0]] }),
+      /is a source twice/,
+    );
+    const shared = setRandomization(plan, id, { sources: setSourceSharesTips(sources, 1, true) });
+    assert.notEqual(shared, plan);
+    assert.equal(randomizationAt(shared, id).sources[1].sharesTips, true);
+    const reordered = setRandomization(plan, id, { sources: [sources[2], sources[0], sources[1], sources[3]] });
+    assert.notEqual(reordered, plan);
+  });
+
+  test("a plan saved before this change, stages out of their sources' order, opens out of date and Update reorders them", () => {
+    let plan = addToWells(randomizingPlan(), [trough("2")], "Media", capacityOf(RESERVOIR));
+    const added = addRandomization(plan, "2", { seed: 37, volume: 10 });
+    plan = setRandomization(added.plan, added.id, {
+      sources: [
+        { ...trough("1"), replicates: 2, filler: false, sharesTips: false },
+        { ...fillerTrough("2"), sharesTips: false },
+        source("A1", 2),
+      ],
+      fill: wellsToFill(),
+    });
+    const run = runRandomization(plan, added.id);
+    // Saved as a run before this change could leave it: Res1 1, Deep A1, then Res1 2 (each on tips
+    // of its own), as unmarking the first of two filler wells and running again left it.
+    const file = JSON.parse(planToText(run, "transfer designer test"));
+    const [res1, res2, deep] = randomizationAt(run, added.id).stages.map((owned) => owned.stage);
+    const oldOrder = file.stages.map((stage) => stage.id).filter((stage) => stage !== res2);
+    oldOrder.splice(oldOrder.indexOf(deep) + 1, 0, res2);
+    file.stages = oldOrder.map((stage) => file.stages.find((candidate) => candidate.id === stage));
+    file.operations = oldOrder.flatMap((stage) => file.operations.filter((operation) => operation.stage === stage));
+    const stored = file.randomizations[0].stages;
+    file.randomizations[0].stages = [res1, deep, res2].map((stage) => stored.find((owned) => owned.stage === stage));
+    const opened = planFromText(JSON.stringify(file));
+    // The source wells of the randomization's stages in `planned`, in its order.
+    const wellsInOrder = (planned) => randomizationAt(planned, added.id).stages.map((owned) => owned.well);
+    assert.deepEqual(wellsInOrder(opened), ["1", "A1", "2"]);
+    assert.equal(isRandomizationOutOfDate(opened, added.id), true);
+    const updated = runRandomization(opened, added.id);
+    assert.deepEqual(wellsInOrder(updated), ["1", "2", "A1"]);
+    assert.deepEqual(
+      randomizationAt(updated, added.id).stages.map((owned) => owned.stage),
+      [0, 2, 1].map((index) => randomizationAt(opened, added.id).stages[index].stage),
+    );
+    assert.deepEqual(stagesById(updated), stagesById(opened));
+    assert.equal(isRandomizationOutOfDate(updated, added.id), false);
+  });
+
+  test("setRandomizations: stages sharing with each other are accepted; stored sharing they don't follow is accepted, out of date", () => {
+    let { plan, id } = sharingPlan();
+    plan = runRandomization(plan, id);
+    assert.equal(setRandomizations(plan, plan.randomizations).randomizations.length, 1);
+    const stored = JSON.parse(JSON.stringify(plan.randomizations));
+    stored[0].sources[1].sharesTips = false;
+    const disagreeing = setRandomizations(plan, stored);
+    assert.equal(isRandomizationOutOfDate(disagreeing, id), true);
+  });
+
+  test("removing the stage just after a randomization whose last group shares still gives the next stage its own tips", () => {
+    let { plan, id } = sharingPlan([false, false, true, true], { base: addStage(randomizingPlan(), null).plan });
+    plan = runRandomization(plan, id);
+    assert.equal(tipChangeAt(plan, stageFor(plan, id, "A4")), null);
+    assert.equal(tipChangeAt(plan, "3"), null);
+    const removed = removeStage(plan, "2");
+    assert.deepEqual(tipChangeAt(removed, "3"), tipChangeAt(plan, "2"));
+  });
+
+  test("moving and copying a randomization with shared tips keeps its tip groups; copied items version 3", () => {
+    let { plan, id } = sharingPlan();
+    plan = runRandomization(plan, id);
+    // How many stages each tip group of `randomization`'s box holds in `planned`.
+    const groupsIn = (planned, randomization) =>
+      columnBoxes(planned).find((box) => box.id === randomization).tipGroups.map((group) => group.stages.length);
+    assert.deepEqual(groupsIn(plan, id), [3, 1]);
+    const { plan: moved } = moveItems(plan, [randomizationItem(id)], between(columnBoxes(plan).length));
+    assert.deepEqual(groupsIn(moved, id), [3, 1]);
+    assert.equal(isRandomizationOutOfDate(moved, id), false);
+    const copied = copyOf(plan, [randomizationItem(id)]);
+    assert.equal(copied.version, 3);
+    assert.equal(COPIED_ITEMS_VERSION, 3);
+    assert.deepEqual(copied.items[0].randomization.sources.map((entry) => entry.sharesTips), [false, true, true, false]);
+    assert.deepEqual(copied.items[0].stages.map((owned) => owned.tips), [sharingTips(), null, null, sharingTips()]);
+    const { plan: pasted, placed } = pasteItems(plan, copied, between(columnBoxes(plan).length));
+    assert.deepEqual(groupsIn(pasted, placed[0].id), [3, 1]);
+    assert.equal(setRandomizations(pasted, pasted.randomizations).randomizations.length, 2);
+    assert.equal(isRandomizationOutOfDate(pasted, placed[0].id), false);
+  });
+
+  test("copied items: a version 2 copy pastes each stage alone; version 3 with a first owned stage sharing, and version 4, are refused", () => {
+    const { plan: apartPlan, id: apartId } = sharingPlan([false, false, false, false]);
+    const apart = runRandomization(apartPlan, apartId);
+    const version2 = copiedAsVersion(copyOf(apart, [randomizationItem(apartId)]), 2);
+    const { plan: pasted, placed } = pasteItems(apart, version2, between(0));
+    const copy = randomizationAt(pasted, placed[0].id);
+    assert.deepEqual(copy.sources.map((entry) => entry.sharesTips), [false, false, false, false]);
+    const box = columnBoxes(pasted).find((candidate) => candidate.id === copy.id);
+    assert.deepEqual(box.tipGroups.map((group) => group.stages.length), [1, 1, 1, 1]);
+    let { plan, id } = sharingPlan();
+    plan = runRandomization(plan, id);
+    const copied = copyOf(plan, [randomizationItem(id)]);
+    copied.items[0].stages[0].tips = null;
+    assert.throws(() => pasteItems(plan, copied, between(0)), {
+      message: "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.",
+    });
+    assert.throws(() => pasteItems(plan, { ...copyOf(plan, [randomizationItem(id)]), version: 4 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 4).",
+    });
+  });
+
+  test("copying stages of a shared group: one alone takes the group's tips; two pasted between boxes form one tip group", () => {
+    let { plan, id } = sharingPlan();
+    plan = runRandomization(plan, id);
+    const a2 = stageFor(plan, id, "A2");
+    const a3 = stageFor(plan, id, "A3");
+    const one = copyOf(plan, [stageItem(a2)]);
+    assert.deepEqual(one.items[0].tips, sharingTips());
+    const { plan: pasted, placed } = copyItems(plan, [stageItem(a2), stageItem(a3)], between(columnBoxes(plan).length));
+    const group = tipGroups(pasted).find((candidate) => candidate.stages.includes(placed[0].id));
+    assert.deepEqual(group.stages, placed.map((item) => item.id));
+    assert.deepEqual({ tipType: group.tipType, probes: group.probes }, sharingTips());
+    assert.equal(randomizationOf(pasted, placed[0].id), null);
+  });
+
+  test("to the top of the plan: moved or copied there, the randomization's first stage takes START's tips", () => {
+    let { plan, id } = sharingPlan();
+    plan = runRandomization(plan, id);
+    const startBefore = tipChangeAt(plan, START);
+    // Checks `randomization` in `planned` is at the top, on START's tips, with its sharing kept.
+    const check = (planned, randomization) => {
+      // The stage for DEEP `well`.
+      const stage = (well) => stageFor(planned, randomization, well);
+      assert.equal(stageOrder(planned)[0], stage("A1"));
+      assert.deepEqual(tipChangeAt(planned, START), sharingTips());
+      assert.equal(tipChangeAt(planned, stage("A1")), null);
+      assert.equal(tipChangeAt(planned, stage("A2")), null);
+      assert.equal(tipChangeAt(planned, stage("A3")), null);
+      assert.deepEqual(tipChangeAt(planned, stage("A4")), sharingTips());
+      assert.deepEqual(tipChangeAt(planned, "1"), startBefore);
+      assert.equal(isRandomizationOutOfDate(planned, randomization), false);
+    };
+    const { plan: moved } = moveItems(plan, [randomizationItem(id)], between(0));
+    check(moved, id);
+    const { plan: copiedPlan, placed } = copyItems(plan, [randomizationItem(id)], between(0));
+    check(copiedPlan, placed[0].id);
+    assert.deepEqual(randomizationAt(copiedPlan, id), randomizationAt(plan, id));
+    assert.deepEqual(tipChangeAt(copiedPlan, stageFor(plan, id, "A1")), sharingTips());
+  });
+
+  test("copied items version 1 and 2 whose source has sharesTips are refused; a version 2 source that's null gets setRandomization's message", () => {
+    const { plan: apartPlan, id } = sharingPlan([false, false, false, false]);
+    const plan = runRandomization(apartPlan, id);
+    const formMessage = "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.";
+    for (const version of [1, 2]) {
+      for (const sharesTips of [false, true]) {
+        const older = copiedAsVersion(copyOf(plan, [randomizationItem(id)]), version);
+        older.items[0].randomization.sources[1].sharesTips = sharesTips;
+        assert.throws(() => pasteItems(plan, older, between(0)), { message: formMessage }, `${version} ${sharesTips}`);
+      }
+    }
+    const withNull = copiedAsVersion(copyOf(plan, [randomizationItem(id)]), 2);
+    withNull.items[0].randomization.sources[1] = null;
+    assert.throws(() => pasteItems(plan, withNull, between(0)), {
+      message:
+        'Can\'t paste: item 1: Source 2 must be an object with exactly "labware", "well", "replicates", "filler" and "sharesTips".',
+    });
+  });
+
+  test("copied items: a version 2 copy whose second owned stage's tips are null is refused", () => {
+    const { plan: apartPlan, id } = sharingPlan([false, false, false, false]);
+    const plan = runRandomization(apartPlan, id);
+    const older = copiedAsVersion(copyOf(plan, [randomizationItem(id)]), 2);
+    older.items[0].stages[1].tips = null;
+    assert.throws(() => pasteItems(plan, older, between(0)), {
+      message: "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.",
+    });
+  });
+
+  test("copied items version 3 whose sources and stages disagree paste as the copy gives, out of date, and Update brings them together", () => {
+    let { plan, id } = sharingPlan([false, false, false, false]);
+    plan = runRandomization(plan, id);
+    // The sources say A2 shares A1's tips, but its stage has tips of its own.
+    const sharingSaid = copyOf(plan, [randomizationItem(id)]);
+    sharingSaid.items[0].randomization.sources[1].sharesTips = true;
+    // The sources say no source shares, but A2's stage shares.
+    const apartSaid = copyOf(plan, [randomizationItem(id)]);
+    apartSaid.items[0].stages[1].tips = null;
+    for (const [copied, groups, sharesAfterUpdate] of [
+      [sharingSaid, [1, 1, 1, 1], true],
+      [apartSaid, [2, 1, 1], false],
+    ]) {
+      const { plan: pasted, placed } = pasteItems(plan, copied, between(columnBoxes(plan).length));
+      const copy = placed[0].id;
+      const box = columnBoxes(pasted).find((candidate) => candidate.id === copy);
+      assert.deepEqual(box.tipGroups.map((group) => group.stages.length), groups);
+      assert.equal(isRandomizationOutOfDate(pasted, copy), true);
+      const updated = runRandomization(pasted, copy);
+      assert.equal(tipChangeAt(updated, stageFor(updated, copy, "A2")) === null, sharesAfterUpdate);
+      assert.equal(isRandomizationOutOfDate(updated, copy), false);
+    }
+  });
+
+  test("moving wells: moving a source that shares tips keeps its sharesTips", () => {
+    const { plan, id } = sharingPlan();
+    const moved = moveWell(plan, deepWell("A2"), deepWell("H1"));
+    assert.deepEqual(randomizationAt(moved, id).sources[1], { ...deepWell("H1"), replicates: 4, filler: false, sharesTips: true });
   });
 
   // --- Moving wells ---
@@ -4475,8 +5272,8 @@ describe("transfer-designer", () => {
     const { plan: added, id } = addRandomization(plan, null, { seed: 37, volume: 10 });
     const set = setRandomization(added, id, {
       sources: [
-        { labware: DEEP, well: "A1", replicates: 2, filler: false },
-        { labware: DEEP, well: "A2", replicates: 2, filler: false },
+        { labware: DEEP, well: "A1", replicates: 2, filler: false, sharesTips: false },
+        { labware: DEEP, well: "A2", replicates: 2, filler: false, sharesTips: false },
       ],
       fill: [...GRID_96.wellsInBox("B1", "B4")].map(plateWell),
     });
@@ -4761,7 +5558,7 @@ describe("transfer-designer", () => {
     const copied = copyOf(plan, [groupItem("3")]);
     assert.equal(snapshot(plan), before);
     assert.equal(copied.format, "biomek-tools copied items");
-    assert.equal(copied.version, 2);
+    assert.equal(copied.version, 3);
     assert.equal(COPIED_ITEMS_FORMAT, copied.format);
     assert.equal(COPIED_ITEMS_VERSION, copied.version);
     const throughJson = JSON.parse(JSON.stringify(copied));
@@ -4871,8 +5668,8 @@ describe("transfer-designer", () => {
     ]) {
       assert.throws(() => pasteItems(plan, copied, between(0)), { message: notCopied });
     }
-    assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 3 }, between(0)), {
-      message: "Can't paste: these were copied by a newer version of the tools (version 3).",
+    assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 4 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 4).",
     });
     const second = { kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS }, group: 2 };
     assert.throws(
@@ -5261,7 +6058,7 @@ describe("transfer-designer", () => {
     plan = setExperimentName(plan, "Exp36");
     plan = addRandomization(plan, null, { seed: 37, volume: 5 }).plan;
     plan = setRandomization(plan, "r1", {
-      sources: [trough("1"), trough("2")].map((end) => ({ ...end, replicates: 2, filler: false })),
+      sources: [trough("1"), trough("2")].map((end) => ({ ...end, replicates: 2, filler: false, sharesTips: false })),
       fill: [...GRID_96.wellsInBox("D1", "D4")].map(plateWell),
     });
     return runRandomization(plan, "r1");
@@ -5320,7 +6117,7 @@ describe("transfer-designer", () => {
     [
       "runRandomization, a source added and one taken out",
       (plan) => {
-        const sources = [trough("2"), trough("3")].map((end) => ({ ...end, replicates: 2, filler: false }));
+        const sources = [trough("2"), trough("3")].map((end) => ({ ...end, replicates: 2, filler: false, sharesTips: false }));
         return runRandomization(setRandomization(plan, "r1", { sources }), "r1");
       },
     ],

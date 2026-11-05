@@ -1,0 +1,13 @@
+NewTip,TipType,LoadProbes,TransferFile,Probes,SrcTechnique,SrcLiquidType,DestTechnique,DestLiquidType,SrcLabwareType,DestLabwareType,SrcMixVolume,SrcMixTimes,SrcMixSpeed,DestMixVolume,DestMixTimes,DestMixSpeed
+1,BC230,"1,2,3,4",,,,,,,,,,,,,,
+0,BC230,,C:\Users\Beckman Coulter\Desktop\Ento\2026-11-05_093000_Exp36\Stage01_A.csv,"1,2,3,4",Operation,Medium,Operation,Medium,DeepReservoir12,BCFlat96,,,,,,
+1,BC230,"1,2,3,4",,,,,,,,,,,,,,
+0,BC230,,C:\Users\Beckman Coulter\Desktop\Ento\2026-11-05_093000_Exp36\Stage02_A.csv,"1,2,3,4",Operation,Medium,Operation,Medium,BCDeep96Square,BCFlat96,,,,,,
+1,BC230,"1,2,3,4",,,,,,,,,,,,,,
+0,BC230,,C:\Users\Beckman Coulter\Desktop\Ento\2026-11-05_093000_Exp36\Stage03_A.csv,"1,2,3,4",Operation,Medium,Operation,Medium,BCDeep96Square,BCFlat96,,,,,,
+1,BC230,"1,2,3,4",,,,,,,,,,,,,,
+0,BC230,,C:\Users\Beckman Coulter\Desktop\Ento\2026-11-05_093000_Exp36\Stage04_A.csv,"1,2,3,4",Operation,Medium,Operation,Medium,BCDeep96Square,BCFlat96,,,,,,
+1,BC230,"1,2,3,4",,,,,,,,,,,,,,
+0,BC230,,C:\Users\Beckman Coulter\Desktop\Ento\2026-11-05_093000_Exp36\Stage05_A.csv,"1,2,3,4",Operation,Medium,Operation,Medium,DeepReservoir12,BCFlat96,,,,,,
+1,BC230,"1,2,3,4",,,,,,,,,,,,,,
+0,BC230,,C:\Users\Beckman Coulter\Desktop\Ento\2026-11-05_093000_Exp36\Stage06_A.csv,"1,2,3,4",Operation,Medium,Operation,Medium,DeepReservoir12,BCFlat96,,,,,,

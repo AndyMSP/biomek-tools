@@ -4,7 +4,9 @@ Date: 2026-11-01
 
 ## Status
 Accepted (Andy, 2026-11-02: decided while shaping a preview on 2026-11-01, written in the hands-off
-workflow, and accepted by merging #128).
+workflow, and accepted by merging #128). Amended by ADR 0018 (2026-11-05, Proposed): a
+randomization's stages were each "on tips of its own"; they may now share tips with each other,
+never with stages outside it, and the container rule also orders a randomization's sources.
 
 ## Context
 Stages could be added and removed, but not moved or copied. Repeating part of an experiment meant

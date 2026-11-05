@@ -6,9 +6,10 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 9, which holds each component's constituents and osmolality, the
-// randomizations (whose filler may be several wells) and the well labels, each stage's settings
-// hold its mixes and each tip change its probes. It still reads version 8 files (components
+// It writes format version 10, which holds each component's constituents and osmolality, the
+// randomizations (whose filler may be several wells, and whose sources say whether they share tips)
+// and the well labels, each stage's settings hold its mixes and each tip change its probes. It still
+// reads version 9 files (sources without sharesTips, each opening on new tips), version 8 files (components
 // without osmolality), version 7 files (the same properties, written when a filler
 // was one well), version 6 files (components without constituents), version 5 files (also no
 // randomizations), version 4 files (also no well labels), version 3 files (also no mixes), version
@@ -63,17 +64,19 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // (2026-11-01) added the randomizations (ADR 0012); version 7 (2026-11-01) added each component's
 // constituents (ADR 0013); version 8 (2026-11-02) lets a randomization's filler be several wells,
 // with the same properties, so a tool that knows only version 7 refuses such a file as newer;
-// version 9 (2026-11-05) added each component's osmolality (ADR 0016).
-export const PLAN_FILE_VERSION = 9;
+// version 9 (2026-11-05) added each component's osmolality (ADR 0016); version 10 (2026-11-05) added
+// whether each randomization source shares tips (ADR 0018).
+export const PLAN_FILE_VERSION = 10;
 
-// The versions this module can read: the one it writes, version 8 (plans saved from 2026-11-02 to
+// The versions this module can read: the one it writes, version 9 (plans saved on 2026-11-05,
+// before sources sharing tips), version 8 (plans saved from 2026-11-02 to
 // 2026-11-05, before osmolality), version 7 (plans saved from 2026-11-01 to
 // 2026-11-02, before several filler wells; read with the same rules), version 6 (plans saved on
 // 2026-11-01, before constituents), version 5 (plans saved on 2026-11-01, before randomizations),
 // version 4 (plans saved from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved
 // on 2026-10-30, before mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version
 // 1 (plans saved before 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 8, 7, 6, 5, 4, 3, 2, 1];
+const VERSIONS_READ = [PLAN_FILE_VERSION, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 
 // The first version whose components hold their constituents. An older file's components are
 // { name, color } only, and open carrying nothing.
@@ -82,6 +85,10 @@ const FIRST_VERSION_WITH_CONSTITUENTS = 7;
 // The first version whose components hold their osmolality. An older file's components open with
 // none (null).
 const FIRST_VERSION_WITH_OSMOLALITY = 9;
+
+// The first version whose randomization sources hold sharesTips. An older file's sources (versions
+// 6 to 9) open with sharesTips false, each on new tips, as every source was then.
+const FIRST_VERSION_WITH_SHARES_TIPS = 10;
 
 // A component's properties in a file: name and color, plus constituents from version 7 on, plus
 // osmolality from version 9 on.
@@ -103,8 +110,8 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
 // A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 6 to
-// 9 have all of them: version 7's and version 9's changes are inside each component, and version
-// 8's inside the randomizations.
+// 10 have all of them: version 7's and version 9's changes are inside each component, and version
+// 8's and version 10's inside the randomizations.
 const FILE_PROPERTIES = [
   "format",
   "version",
@@ -672,8 +679,10 @@ function withRandomizations(plan, file, newIds) {
       }
     }
   });
+  randomizations.forEach((randomization, index) => checkSourcesForm(randomization, index, file.version));
   const renumbered = randomizations.map((randomization) => ({
     ...randomization,
+    sources: sourcesAsVersion10(randomization.sources, file.version),
     beforeId: randomization.beforeId === null ? null : newIds.get(randomization.beforeId),
     stages: randomization.stages.map((owned) => ({ ...owned, stage: newIds.get(owned.stage) })),
   }));
@@ -706,6 +715,37 @@ function checkRenumberableForm(randomization, index) {
         'exactly "labware", "well" and "stage".',
     );
   }
+}
+
+// Check 13, step 3: throws if the randomization at `index`, in a file of `version`, has a source
+// that's an object and, in a version 10 file, lacks sharesTips, or, in a version 6 to 9 file, has
+// it, e.g. 'randomization 1, source 2, is missing "sharesTips", which a version 10 file's sources
+// have.' Sources that aren't a list, and entries that aren't objects, are left to setRandomizations.
+function checkSourcesForm(randomization, index, version) {
+  if (!Array.isArray(randomization.sources)) {
+    return;
+  }
+  const hasSharesTips = version >= FIRST_VERSION_WITH_SHARES_TIPS;
+  randomization.sources.forEach((source, place) => {
+    if (!isObject(source) || Object.hasOwn(source, "sharesTips") === hasSharesTips) {
+      return;
+    }
+    const where = `randomization ${index + 1}, source ${place + 1}, `;
+    refuse(
+      hasSharesTips
+        ? `${where}is missing "sharesTips", which a version ${version} file's sources have.`
+        : `${where}has "sharesTips", which a version ${version} file's sources don't have.`,
+    );
+  });
+}
+
+// A file's randomization sources as version 10 holds them: in a version 6 to 9 file, each source
+// that's an object gets sharesTips false (each on new tips); otherwise `sources` as it is.
+function sourcesAsVersion10(sources, version) {
+  if (version >= FIRST_VERSION_WITH_SHARES_TIPS || !Array.isArray(sources)) {
+    return sources;
+  }
+  return sources.map((source) => (isObject(source) ? { ...source, sharesTips: false } : source));
 }
 
 // The stage IDs a randomization in a file names, in order: its beforeId (unless null), then each of
