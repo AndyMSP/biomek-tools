@@ -21,6 +21,7 @@ import {
 import { checkName } from "../../shared/input-checks/input-checks.js";
 import { tipGroups as sharedTipGroups } from "../../shared/tip-groups/tip-groups.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
+import { writeRunFiles } from "../../shared/file-writer/file-writer.js";
 import {
   NEW_STAGE_NAME,
   NEW_MIX_STEP_NAME,
@@ -60,6 +61,7 @@ import {
   setTipType,
   setTipProbes,
   removeTipChange,
+  tipsUsed,
   tipGroups,
   addComponent,
   renameComponent,
@@ -1720,6 +1722,204 @@ describe("transfer-designer", () => {
     assert.throws(() => removeTipChange(plan, START), {
       message: "The run always starts by loading tips, so the first tips can't be removed.",
     });
+  });
+
+  // --- Tips used ---
+
+  // A plan with `count` stages (planWithStages) that writeRunFiles accepts once it has transfers:
+  // named, with a component Media filling the reservoir's trough 1, which transferTo draws from.
+  function tipsPlanWithStages(count) {
+    let plan = addComponent(planWithStages(count), "Media", "#4e79a7");
+    plan = addToWells(plan, [trough("1")], "Media", capacityOf(RESERVOIR));
+    return setExperimentName(plan, "Exp36");
+  }
+
+  // Section 3's example (transfer-designer.md, "Tips used"), with the first and second tip types:
+  // START tips of the first type on [1, 2, 3, 4] before stages 1 and 2, the second type on [1, 2]
+  // before stage 3, the first on all eight probes before stage 4, and the second on [1] before
+  // stage 5, which has no transfers; stages 1 to 4 have one transfer each.
+  function tipsExamplePlan() {
+    let plan = setTipProbes(tipsPlanWithStages(5), START, [1, 2, 3, 4]);
+    plan = setTipProbes(setTipType(addTipChange(plan, "3"), "3", TIP_TYPES[1]), "3", [1, 2]);
+    // A new tip change copies the tips in use there (the second type, here), so its type is set.
+    plan = setTipProbes(setTipType(addTipChange(plan, "4"), "4", TIP_TYPES[0]), "4", probesFor(8));
+    plan = setTipProbes(setTipType(addTipChange(plan, "5"), "5", TIP_TYPES[1]), "5", [1]);
+    return withTransfersIn(plan, ["1", "2", "3", "4"]);
+  }
+
+  // A plan using only the second tip type: the START tips set to it, and stage 1 with a transfer.
+  function secondTypeOnlyPlan() {
+    return withTransfersIn(setTipType(tipsPlanWithStages(1), START, TIP_TYPES[1]), ["1"]);
+  }
+
+  // Two tip groups of the first type on the same probes (the second tip change copies the first),
+  // each with a transfer.
+  function twoSameGroupsPlan() {
+    return withTransfersIn(addTipChange(tipsPlanWithStages(2), "2"), ["1", "2"]);
+  }
+
+  // Three stages: the START group (stage 1) with a transfer, and a group of the first type on all
+  // eight probes holding stage 2, without transfers, and stage 3, with `stage3Transfer` deciding
+  // whether stage 3 has one.
+  function partlyEmptyGroupPlan(stage3Transfer) {
+    const plan = setTipProbes(addTipChange(tipsPlanWithStages(3), "2"), "2", probesFor(8));
+    return withTransfersIn(plan, stage3Transfer ? ["1", "3"] : ["1"]);
+  }
+
+  // Two stages: the START group (stage 1) without transfers, and a tip change before stage 2, with a
+  // transfer, of `tipType` on `probes`.
+  function emptyStartGroupPlan(tipType, probes) {
+    const plan = setTipType(addTipChange(tipsPlanWithStages(2), "2"), "2", tipType);
+    return withTransfersIn(setTipProbes(plan, "2", probes), ["2"]);
+  }
+
+  // Stage 1 without transfers, then a mix step on tips of its own mixing PLATE A1, which holds half
+  // its capacity of Media, so it mixes enough (no mix problem) and its draw is covered: { plan, id }.
+  function mixStepGroupPlan() {
+    const base = addToWells(tipsPlanWithStages(1), [plateWell("A1")], "Media", capacityOf(PLATE) / 2);
+    const { plan, id } = addMixStepWithNewTips(base, null);
+    return { plan: mixWells(plan, id, [plateWell("A1")]), id };
+  }
+
+  // The tips Stages.csv loads (transfer-designer.md, section 6, "it matches the Biomek files"): from
+  // the rows whose NewTip is 1, the number of probes in LoadProbes, added up by TipType, in
+  // TIP_TYPES order, e.g. [{ tipType: "BC230", count: 4 }].
+  function tipsLoadedByFiles(plan) {
+    const { files } = writeRunFiles(plan, new Date(2026, 9, 28, 1, 57, 32));
+    const [header, ...rows] = files.find((file) => file.name === "Stages.csv").text.split("\r\n");
+    const columns = header.split(",");
+    const counts = new Map();
+    for (const row of rows.filter((line) => line !== "")) {
+      // A comma inside double quotes is part of its field, so split only at commas followed by an
+      // even number of quotes.
+      const fields = row.split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/);
+      const field = (name) => fields[columns.indexOf(name)];
+      if (field("NewTip") === "1") {
+        const probes = field("LoadProbes").replaceAll('"', "").split(",");
+        counts.set(field("TipType"), (counts.get(field("TipType")) ?? 0) + probes.length);
+      }
+    }
+    return TIP_TYPES.filter((tipType) => counts.has(tipType)).map((tipType) => ({
+      tipType,
+      count: counts.get(tipType),
+    }));
+  }
+
+  // The tips counted from tipGroups: for each group with a transfer in any of its stages, its
+  // probes, added up by tip type, in TIP_TYPES order.
+  function tipsFromGroups(plan) {
+    const counts = new Map();
+    for (const group of tipGroups(plan)) {
+      if (group.stages.some((id) => transfersIn(plan, id).length > 0)) {
+        counts.set(group.tipType, (counts.get(group.tipType) ?? 0) + group.probes.length);
+      }
+    }
+    return TIP_TYPES.filter((tipType) => counts.has(tipType)).map((tipType) => ({
+      tipType,
+      count: counts.get(tipType),
+    }));
+  }
+
+  // Whether TIP_TYPES has a second tip type, for the tests that use one (skipped otherwise).
+  const NO_SECOND_TIP_TYPE = TIP_TYPES.length < 2;
+
+  test("tipsUsed of a new plan, with no transfers, is []", () => {
+    assert.deepEqual(tipsUsed(emptyPlan().plan), []);
+  });
+
+  test("tipsUsed of one stage with a transfer on the START tips counts DEFAULT_PROBE_COUNT tips of the first type", () => {
+    assert.deepEqual(tipsUsed(withTransfersIn(planWithStages(1), ["1"])), [
+      { tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT },
+    ]);
+  });
+
+  test("tipsUsed of section 3's example gives the first type 12 and the second 2, in TIP_TYPES order", { skip: NO_SECOND_TIP_TYPE }, () => {
+    assert.deepEqual(tipsUsed(tipsExamplePlan()), [
+      { tipType: TIP_TYPES[0], count: 12 },
+      { tipType: TIP_TYPES[1], count: 2 },
+    ]);
+  });
+
+  test("tipsUsed of a plan using only the second tip type gives only that type", { skip: NO_SECOND_TIP_TYPE }, () => {
+    assert.deepEqual(tipsUsed(secondTypeOnlyPlan()), [
+      { tipType: TIP_TYPES[1], count: DEFAULT_PROBE_COUNT },
+    ]);
+  });
+
+  test("tipsUsed counts two tip groups of the same type and probes, each with transfers, twice", () => {
+    assert.deepEqual(tipsUsed(twoSameGroupsPlan()), [
+      { tipType: TIP_TYPES[0], count: 2 * DEFAULT_PROBE_COUNT },
+    ]);
+  });
+
+  test("tipsUsed counts nothing for a tip group without transfers, and adding one makes it count in full", () => {
+    assert.deepEqual(tipsUsed(partlyEmptyGroupPlan(false)), [
+      { tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT },
+    ]);
+    assert.deepEqual(tipsUsed(partlyEmptyGroupPlan(true)), [
+      { tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT + 8 },
+    ]);
+  });
+
+  test("tipsUsed leaves out the START tips when their group has no transfers: the first type on other probes", () => {
+    assert.deepEqual(tipsUsed(emptyStartGroupPlan(TIP_TYPES[0], [7, 8])), [
+      { tipType: TIP_TYPES[0], count: 2 },
+    ]);
+  });
+
+  test("tipsUsed leaves out the START tips when their group has no transfers: the second type", { skip: NO_SECOND_TIP_TYPE }, () => {
+    assert.deepEqual(tipsUsed(emptyStartGroupPlan(TIP_TYPES[1], [1, 2, 3])), [
+      { tipType: TIP_TYPES[1], count: 3 },
+    ]);
+  });
+
+  test("tipsUsed counts a tip group whose only stage is a mix step mixing one well", () => {
+    const { plan, id } = mixStepGroupPlan();
+    assert.deepEqual(tipsUsed(plan), [
+      { tipType: tipChangeAt(plan, id).tipType, count: tipChangeAt(plan, id).probes.length },
+    ]);
+  });
+
+  test("tipsUsed counts a run randomization through its stages' tip changes: the sum over tipGroups with transfers", () => {
+    const { plan } = runRandomizationPlan();
+    assert.ok(tipGroups(plan).length > 2, "the randomization's stages have tip changes of their own");
+    assert.deepEqual(tipsUsed(plan), tipsFromGroups(plan));
+  });
+
+  test("tipsUsed counts a plan with a contents problem as it stands", () => {
+    const plan = withTransfersIn(planWithStages(1), ["1"]);
+    assert.ok(stagesWithContentsProblem(plan).size > 0, "the plan has a contents problem");
+    assert.deepEqual(tipsUsed(plan), [{ tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT }]);
+  });
+
+  test("tipsUsed matches the tips the Biomek files load", () => {
+    const plans = [
+      ["one stage with a transfer", withTransfersIn(tipsPlanWithStages(1), ["1"])],
+      ["two groups of the same type and probes", twoSameGroupsPlan()],
+      ["a group without transfers", partlyEmptyGroupPlan(false)],
+      ["a group with a stage without transfers", partlyEmptyGroupPlan(true)],
+      ["the START group without transfers", emptyStartGroupPlan(TIP_TYPES[0], [7, 8])],
+      ["a mix step's group", mixStepGroupPlan().plan],
+      ["a run randomization", setExperimentName(runRandomizationPlan().plan, "Exp36")],
+    ];
+    if (!NO_SECOND_TIP_TYPE) {
+      plans.push(
+        ["section 3's example", tipsExamplePlan()],
+        ["only the second type", secondTypeOnlyPlan()],
+        ["the START group without transfers, second type", emptyStartGroupPlan(TIP_TYPES[1], [1, 2, 3])],
+      );
+    }
+    for (const [name, plan] of plans) {
+      assert.deepEqual(tipsUsed(plan), tipsLoadedByFiles(plan), name);
+    }
+  });
+
+  test("changing the list tipsUsed returned doesn't change the next one", () => {
+    const plan = withTransfersIn(planWithStages(1), ["1"]);
+    const first = tipsUsed(plan);
+    first[0].count = 99;
+    first.push({ tipType: "BC50", count: 1 });
+    assert.deepEqual(tipsUsed(plan), [{ tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT }]);
   });
 
   // --- Components and starting contents ---

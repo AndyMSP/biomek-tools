@@ -594,6 +594,29 @@ export function removeTipChange(plan, key) {
   return withParts(plan, { tipChanges: withoutKey(plan.tipChanges, key) });
 }
 
+// How many tips of each tip type the run loads, in TIP_TYPES order, leaving out types it loads
+// none of, as a new list each time, e.g. [{ tipType: "BC230", count: 32 }, { tipType: "BC1070",
+// count: 8 }]; [] for a plan without transfers. Each tip group with transfers (mixed wells
+// included) counts one tip per probe, as the file writer writes a tip change for exactly those
+// (file-writer.md, Stages.csv); a group without transfers loads no tips. Randomizations count only
+// through their stages' tip changes, and problems are ignored (section 3, "Tip changes and tip
+// groups").
+export function tipsUsed(plan) {
+  const stagesWithTransfers = new Set(
+    plan.operationList.listOperations().map((operation) => operation.stage),
+  );
+  const counts = new Map();
+  for (const group of tipGroups(plan)) {
+    if (group.stages.some((id) => stagesWithTransfers.has(id))) {
+      counts.set(group.tipType, (counts.get(group.tipType) ?? 0) + group.probes.length);
+    }
+  }
+  return TIP_TYPES.filter((tipType) => counts.has(tipType)).map((tipType) => ({
+    tipType,
+    count: counts.get(tipType),
+  }));
+}
+
 // --- Components and starting contents ---
 
 // Returns the plan with a new component, last, called `name` (spaces at its ends removed) and drawn
