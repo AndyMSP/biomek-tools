@@ -954,7 +954,9 @@ is the logic's, and its messages are shown as they come. The column's boxes are 
   If either end is a heading or a randomization, the run is the boxes from the anchor's box to the
   clicked thing's box, each as a whole (a tip group or a randomization).
 - A stage of a randomization's own tip group is selected by its row as any stage; that tip group's
-  heading counts as that stage's row.
+  heading counts as its first stage's row (since 2026-11-05 such a tip group may hold several of
+  the randomization's stages, when their sources share tips; it's never an ordinary tip group, so
+  it's never selected as a group).
 - The picked set is **forgotten** (so what's open is selected again) when anything else opens
   (`‹`, `›`, a seam's buttons, a plain click on a stage), after any other edit, after Undo and
   Redo, and on Escape when nothing else uses Escape (section 12).
