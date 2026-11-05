@@ -380,7 +380,9 @@ Last updated: 2026-11-05
   tip type after the transfer count, e.g. `24 transfers done · 32 BC230 tips · 8 BC1070 tips`.
   **Specified** (Draft, 2026-11-05, in the hands-off workflow): `tipsUsed` (`transfer-designer.md`,
   "Tip changes and tip groups") and End's count and tooltip (`transfer-designer-page.md`, section
-  7). It changes no Biomek files.
+  7). It changes no Biomek files. **Built (#135, 2026-11-05)**: code, tests and REPL of `tipsUsed`,
+  and End's count on the page; the specifications and the build each reviewed by a separate
+  agent, and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -683,7 +685,7 @@ added on 2026-10-28 (Andy).
     `START` tips count and a tip group without transfers doesn't (the file writer writes no tip
     change for it); tip types in `config/tip-types.js` order; `1 BC230 tip`; with no transfers,
     `0 transfers done` alone; a tooltip saying what's counted. It changes no Biomek files.
-    **Specified** (Draft, 2026-11-05): see "Where things stand".
+    **Specified** (Draft, 2026-11-05) and **Built (#135, 2026-11-05)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
