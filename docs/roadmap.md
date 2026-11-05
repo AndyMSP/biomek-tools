@@ -351,7 +351,8 @@ Last updated: 2026-11-05
   `config/concentration-units.js` (M `offered: true`; the module and its tests read the offered
   units from the file, so neither changes), a dated note in ADR 0013, and the page's checks
   (`transfer-designer-page.md`, section 16). It changes no Biomek files, and existing plan files
-  still open.
+  still open. **Built (#133, 2026-11-05)**: the configuration only; the menu, module and tests
+  already follow it. Still to check by Andy.
 - **Decided: osmolality** (Andy, 2026-11-05; item 15, below; ADR 0016, Proposed): a measured
   property of a whole solution, not a constituent. Each component may have its stock's measured
   osmolality (mOsm/kg), and every well's is estimated as the share-weighted sum of its components',
@@ -360,7 +361,10 @@ Last updated: 2026-11-05
   hands-off workflow): the new shared module `osmolality` (`src/shared/osmolality/osmolality.md`),
   `setOsmolality` and `osmolalityOf` (`transfer-designer.md`, "Osmolality"), plan files version 9
   (`plan-file.md`), the component's box, chip tooltip and contents card
-  (`transfer-designer-page.md`), glossary "Osmolality". It changes no Biomek files.
+  (`transfer-designer-page.md`), glossary "Osmolality". It changes no Biomek files. **Built (#134,
+  2026-11-05)**: code, tests and REPL of `osmolality`, the transfer designer, plan files (version
+  9, versions 1 to 8 still opening) and the page; the specifications and the build each reviewed
+  by a separate agent, and checked in headless Chrome. Still to check by Andy.
 - **Decided: cell density** (Andy, 2026-11-05; item 16, below): cells entered as a constituent in
   cells/mL, and a well's cells shown in cells/cm² on the 96-well flat plates. **Specified** (Draft,
   2026-11-05, in the hands-off workflow; ADR 0013, amended 2026-11-05): the cells' unit and
@@ -368,7 +372,10 @@ Last updated: 2026-11-05
   (`deck.md`), `seedingDensitiesOf` (`transfer-designer.md`), units and plan files
   (`plan-file.md`: no new version), and the page's unit menu, amount box, chips and contents card
   (`transfer-designer-page.md`); glossary "Cell density", "Growth area", "Seeding density". It
-  changes no Biomek files.
+  changes no Biomek files. **Built (#136, 2026-11-05)**: code and tests of `concentrations`,
+  `deck`, the transfer designer and plan files, the REPL, and the page; the specifications and
+  the build each reviewed by a separate agent, and checked in headless Chrome. Still to check by
+  Andy.
 - **Decided: End shows the tips the run uses** (Andy, 2026-11-05; item 17, below), counted per
   tip type after the transfer count, e.g. `24 transfers done · 32 BC230 tips · 8 BC1070 tips`.
   **Specified** (Draft, 2026-11-05, in the hands-off workflow): `tipsUsed` (`transfer-designer.md`,
@@ -633,7 +640,7 @@ added on 2026-10-28 (Andy).
       to smallest.
     - **Nothing else changes:** no Biomek files, and plan files keep their format (a file could
       already hold a constituent in M, as display-only units are accepted when opened).
-    **Specified** (Draft, 2026-11-05): see "Where things stand".
+    **Specified** (Draft, 2026-11-05) and **Built (#133, 2026-11-05)**: see "Where things stand".
 15. **Osmolality** (Andy, 2026-11-05; ADR 0016): what a well's osmolality is, so a plan shows when
     adding drugs, buffers or DMSO stocks moves a well away from the medium's. Decided so far (Andy,
     2026-11-05):
@@ -652,7 +659,7 @@ added on 2026-10-28 (Andy).
     - **Saved in plan files and undone** like other component edits: plan format version 9, with
       versions 1 to 8 still opening (no osmolality). No Biomek file changes, so it needn't come
       before the final runs.
-    **Specified** (Draft, 2026-11-05): see "Where things stand".
+    **Specified** (Draft, 2026-11-05) and **Built (#134, 2026-11-05)**: see "Where things stand".
 16. **Cell density** (Andy, 2026-11-05): seeding cells with the tool needs a well's cells per cm².
     It follows items 14 (M as an offered unit) and 15 (osmolality), so its unit lists include M.
     Decided so far (Andy, 2026-11-05):
@@ -667,7 +674,7 @@ added on 2026-10-28 (Andy).
       only on BCFlat96; having none keeps cells/cm² off a type. BCFlat96's is Andy's stand-in
       ("Technical debt").
     - It changes no Biomek files and no plan-file format.
-    **Specified** (Draft, 2026-11-05): see "Where things stand".
+    **Specified** (Draft, 2026-11-05) and **Built (#136, 2026-11-05)**: see "Where things stand".
 17. **Tips used, in End** (Andy, 2026-11-05): the End box says how many tips the plan uses,
     counted per tip type, after the transfer count, e.g. `24 transfers done · 32 BC230 tips · 8
     BC1070 tips`; only the tip types the plan uses are shown. The count is the sum of the tips every
