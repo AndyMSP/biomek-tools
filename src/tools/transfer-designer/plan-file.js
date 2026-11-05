@@ -6,9 +6,10 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 7, which holds each component's constituents, the randomizations and
-// the well labels, each stage's settings hold its mixes and each tip change its probes. It still
-// reads version 6 files (components without constituents), version 5 files (also no
+// It writes format version 8, which holds each component's constituents, the randomizations (whose
+// filler may be several wells) and the well labels, each stage's settings hold its mixes and each
+// tip change its probes. It still reads version 7 files (the same properties, written when a filler
+// was one well), version 6 files (components without constituents), version 5 files (also no
 // randomizations), version 4 files (also no well labels), version 3 files (also no mixes), version
 // 2 files (also probes in each stage's settings) and version 1 files (also without an experiment
 // name). Their components carry nothing and their stages get no mixing, since plans couldn't do
@@ -58,21 +59,23 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // from the stages to the tip changes (ADR 0007, "Tip changes"); version 4 (2026-10-30) added each
 // stage's mixes (ADR 0007, "Mixing"); version 5 (2026-11-01) added the well labels; version 6
 // (2026-11-01) added the randomizations (ADR 0012); version 7 (2026-11-01) added each component's
-// constituents (ADR 0013).
-export const PLAN_FILE_VERSION = 7;
+// constituents (ADR 0013); version 8 (2026-11-02) lets a randomization's filler be several wells,
+// with the same properties, so a tool that knows only version 7 refuses such a file as newer.
+export const PLAN_FILE_VERSION = 8;
 
-// The versions this module can read: the one it writes, version 6 (plans saved on 2026-11-01, before
-// constituents), version 5 (plans saved on 2026-11-01, before randomizations), version 4 (plans saved
-// from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved on 2026-10-30, before
-// mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version 1 (plans saved before
-// 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 6, 5, 4, 3, 2, 1];
+// The versions this module can read: the one it writes, version 7 (plans saved from 2026-11-01 to
+// 2026-11-02, before several filler wells; read with the same rules), version 6 (plans saved on
+// 2026-11-01, before constituents), version 5 (plans saved on 2026-11-01, before randomizations),
+// version 4 (plans saved from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved
+// on 2026-10-30, before mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version
+// 1 (plans saved before 2026-10-28).
+const VERSIONS_READ = [PLAN_FILE_VERSION, 7, 6, 5, 4, 3, 2, 1];
 
 // The first version whose components hold their constituents. An older file's components are
 // { name, color } only, and open carrying nothing.
 const FIRST_VERSION_WITH_CONSTITUENTS = 7;
 
-// A component's properties in a file: name and color, plus constituents from version 7.
+// A component's properties in a file: name and color, plus constituents from version 7 on.
 const COMPONENT_PROPERTIES = ["name", "color"];
 const COMPONENT_PROPERTIES_WITH_CONSTITUENTS = [...COMPONENT_PROPERTIES, "constituents"];
 
@@ -86,8 +89,9 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 // table: an older file's stages can't hold them, and get them as null.
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 6 and
-// 7 have all of them: version 7's change is inside each component.
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 6 to
+// 8 have all of them: version 7's change is inside each component, and version 8's inside the
+// randomizations.
 const FILE_PROPERTIES = [
   "format",
   "version",
@@ -235,7 +239,8 @@ function checkFormatAndVersion(file) {
 // lacks the ones version 5 added, and a version 1 file also lacks the ones version 2 added, e.g.
 // propertiesOfVersion(1) has no "experimentName", "wellLabels" or "randomizations". Versions 3 and 4
 // added no property: version 3 moved probes from the stages to the tip changes, and version 4 added
-// mixes inside each stage's settings.
+// mixes inside each stage's settings; nor did versions 7 and 8 (constituents inside each component,
+// and several filler wells inside the randomizations).
 function propertiesOfVersion(version) {
   let properties = FILE_PROPERTIES;
   if (version < 6) {
@@ -520,7 +525,7 @@ function addStartingContents(plan, startingContents, componentNames) {
 }
 
 // Check 9: returns the plan with the file's tip changes, each keyed by START or a stage's ID in the
-// file, which `newIds` turns into its new ID. In a version 3 to 7 file each holds its tip type and
+// file, which `newIds` turns into its new ID. In a version 3 to 8 file each holds its tip type and
 // probes; in an older file each holds only its tip type, and gets every probe its stages used
 // (`stageProbes`, from addStages), which is where look-ahead loading put tips. Throws if there's
 // none at START; then, for each tip change in turn, if its key isn't one of the file's stages or is

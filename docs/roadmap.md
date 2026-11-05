@@ -336,6 +336,15 @@ Last updated: 2026-11-02
   2026-11-02)**: code, tests and REPL of the three functions, and the page; the specifications
   and the build each reviewed by a separate agent, and checked in headless Chrome. Still to check by
   Andy.
+- **Decided: a filler can be several wells** (Andy, 2026-11-02; item 13, below), since one well
+  can't always hold enough filler; Exp36 needs it. Worked on alongside moving wells (#131), on its
+  own branch (Andy, 2026-11-02). Shaped in a preview (2026-11-02 and 2026-11-03) and
+  **specified** (Draft, in the hands-off workflow): `fillerShares`, `isRandomizationOutOfDate`, the
+  one-liquid problem and renaming on a run (`transfer-designer.md`, "Randomizations"), plan files
+  version 8 (`plan-file.md`), the card, heading, problem count and Biomek files box
+  (`transfer-designer-page.md`), glossary "Randomization". **Built (#132, 2026-11-03)**: code,
+  tests and REPL, and the page; the specifications and the build each reviewed by a separate
+  agent, and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -545,6 +554,49 @@ added on 2026-10-28 (Andy).
       unused one until a well is picked, a click or drag on it gives that message, and the
       contents card's last line says `Filled by a randomization`.
     **Specified** (Draft, 2026-11-02) and **built (#131)**: see "Where things stand".
+13. **A filler of several wells** (Andy, 2026-11-02): a randomization's filler can't always fit in
+    one well, so it can be several wells. Exp36 needs it. Decided so far (Andy, 2026-11-02):
+    - **Picking them:** several source rows can be marked Filler, where only one can today. They're
+      used in the order they're listed, so the user puts the rows in the order wanted.
+    - **Whole transfers only:** the filler's transfers draw from its first well until the next one
+      would reach into the well's dead volume; that transfer, and the rest, draw from the next
+      well. A transfer is never split between two wells, so a well may be left with a little more
+      than its dead volume. Since every transfer of a randomization has the same volume, each
+      filler well gives as many whole transfers as fit in what it holds above its dead volume at
+      the randomization's point in the plan (e.g. 1,900 µL above it and 50 µL transfers: 38).
+    - **One stage for all the filler wells** (Andy, 2026-11-02), on one set of tips, since the
+      liquid is the same: the fewest tips, and the Stages column shows the filler as one thing.
+      Its transfers each draw from the filler well they were given. (One stage per filler well,
+      each on new tips as other sources are, was picked by mistake first, then changed.)
+    - **The filler wells must hold one liquid** (Andy, 2026-11-02, from the preview: nothing said
+      so when they didn't), since they share a stage and tips: the same components in the same
+      proportions just before the randomization (so Media and Media with 1% DMSO differ); filler
+      wells holding nothing are left out, as they show as overdrawn. Otherwise it's a problem that
+      stops Randomize, like the card's others: `The filler wells hold different liquids.`
+    - **A randomization out of date is flagged, not rerun** (Andy, 2026-11-02, from the preview:
+      the shares depend on what the filler wells hold, so an edit elsewhere, such as topping up a
+      trough or moving a well onto labware with another dead volume, could leave its stages
+      different from what it would make now). It's out of date when it has run and running it
+      again now would give different transfers, or it now has a problem. Then its heading reads
+      `needs update` (in red), its card says `The plan has changed since this last ran. Press
+      Update to bring its stages up to date.`, it counts as one problem in the problem count, and
+      the Biomek files wait: `A randomization (at stage 1, “Drug”) is out of date: open it and
+      press Update.` Rerunning it automatically after every edit was considered and declined: it
+      would change stages, perhaps a plate already checked, without the user asking.
+      **How it's found** (decided with Andy, 2026-11-03): a trial run on a copy of the plan, with
+      the card's settings and the same seed, compared with the stored stages: for each of its
+      stages, in order, its source well, its **name**, and each transfer's source, destination and
+      volume (not stage IDs, which a trial run makes fresh). Names are compared because a stage is
+      named from what its source holds when it runs (Andy: changing every filler well to another
+      liquid left the stage named for the old one); **Update also renames** a stage whose name would
+      now differ. So changing what a source holds, or renaming its component, flags it too.
+    - **Not enough filler:** if the filler wells together don't hold enough, the last one draws
+      into its dead volume or is overdrawn, shown and refused like any contents problem.
+    - **The Biomek files' format doesn't change** (the filler's transfers name different source
+      wells; the Biomek orders a stage's transfers itself, B56358AF 22-25, so splitting by whole
+      transfers is safe). Plan files do: today they allow one filler, so a new format version, with
+      older files still opening.
+    **Specified** (Draft, 2026-11-03) and **built (#132)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -558,7 +610,9 @@ final Biomek runs, so they test the files as they will be:
 6. Moving wells (item 12), added on 2026-11-02: preview, specifications, then build. It doesn't
    change the Biomek files' format, so it doesn't need to come before the final runs; it's being
    done first anyway, on 2026-11-02, while the runs wait for Andy to be at the Biomek.
-7. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+7. A filler of several wells (item 13), added on 2026-11-02: preview, specifications, then build.
+   It doesn't change the Biomek files' format, so it needn't come before the final runs.
+8. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen

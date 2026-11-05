@@ -25,8 +25,9 @@ import { OperationList } from "../operation-list/operation-list.js";
 // empty; a transfer may ask for up to this much more than its source's usable volume without being
 // a problem; and a well may be over its capacity by up to this much without being overfilled. It is
 // far smaller than anything a pipette can move, and far larger than the leftovers decimal
-// arithmetic leaves (such as 0.1 + 0.2 - 0.3), so it separates the two (spec section 3).
-const NEGLIGIBLE_MICROLITERS = 0.000001;
+// arithmetic leaves (such as 0.1 + 0.2 - 0.3), so it separates the two (spec section 3). Exported,
+// so a module comparing amounts the same way (the transfer designer's) uses this one value.
+export const NEGLIGIBLE_MICROLITERS = 0.000001;
 
 // Passed by replay to the ContentsSnapshot constructor. It isn't exported, so no other code can
 // pass it, and so only replay can make a snapshot.

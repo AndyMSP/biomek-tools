@@ -119,8 +119,10 @@ of the tools can still open it, or say why it can't.
 Part of a plan that spreads replicates of several sources at random over a set of wells to fill, on
 any number of plates, with a seed, and makes one stage per source, each on new tips, moving them.
 It owns those stages: they change only through it. Its **sources** are the wells it moves liquid
-from; its **wells to fill**, the wells it fills; its **filler**, the one source that fills the
-wells the other sources' replicates leave over (ADR 0012).
+from; its **wells to fill**, the wells it fills; its **filler**, what fills the wells the other
+sources' replicates leave over: one or more sources, its **filler wells**, which should hold one
+liquid (it's a problem otherwise), used in their order, in one stage of their own (ADR 0012; Andy,
+2026-11-02). It's **out of date** when its stages differ from what running it now would make.
 
 **Seam**
 A place in the transfer designer's Stages column where a stage, a mix step or a tip change can be

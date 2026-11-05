@@ -157,12 +157,13 @@ One picoliter is far smaller than anything a pipette can move, and far larger th
 leftovers. It is a named constant in the code, not lab configuration.
 
 ## 4. Interface
-The module exports one function and one class.
+The module exports one function, one class and one constant.
 
 | Member | Description |
 |---|---|
 | `replay(startingContents, operationList, operationCount)` | Checks the starting contents, then applies the first `operationCount` operations of `operationList` (an `OperationList`), in order. Returns a `ContentsSnapshot`. `operationCount` is optional: leave it out to apply every operation. |
 | `ContentsSnapshot` | The contents, problems and affected wells at one moment. Made only by `replay`; immutable. |
+| `NEGLIGIBLE_MICROLITERS` | `0.000001`, the allowance for arithmetic leftovers (section 3, "Tiny amounts"), for a caller comparing amounts the same way. |
 
 **`ContentsSnapshot` members**
 

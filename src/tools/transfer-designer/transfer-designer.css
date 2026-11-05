@@ -1611,6 +1611,12 @@ button.entry-row {
   white-space: nowrap;
 }
 
+/* A randomization that's out of date: "needs update" in red, semibold (section 7). */
+.randomization-status.needs-update {
+  color: var(--red);
+  font-weight: 600;
+}
+
 /* The dice icon: two dice drawn in the text's color, their faces filled so the front one hides the
    back one where they overlap. */
 .dice-icon {
