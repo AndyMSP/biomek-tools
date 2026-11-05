@@ -1752,6 +1752,14 @@ describe("transfer-designer", () => {
     return withTransfersIn(setTipType(tipsPlanWithStages(1), START, TIP_TYPES[1]), ["1"]);
   }
 
+  // Two stages run as the second tip type then the first: the START tips set to the second type
+  // before stage 1, and a tip change to the first type (on the probes it copies) before stage 2,
+  // each stage with a transfer.
+  function secondTypeFirstPlan() {
+    const plan = setTipType(addTipChange(setTipType(tipsPlanWithStages(2), START, TIP_TYPES[1]), "2"), "2", TIP_TYPES[0]);
+    return withTransfersIn(plan, ["1", "2"]);
+  }
+
   // Two tip groups of the first type on the same probes (the second tip change copies the first),
   // each with a transfer.
   function twoSameGroupsPlan() {
@@ -1846,6 +1854,13 @@ describe("transfer-designer", () => {
     ]);
   });
 
+  test("tipsUsed lists tip types in TIP_TYPES order, not run order", { skip: NO_SECOND_TIP_TYPE }, () => {
+    assert.deepEqual(tipsUsed(secondTypeFirstPlan()), [
+      { tipType: TIP_TYPES[0], count: DEFAULT_PROBE_COUNT },
+      { tipType: TIP_TYPES[1], count: DEFAULT_PROBE_COUNT },
+    ]);
+  });
+
   test("tipsUsed counts two tip groups of the same type and probes, each with transfers, twice", () => {
     assert.deepEqual(tipsUsed(twoSameGroupsPlan()), [
       { tipType: TIP_TYPES[0], count: 2 * DEFAULT_PROBE_COUNT },
@@ -1906,6 +1921,7 @@ describe("transfer-designer", () => {
       plans.push(
         ["section 3's example", tipsExamplePlan()],
         ["only the second type", secondTypeOnlyPlan()],
+        ["the second type run before the first", secondTypeFirstPlan()],
         ["the START group without transfers, second type", emptyStartGroupPlan(TIP_TYPES[1], [1, 2, 3])],
       );
     }

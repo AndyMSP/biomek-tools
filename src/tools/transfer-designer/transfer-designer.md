@@ -1337,6 +1337,9 @@ order of checks.
   - section 3's example gives the first type 12 and the second 2, in `TIP_TYPES` order, though the
     second type's tips come before the first's last ones in the run;
   - a plan using only the second tip type (the `START` tips set to it) gives only that type;
+  - the list is in `TIP_TYPES` order, not run order: the `START` tips set to the second tip type
+    with a transfer, then a tip change to the first tip type with a transfer, lists the first type
+    first;
   - two tip groups of the same type and probes, each with transfers, count twice;
   - a tip group whose stages have no transfers counts nothing, and adding one transfer to it makes
     it count; a group with a transfer stage without transfers and one with transfers counts in
