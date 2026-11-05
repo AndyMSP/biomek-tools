@@ -27,6 +27,7 @@ import {
   gridOf,
   labwareTypeOf,
   wellsInBox,
+  growthAreaOf,
 } from "../../shared/deck/deck.js";
 import { writeRunFiles, checkExperimentName } from "../../shared/file-writer/file-writer.js";
 import { zipFiles } from "../../shared/zip/zip.js";
@@ -94,6 +95,7 @@ import {
   concentrationsOf,
   setOsmolality,
   osmolalityOf,
+  seedingDensitiesOf,
   columnBoxes,
   moveItems,
   copyOf,
@@ -106,7 +108,7 @@ import {
   CONCENTRATION_UNITS,
   DEFAULT_CONCENTRATION_UNIT,
 } from "../../../config/concentration-units.js";
-import { bestUnit } from "../../shared/concentrations/concentrations.js";
+import { bestUnit, familyOf, isCellFamily } from "../../shared/concentrations/concentrations.js";
 import { isObject } from "../../shared/input-checks/input-checks.js";
 
 // --- Constants ---
@@ -169,6 +171,18 @@ const CURSOR_LABEL_OFFSET = { x: 14, y: -26 };
 
 // The color of an arrow from an empty well, and of a well's component with no color.
 const GRAY = "#9a9a94";
+
+// A typed amount that's a number (section 13, "Typing an amount"): optionally "-", then digits with
+// an optional decimal point and part, or a decimal part alone, then an optional exponent, e.g.
+// "1.5e6", ".5", "5.", "2e+5".
+const TYPED_AMOUNT_PATTERN = /^-?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/;
+
+// The superscript digits a cell figure's power of ten is written in (section 13), by digit.
+const SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+
+// The unit of a well's seeding density on the contents card (section 6): cells per cm² of its
+// growth area. A unit of the page's display, not a concentration unit of the configuration.
+const SEEDING_DENSITY_UNIT = "cells/cm²";
 
 // The layouts of section 3: side by side above 1000px, stacked below.
 const wideLayout = window.matchMedia("(min-width: 1001px)");
@@ -4433,7 +4447,7 @@ function createPalette(plan) {
 // e.g. "10 mM" for Dye stock carrying Dye at 10 mM; "Hy-Soy 4 g/L +2" for a medium carrying three.
 function chipCarriesText(component) {
   const [first, ...rest] = component.constituents;
-  const amount = `${formatAmount(first.amount)} ${first.unit}`;
+  const amount = formatConstituentAmount(first.amount, first.unit);
   const named = first.name === component.name ? amount : `${first.name} ${amount}`;
   return rest.length === 0 ? named : `${named} +${rest.length}`;
 }
@@ -4452,9 +4466,20 @@ function chipTooltip(component) {
   return lines.join("\n");
 }
 
-// A constituent as a tooltip lists it: its name, amount and unit, e.g. "Hy-Soy 4 g/L".
+// A constituent as a tooltip lists it: its name, amount and unit, e.g. "Hy-Soy 4 g/L", or for
+// cells, a cell figure, e.g. "Cells 1.5 × 10⁶ cells/mL".
 function constituentText(constituent) {
-  return `${constituent.name} ${formatAmount(constituent.amount)} ${constituent.unit}`;
+  return `${constituent.name} ${formatConstituentAmount(constituent.amount, constituent.unit)}`;
+}
+
+// A constituent's amount and unit as a chip and its tooltip show them (sections 8 and 13): a cell
+// figure for an amount in the cells' family, e.g. "1.5 × 10⁶ cells/mL"; otherwise an amount, then
+// the unit, e.g. "4 g/L".
+function formatConstituentAmount(amount, unit) {
+  if (isCellFamily(familyOf(unit))) {
+    return formatCellFigure(amount, unit);
+  }
+  return `${formatAmount(amount)} ${unit}`;
 }
 
 // Picks a component or the eraser for the brush. Not an edit: only the palette and the cursor's
@@ -5506,7 +5531,7 @@ function contentsCardLines(plan, end) {
   lines.push(list);
   const concentrations = concentrationsOf(plan, shownSnapshot, end);
   if (concentrations.length > 0) {
-    lines.push(createConcentrationsGroup(concentrations));
+    lines.push(createConcentrationsGroup(plan, end, concentrations));
   }
   if (showsOsmolality(plan, end)) {
     lines.push(createOsmolalityLine(osmolalityOf(plan, shownSnapshot, end)));
@@ -5543,25 +5568,47 @@ function cardHint(plan, end, wellLabel) {
   return wellLabel === null ? "Right-click to name" : "Right-click to rename";
 }
 
-// The contents card's Concentrations group (section 6): under a thin rule, the heading, then one
-// line per entry of `concentrations` (concentrationsOf, in its order): the constituent's name at the
-// left and, at the right in the volume's style, its amount and unit in the unit that fits it best
-// (bestUnit), e.g. "Dye" … "476 µM".
-function createConcentrationsGroup(concentrations) {
+// The contents card's Concentrations group (section 6) for the well `end`: under a thin rule, the
+// heading, then one line per entry of `concentrations` (concentrationsOf, in its order): the
+// constituent's name at the left and, at the right in the volume's style, its amount and unit in
+// the unit that fits it best (bestUnit), e.g. "Dye" … "476 µM". Cells show as a cell figure, e.g.
+// "1.5 × 10⁵ cells/mL", or, on labware with a growth area, as the well's seeding density in its
+// place, e.g. "4.69 × 10⁴ cells/cm²", with a tooltip naming the area.
+function createConcentrationsGroup(plan, end, concentrations) {
   const group = createElement("div", "", "card-concentrations");
   group.append(createElement("div", "Concentrations", "card-group-heading"));
+  const growthArea = growthAreaOf(end.labware);
+  const seedingDensities =
+    growthArea === null ? [] : seedingDensitiesOf(plan, shownSnapshot, end);
   const list = document.createElement("ul");
   for (const entry of concentrations) {
-    const { amount, unit } = bestUnit(entry.family, entry.value);
     const item = document.createElement("li");
     item.append(
       createElement("span", entry.name),
-      createElement("span", `${formatAmount(amount)} ${unit}`, "card-volume"),
+      createElement("span", concentrationText(entry, seedingDensities), "card-volume"),
     );
+    if (isCellFamily(entry.family) && growthArea !== null) {
+      item.title = `Assumes every cell settles onto the well's ${formatAmount(growthArea)} cm² bottom.`;
+    }
     list.append(item);
   }
   group.append(list);
   return group;
+}
+
+// One Concentrations line's figure (section 6): a cell figure for cells, as the seeding density
+// from `seedingDensities` (seedingDensitiesOf) when it has the entry's name, else in cells/mL;
+// otherwise the amount and unit that fit best (bestUnit), e.g. "476 µM".
+function concentrationText(entry, seedingDensities) {
+  if (isCellFamily(entry.family)) {
+    // Within a plan a constituent's name has one family, so the name picks out one entry.
+    const seeding = seedingDensities.find((density) => density.name === entry.name);
+    if (seeding !== undefined) {
+      return formatCellFigure(seeding.value, SEEDING_DENSITY_UNIT);
+    }
+  }
+  const { amount, unit } = bestUnit(entry.family, entry.value);
+  return isCellFamily(entry.family) ? formatCellFigure(amount, unit) : `${formatAmount(amount)} ${unit}`;
 }
 
 // True if the contents card shows an Osmolality line for the well `end` (section 6): it holds
@@ -5857,9 +5904,10 @@ function rowOf(constituent) {
 }
 
 // A row of a component's box as it's passed on to setConstituents: its amount as a number when the
-// text is one, else as typed (section 13), so the logic's message says what's wrong.
+// text is one, exponent form included, else as typed (section 13), so the logic's message says
+// what's wrong.
 function constituentOfRow(row) {
-  return { name: row.name, amount: volumeValue(row.amount), unit: row.unit };
+  return { name: row.name, amount: amountValue(row.amount), unit: row.unit };
 }
 
 // What a box edits, before any changes: a component's name, color, constituents (as rows of
@@ -6008,6 +6056,8 @@ function createEditingBox(plan) {
   // A stage's box is wider than the others, so its menus show whole mode names (section 15); a mix
   // step's has no menus, so it's as wide as the others (section 10).
   box.classList.toggle("stage-box", editingBox.kind === "stage" && !isMixStepBox);
+  // A component's box is as wide, so its Contains rows' name boxes keep room (section 15).
+  box.classList.toggle("component-box", editingBox.kind === "component");
   box.setAttribute("role", "dialog");
   const what = isMixStepBox ? "mix step" : editingBox.kind === "tip" ? "new tips" : editingBox.kind;
   box.setAttribute("aria-label", `Edit ${what}`);
@@ -6886,6 +6936,14 @@ function volumeValue(text) {
   return /^-?(\d+\.?\d*|\.\d+)$/.test(text) ? Number(text) : text;
 }
 
+// A typed amount (a constituent's; section 13, "Typing an amount"): with spaces at the ends removed,
+// a number when the whole text is one, exponent form included, e.g. "1.5e6" → 1500000, ".5" → 0.5,
+// "1e400" → Infinity (refused by the logic); anything else as typed, e.g. "1,500,000" or "e6".
+function amountValue(text) {
+  const trimmed = text.trim();
+  return TYPED_AMOUNT_PATTERN.test(trimmed) ? Number(trimmed) : text;
+}
+
 // A component's osmolality as its box reads it back (section 8): the text trimmed; empty (or only
 // spaces) is none, null; a finite number is passed on as that number (so "300.0" gives 300 and
 // "1e-7" round-trips with what the box shows); anything else is passed on as typed, trimmed, so
@@ -6949,6 +7007,20 @@ function formatAmount(amount) {
   // toPrecision gives 3 significant figures, possibly in exponent form for large values; Number()
   // then String() drops trailing zeros and writes it plainly.
   return String(Number(amount.toPrecision(3)));
+}
+
+// A cell figure (section 13): `value` with its `unit` in powers of ten, as labs write cell counts,
+// when its exponent (with 2 decimals) is 3 or more, e.g. (46875, "cells/cm²") → "4.69 × 10⁴
+// cells/cm²", (999.6, "cells/mL") → "1 × 10³ cells/mL"; otherwise as an amount, e.g. (500,
+// "cells/mL") → "500 cells/mL".
+function formatCellFigure(value, unit) {
+  const [mantissa, exponentText] = value.toExponential(2).split("e");
+  const exponent = Number(exponentText);
+  if (exponent < 3) {
+    return `${formatAmount(value)} ${unit}`;
+  }
+  const superscript = [...String(exponent)].map((digit) => SUPERSCRIPT_DIGITS[digit]).join("");
+  return `${Number(mantissa)} × 10${superscript} ${unit}`;
 }
 
 // A count with its noun, plural except for 1, e.g. countOf(1, "well") → "1 well", (3) → "3 wells".

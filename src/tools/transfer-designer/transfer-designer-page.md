@@ -121,6 +121,15 @@
 > hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull
 > request. They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-05, cell density, item 16 of v0.2.0):** decided with Andy on
+> 2026-11-05: cells entered as a constituent in cells/mL (offered in the unit menu, the amount box
+> taking `1.5e6` as well as `1500000`); on labware with a growth area (today the 96-well flat
+> plates), the contents card gives a well's cells in cells/cm²; cell figures in powers of ten,
+> e.g. `4.69 × 10⁴ cells/cm²` (sections 6, 8, 13, 15 and 16). Written in the hands-off workflow
+> (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request. It
+> assumes PR #133 (M offered) is merged first, so the unit lists here include M. They become Final
+> once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -399,7 +408,19 @@ card (dark, light text) shows:
   style, its amount and unit in the unit that fits it best (`bestUnit`, `concentrations.md`; the
   amount as section 13 shows amounts), e.g. `Dye` … `476 µM`, `Hy-Soy` … `2.5 g/L`. In the order
   `concentrationsOf` gives. Nothing of this for a well carrying nothing, so a plan without
-  constituents sees no change;
+  constituents sees no change. **Cells** (2026-11-05; `concentrations.md`, "Cells"): the page
+  goes through `concentrationsOf`'s entries as above; an entry whose family is the cells' family
+  (`isCellFamily`) is shown as a cell figure (section 13), e.g. `Cells` … `1.5 × 10⁵ cells/mL`;
+  but when the well's labware has a growth area (`growthAreaOf(labware) !== null`, `deck.md`;
+  today the 96-well flat plates; the page needs the area for the tooltip anyway), its line shows
+  the well's **seeding density** instead: the entry of `seedingDensitiesOf`
+  (`transfer-designer.md`) with the same name (safe: within a plan a constituent's name has one
+  family, so the name picks out one entry), e.g. `Cells` … `4.69 × 10⁴ cells/cm²`: one line
+  per constituent, in its place in the list, not a second line (Andy, 2026-11-05: on a plate,
+  cells/cm² is the number the lab seeds by; a deep well or trough holds a suspension, so it keeps
+  cells/mL). The line's tooltip (its `title`) says `Assumes every cell settles onto the well's
+  A cm² bottom.`, A being `growthAreaOf` the labware, shown as an amount (section 13). The group's
+  heading stays `Concentrations`;
 - if the well holds something and **any component in the plan has an osmolality** (its
   `osmolality` isn't `null`; 0, as entered for water, counts) (ADR 0016; `osmolalityOf`,
   `transfer-designer.md`): after the components and any Concentrations group, under
@@ -1062,10 +1083,12 @@ nothing.
 stays while the page is open.
 
 A chip's text is the component's name and, after it, **what it carries**, small and gray, when it
-has constituents: the first constituent's amount and unit (section 13), with the constituent's name
+has constituents: the first constituent's amount and unit (section 13; a cell figure for cells,
+e.g. `Cells 1.5 × 10⁶ cells/mL`), with the constituent's name
 first unless it's the component's own name, then ` +N` for the rest, e.g. `Dye stock` `10 mM`,
-`Feeding media` `Hy-Soy 4 g/L +2`; on one line, never wrapped. The chip's tooltip lists them all:
-`Contains Hy-Soy 4 g/L, Yeast 0.5 g/L, Glutamine 1 g/L`. A component carrying nothing has neither.
+`Feeding media` `Hy-Soy 4 g/L +2`; on one line, never wrapped. The chip's tooltip lists them all,
+in the same number formats (a cell figure for cells): `Contains Hy-Soy 4 g/L, Yeast 0.5 g/L,
+Glutamine 1 g/L`, `Contains Cells 1.5 × 10⁶ cells/mL`. A component carrying nothing has neither.
 A component with an osmolality has it in the chip's tooltip, on a line of its own after any
 `Contains` line: `Osmolality 300 mOsm/kg` (the value as the component's box shows it, section 13,
 with no `≈`: it's the measured value). The chip's text doesn't show it, so chips stay short.
@@ -1090,7 +1113,8 @@ the chips below, moved left if needed to stay inside the Start card:
   the color chosen).
 - **Contains** (ADR 0013): the component's constituents, one row each: a `Name` box, an `Amount`
   box (an ordinary text box, like the Name box, not the deck's volume keys; its text is passed on
-  as section 13 passes a typed volume on: as a number when it's one, else as typed), a unit menu
+  as section 13 passes a typed amount on: as a number when it's one, exponent form included, so a
+  cell count can be typed `1.5e6` or `1500000`; else as typed), a unit menu
   offering the **offered** units of `config/concentration-units.js` in its order (plus the row's
   own unit when it's a configured unit that isn't offered, so the row reads as saved), and `×`
   (tooltip `Take it out`) which takes the row out of the draft; a component carrying nothing shows
@@ -1214,8 +1238,8 @@ closes it, as a click outside would (below). Its ✎ is shown pressed while it's
 - `Remove` acts at once, not through Save, and asks no question (Andy, 2026-10-31: Undo brings
   back what it removed, so the question only slowed things down).
 
-**A stage's box** is 320px wide (other boxes are 280px), so its menus show their whole names, such
-as `Non-Contact`. From the top:
+**A stage's box** is 320px wide (other boxes are 280px, except a component's, also 320px, so its
+Contains rows fit; section 15), so its menus show their whole names, such as `Non-Contact`. From the top:
 - **Name** (a text box).
 - **A grid** with the stage's ends as columns, headed `Aspirate` and `Dispense`, and its settings
   as rows, each labeled once at the left (Andy, 2026-10-29: simpler and less cluttered, with no
@@ -1341,6 +1365,22 @@ end, and Backspace removes the last character. A volume typed as nothing shows a
 volume that's a number (digits, optionally `-`, and a decimal part) is passed on as a number;
 anything else is passed on as typed, so the logic's message says what's wrong.
 
+**Typing an amount** (a constituent's, in a component's box; 2026-11-05). Its text, spaces at the
+ends removed, is passed on as a number (`Number(text)`) when it matches, whole, the pattern
+`^-?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$`: optionally `-`, then digits with an optional decimal
+point and decimal part (`5`, `5.`, `0.5`) or a decimal part alone (`.5`), then optionally `e` or `E`,
+an optional `+` or `-`, and digits. E.g. `10`, `0.5`, `.5`, `5.`, `1.5e6`, `1.5E6`, `2e+5`, `5e-3`,
+`-1` (then refused by the logic as not above 0). Anything else, e.g. `ten`, `1,500,000`,
+`1.5x10^6`, `e6` or blank, is passed on as typed, so `checkConstituents`' message says what's
+wrong. A number too large for JavaScript, e.g. `1e400`, becomes `Infinity`, which the logic refuses
+with its "above 0" message (`concentrations.md`, section 5). The rule applies to an amount in **every
+unit**, not only cells/mL, so e.g. `5e-3` mM now works: a small change in behavior (before
+2026-11-05 an amount followed a typed volume's rule, which has no exponent form, so `1.5e6` and
+`5e-3` were refused). Typed volumes keep their own rule above: a volume is never a power of ten.
+Like the page's other text rules, this one is page code (`transfer-designer-page.js`), checked by hand (section 16).
+A row's amount box shows a saved amount as JavaScript writes the number, e.g. `1500000` (and
+`1e+21` for a huge one, which reads back the same).
+
 **Numbers shown:**
 - **Volumes** (cards, lists, messages): rounded to 2 decimal places, e.g. `33.33`; a volume below
   0.01 µL that isn't 0 is shown in exponent form with one decimal, e.g. `4.0e-3`.
@@ -1358,6 +1398,19 @@ anything else is passed on as typed, so the logic's message says what's wrong.
   reads it back); a well's estimate (contents card) rounded to a whole number, e.g. `≈ 305`, with
   no thousands separator (`≈ 1250`), since osmometers read to 1 mOsm/kg and the value is an
   estimate.
+- **Cell figures** (2026-11-05: an amount in the cells' family, on a chip and in its tooltip, and
+  a cell density or a seeding density on the contents card), in powers of ten, as labs write cell
+  counts. The rule: work out `value.toExponential(2)` (JavaScript's exponent form with 2 decimals,
+  e.g. `"4.69e+4"`). If its exponent is 3 or more, write its mantissa (the part before `e`) as
+  `Number()` gives it, so trailing zeros are dropped, then ` × 10`, then the exponent in superscript
+  digits (`⁰¹²³⁴⁵⁶⁷⁸⁹`, the `+` dropped), then a space and the unit. Otherwise (exponent 2 or less),
+  write the value as an amount (above), then a space and the unit. E.g. 46875 → `4.69 × 10⁴
+  cells/cm²`, 1500000 → `1.5 × 10⁶ cells/mL`, 999.6 → `1 × 10³ cells/mL` (its exponent form is
+  `1.00e+3`), 999.4 → `999 cells/mL`, 99960 → `1 × 10⁵ cells/mL`, 500 → `500 cells/mL`. The `×`
+  is the multiplication sign, with a space each side. (Chosen over `47,000 cells/cm²`: a cell count
+  is read as a power of ten, and a plain number of six or seven digits is easy to misread by a
+  factor of ten.) Like the page's other number formats, this formatter is page code (`transfer-designer-page.js`),
+  checked by hand (section 16).
 - **Counts** take a plural `s` except for 1: `1 well`, `3 wells`.
 
 ## 14. Configuration
@@ -1372,7 +1425,8 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
 - **`config/randomizations.js`** exports `SOURCES_SHOWN` (`8`): how many sources a randomization's
   card lists before `Show all N sources ▸` (Andy, 2026-11-01).
 - **`config/concentration-units.js`** (`concentrations.md`, section 7) gives the unit menu its
-  offered units and `DEFAULT_CONCENTRATION_UNIT` for a new row; the page doesn't check it (the
+  offered units (cells/mL among them, from 2026-11-05) and `DEFAULT_CONCENTRATION_UNIT` for a new
+  row; the page doesn't check it (the
   concentrations module's tests do).
 - **`config/default-volumes.js`** exports `DEFAULT_TRANSFER_VOLUME` (`50`) and `DEFAULT_FILL_VOLUME`
   (`1000`), in µL: the volumes the next transfer and the brush start with when the page opens.
@@ -1427,7 +1481,9 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **Tip group boxes:** 12px corners; light blue (`#EEF3FA`, border `#9DB7DB`), alternating with light
   sand (`#F5F1E8`, border `#D9D2C3`). Start, the boxes and End 18px apart, leaving room for the
   seams between tip groups (section 7).
-- **Editing boxes:** 280px wide; a stage's 320px (section 10). In a stage's box, the grid's column
+- **Editing boxes:** 280px wide; a stage's and a component's 320px (sections 8 and 10; a
+  component's from 2026-11-05, so a Contains row's name box keeps room once the amount box and
+  unit menu grew for cells, found in the build review). In a stage's box, the grid's column
   headings and row labels look like the box's other field names (12px, semibold, gray, capitals);
   the label column is as wide as its widest label, and the two end columns share the rest equally,
   8px apart; the menus there have 4px side padding instead of 10px, so whole mode names fit.
@@ -1449,8 +1505,10 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **What a chip carries** (section 8): 12px gray (`#5E5E58`), 2px after the name, never wrapped;
   the same gray when the chip is picked.
 - **A component's Contains rows** (section 8): a grid per row, the name box taking what's left,
-  then the amount box 56px, the unit menu 76px (its right padding 2px, so `g/L` and `mM` show
-  whole), then `×` 26px; 6px apart; rows 6px apart and 6px above `+ Add`; `×` plain (no border,
+  then the amount box 72px with 6px side padding (from 2026-11-05, was 56px, so `1500000` shows
+  whole; 64px with the usual 10px padding cut it to `15000…`, found in the build review), the unit menu
+  92px (from 2026-11-05, was 76px, so `cells/mL` shows whole; its right padding 2px, so `g/L` and
+  `mM` show whole), then `×` 26px; 6px apart; rows 6px apart and 6px above `+ Add`; `×` plain (no border,
   gray, 16px) like a transfer row's.
 - **A well label on the deck** (with `Names` on; in the white tag that otherwise holds the volume): the page's text font, semibold (600), 9px with
   line height 1.05, centered, at most two lines and at most the well's width less 4px, 1px × 2px
@@ -1566,7 +1624,7 @@ page's configuration (ADR 0009):
 - constituents: a component's box with no rows (`Contains nothing at a known concentration.`),
   `+ Add` pre-filling the component's name, a second row blank; name, amount and unit typed and
   chosen, Enter in the amount box saving; the unit menu listing the offered units in the
-  configuration's order (today M, mM, µM, g/L, %, ×), and a constituent saved at `1 M` showing
+  configuration's order (today M, mM, µM, g/L, %, ×, cells/mL), and a constituent saved at `1 M` showing
   `1 M` on the chip and, diluted 1 in 20 in a well, `50 mM` on the contents card; `×` taking a
   row out; Save, then Undo and Redo of the rows; a bad amount (`ten`, blank, `0`) refused with the message and the box kept open; a unit of
   another family for a name another component carries refused, naming that component; the chip's
@@ -1588,6 +1646,18 @@ page's configuration (ADR 0009):
   changed; the card at Start, at a stage and at End; a renamed component keeping its value; a plan
   saved (version 9) and reopened, and reloaded, keeping the values, and a version 8 file opening
   with none;
+- cells (2026-11-05): the unit menu reading `M, mM, µM, g/L, %, ×, cells/mL`, `cells/mL` shown
+  whole; typing an amount (section 13): `1.5e6`, `1.5E6` and `1500000` each saved as the same
+  number, `.5` and `5.` saved as 0.5 and 5, `5e-3` in mM saved, and `e6`, `1,500,000` and
+  `1.5x10^6` refused with the amount message, the box kept open, and `1e400` refused with the
+  "above 0" message; cell figures (section 13): amounts of 999.6, 999.4 and 99960 cells/mL shown
+  as `1 × 10³ cells/mL`, `999 cells/mL` and `1 × 10⁵ cells/mL`; the chip `Cells 1.5 × 10⁶ cells/mL` (or `1.5 × 10⁶ cells/mL`
+  for a component named Cells); a suspension at 1.5 × 10⁶ cells/mL in a trough showing `1.5 × 10⁶
+  cells/mL` there; 10 µL of it into a flat-plate well holding 90 µL of Media showing
+  1.5 × 10⁵ cells/mL × 0.1 mL ÷ the flat plate's growth area in cells/cm² (`4.69 × 10⁴
+  cells/cm²` with today's stand-in), with the tooltip naming the area; the same into a deep well showing `1.5 × 10⁵ cells/mL`; the
+  plate well after a later stage adds 100 µL of Media keeping the same cells/cm²; Cells beside
+  Dye in a well, each on its own line; a plan with cells saved and reopened keeping them;
 - moving and copying: a click, Shift-click (stages, then headings) and Ctrl-click selecting, each
   marked as the button goes down, and no text selected while pressing or dragging; a stage dragged
   into another tip group (taking its tips), to the top of one, and between tip groups (keeping its

@@ -13,6 +13,12 @@ The most one well of a labware type holds, in µL: the type's "Maximum volume pe
 Software, copied into `config/labware-types.js`. One value per labware type. A well filled past it
 is an overfill.
 
+**Cell density**
+How many cells a liquid carries per mL, from a cell count, such as 1.5 × 10⁶ cells/mL in a cell
+suspension. Cells are a constituent like any other, in the unit cells/mL, a family of its own that
+is never rescaled (`concentrations.md`, "Cells"). Diluting a suspension lowers its cell density;
+compare seeding density.
+
 **Component**
 A liquid the user names in a plan, such as "Media" or "Drug_A", each with its own color for drawing
 it. A plan's starting contents say how much of each component every well holds; contents tracking
@@ -57,6 +63,11 @@ The name the user gives a plan's experiment, such as "Exp36": the transfer desig
 and the end of the name of each run's folder of Biomek files (`file-writer.md`). It's part of the
 plan, saved with it. Letters, digits, hyphens and underscores only, 1 to 40 characters; a new plan
 has none until the user gives one.
+
+**Growth area**
+The area of one well's bottom that cells grow on, in cm²: one value per labware type, in
+`config/labware-types.js`, given only for types cells are grown on. A well's labware having one is
+what gives it a seeding density.
 
 **Item**
 Something in the Stages column that can be selected, moved or copied: a stage (a mix step
@@ -141,6 +152,13 @@ added. A seam inside a tip group (between two of its stages, or at its top or bo
 and mix steps with that group's tips, and between two stages can split the group with new tips; a
 seam between tip groups (above the first, between two, or above End) adds them with new tips, as a
 tip group of their own, or adds a randomization.
+
+**Seeding density**
+How many cells a well puts on each cm² of its growth area: its cell density times its volume,
+divided by its growth area, **assuming every cell settles onto the bottom** (`concentrations.md`,
+"Cells"). 100 µL at 1.5 × 10⁵ cells/mL over a bottom of, say, 0.32 cm² is 4.69 × 10⁴ cells/cm². Adding medium to
+the well lowers its cell density but not its seeding density. Only for wells on labware with a
+growth area.
 
 **Stage**
 A group of operations that can run in any order and share one set of settings: the technique and

@@ -81,6 +81,13 @@
 > (`plan-file.md`). Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made
 > for Andy are listed in its pull request. It becomes Final once built and tested by Andy.
 
+> **Draft change (2026-11-05, cell density, item 16 of v0.2.0):** cells are a constituent in
+> cells/mL (`concentrations.md`, "Cells"), and `seedingDensitiesOf` gives a well's cells per cm² of
+> its growth area, on labware types that have one (sections 3, 4 and 6), decided with Andy on
+> 2026-11-05. Plan files don't change. Written in the hands-off workflow (CLAUDE.md, "Workflows"),
+> so the choices made for Andy are listed in its pull request. It becomes Final once built and
+> tested by Andy.
+
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
 and every edit that can be made to one, each checked so that a plan is always valid. A tool shows a
@@ -106,7 +113,8 @@ copies tip groups and randomizations); adds, removes and changes transfers, tip 
 components (with their constituents and osmolality), starting contents, labware labels, well
 labels and the experiment name; and answers questions about a plan: its stage order, its tip
 groups, the stages with a contents problem or a mix problem, where each stage ends, the labware it
-uses, and what each well carries (its concentrations and osmolality).
+uses, and what each well carries (its concentrations and osmolality, and its cells per cm² where
+its labware has a growth area).
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Moving a transfer** to another stage, or within its stage (ADR 0014). A transfer can be removed
@@ -372,6 +380,19 @@ snapshot (it already has one for the point it shows) and asks per well. The well
 snapshot alone (`end?.labware` and `end?.well` are passed to `volumeFractionsOf`, so an `end` that
 isn't an object gets the snapshot's message for a labware of `undefined`); `deck.checkWell` isn't
 used, since a well the snapshot has no record of is simply empty.
+
+**Seeding densities** (2026-11-05; `concentrations.md`, "Cells"). On a labware whose type has a
+growth area (`growthAreaOf`, `deck.md`), a well's cells are also given as a **seeding density**,
+in cells/cm²: `seedingDensitiesOf` takes each entry of `concentrationsOf` in the cells' family
+(`isCellFamily`) and gives `seedingDensity(entry.value, snapshot.totalVolumeOf(labware, well),
+growthAreaOf(labware))`, as `{ name, value }`, in `concentrationsOf`'s order. On labware without a
+growth area (`growthAreaOf` gives `null`) it gives `[]`, so its cells stay a cell density in
+cells/mL, like any concentration. The well's volume is everything it holds, dead volume included,
+since those cells settle too. It assumes every cell settles onto the bottom.
+`end` is checked as `concentrationsOf` checks it, first; then `growthAreaOf(end.labware)`, called
+even when the well carries no cells, so the result never depends on the well's contents to throw;
+it throws the deck's message for a labware not on the deck (a well that reaches it has a labware that
+is text, so the message is the deck's, e.g. `There's no labware "Bench" on the deck. …`).
 
 ### Osmolality
 A component's **osmolality** (`docs/glossary.md`; ADR 0016) is its stock's measured osmolality, in
@@ -912,6 +933,7 @@ given; "returns the plan with …" means a new plan.
 | `emptyWells(plan, wells)` | the plan with `wells` empty at the start. Never throws for a well that's already empty. |
 | `setConstituents(plan, name, constituents)` | the plan with component `name` carrying `constituents` (section 3, "Constituents"), replacing what it carried; names trimmed as `checkConstituents` does. Throws if there's no such component, then as `checkConstituents` does, then if a constituent's family differs from its name's family in another component. |
 | `concentrationsOf(plan, snapshot, end)` | the well's concentrations (section 3, "Constituents"): `wellConcentrations(snapshot.volumeFractionsOf(end?.labware, end?.well), plan.components)`, a list of `{ name, family, value }` (`concentrations.md`), `[]` for a well carrying nothing. `snapshot` is a `ContentsSnapshot` of this plan; `end` is `{ labware, well }`, checked by `snapshot.volumeFractionsOf` only. |
+| `seedingDensitiesOf(plan, snapshot, end)` | the well's seeding densities (section 3, "Seeding densities"): for each entry of `concentrationsOf(plan, snapshot, end)` whose family is the cells' (`isCellFamily`), `{ name, value }`, `value` in cells/cm² (`seedingDensity`, `concentrations.md`), in that order; `[]` when the well's labware type has no growth area (`growthAreaOf`, `deck.md`) or the well carries no cells. E.g. Plate1 A1 holding 100 µL, 10% from a suspension of Cells at 1500000 cells/mL, on a type with a growth area of 0.32 cm²: `[{ name: "Cells", value: 46875 }]`. Throws as `concentrationsOf` does, then as `growthAreaOf` does. |
 | `setOsmolality(plan, name, osmolality)` | the plan with component `name` having `osmolality` (section 3, "Osmolality"): a number of mOsm/kg, 0 or more, or `null` for none. The same plan if it already has that value. Throws if there's no such component, then as `checkOsmolality` does (`osmolality.md`). |
 | `osmolalityOf(plan, snapshot, end)` | the well's osmolality (section 3, "Osmolality"): `wellOsmolality(snapshot.volumeFractionsOf(end?.labware, end?.well), plan.components)`, `{ value, missing }` (`osmolality.md`), e.g. `{ value: 270, missing: [] }` or `{ value: null, missing: ["Buffer B"] }`; `{ value: null, missing: [] }` for an empty well. `snapshot` and `end` as for `concentrationsOf`. |
 
@@ -1364,6 +1386,30 @@ order of checks.
 - `concentrationsOf` checks the well through the snapshot only: a well of `5` throws the
   snapshot's message naming `volumeFractionsOf`; an `end` of `undefined` throws its labware
   message.
+- `concentrationsOf` with a well 10% from a component carrying `Cells` in `CELL_DENSITY_UNIT`
+  (`config/concentration-units.js`) at 1500000 gives one entry in `familyOf(CELL_DENSITY_UNIT)`,
+  value `0.1 × 1500000`.
+
+**Seeding densities** (the labware is found in `DECK` by its type's growth area, never named:
+one whose `growthAreaOf` isn't `null`, and one whose is; the area and volume are taken from
+`growthAreaOf` and `totalVolumeOf`, so changing `config/` never breaks a test)
+- On labware with a growth area, a well holding `V` µL, 10% from a component carrying Cells at
+  1500000 cells/mL: `[{ name: "Cells", value: seedingDensity(0.1 × 1500000, V, growthAreaOf(that
+  labware)) }]` (within 1e-12 of the value).
+- The same well also holding Dye in mM gives only the Cells entry; a well carrying no cells, an
+  empty well, and a well carrying cells on labware without a growth area each give `[]`.
+- Two components carrying Cells add before the seeding density is worked out (one entry).
+- The volume is the whole well's, dead volume included: a well holding just its dead volume of the
+  suspension gives `seedingDensity(1500000, deadVolumeOf(labware), growthAreaOf(labware))`, not 0.
+- After a transfer that adds Media to the well, the cell density falls but the seeding density at
+  the snapshot after it is the same as before (the cells are the same; only the liquid grew), within
+  1e-12; after a transfer that takes half the well away, it halves.
+- Errors: an `end` of `undefined` throws the snapshot's labware message (as `concentrationsOf`); a
+  labware `"Bench"` holding nothing in the snapshot throws the deck's no-such-labware message.
+- Inputs aren't changed.
+- The REPL (`scripts/repl.js`): `seedingDensitiesOf` in the transfer designer's topic, with a plan
+  whose component carries Cells, on a labware with a growth area and on one without (labware
+  named as they're named in `config/deck.js` today, e.g. `Plate1` and `Deep1`).
 
 **Osmolality** (2026-11-05)
 - `addComponent` gives the new component `osmolality: null`, its properties in the order `name`,

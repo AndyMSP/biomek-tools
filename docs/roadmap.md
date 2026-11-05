@@ -365,6 +365,17 @@ Last updated: 2026-11-05
   2026-11-05)**: code, tests and REPL of `osmolality`, the transfer designer, plan files (version
   9, versions 1 to 8 still opening) and the page; the specifications and the build each reviewed
   by a separate agent, and checked in headless Chrome. Still to check by Andy.
+- **Decided: cell density** (Andy, 2026-11-05; item 16, below): cells entered as a constituent in
+  cells/mL, and a well's cells shown in cells/cm² on the 96-well flat plates. **Specified** (Draft,
+  2026-11-05, in the hands-off workflow; ADR 0013, amended 2026-11-05): the cells' unit and
+  `isCellFamily` and `seedingDensity` (`concentrations.md`), `growthArea` and `growthAreaOf`
+  (`deck.md`), `seedingDensitiesOf` (`transfer-designer.md`), units and plan files
+  (`plan-file.md`: no new version), and the page's unit menu, amount box, chips and contents card
+  (`transfer-designer-page.md`); glossary "Cell density", "Growth area", "Seeding density". It
+  changes no Biomek files. **Built (#136, 2026-11-05)**: code and tests of `concentrations`,
+  `deck`, the transfer designer and plan files, the REPL, and the page; the specifications and
+  the build each reviewed by a separate agent, and checked in headless Chrome. Still to check by
+  Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -644,6 +655,21 @@ added on 2026-10-28 (Andy).
       versions 1 to 8 still opening (no osmolality). No Biomek file changes, so it needn't come
       before the final runs.
     **Specified** (Draft, 2026-11-05) and **Built (#134, 2026-11-05)**: see "Where things stand".
+16. **Cell density** (Andy, 2026-11-05): seeding cells with the tool needs a well's cells per cm².
+    It follows items 14 (M as an offered unit) and 15 (osmolality), so its unit lists include M.
+    Decided so far (Andy, 2026-11-05):
+    - **Cells are a constituent** of a component (a cell suspension really carries cells), in a
+      new offered unit, **cells/mL**, e.g. `Cells 1.5e6 cells/mL`, the amount from a cell count.
+      A family of its own, never rescaled.
+    - **Shown in cells/cm² only for wells on BCFlat96 plates**, for now: cells/cm² = cells/mL ×
+      the well's volume in mL ÷ the well's growth area, assuming every cell settles onto the
+      bottom. On other labware (deep wells, troughs), cells show in cells/mL like any
+      concentration.
+    - **The growth area is configuration:** a per-type `growthArea` in `config/labware-types.js`,
+      only on BCFlat96; having none keeps cells/cm² off a type. BCFlat96's is Andy's stand-in
+      ("Technical debt").
+    - It changes no Biomek files and no plan-file format.
+    **Specified** (Draft, 2026-11-05) and **Built (#136, 2026-11-05)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -663,7 +689,9 @@ final Biomek runs, so they test the files as they will be:
    change the Biomek files, so it needn't come before the final runs.
 9. Osmolality (item 15), added on 2026-11-05: specifications, then build. It doesn't change the
    Biomek files, so it needn't come before the final runs.
-10. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+10. Cell density (item 16), added on 2026-11-05: specifications, then build. It doesn't change
+    the Biomek files, so it needn't come before the final runs.
+11. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen
@@ -783,6 +811,10 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   flat plate, and guessed capacities for all three. Properly: each capacity copied from the
   Biomek's Labware Type Editor, and the flat plate's dead volume measured, with sources in the
   file's comments.
+- **The flat plate's growth area is a stand-in** (2026-11-05, cell density): `growthArea` of
+  `BCFlat96` in `config/labware-types.js` is Andy's stand-in, not checked, so every cells/cm² the
+  page shows on a flat plate depends on it. Properly: confirm it against the plate's datasheet (the
+  well's bottom area, in cm²), with the source in the file's comment.
 - **A mix can draw into the dead volume** (2026-10-30): `mix-volumes` takes a mix's share of what
   the well holds, dead volume included, so a 90% mix of a trough holding little more than its dead
   volume pulls air. Properly: the share of the usable volume, which also changes the short-mix

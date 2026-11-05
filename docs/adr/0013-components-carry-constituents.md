@@ -4,6 +4,8 @@ Date: 2026-11-01
 
 ## Status
 Accepted (Andy, 2026-11-01: decided while shaping a preview, and accepted by merging #125).
+Amended 2026-11-05 (cells; "Amendment", below), proposed in the hands-off workflow until Andy
+merges its pull request.
 
 ## Context
 Two items on the roadmap's "Later" list asked for the same thing from different ends. **Final
@@ -46,3 +48,22 @@ component's shape changes once (Andy, 2026-11-01).
 - Renaming a component doesn't rename a constituent of the same name: they're separate things.
 - A later tool (a report, say) gets a well's concentrations from the shared module with no
   knowledge of the page.
+
+## Amendment (2026-11-05): cells
+Decided with Andy on 2026-11-05.
+
+**Cells are a constituent**, not a new kind of thing: a cell suspension really carries cells, and
+they dilute like any constituent, so the shape above serves them unchanged. Their unit is
+**cells/mL** (a cell density, from a cell count), offered in the menu, in a **family of its own**,
+never rescaled (no cells/µL or cells/L: the lab counts in cells/mL).
+
+**On labware cells grow on, a well's cells are shown per cm²** (its seeding density): cell density
+× the well's volume ÷ the well's **growth area**, assuming every cell settles onto the bottom.
+A labware type has a growth area (configuration, `config/labware-types.js`) only if cells are
+grown on it, and cells/cm² is shown only there; on a type without one, cells show in cells/mL like
+any concentration.
+
+Consequences: adding a unit doesn't change the plan-file format (units are checked against the
+configuration, not the format), so no new version; a file with cells is refused by an older build
+with a message naming the unit. The arithmetic stays in `concentrations` (`seedingDensity`), with
+the deck module giving the growth area, so contents tracking stays about volumes.
