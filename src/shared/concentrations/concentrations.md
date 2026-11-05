@@ -3,6 +3,19 @@
 > **Draft (2026-11-01).** Written for the roadmap's "Final concentrations" and "Constituents of a
 > component", from the preview Andy shaped on 2026-11-01 (ADR 0013). It becomes Final once built
 > and tested by Andy.
+>
+> **Draft change (2026-11-05, M offered):** M becomes an offered unit (Andy, 2026-11-05), so it can
+> be chosen when a constituent is entered; nM and mg/L stay display only (sections 3, 5 and 7).
+> Only `config/concentration-units.js` changes: the module and its tests read the offered units
+> from the file, so neither changes. Written in the hands-off workflow (CLAUDE.md, "Workflows").
+> It becomes Final once built and tested by Andy.
+
+> **Draft change (2026-11-05, cell density, item 16 of v0.2.0):** cells as a constituent in a
+> family of their own, in **cells/mL** (`CELL_DENSITY_UNIT`), and a well's **seeding density** in
+> cells/cm² of its growth area: `isCellFamily` and `seedingDensity` (sections 1 to 7), decided with
+> Andy on 2026-11-05. Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices
+> made for Andy are listed in its pull request. It assumes PR #133 (M offered) is merged first, so
+> the unit lists here include M. It becomes Final once built and tested by Andy.
 
 ## 1. Purpose
 `concentrations.js` works out what a well's mixture carries, from what its components carry.
@@ -12,7 +25,9 @@ A **component** is a liquid the user names and pipettes (`docs/glossary.md`). A 
 10 mM in a dye stock. Contents tracking follows the components through the transfers and gives
 each component's share of a well (`contents-tracking.md`, `volumeFractionsOf`); this module turns
 those shares and the components' constituents into the well's **concentration** of each
-constituent, and chooses the unit to show it in.
+constituent, and chooses the unit to show it in. For cells, carried in cells/mL like any
+constituent, it also gives a well's **seeding density**: its cells per cm² of the well's growth
+area (section 3, "Cells").
 
 It's a shared module because the arithmetic belongs to no one tool: the transfer designer uses it
 for its contents card, and a later tool may use it for a report. Contents tracking stays about
@@ -20,9 +35,15 @@ volumes.
 
 ## 2. Scope
 Version 1: checking a component's constituents; a well's concentrations from its shares and its
-components; the unit to show a concentration in.
+components; the unit to show a concentration in; whether a family is the cells' family, and a
+well's seeding density.
 
 Not in version 1:
+- **Cells that don't all settle, or that grow or die.** The seeding density assumes every cell in
+  the well settles onto its bottom, spread over its growth area (section 3, "Cells"). It's the
+  density the cells are put in at, not a prediction of how they grow.
+- **A well's number of cells** (cells per well) and seeding densities on labware without a growth
+  area. A caller gets the cell density (cells/mL) there, like any concentration.
 - **Converting between families.** A constituent given in g/L in one component and in mM in
   another can't be added without its molecular weight, which the tool doesn't know. The transfer
   designer refuses that when the constituent is entered (`transfer-designer.md`, "Constituents"),
@@ -76,7 +97,7 @@ gives `[]`.
 ### The unit to show
 **The units of a family**, as a message or a menu lists them: its offered units in the
 configuration's order, then its display-only ones in the configuration's order, e.g. mass gives
-g/L then mg/L; molar gives mM, µM, then M, nM.
+g/L then mg/L; molar gives M, mM, µM, then nM.
 
 For a value in a family's base unit, the unit to show it in is **the largest unit of its family
 in which the amount is at least 1**, else the family's smallest unit; for a family of one unit,
@@ -84,8 +105,33 @@ that unit. Amounts within 1e-12 of 1 count as 1, so arithmetic leftovers don't p
 to `999.99… µM`. `offered` doesn't matter here: display may use any unit. E.g. 0.000476 M shows as
 476 µM; 0.0075 g/L as 7.5 mg/L; 2.5 M as 2.5 M; 0.5 (percent) as 0.5 %.
 
+### Cells
+A cell suspension carries cells, so cells are a constituent like any other (ADR 0013, amended
+2026-11-05), e.g. `{ name: "Cells", amount: 1500000, unit: "cells/mL" }`, the amount from a cell
+count. Their amount is a **cell density** (`docs/glossary.md`): cells per mL of liquid.
+
+- **A family of their own.** `CELL_DENSITY_UNIT` (section 7) names the cells' unit, cells/mL; its
+  family (`familyOf(CELL_DENSITY_UNIT)`) is **the cells' family**, which has that one unit, with
+  factor 1. So a value in the cells' family is in cells/mL, and `bestUnit` always shows it in
+  cells/mL: it's never rescaled. Dilution works as for any constituent: 10% of a well from a
+  1.5 × 10⁶ cells/mL suspension carries 1.5 × 10⁵ cells/mL.
+- **Seeding density.** On labware that cells grow on, what matters is the cells per cm² of the
+  well's bottom, its **seeding density** (`docs/glossary.md`):
+
+  seeding density (cells/cm²) = cell density (cells/mL) × the well's volume (mL) ÷ the well's
+  growth area (cm²)
+
+  where the well's volume is everything it holds (dead volume included, since its cells settle
+  too), given in µL and divided by 1000 here, and the **growth area** is the area of a well's
+  bottom, a fact about its labware type (`deck.md`). It **assumes every cell settles onto the
+  bottom**, evenly: it's the density the cells are put in at. E.g. 1.5 × 10⁵ cells/mL in 100 µL
+  over 0.32 cm²: 150000 × 0.1 ÷ 0.32 = 46875 cells/cm².
+
+  Whether a well gets a seeding density (its labware has a growth area) is the caller's to decide;
+  this module only does the arithmetic.
+
 ## 4. Interface
-The module exports five functions. None changes its inputs; a function that gives a list gives a
+The module exports seven functions. None changes its inputs; a function that gives a list gives a
 new one each time.
 
 | Function | Takes | Returns |
@@ -95,6 +141,13 @@ new one each time.
 | `unitsOf(family)` | a family | its units' symbols as section 3 lists them (offered first), e.g. `unitsOf("mass")` → `["g/L", "mg/L"]`. Throws for a family not in the configuration. |
 | `wellConcentrations(shares, components)` | a well's shares and the plan's components | the well's concentrations (section 3), e.g. `wellConcentrations({ Stock: 0.2, Media: 0.8 }, [{ name: "Stock", constituents: [{ name: "Dye", amount: 10, unit: "mM" }] }, { name: "Media", constituents: [] }])` → `[{ name: "Dye", family: "molar", value: 0.002 }]`. |
 | `bestUnit(family, value)` | a family and a value in its base unit | `{ amount, unit }` to show (section 3), e.g. `bestUnit("molar", 0.000476)` → `{ amount: 476, unit: "µM" }`. Throws for a family not in the configuration. |
+| `isCellFamily(family)` | any value | `true` if it's the cells' family (`familyOf(CELL_DENSITY_UNIT)`; section 3, "Cells"), else `false`: `isCellFamily(familyOf("cells/mL"))` → `true`, `isCellFamily("molar")` → `false`, `isCellFamily("volume")` → `false`. Never throws. |
+| `seedingDensity(cellDensity, volume, growthArea)` | a cell density in cells/mL, a well's volume in µL and its growth area in cm² | the seeding density in cells/cm² (section 3, "Cells"): `cellDensity × (volume / 1000) / growthArea`, e.g. `seedingDensity(150000, 100, 0.32)` → `46875`. |
+
+`seedingDensity` doesn't check its inputs, like `wellConcentrations`: the cell density comes from
+`wellConcentrations`, the volume from contents tracking, and the growth area from the labware
+types, whose tests check it's a number above 0 (`deck.md`). It works out `volume / 1000` first,
+then multiplies and divides, in that order, so the tests can compare exactly.
 
 `wellConcentrations` doesn't check its inputs beyond what it reads: a plan's components have been
 checked by the transfer designer, and the shares come from contents tracking. It goes through
@@ -115,7 +168,7 @@ from 1, in the list's order.
 | The name isn't a name | `checkName`'s messages, naming `constituent name`; the name is trimmed first |
 | The same name twice | `"Dye" is listed twice. List each constituent once.` The trimmed name; reported at the later entry, in table order: after its object, missing, extra and name checks, before its amount and unit checks. |
 | The amount isn't a number above 0 (including `NaN`, `Infinity`, `0`, text) | `The amount of "Dye" must be a number above 0, like 10, but got "ten".` |
-| The unit isn't in the configuration | `The unit of "Dye" must be one of mM, µM, g/L, %, ×, but got "mg/mL".` (the offered units, in the configuration's order) |
+| The unit isn't in the configuration | `The unit of "Dye" must be one of M, mM, µM, g/L, %, ×, cells/mL, but got "mg/mL".` (the offered units, in the configuration's order) |
 
 Each constituent's checks run in table order before the next constituent's.
 
@@ -178,24 +231,52 @@ the file holds.
 - Every family gives its units, offered ones first, each group in the file's order; an unknown
   family throws; the list is a new one each time.
 
+**Cells** (section 3, "Cells"; the unit is always `CELL_DENSITY_UNIT` from the file, never typed
+out)
+- `checkConstituents` accepts `[{ name: "Cells", amount: 1500000, unit: CELL_DENSITY_UNIT }]`, and
+  an amount of `1.5e6` (the same number).
+- `isCellFamily(familyOf(CELL_DENSITY_UNIT))` is `true`; it's `false` for the family of every other
+  configured unit, and for `"volume"`, `""`, `null` and `5`, without throwing.
+- `unitsOf(familyOf(CELL_DENSITY_UNIT))` is `[CELL_DENSITY_UNIT]`.
+- A well 10% from a component carrying cells at 1500000: one entry, family
+  `familyOf(CELL_DENSITY_UNIT)`, value `0.1 × 1500000`; cells from two components add, as any
+  constituent's do.
+- `bestUnit` of the cells' family gives the value as it is, in `CELL_DENSITY_UNIT`, for 0.5, 1500
+  and 1.5e9 alike (never rescaled).
+- `seedingDensity(150000, 100, 0.32)` is `150000 × (100 / 1000) / 0.32` (46875); `seedingDensity(0,
+  100, 0.32)` is `0`; doubling the volume doubles it, doubling the area halves it. These numbers are
+  the function's inputs, not configuration, so the test names them.
+- Inputs aren't changed (`seedingDensity` takes only numbers; nothing to check).
+
 **The REPL**
 - The module has a topic of its own in `scripts/repl.js` (CLAUDE.md, "Keep the REPL complete"):
-  checking a list, a well's concentrations and the best unit.
+  checking a list, a well's concentrations and the best unit; and, added with cells, a list with
+  `Cells` in `CELL_DENSITY_UNIT`, `isCellFamily` and `seedingDensity(150000, 100, 0.32)`.
 
 ## 7. Configuration
 `config/concentration-units.js` (ADR 0009) exports:
 - `CONCENTRATION_UNITS`: the units, as section 3 describes them, each family's units from largest
-  to smallest. Decided by Andy (2026-11-01) from the units the lab's protocols use: offered are
-  **mM, µM, g/L, % and ×**; display only are **M, nM and mg/L**. (U/mL, mg/mL and its
+  to smallest. Decided by Andy (2026-11-01) from the units the lab's protocols use, with M added
+  on 2026-11-05: offered are **M, mM, µM, g/L, % and ×** (`offered: true`); display only are
+  **nM and mg/L** (`offered: false`; Andy, 2026-11-05: "they are ok as is"). (U/mL, mg/mL and its
   submultiples were tried in the preview and dropped: the lab writes mass in g/L, and tracks no
   enzyme activities.) Molar's base unit is M, mass's is g/L; percent and × are families of one unit
   each. The symbol for fold is the multiplication sign `×`, not the letter x.
 - `DEFAULT_CONCENTRATION_UNIT`: the unit a new constituent starts with, `"g/L"`, the one the lab's
   protocols use most (Andy, 2026-11-01).
+- **Cells** (Andy, 2026-11-05): `CONCENTRATION_UNITS` gains, as its **last entry**, after `×`,
+  `{ unit: "cells/mL", family: "cells", factor: 1, offered: true }`, the cells' family of one unit
+  (section 3, "Cells"). It goes last so no existing entry moves. The file also exports
+  `CELL_DENSITY_UNIT`, `"cells/mL"`: the unit cells are counted in, so the module knows which
+  family is the cells' without naming it in code. The file's header comment says that cells are a
+  family of their own, never rescaled, and that cells/mL is offered. With it offered, the unit
+  message of section 5 lists cells/mL last among the offered units (the message is built from the
+  file, so nothing else changes).
 
 The module's tests check the file: every entry has exactly `unit` (text, not blank, unique
 ignoring case), `family` (text, not blank), `factor` (a number above 0) and `offered` (a boolean);
 within each family, exactly one unit has factor 1 and the factors go down along the list; every
-family has at least one offered unit; `DEFAULT_CONCENTRATION_UNIT` is an offered unit. The
+family has at least one offered unit; `DEFAULT_CONCENTRATION_UNIT` is an offered unit;
+`CELL_DENSITY_UNIT` is an offered unit, with factor 1, and the only unit of its family. The
 behavior tests above take their units from the file, so changing it doesn't break them; only these
 tests name a unit.

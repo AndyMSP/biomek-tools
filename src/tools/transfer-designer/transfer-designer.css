@@ -1965,9 +1965,16 @@ button.quiet-danger:disabled {
   color: var(--text);
 }
 
-/* A stage's box is wider, so its menus show whole mode names, such as Non-Contact (section 15). */
-.editing-box.stage-box {
+/* A stage's box is wider, so its menus show whole mode names, such as Non-Contact; a component's
+   too, so its Contains rows' name boxes keep room (section 15). */
+.editing-box.stage-box,
+.editing-box.component-box {
   width: 320px;
+}
+
+/* A constituent's Amount box has 6px side padding, so 1500000 shows whole in 72px (section 15). */
+.editing-box input.constituent-amount {
+  padding: 0 6px;
 }
 
 .editing-box.shake {
@@ -2103,7 +2110,7 @@ button.quiet-danger:disabled {
 }
 
 /* A component's Contains rows (sections 8 and 15): a grid per row, the name box taking what's left,
-   then the amount box 56px, the unit menu 76px, then × 26px; 6px apart; rows 6px apart and 6px
+   then the amount box 72px, the unit menu 92px, then × 26px; 6px apart; rows 6px apart and 6px
    above + Add. */
 .contains-field {
   display: flex;
@@ -2119,7 +2126,9 @@ button.quiet-danger:disabled {
 
 .constituent-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 56px 76px 26px;
+  /* Amount 72px with 6px side padding so 1500000 shows whole; unit 92px so cells/mL shows whole
+     (2026-11-05). */
+  grid-template-columns: minmax(0, 1fr) 72px 92px 26px;
   gap: 6px;
   align-items: center;
 }
@@ -2148,6 +2157,23 @@ button.quiet-danger:disabled {
 
 .editing-box .contains-nothing {
   margin-bottom: 6px;
+}
+
+/* A component's Osmolality row (sections 8 and 15): the text box 112px, then "mOsm/kg" 12px gray,
+   6px apart. */
+.osmolality-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editing-box input[type="text"].osmolality-box {
+  width: 112px;
+}
+
+.osmolality-unit {
+  color: var(--muted-text);
+  font-size: 12px;
 }
 
 .tip-type-buttons {
@@ -2330,6 +2356,25 @@ button.quiet-danger:disabled {
 
 .contents-card .card-concentrations li {
   gap: 12px;
+}
+
+/* The Osmolality line (sections 6 and 15): spaced and ruled as the Concentrations group;
+   "Osmolality" left, the value right in the volume's monospace style, 12px between; the unknown
+   line 12px at 60% opacity, wrapping within the card. */
+.contents-card .card-osmolality {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(246, 245, 241, 0.2);
+}
+
+.contents-card .card-osmolality.unknown {
+  display: block;
+  font-size: 12px;
+  opacity: 0.6;
+  overflow-wrap: anywhere;
 }
 
 .contents-card .card-problem {

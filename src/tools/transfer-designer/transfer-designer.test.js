@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
-import { gridOf, capacityOf, deadVolumeOf } from "../../shared/deck/deck.js";
+import { gridOf, capacityOf, deadVolumeOf, growthAreaOf } from "../../shared/deck/deck.js";
 import { GRID_96, GRID_1X12_NUMBERED } from "../../shared/well-grid/well-grid.js";
 import {
   DEFAULT_MIX as CONFIGURED_DEFAULT_MIX,
@@ -92,6 +92,9 @@ import {
   setRandomizations,
   setConstituents,
   concentrationsOf,
+  setOsmolality,
+  osmolalityOf,
+  seedingDensitiesOf,
   columnBoxes,
   moveItems,
   copyOf,
@@ -106,8 +109,8 @@ import {
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
 import { assignPool } from "../../shared/random-pool/random-pool.js";
-import { CONCENTRATION_UNITS } from "../../../config/concentration-units.js";
-import { familyOf, unitsOf } from "../../shared/concentrations/concentrations.js";
+import { CONCENTRATION_UNITS, CELL_DENSITY_UNIT } from "../../../config/concentration-units.js";
+import { familyOf, unitsOf, seedingDensity } from "../../shared/concentrations/concentrations.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
 const [PLATE, OTHER_PLATE] = DECK.filter((entry) => gridOf(entry.name) === GRID_96).map(
@@ -302,6 +305,55 @@ function assertWithin(actual, expected) {
     Math.abs(actual - expected) <= Math.abs(expected) * 1e-12,
     `${actual} is within 1e-12 of ${expected}`,
   );
+}
+
+// Asserts that an osmolality `actual` is within 1e-9 mOsm/kg of `expected`, an absolute difference
+// as osmolality.md compares, so an expected 0 still allows arithmetic leftovers.
+function assertOsmolalityWithin(actual, expected) {
+  assert.ok(Math.abs(actual - expected) <= 1e-9, `${actual} is within 1e-9 of ${expected}`);
+}
+
+// A plan where DEEP A1 (a deep well, so 1000 µL fits) holds 900 µL of Media (osmolality `media`) and one transfer in stage "1"
+// brings 100 µL of Water (osmolality `water`) into it from trough 5, which holds enough over its
+// dead volume to give the full 100 µL, e.g. waterIntoMediaPlan(300, 0).
+function waterIntoMediaPlan(media, water) {
+  let { plan } = emptyPlan();
+  plan = addComponent(plan, "Media", "#4e79a7");
+  plan = addComponent(plan, "Water", "#76b7b2");
+  plan = setOsmolality(plan, "Media", media);
+  plan = setOsmolality(plan, "Water", water);
+  plan = addToWells(plan, [{ labware: DEEP, well: "A1" }], "Media", 900);
+  plan = addToWells(plan, [trough("5")], "Water", deadVolumeOf(RESERVOIR) + 1000);
+  return addTransfer(plan, {
+    type: "transfer",
+    source: trough("5"),
+    destination: { labware: DEEP, well: "A1" },
+    volume: 100,
+    stage: "1",
+  });
+}
+
+// A labware with a growth area and one without, found in DECK by growthAreaOf, never named.
+const GROWING = DECK.find((entry) => growthAreaOf(entry.name) !== null).name;
+const NOT_GROWING = DECK.find(
+  (entry) => growthAreaOf(entry.name) === null && gridOf(entry.name) === GRID_96,
+).name;
+
+// The well { labware, well }, e.g. wellOn("Plate1", "A1").
+function wellOn(labware, well) {
+  return { labware, well };
+}
+
+// planWithContents plus a component "Suspension" carrying Cells at 1500000 in CELL_DENSITY_UNIT.
+function planWithCells() {
+  const plan = addComponent(planWithContents(), "Suspension", "#f28e2b");
+  return setConstituents(plan, "Suspension", [constituentOf("Cells", 1500000, CELL_DENSITY_UNIT)]);
+}
+
+// The plan with `well` holding `volume` µL: 10% Suspension and 90% Media.
+function withCellsIn(plan, well, volume) {
+  const withSuspension = addToWells(plan, [well], "Suspension", volume * 0.1);
+  return addToWells(withSuspension, [well], "Media", volume * 0.9);
 }
 
 describe("transfer-designer", () => {
@@ -1945,8 +1997,8 @@ describe("transfer-designer", () => {
     plan = addComponent(plan, "Media", "#4e79a7");
     plan = addComponent(plan, "  Drug_A ", "#f28e2b");
     assert.deepEqual(plan.components, [
-      { name: "Media", color: "#4e79a7", constituents: [] },
-      { name: "Drug_A", color: "#f28e2b", constituents: [] },
+      { name: "Media", color: "#4e79a7", constituents: [], osmolality: null },
+      { name: "Drug_A", color: "#f28e2b", constituents: [], osmolality: null },
     ]);
   });
 
@@ -1989,7 +2041,7 @@ describe("transfer-designer", () => {
 
   test("renameComponent renames in every well, keeping each well's components in order", () => {
     const plan = renameComponent(planWithContents(), "Media", "Medium");
-    assert.deepEqual(plan.components[0], { name: "Medium", color: "#4e79a7", constituents: [] });
+    assert.deepEqual(plan.components[0], { name: "Medium", color: "#4e79a7", constituents: [], osmolality: null });
     assert.deepEqual(plan.startingContents, [
       { labware: RESERVOIR, well: "1", components: { Medium: 1000, Dye: 10 } },
       { labware: RESERVOIR, well: "2", components: { Dye: 500 } },
@@ -2017,7 +2069,7 @@ describe("transfer-designer", () => {
   test("setComponentColor recolors; another component's color throws", () => {
     const plan = planWithContents();
     const recolored = setComponentColor(plan, "Dye", "#59a14f");
-    assert.deepEqual(recolored.components[1], { name: "Dye", color: "#59a14f", constituents: [] });
+    assert.deepEqual(recolored.components[1], { name: "Dye", color: "#59a14f", constituents: [], osmolality: null });
     assert.throws(() => setComponentColor(plan, "Dye", "#4e79a7"), {
       message: "Media already has that color. Choose a different one.",
     });
@@ -2026,7 +2078,7 @@ describe("transfer-designer", () => {
 
   test("removeComponent empties wells left with nothing", () => {
     const plan = removeComponent(planWithContents(), "Dye");
-    assert.deepEqual(plan.components, [{ name: "Media", color: "#4e79a7", constituents: [] }]);
+    assert.deepEqual(plan.components, [{ name: "Media", color: "#4e79a7", constituents: [], osmolality: null }]);
     assert.deepEqual(plan.startingContents, [
       { labware: RESERVOIR, well: "1", components: { Media: 1000 } },
     ]);
@@ -2108,7 +2160,12 @@ describe("transfer-designer", () => {
 
   test("addComponent gives the new component constituents: [], after name and color", () => {
     const plan = addComponent(emptyPlan().plan, "Media", "#4e79a7");
-    assert.deepEqual(Object.keys(plan.components[0]), ["name", "color", "constituents"]);
+    assert.deepEqual(Object.keys(plan.components[0]), [
+      "name",
+      "color",
+      "constituents",
+      "osmolality",
+    ]);
     assert.deepEqual(plan.components[0].constituents, []);
   });
 
@@ -2262,6 +2319,249 @@ describe("transfer-designer", () => {
     assert.throws(() => concentrationsOf(plan, start, undefined), {
       message: "The labware given to volumeFractionsOf must be text, but got undefined.",
     });
+  });
+
+  // --- Osmolality ---
+
+  test("addComponent gives the new component osmolality: null, last of its properties", () => {
+    const plan = addComponent(emptyPlan().plan, "Media", "#4e79a7");
+    assert.equal(plan.components[0].osmolality, null);
+    assert.equal(Object.keys(plan.components[0]).at(-1), "osmolality");
+  });
+
+  test("setOsmolality sets values, keeps 0 as 0, removes with null, and has no upper limit", () => {
+    let plan = planWithContents();
+    plan = setOsmolality(plan, "Media", 300);
+    assert.equal(plan.components[0].osmolality, 300);
+    plan = setOsmolality(plan, "Media", 290.5);
+    assert.equal(plan.components[0].osmolality, 290.5);
+    plan = setOsmolality(plan, "Media", 0);
+    assert.equal(plan.components[0].osmolality, 0);
+    plan = setOsmolality(plan, "Media", 2800);
+    assert.equal(plan.components[0].osmolality, 2800);
+    plan = setOsmolality(plan, "Media", null);
+    assert.equal(plan.components[0].osmolality, null);
+    assert.equal(plan.components[1].osmolality, null);
+  });
+
+  test("setOsmolality with the value the component already has gives back the same plan", () => {
+    const plan = setOsmolality(planWithContents(), "Media", 300);
+    assert.equal(setOsmolality(plan, "Media", 300), plan);
+    assert.equal(setOsmolality(plan, "Dye", null), plan);
+  });
+
+  test("setOsmolality throws for a component not in the plan, before a bad value", () => {
+    const plan = planWithContents();
+    const before = snapshot(plan);
+    assert.throws(() => setOsmolality(plan, "Buffer", -5), {
+      message:
+        'There\'s no component called "Buffer" in this plan. Add it to the plan\'s components first.',
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("setOsmolality passes on checkOsmolality's message, naming the component", () => {
+    const plan = planWithContents();
+    for (const [value, shown] of [
+      [-5, "-5"],
+      ["300", '"300"'],
+      [NaN, "NaN"],
+      [Infinity, "Infinity"],
+      [undefined, "undefined"],
+    ]) {
+      assert.throws(() => setOsmolality(plan, "Media", value), {
+        message: `The osmolality of Media must be a number of mOsm/kg, 0 or more, like 300, or none if it isn't known, but got ${shown}.`,
+      });
+    }
+  });
+
+  test("renaming, recoloring and setting constituents keep the osmolality; removing removes it", () => {
+    let plan = setOsmolality(planWithContents(), "Dye", 300);
+    assert.equal(renameComponent(plan, "Dye", "Dye stock").components[1].osmolality, 300);
+    assert.equal(setComponentColor(plan, "Dye", "#59a14f").components[1].osmolality, 300);
+    const withConstituents = setConstituents(plan, "Dye", [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    assert.equal(withConstituents.components[1].osmolality, 300);
+    const both = setOsmolality(withConstituents, "Dye", 250);
+    assert.deepEqual(both.components[1].constituents, [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    const removed = removeComponent(plan, "Dye");
+    assert.ok(!removed.components.some((component) => component.name === "Dye"));
+  });
+
+  test("osmolalityOf gives a well of only Media its osmolality, and an empty well none", () => {
+    let plan = setOsmolality(planWithContents(), "Media", 300);
+    plan = addToWells(plan, [trough("3")], "Media", 500);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    assert.deepEqual(osmolalityOf(plan, start, trough("3")), { value: 300, missing: [] });
+    assert.deepEqual(osmolalityOf(plan, start, trough("9")), { value: null, missing: [] });
+  });
+
+  test("osmolalityOf follows a transfer of Water at 0 into Media at 300: 270 after, 300 before", () => {
+    const plan = waterIntoMediaPlan(300, 0);
+    const well = { labware: DEEP, well: "A1" };
+    const before = osmolalityOf(plan, replay(plan.startingContents, plan.operationList, 0), well);
+    const after = osmolalityOf(plan, replay(plan.startingContents, plan.operationList, 1), well);
+    assertOsmolalityWithin(before.value, 300);
+    assert.deepEqual(before.missing, []);
+    assertOsmolalityWithin(after.value, 270);
+    assert.deepEqual(after.missing, []);
+  });
+
+  test("osmolalityOf names Water when it has no value, after the transfer only", () => {
+    const plan = waterIntoMediaPlan(300, null);
+    const well = { labware: DEEP, well: "A1" };
+    const before = replay(plan.startingContents, plan.operationList, 0);
+    const after = replay(plan.startingContents, plan.operationList, 1);
+    assert.deepEqual(osmolalityOf(plan, after, well), { value: null, missing: ["Water"] });
+    assert.deepEqual(osmolalityOf(plan, before, well), { value: 300, missing: [] });
+  });
+
+  test("osmolalityOf checks the well through the snapshot only", () => {
+    const plan = planWithContents();
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    assert.throws(() => osmolalityOf(plan, start, { labware: RESERVOIR, well: 5 }), {
+      message: "The well given to volumeFractionsOf must be text, but got 5.",
+    });
+  });
+
+  test("osmolality never reaches the Biomek files", () => {
+    const withValues = setExperimentName(waterIntoMediaPlan(300, 0), "Exp36");
+    const withNone = setOsmolality(setOsmolality(withValues, "Media", null), "Water", null);
+    assert.equal(withNone.components.every((component) => component.osmolality === null), true);
+    const timestamp = new Date(2026, 10, 5, 9, 7, 2);
+    assert.deepEqual(writeRunFiles(withValues, timestamp), writeRunFiles(withNone, timestamp));
+  });
+
+  test("concentrationsOf gives a well's cells in the cells' family", () => {
+    let plan = planWithCells();
+    plan = addToWells(plan, [trough("3")], "Suspension", 100);
+    plan = addToWells(plan, [trough("3")], "Media", 900);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = concentrationsOf(plan, start, trough("3"));
+    assert.equal(result.length, 1);
+    assert.equal(result[0].family, familyOf(CELL_DENSITY_UNIT));
+    assertWithin(result[0].value, 0.1 * 1500000);
+  });
+
+  // --- Seeding densities (labware found in DECK by its growth area, never named) ---
+
+  test("seedingDensitiesOf gives a well's cells per cm² of its growth area", () => {
+    const volume = capacityOf(GROWING) / 2;
+    const plan = withCellsIn(planWithCells(), wellOn(GROWING, "A1"), volume);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = seedingDensitiesOf(plan, start, wellOn(GROWING, "A1"));
+    assert.equal(result.length, 1);
+    assert.equal(result[0].name, "Cells");
+    assert.deepEqual(Object.keys(result[0]).sort(), ["name", "value"]);
+    assertWithin(result[0].value, seedingDensity(0.1 * 1500000, volume, growthAreaOf(GROWING)));
+  });
+
+  test("seedingDensitiesOf gives only cells, and [] for no cells, an empty well or labware without a growth area", () => {
+    const volume = capacityOf(GROWING) / 2;
+    let plan = setConstituents(planWithCells(), "Dye", [constituentOf("Dye", 10, MOLAR_UNIT)]);
+    plan = withCellsIn(plan, wellOn(GROWING, "A1"), volume);
+    plan = addToWells(plan, [wellOn(GROWING, "A1")], "Dye", 10);
+    plan = addToWells(plan, [wellOn(GROWING, "A2")], "Dye", 10);
+    plan = withCellsIn(plan, wellOn(NOT_GROWING, "A1"), capacityOf(NOT_GROWING) / 2);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = seedingDensitiesOf(plan, start, wellOn(GROWING, "A1"));
+    assert.deepEqual(
+      result.map((entry) => entry.name),
+      ["Cells"],
+    );
+    assert.deepEqual(seedingDensitiesOf(plan, start, wellOn(GROWING, "A2")), []);
+    assert.deepEqual(seedingDensitiesOf(plan, start, wellOn(GROWING, "A3")), []);
+    assert.deepEqual(seedingDensitiesOf(plan, start, wellOn(NOT_GROWING, "A1")), []);
+    // The same well's cells are still there as a cell density.
+    assert.equal(concentrationsOf(plan, start, wellOn(NOT_GROWING, "A1")).length, 1);
+  });
+
+  test("seedingDensitiesOf adds cells from two components before working out the density", () => {
+    let plan = addComponent(planWithCells(), "Second suspension", "#76b7b2");
+    plan = setConstituents(plan, "Second suspension", [constituentOf("Cells", 500000, CELL_DENSITY_UNIT)]);
+    const well = wellOn(GROWING, "A1");
+    // Half the well's capacity, from config/, so a change there never breaks this test.
+    const total = capacityOf(GROWING) / 2;
+    plan = addToWells(plan, [well], "Suspension", total * 0.1);
+    plan = addToWells(plan, [well], "Second suspension", total * 0.2);
+    plan = addToWells(plan, [well], "Media", total * 0.7);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = seedingDensitiesOf(plan, start, well);
+    assert.equal(result.length, 1);
+    const cellDensity = 0.1 * 1500000 + 0.2 * 500000;
+    assertWithin(result[0].value, seedingDensity(cellDensity, total, growthAreaOf(GROWING)));
+  });
+
+  test("seedingDensitiesOf counts the whole well, dead volume included", () => {
+    const well = wellOn(GROWING, "A1");
+    const plan = addToWells(planWithCells(), [well], "Suspension", deadVolumeOf(GROWING));
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const result = seedingDensitiesOf(plan, start, well);
+    assertWithin(
+      result[0].value,
+      seedingDensity(1500000, deadVolumeOf(GROWING), growthAreaOf(GROWING)),
+    );
+    assert.ok(result[0].value > 0);
+  });
+
+  test("adding Media keeps the seeding density; taking half the well away halves it", () => {
+    const well = wellOn(GROWING, "A1");
+    const volume = capacityOf(GROWING) / 2;
+    let plan = withCellsIn(planWithCells(), well, volume);
+    // A trough of Media well over its dead volume, so the transfer draws the full volume.
+    plan = addToWells(plan, [trough("5")], "Media", deadVolumeOf(RESERVOIR) + 1000);
+    plan = addTransfer(plan, {
+      type: "transfer",
+      source: trough("5"),
+      destination: well,
+      volume: capacityOf(GROWING) / 4,
+      stage: "1",
+    });
+    // Half the well, taken in a stage of its own (a well can't be a source and a destination in
+    // one stage), and within its usable volume.
+    const taken = (volume + capacityOf(GROWING) / 4) / 2;
+    assert.ok(taken <= volume + capacityOf(GROWING) / 4 - deadVolumeOf(GROWING));
+    plan = addStage(plan, null).plan;
+    plan = addTransfer(plan, {
+      type: "transfer",
+      source: well,
+      destination: wellOn(GROWING, "A2"),
+      volume: taken,
+      stage: "2",
+    });
+    const before = seedingDensitiesOf(plan, replay(plan.startingContents, plan.operationList, 0), well);
+    const afterMedia = replay(plan.startingContents, plan.operationList, 1);
+    const afterTaking = replay(plan.startingContents, plan.operationList, 2);
+    assert.ok(
+      concentrationsOf(plan, afterMedia, well)[0].value <
+        concentrationsOf(plan, replay(plan.startingContents, plan.operationList, 0), well)[0].value,
+    );
+    assertWithin(seedingDensitiesOf(plan, afterMedia, well)[0].value, before[0].value);
+    assertWithin(seedingDensitiesOf(plan, afterTaking, well)[0].value, before[0].value / 2);
+  });
+
+  test("seedingDensitiesOf throws as concentrationsOf does, then as growthAreaOf does", () => {
+    const plan = planWithCells();
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    assert.throws(() => seedingDensitiesOf(plan, start, undefined), {
+      message: "The labware given to volumeFractionsOf must be text, but got undefined.",
+    });
+    const deckNames = DECK.map((entry) => `"${entry.name}"`).join(", ");
+    assert.throws(() => seedingDensitiesOf(plan, start, { labware: "Bench", well: "A1" }), {
+      message: `There's no labware "Bench" on the deck. The deck has ${deckNames}.`,
+    });
+  });
+
+  test("seedingDensitiesOf doesn't change its inputs", () => {
+    const well = wellOn(GROWING, "A1");
+    const plan = withCellsIn(planWithCells(), well, capacityOf(GROWING) / 2);
+    const start = replay(plan.startingContents, plan.operationList, 0);
+    const planBefore = planToText(plan, "test");
+    const startBefore = JSON.stringify(start.volumeFractionsOf(well.labware, well.well));
+    const endBefore = JSON.stringify(well);
+    seedingDensitiesOf(plan, start, well);
+    assert.equal(planToText(plan, "test"), planBefore);
+    assert.equal(JSON.stringify(start.volumeFractionsOf(well.labware, well.well)), startBefore);
+    assert.equal(JSON.stringify(well), endBefore);
   });
 
   // --- Labware ---

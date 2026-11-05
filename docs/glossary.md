@@ -13,11 +13,18 @@ The most one well of a labware type holds, in µL: the type's "Maximum volume pe
 Software, copied into `config/labware-types.js`. One value per labware type. A well filled past it
 is an overfill.
 
+**Cell density**
+How many cells a liquid carries per mL, from a cell count, such as 1.5 × 10⁶ cells/mL in a cell
+suspension. Cells are a constituent like any other, in the unit cells/mL, a family of its own that
+is never rescaled (`concentrations.md`, "Cells"). Diluting a suspension lowers its cell density;
+compare seeding density.
+
 **Component**
 A liquid the user names in a plan, such as "Media" or "Drug_A", each with its own color for drawing
 it. A plan's starting contents say how much of each component every well holds; contents tracking
 then follows the components through the transfers. Two components never share a name or a color.
 A component may carry constituents (below); one with none carries nothing at a known concentration.
+A component may also have an osmolality (below), measured on its stock.
 
 **Concentration**
 How much of a constituent a well's mixture carries, in the constituent's unit: the sum, over the
@@ -57,6 +64,11 @@ and the end of the name of each run's folder of Biomek files (`file-writer.md`).
 plan, saved with it. Letters, digits, hyphens and underscores only, 1 to 40 characters; a new plan
 has none until the user gives one.
 
+**Growth area**
+The area of one well's bottom that cells grow on, in cm²: one value per labware type, in
+`config/labware-types.js`, given only for types cells are grown on. A well's labware having one is
+what gives it a seeding density.
+
 **Item**
 Something in the Stages column that can be selected, moved or copied: a stage (a mix step
 included), an ordinary tip group (one not belonging to a randomization) or a randomization.
@@ -84,6 +96,16 @@ from the well to itself, run with a technique that only mixes; ADR 0007, "Mixing
 added with its own button, and shown with a ⟳ after its name. It's still a stage: it has a place in
 the stage order, uses the tips of its tip group, and becomes stage-worklist rows.
 
+**Osmolality**
+The concentration of dissolved particles in a solution, per kilogram of water, in mOsm/kg
+(milliosmoles per kilogram), as an osmometer measures it. (**Osmolarity** is the same idea per liter
+of solution, in mOsm/L; the tools use osmolality only.) It's a property of a whole solution, not a
+constituent (ADR 0016). A component's osmolality is the measured value of its stock, entered by the
+user; a well's osmolality is an **estimate**: the sum, over the well's components, of each
+component's share of the well times its osmolality, known only when every component in the well has
+one (`osmolality.md`). A well 90% from Media at 300 mOsm/kg and 10% from water at 0 is about
+270 mOsm/kg.
+
 **Overdraw**
 A transfer that asks a well for more than it can give: more than its usable volume (the tip
 would reach into the dead volume and draw air) or more than it holds at all. Contents tracking
@@ -105,7 +127,7 @@ pipette. Some pipetting modes suit only one end; Non-Contact, for example, is fo
 
 **Plan**
 Everything the tools hold about one experiment's liquid handling: its experiment name, its
-components (each with its constituents), its starting contents (what each well holds before the run), its operation list, its
+components (each with its constituents and osmolality), its starting contents (what each well holds before the run), its operation list, its
 stage list, its tip changes, its labware labels, its well labels and its randomizations. The transfer designer builds a plan, and the file writer turns it into the
 files the Biomek runs. A plan isn't a Biomek method: the general-purpose method stays the same for
 every plan (ADR 0006, ADR 0007).
@@ -130,6 +152,13 @@ added. A seam inside a tip group (between two of its stages, or at its top or bo
 and mix steps with that group's tips, and between two stages can split the group with new tips; a
 seam between tip groups (above the first, between two, or above End) adds them with new tips, as a
 tip group of their own, or adds a randomization.
+
+**Seeding density**
+How many cells a well puts on each cm² of its growth area: its cell density times its volume,
+divided by its growth area, **assuming every cell settles onto the bottom** (`concentrations.md`,
+"Cells"). 100 µL at 1.5 × 10⁵ cells/mL over a bottom of, say, 0.32 cm² is 4.69 × 10⁴ cells/cm². Adding medium to
+the well lowers its cell density but not its seeding density. Only for wells on labware with a
+growth area.
 
 **Stage**
 A group of operations that can run in any order and share one set of settings: the technique and
