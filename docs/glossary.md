@@ -24,6 +24,7 @@ A liquid the user names in a plan, such as "Media" or "Drug_A", each with its ow
 it. A plan's starting contents say how much of each component every well holds; contents tracking
 then follows the components through the transfers. Two components never share a name or a color.
 A component may carry constituents (below); one with none carries nothing at a known concentration.
+A component may also have an osmolality (below), measured on its stock.
 
 **Concentration**
 How much of a constituent a well's mixture carries, in the constituent's unit: the sum, over the
@@ -95,6 +96,16 @@ from the well to itself, run with a technique that only mixes; ADR 0007, "Mixing
 added with its own button, and shown with a ⟳ after its name. It's still a stage: it has a place in
 the stage order, uses the tips of its tip group, and becomes stage-worklist rows.
 
+**Osmolality**
+The concentration of dissolved particles in a solution, per kilogram of water, in mOsm/kg
+(milliosmoles per kilogram), as an osmometer measures it. (**Osmolarity** is the same idea per liter
+of solution, in mOsm/L; the tools use osmolality only.) It's a property of a whole solution, not a
+constituent (ADR 0016). A component's osmolality is the measured value of its stock, entered by the
+user; a well's osmolality is an **estimate**: the sum, over the well's components, of each
+component's share of the well times its osmolality, known only when every component in the well has
+one (`osmolality.md`). A well 90% from Media at 300 mOsm/kg and 10% from water at 0 is about
+270 mOsm/kg.
+
 **Overdraw**
 A transfer that asks a well for more than it can give: more than its usable volume (the tip
 would reach into the dead volume and draw air) or more than it holds at all. Contents tracking
@@ -116,7 +127,7 @@ pipette. Some pipetting modes suit only one end; Non-Contact, for example, is fo
 
 **Plan**
 Everything the tools hold about one experiment's liquid handling: its experiment name, its
-components (each with its constituents), its starting contents (what each well holds before the run), its operation list, its
+components (each with its constituents and osmolality), its starting contents (what each well holds before the run), its operation list, its
 stage list, its tip changes, its labware labels, its well labels and its randomizations. The transfer designer builds a plan, and the file writer turns it into the
 files the Biomek runs. A plan isn't a Biomek method: the general-purpose method stays the same for
 every plan (ADR 0006, ADR 0007).

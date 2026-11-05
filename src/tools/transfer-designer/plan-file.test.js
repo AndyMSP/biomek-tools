@@ -37,6 +37,7 @@ import {
   setRandomization,
   runRandomization,
   setConstituents,
+  setOsmolality,
 } from "./transfer-designer.js";
 import { PLAN_FILE_FORMAT, PLAN_FILE_VERSION, planToText, planFromText } from "./plan-file.js";
 import { CONCENTRATION_UNITS, CELL_DENSITY_UNIT } from "../../../config/concentration-units.js";
@@ -138,6 +139,23 @@ function exampleMix() {
 function mixingPlan() {
   const plan = setStageMix(fullPlan(), "1", "source", exampleMix());
   return setStageMix(plan, "3", "destination", { share: 50, times: 2, speed: 100 });
+}
+
+// `file` (a parsed version 9 plan file) as a version 8 file, as saved from 2026-11-02 to 2026-11-05,
+// before osmolality: each component is { name, color, constituents }. A new object; `file` isn't
+// changed.
+function asVersion8(file) {
+  return {
+    ...file,
+    version: 8,
+    components: file.components.map(({ name, color, constituents }) => ({ name, color, constituents })),
+  };
+}
+
+// fullFile() as a version 8 file (asVersion8). Opened, it gives fullPlan(), whose components have
+// no osmolality.
+function version8File() {
+  return asVersion8(fullFile());
 }
 
 // fullFile() as a version 6 file, as saved on 2026-11-01, before constituents: each component is
@@ -265,7 +283,7 @@ describe("plan-file", () => {
 
   test("the format and version are the specification's", () => {
     assert.equal(PLAN_FILE_FORMAT, "biomek-tools transfer plan");
-    assert.equal(PLAN_FILE_VERSION, 8);
+    assert.equal(PLAN_FILE_VERSION, 9);
   });
 
   test("planToText writes each tip change with its probes, and each stage's settings without any", () => {
@@ -321,10 +339,10 @@ describe("plan-file", () => {
     assert.deepEqual(opened.tipChanges["3"].probes, [1]);
   });
 
-  test("a component is written as name, color, constituents, and each constituent as name, amount, unit", () => {
+  test("a component is written as name, color, constituents, osmolality, and each constituent as name, amount, unit", () => {
     const file = JSON.parse(planToText(constituentsPlan(), SAVED_BY));
     for (const component of file.components) {
-      assert.deepEqual(Object.keys(component), ["name", "color", "constituents"]);
+      assert.deepEqual(Object.keys(component), ["name", "color", "constituents", "osmolality"]);
     }
     assert.deepEqual(Object.keys(file.components[1].constituents[0]), ["name", "amount", "unit"]);
   });
@@ -393,10 +411,10 @@ describe("plan-file", () => {
     assert.deepEqual(Object.keys(opened.tipChanges).sort(), ["3", START].sort());
   });
 
-  test('an empty plan, saved and opened, has the same contents, and is written as version 8, with "wellLabels": {} and "randomizations": []', () => {
+  test('an empty plan, saved and opened, has the same contents, and is written as version 9, with "wellLabels": {} and "randomizations": []', () => {
     const plan = emptyPlan().plan;
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 8);
+    assert.equal(JSON.parse(text).version, 9);
     assert.deepEqual(JSON.parse(text).wellLabels, {});
     assert.deepEqual(JSON.parse(text).randomizations, []);
     const opened = planFromText(text);
@@ -453,6 +471,83 @@ describe("plan-file", () => {
     assertRefused(withoutDestinationMix, "stage 3: A mix step needs a destination mix: that's what it does.");
   });
 
+  // --- Version 9: osmolality ---
+
+  test("osmolalities 300, 0, 290.5 and none, saved and opened, are the same", () => {
+    let plan = addComponent(addComponent(fullPlan(), "Feed", "#59a14f"), "Water", "#76b7b2");
+    plan = setOsmolality(plan, "Media", 300);
+    plan = setOsmolality(plan, "Water", 0);
+    plan = setOsmolality(plan, "Feed", 290.5);
+    const text = planToText(plan, SAVED_BY);
+    assert.deepEqual(
+      JSON.parse(text).components.map((component) => component.osmolality),
+      [300, null, 290.5, 0],
+    );
+    const opened = planFromText(text);
+    assert.deepEqual(
+      opened.components.map((component) => component.osmolality),
+      [300, null, 290.5, 0],
+    );
+    assert.deepEqual(contentsOf(opened), contentsOf(plan));
+  });
+
+  test("a version 8 file opens, every component with osmolality null, its several filler wells as before", () => {
+    const opened = open(version8File());
+    assert.deepEqual(
+      opened.components.map((component) => component.osmolality),
+      [null, null],
+    );
+    assert.deepEqual(contentsOf(opened), contentsOf(fullPlan()));
+    const several = asVersion8(JSON.parse(planToText(severalFillersPlan(), SAVED_BY)));
+    assert.deepEqual(contentsOf(open(several)), contentsOf(severalFillersPlan()));
+  });
+
+  test("a version 8 component with osmolality, and a version 9 component without it, are refused", () => {
+    const withOsmolality = version8File();
+    withOsmolality.components[1] = { ...withOsmolality.components[1], osmolality: 300 };
+    assertRefused(
+      withOsmolality,
+      'component 2 must be an object with exactly "name", "color" and "constituents".',
+    );
+    const withoutOsmolality = fullFile();
+    delete withoutOsmolality.components[1].osmolality;
+    assertRefused(
+      withoutOsmolality,
+      'component 2 must be an object with exactly "name", "color", "constituents" and "osmolality".',
+    );
+  });
+
+  test("a version 9 component whose osmolality is -5, \"300\" or {} is refused with checkOsmolality's message", () => {
+    for (const [value, shown] of [
+      [-5, "-5"],
+      ["300", '"300"'],
+      [{}, "an object"],
+    ]) {
+      const file = fullFile();
+      file.components[1].osmolality = value;
+      assertRefused(
+        file,
+        `component 2: The osmolality of Dye must be a number of mOsm/kg, 0 or more, like 300, or none if it isn't known, but got ${shown}.`,
+      );
+    }
+  });
+
+  test("in a version 9 component with a bad constituent and a bad osmolality, the constituent is reported", () => {
+    const file = fullFile();
+    file.components[1].constituents = [{ name: "Dye", amount: 0, unit: MOLAR_UNIT }];
+    file.components[1].osmolality = -5;
+    assertRefused(file, 'component 2: The amount of "Dye" must be a number above 0, like 10, but got 0.');
+  });
+
+  test("version 6 and version 1 files open with osmolality null", () => {
+    for (const file of [version6File(), version1File()]) {
+      assert.deepEqual(
+        open(file).components.map((component) => component.osmolality),
+        [null, null],
+      );
+    }
+  });
+
   // --- Version 6 files ---
 
   test("a version 6 file opens, every component carrying []", () => {
@@ -471,14 +566,14 @@ describe("plan-file", () => {
   });
 
   test("a version 7 component without constituents is refused as not having exactly its properties", () => {
-    const file = fullFile();
+    const file = version8File();
     delete file.components[1].constituents;
     assertRefused(file, 'component 2 must be an object with exactly "name", "color" and "constituents".');
   });
 
   test("a version 7 component whose constituents checkConstituents refuses gives its message", () => {
     const withConstituents = (constituents) => {
-      const file = fullFile();
+      const file = version8File();
       file.components[1].constituents = constituents;
       return file;
     };
@@ -638,10 +733,10 @@ describe("plan-file", () => {
     return { ...file, version };
   }
 
-  test("a randomization with three filler wells, run, is saved as version 8 and opens as the same plan", () => {
+  test("a randomization with three filler wells, run, is saved (now as version 9) and opens as the same plan", () => {
     const plan = severalFillersPlan();
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 8);
+    assert.equal(JSON.parse(text).version, 9);
     const opened = planFromText(text);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
     assert.deepEqual(opened.randomizations[0].sources, plan.randomizations[0].sources);
@@ -653,9 +748,9 @@ describe("plan-file", () => {
 
   test("a version 7 file with two filler wells opens; one as saved before (one filler) opens as before", () => {
     const several = JSON.parse(planToText(severalFillersPlan(), SAVED_BY));
-    assert.deepEqual(contentsOf(open(asVersion(several, 7))), contentsOf(severalFillersPlan()));
+    assert.deepEqual(contentsOf(open(asVersion(asVersion8(several), 7))), contentsOf(severalFillersPlan()));
     const one = JSON.parse(planToText(randomizingPlan(), SAVED_BY));
-    assert.deepEqual(contentsOf(open(asVersion(one, 7))), contentsOf(open(one)));
+    assert.deepEqual(contentsOf(open(asVersion(asVersion8(one), 7))), contentsOf(open(one)));
   });
 
   test("a filler stage entry naming a later filler well opens; two filler entries are refused", () => {
@@ -687,13 +782,13 @@ describe("plan-file", () => {
   });
 
   test("a version 7 file without randomizations is refused as missing it", () => {
-    const file = fullFile();
+    const file = version8File();
     delete file.randomizations;
     assertRefused(file, 'it\'s missing "randomizations".');
   });
 
   test("a version 7 file whose randomizations is an object gets the wrong-kind message", () => {
-    assertRefused({ ...fullFile(), randomizations: {} }, '"randomizations" must be a list.');
+    assertRefused({ ...version8File(), randomizations: {} }, '"randomizations" must be a list.');
   });
 
   test("a randomization naming a stage that isn't one of the file's is refused", () => {
@@ -771,13 +866,13 @@ describe("plan-file", () => {
   });
 
   test("a version 7 file without wellLabels is refused as missing it", () => {
-    const file = fullFile();
+    const file = version8File();
     delete file.wellLabels;
     assertRefused(file, 'it\'s missing "wellLabels".');
   });
 
   test("a version 7 file whose wellLabels is a list gets the wrong-kind message", () => {
-    assertRefused({ ...fullFile(), wellLabels: [] }, '"wellLabels" must be an object.');
+    assertRefused({ ...version8File(), wellLabels: [] }, '"wellLabels" must be an object.');
   });
 
   test("well labels are strict: a label with spaces at its ends, a blank label, a labware with {}, or a well not on the grid is refused with setWellLabels's message, not tidied", () => {
@@ -797,9 +892,9 @@ describe("plan-file", () => {
     assertRefused(file, /the experiment name: /);
   });
 
-  test("saving an opened version 4 file writes version 8, with no well labels", () => {
+  test("saving an opened version 4 file writes version 9, with no well labels", () => {
     const file = JSON.parse(planToText(open(version4File()), SAVED_BY));
-    assert.equal(file.version, 8);
+    assert.equal(file.version, 9);
     assert.deepEqual(file.wellLabels, {});
   });
 
@@ -839,7 +934,7 @@ describe("plan-file", () => {
     assertRefused(file, /stage 2: The stage name is blank\./);
   });
 
-  test("saving an opened version 3 file writes version 8, with the stages' mixes null", () => {
+  test("saving an opened version 3 file writes version 9, with the stages' mixes null", () => {
     const file = JSON.parse(planToText(open(version3File()), SAVED_BY));
     assert.equal(file.version, PLAN_FILE_VERSION);
     for (const stage of file.stages) {
@@ -1008,8 +1103,8 @@ describe("plan-file", () => {
 
   test("a version above this one was saved by a newer version of the tools", () => {
     assertRefused(
-      { ...fullFile(), version: 9 },
-      "it was saved by a newer version of the tools (plan format 9). Open it with that version or a later one.",
+      { ...fullFile(), version: 10 },
+      "it was saved by a newer version of the tools (plan format 10). Open it with that version or a later one.",
     );
   });
 
@@ -1065,7 +1160,7 @@ describe("plan-file", () => {
       { name: "Water", color: "#76b7b2" },
       { name: "Water", color: "#76b7b2", constituents: [], notes: "" },
     ]) {
-      const file = fullFile();
+      const file = version8File();
       file.components[1] = component;
       assertRefused(
         file,

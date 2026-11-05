@@ -6,13 +6,14 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 8, which holds each component's constituents, the randomizations (whose
-// filler may be several wells) and the well labels, each stage's settings hold its mixes and each
-// tip change its probes. It still reads version 7 files (the same properties, written when a filler
+// It writes format version 9, which holds each component's constituents and osmolality, the
+// randomizations (whose filler may be several wells) and the well labels, each stage's settings
+// hold its mixes and each tip change its probes. It still reads version 8 files (components
+// without osmolality), version 7 files (the same properties, written when a filler
 // was one well), version 6 files (components without constituents), version 5 files (also no
 // randomizations), version 4 files (also no well labels), version 3 files (also no mixes), version
 // 2 files (also probes in each stage's settings) and version 1 files (also without an experiment
-// name). Their components carry nothing and their stages get no mixing, since plans couldn't do
+// name). Their components have no osmolality; before version 7 they carry nothing too, and their stages get no mixing, since plans couldn't do
 // either then; in versions 1 and 2, their tip changes get every probe their stages used, which is
 // where look-ahead loading put tips.
 // Specification: plan-file.md.
@@ -48,6 +49,7 @@ import {
   setRandomizations,
   setExperimentName,
   setConstituents,
+  setOsmolality,
 } from "./transfer-designer.js";
 
 // The format name every plan file holds, so a file can be recognized as one.
@@ -60,24 +62,35 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // stage's mixes (ADR 0007, "Mixing"); version 5 (2026-11-01) added the well labels; version 6
 // (2026-11-01) added the randomizations (ADR 0012); version 7 (2026-11-01) added each component's
 // constituents (ADR 0013); version 8 (2026-11-02) lets a randomization's filler be several wells,
-// with the same properties, so a tool that knows only version 7 refuses such a file as newer.
-export const PLAN_FILE_VERSION = 8;
+// with the same properties, so a tool that knows only version 7 refuses such a file as newer;
+// version 9 (2026-11-05) added each component's osmolality (ADR 0016).
+export const PLAN_FILE_VERSION = 9;
 
-// The versions this module can read: the one it writes, version 7 (plans saved from 2026-11-01 to
+// The versions this module can read: the one it writes, version 8 (plans saved from 2026-11-02 to
+// 2026-11-05, before osmolality), version 7 (plans saved from 2026-11-01 to
 // 2026-11-02, before several filler wells; read with the same rules), version 6 (plans saved on
 // 2026-11-01, before constituents), version 5 (plans saved on 2026-11-01, before randomizations),
 // version 4 (plans saved from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved
 // on 2026-10-30, before mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version
 // 1 (plans saved before 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 7, 6, 5, 4, 3, 2, 1];
+const VERSIONS_READ = [PLAN_FILE_VERSION, 8, 7, 6, 5, 4, 3, 2, 1];
 
 // The first version whose components hold their constituents. An older file's components are
 // { name, color } only, and open carrying nothing.
 const FIRST_VERSION_WITH_CONSTITUENTS = 7;
 
-// A component's properties in a file: name and color, plus constituents from version 7 on.
+// The first version whose components hold their osmolality. An older file's components open with
+// none (null).
+const FIRST_VERSION_WITH_OSMOLALITY = 9;
+
+// A component's properties in a file: name and color, plus constituents from version 7 on, plus
+// osmolality from version 9 on.
 const COMPONENT_PROPERTIES = ["name", "color"];
 const COMPONENT_PROPERTIES_WITH_CONSTITUENTS = [...COMPONENT_PROPERTIES, "constituents"];
+const COMPONENT_PROPERTIES_WITH_OSMOLALITY = [
+  ...COMPONENT_PROPERTIES_WITH_CONSTITUENTS,
+  "osmolality",
+];
 
 // The versions in which each stage's settings hold its probes, and a tip change is { tipType } only.
 const VERSIONS_WITH_STAGE_PROBES = [1, 2];
@@ -90,8 +103,8 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
 // A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 6 to
-// 8 have all of them: version 7's change is inside each component, and version 8's inside the
-// randomizations.
+// 9 have all of them: version 7's and version 9's changes are inside each component, and version
+// 8's inside the randomizations.
 const FILE_PROPERTIES = [
   "format",
   "version",
@@ -239,7 +252,7 @@ function checkFormatAndVersion(file) {
 // lacks the ones version 5 added, and a version 1 file also lacks the ones version 2 added, e.g.
 // propertiesOfVersion(1) has no "experimentName", "wellLabels" or "randomizations". Versions 3 and 4
 // added no property: version 3 moved probes from the stages to the tip changes, and version 4 added
-// mixes inside each stage's settings; nor did versions 7 and 8 (constituents inside each component,
+// mixes inside each stage's settings; nor did versions 7 to 9 (constituents and osmolality inside each component,
 // and several filler wells inside the randomizations).
 function propertiesOfVersion(version) {
   let properties = FILE_PROPERTIES;
@@ -285,12 +298,15 @@ function checkProperties(file) {
 
 // Check 5: returns the plan with each of `components` added in turn, as addComponent adds it, and,
 // in a file of `version` whose components hold constituents, its constituents set as setConstituents
-// sets them. Throws if one isn't an object with exactly its version's properties, or its name isn't
+// sets them, then, in one whose components hold osmolality, its osmolality set as setOsmolality
+// sets it. Throws if one isn't an object with exactly its version's properties, or its name isn't
 // a name, or addComponent refuses it, or (from version 7) a constituent's name has spaces at its
-// ends, or setConstituents refuses the constituents.
+// ends, or setConstituents refuses the constituents, or (from version 9) setOsmolality refuses the
+// osmolality.
 function addComponents(plan, components, version) {
   const withConstituents = version >= FIRST_VERSION_WITH_CONSTITUENTS;
-  const properties = withConstituents ? COMPONENT_PROPERTIES_WITH_CONSTITUENTS : COMPONENT_PROPERTIES;
+  const withOsmolality = version >= FIRST_VERSION_WITH_OSMOLALITY;
+  const properties = componentPropertiesOfVersion(version);
   let planSoFar = plan;
   for (const [index, component] of components.entries()) {
     const place = `component ${index + 1}`;
@@ -306,10 +322,27 @@ function addComponents(plan, components, version) {
         return added;
       }
       checkConstituentNamesUntrimmed(component.constituents);
-      return setConstituents(added, component.name, component.constituents);
+      const withItsConstituents = setConstituents(added, component.name, component.constituents);
+      if (!withOsmolality) {
+        return withItsConstituents;
+      }
+      return setOsmolality(withItsConstituents, component.name, component.osmolality);
     });
   }
   return planSoFar;
+}
+
+// The properties a component has in a plan file of `version`, in the order they are written:
+// name and color, plus constituents from version 7, plus osmolality from version 9,
+// e.g. componentPropertiesOfVersion(8) → ["name", "color", "constituents"].
+function componentPropertiesOfVersion(version) {
+  if (version >= FIRST_VERSION_WITH_OSMOLALITY) {
+    return COMPONENT_PROPERTIES_WITH_OSMOLALITY;
+  }
+  if (version >= FIRST_VERSION_WITH_CONSTITUENTS) {
+    return COMPONENT_PROPERTIES_WITH_CONSTITUENTS;
+  }
+  return COMPONENT_PROPERTIES;
 }
 
 // Throws, with checkName's message, if a constituent in `constituents` has a name with spaces at

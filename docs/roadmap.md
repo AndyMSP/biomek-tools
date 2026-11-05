@@ -345,6 +345,22 @@ Last updated: 2026-11-05
   (`transfer-designer-page.md`), glossary "Randomization". **Built (#132, 2026-11-03)**: code,
   tests and REPL, and the page; the specifications and the build each reviewed by a separate
   agent, and checked in headless Chrome. Still to check by Andy.
+- **Decided: M is an offered unit** (Andy, 2026-11-05; item 14, below), so it can be picked from
+  the unit menu when a constituent is entered; nM and mg/L stay display only. **Specified** (Draft,
+  2026-11-05, in the hands-off workflow): `concentrations.md` (sections 3, 5 and 7) and
+  `config/concentration-units.js` (M `offered: true`; the module and its tests read the offered
+  units from the file, so neither changes), a dated note in ADR 0013, and the page's checks
+  (`transfer-designer-page.md`, section 16). It changes no Biomek files, and existing plan files
+  still open.
+- **Decided: osmolality** (Andy, 2026-11-05; item 15, below; ADR 0016, Proposed): a measured
+  property of a whole solution, not a constituent. Each component may have its stock's measured
+  osmolality (mOsm/kg), and every well's is estimated as the share-weighted sum of its components',
+  shown on the contents card as `≈ 305 mOsm/kg`, only when every component in the well has a value
+  (otherwise `Osmolality unknown: no value for Buffer B`). **Specified** (Draft, 2026-11-05, in the
+  hands-off workflow): the new shared module `osmolality` (`src/shared/osmolality/osmolality.md`),
+  `setOsmolality` and `osmolalityOf` (`transfer-designer.md`, "Osmolality"), plan files version 9
+  (`plan-file.md`), the component's box, chip tooltip and contents card
+  (`transfer-designer-page.md`), glossary "Osmolality". It changes no Biomek files.
 - **Decided: cell density** (Andy, 2026-11-05; item 16, below): cells entered as a constituent in
   cells/mL, and a well's cells shown in cells/cm² on the 96-well flat plates. **Specified** (Draft,
   2026-11-05, in the hands-off workflow; ADR 0013, amended 2026-11-05): the cells' unit and
@@ -605,6 +621,33 @@ added on 2026-10-28 (Andy).
       transfers is safe). Plan files do: today they allow one filler, so a new format version, with
       older files still opening.
     **Specified** (Draft, 2026-11-03) and **built (#132)**: see "Where things stand".
+14. **M as an offered unit** (Andy, 2026-11-05): M can be picked from the unit menu when a
+    constituent is entered, so a stock written in molar is entered as written. Decided so far:
+    - **Only M is added:** nM and mg/L stay display only (Andy, 2026-11-05: "they are ok as is").
+    - **The menu reads M, mM, µM, g/L, %, ×**: the configuration's order, molar units from largest
+      to smallest.
+    - **Nothing else changes:** no Biomek files, and plan files keep their format (a file could
+      already hold a constituent in M, as display-only units are accepted when opened).
+    **Specified** (Draft, 2026-11-05): see "Where things stand".
+15. **Osmolality** (Andy, 2026-11-05; ADR 0016): what a well's osmolality is, so a plan shows when
+    adding drugs, buffers or DMSO stocks moves a well away from the medium's. Decided so far (Andy,
+    2026-11-05):
+    - **A measured property, not a constituent.** Modeling it as a constituent was rejected: "it's
+      something that is actually a part of the constituents rather than an additional thing".
+      Osmolality (per kg of water) is the term, not osmolarity (per liter): osmometers measure it.
+    - **Start from measured stocks, mix by volume.** Professionally it's measured (freezing-point
+      osmometers, including 96-well ones), and calculating it from solutes underestimates it
+      (ADR 0016, with sources), so each component's value is its stock's measured one, and a
+      well's is the share-weighted sum: only the mixing step is approximate, which is small for
+      media near 300 mOsm/kg. Shown with `≈`.
+    - **Entered once per component**, in its own field in the component's box, separate from
+      `Contains`. Optional; water is entered as 0 like anything else (no automatic zero).
+    - **Shown only when every component in the well has a value**; otherwise the card says which
+      have none, e.g. `Osmolality unknown: no value for Buffer B`.
+    - **Saved in plan files and undone** like other component edits: plan format version 9, with
+      versions 1 to 8 still opening (no osmolality). No Biomek file changes, so it needn't come
+      before the final runs.
+    **Specified** (Draft, 2026-11-05): see "Where things stand".
 16. **Cell density** (Andy, 2026-11-05): seeding cells with the tool needs a well's cells per cm².
     It follows items 14 (M as an offered unit) and 15 (osmolality), so its unit lists include M.
     Decided so far (Andy, 2026-11-05):
@@ -635,9 +678,13 @@ final Biomek runs, so they test the files as they will be:
    done first anyway, on 2026-11-02, while the runs wait for Andy to be at the Biomek.
 7. A filler of several wells (item 13), added on 2026-11-02: preview, specifications, then build.
    It doesn't change the Biomek files' format, so it needn't come before the final runs.
-8. Cell density (item 16), added on 2026-11-05: specifications, then build. It doesn't change the
+8. M as an offered unit (item 14), added on 2026-11-05: specifications, then build. It doesn't
+   change the Biomek files, so it needn't come before the final runs.
+9. Osmolality (item 15), added on 2026-11-05: specifications, then build. It doesn't change the
    Biomek files, so it needn't come before the final runs.
-9. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+10. Cell density (item 16), added on 2026-11-05: specifications, then build. It doesn't change
+    the Biomek files, so it needn't come before the final runs.
+11. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Concentrations on the deck** (2026-11-01): a toggle like `Names` showing one chosen
@@ -695,6 +742,12 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **A component named like a built-in property breaks concentrations** (found 2026-11-05, reviewing
+  the osmolality build): `wellConcentrations` reads a well's share as `shares[name]`, so a
+  component named `constructor` or `toString` gets JavaScript's built-in function instead of no
+  share. Osmolality reads only the shares' own properties (#134); doing it properly means the same
+  in `concentrations`, specification first, with a failing test, on its own branch. Nobody is
+  likely to name a component that way, so it waits.
 - **A randomization's stages are protected by the page only** (2026-11-01): the transfer
   designer's ordinary edits (adding or removing a transfer, changing a stage's settings, removing
   a stage or its tip change) don't refuse an owned stage; the page simply doesn't offer them, and

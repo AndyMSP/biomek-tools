@@ -50,6 +50,7 @@ import {
   isCellFamily,
   seedingDensity,
 } from "../src/shared/concentrations/concentrations.js";
+import { checkOsmolality, wellOsmolality } from "../src/shared/osmolality/osmolality.js";
 import { CELL_DENSITY_UNIT } from "../config/concentration-units.js";
 import {
   writeRunFiles,
@@ -137,6 +138,8 @@ import {
   setRandomizations,
   setConstituents,
   concentrationsOf,
+  setOsmolality,
+  osmolalityOf,
   seedingDensitiesOf,
   columnBoxes,
   moveItems,
@@ -402,6 +405,16 @@ const TOPICS = {
       "seedingDensity(150000, 100, 0.32)",
     ],
   },
+  osmolality: {
+    loaded: { checkOsmolality, wellOsmolality },
+    examples: [
+      'checkOsmolality(300, "Media")',
+      'checkOsmolality(-5, "Media")',
+      'const osmComponents = [{ name: "Media", osmolality: 300 }, { name: "Water", osmolality: 0 }, { name: "Buffer B", osmolality: null }]',
+      "wellOsmolality({ Media: 0.9, Water: 0.1 }, osmComponents)",
+      'wellOsmolality({ Media: 0.9, "Buffer B": 0.1 }, osmComponents)',
+    ],
+  },
   "file-writer": {
     loaded: { writeRunFiles, checkExperimentName, folderNameFor },
     examples: [
@@ -546,6 +559,8 @@ const TOPICS = {
       setRandomizations,
       setConstituents,
       concentrationsOf,
+      setOsmolality,
+      osmolalityOf,
       seedingDensitiesOf,
       columnBoxes,
       moveItems,
@@ -656,6 +671,11 @@ const TOPICS = {
       'dyed = addToWells(dyed, [{ labware: "Plate1", well: "A1" }], "Dye stock", 20)',
       'concentrationsOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A1" })',
       'concentrationsOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A2" })',
+'dyed = setOsmolality(dyed, "Media", 300)',
+      'osmolalityOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A1" })',
+      'dyed = setOsmolality(dyed, "Dye stock", 0)',
+      'osmolalityOf(dyed, replay(dyed.startingContents, dyed.operationList), { labware: "Plate1", well: "A1" })',
+      'setOsmolality(dyed, "Media", -5)',
       'let seeded = addComponent(addComponent(emptyPlan().plan, "Media", "#4e79a7"), "Suspension", "#f28e2b")',
       'seeded = setConstituents(seeded, "Suspension", [{ name: "Cells", amount: 1.5e6, unit: CELL_DENSITY_UNIT }])',
       'seeded = addToWells(seeded, [{ labware: "Plate1", well: "A1" }, { labware: "Deep1", well: "A1" }], "Media", 90)',

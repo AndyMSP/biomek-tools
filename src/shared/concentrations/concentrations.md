@@ -3,6 +3,12 @@
 > **Draft (2026-11-01).** Written for the roadmap's "Final concentrations" and "Constituents of a
 > component", from the preview Andy shaped on 2026-11-01 (ADR 0013). It becomes Final once built
 > and tested by Andy.
+>
+> **Draft change (2026-11-05, M offered):** M becomes an offered unit (Andy, 2026-11-05), so it can
+> be chosen when a constituent is entered; nM and mg/L stay display only (sections 3, 5 and 7).
+> Only `config/concentration-units.js` changes: the module and its tests read the offered units
+> from the file, so neither changes. Written in the hands-off workflow (CLAUDE.md, "Workflows").
+> It becomes Final once built and tested by Andy.
 
 > **Draft change (2026-11-05, cell density, item 16 of v0.2.0):** cells as a constituent in a
 > family of their own, in **cells/mL** (`CELL_DENSITY_UNIT`), and a well's **seeding density** in
@@ -91,7 +97,7 @@ gives `[]`.
 ### The unit to show
 **The units of a family**, as a message or a menu lists them: its offered units in the
 configuration's order, then its display-only ones in the configuration's order, e.g. mass gives
-g/L then mg/L; molar gives mM, µM, then M, nM.
+g/L then mg/L; molar gives M, mM, µM, then nM.
 
 For a value in a family's base unit, the unit to show it in is **the largest unit of its family
 in which the amount is at least 1**, else the family's smallest unit; for a family of one unit,
@@ -250,8 +256,9 @@ out)
 ## 7. Configuration
 `config/concentration-units.js` (ADR 0009) exports:
 - `CONCENTRATION_UNITS`: the units, as section 3 describes them, each family's units from largest
-  to smallest. Decided by Andy (2026-11-01) from the units the lab's protocols use: offered are
-  **mM, µM, g/L, % and ×**; display only are **M, nM and mg/L**. (U/mL, mg/mL and its
+  to smallest. Decided by Andy (2026-11-01) from the units the lab's protocols use, with M added
+  on 2026-11-05: offered are **M, mM, µM, g/L, % and ×** (`offered: true`); display only are
+  **nM and mg/L** (`offered: false`; Andy, 2026-11-05: "they are ok as is"). (U/mL, mg/mL and its
   submultiples were tried in the preview and dropped: the lab writes mass in g/L, and tracks no
   enzyme activities.) Molar's base unit is M, mass's is g/L; percent and × are families of one unit
   each. The symbol for fold is the multiplication sign `×`, not the letter x.

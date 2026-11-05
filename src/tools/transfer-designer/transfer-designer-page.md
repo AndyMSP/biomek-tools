@@ -109,6 +109,18 @@
 > "Workflows"), so the choices made for Andy are listed in its pull request. They become Final once
 > built and tested by Andy.
 
+> **Draft change (2026-11-05, M offered):** M is an offered unit (`concentrations.md`, section 7),
+> so a Contains row's unit menu reads M, mM, µM, g/L, %, × (section 8, from the configuration; no
+> page rule changes), and section 16 checks it. Written in the hands-off workflow (CLAUDE.md,
+> "Workflows"). It becomes Final once built and tested by Andy.
+
+> **Draft changes (2026-11-05, osmolality; ADR 0016):** from what Andy decided on 2026-11-05: an
+> `Osmolality` field in a component's box, for its stock's measured value; the value in the chip's
+> tooltip; and an `Osmolality` line on the contents card, `≈ 305 mOsm/kg`, or which components have
+> no value (sections 2, 6, 8, 13, 15 and 16). Not tried in a preview first: written in the
+> hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull
+> request. They become Final once built and tested by Andy.
+
 > **Draft changes (2026-11-05, cell density, item 16 of v0.2.0):** decided with Andy on
 > 2026-11-05: cells entered as a constituent in cells/mL (offered in the unit menu, the amount box
 > taking `1.5e6` as well as `1500000`); on labware with a growth area (today the 96-well flat
@@ -153,6 +165,7 @@ Not in version 1 (see `docs/roadmap.md`):
 - **Concentrations on the deck.** A well shows its volume (or its label); its concentrations are on
   the contents card only. A toggle showing one constituent's concentration on every well may come
   with use (`docs/roadmap.md`, "Later").
+- **Osmolality on the deck.** Likewise, a well's osmolality is on the contents card only.
 - **Messages in the page's own terms everywhere.** Some messages from the shared modules use
   internal terms, such as "starting contents entry 3" (roadmap, "Technical debt").
 
@@ -408,6 +421,27 @@ card (dark, light text) shows:
   cells/mL). The line's tooltip (its `title`) says `Assumes every cell settles onto the well's
   A cm² bottom.`, A being `growthAreaOf` the labware, shown as an amount (section 13). The group's
   heading stays `Concentrations`;
+- if the well holds something and **any component in the plan has an osmolality** (its
+  `osmolality` isn't `null`; 0, as entered for water, counts) (ADR 0016; `osmolalityOf`,
+  `transfer-designer.md`): after the components and any Concentrations group, under
+  a thin rule like the group's, one line:
+  - with a value (`value` not `null`; 0 is a value, shown `≈ 0 mOsm/kg`): `Osmolality` at the left and, at the right in the volume's monospace style, `≈`,
+    the value rounded to a whole number (section 13) and `mOsm/kg`, e.g. `≈ 305 mOsm/kg` (the `≈`
+    because it's an estimate from the stocks' measured values; Andy, 2026-11-05);
+  - with components missing a value: `Osmolality unknown: no value for Buffer B`, quieter (as the
+    Concentrations heading), naming every component of the well without one, in the plan's
+    component order: two joined by ` and ` (`no value for Buffer B and Drug stock`), three or more
+    by `, ` with ` and ` before the last (`no value for Buffer B, Drug stock and Water`), with no
+    quotes. The page joins the names with a small helper of its own, `listWithAnd(names)` (e.g.
+    `["A"]` → `A`, `["A", "B"]` → `A and B`, `["A", "B", "C"]` → `A, B and C`): no existing helper
+    joins names without quotes (`listNames` in `input-checks` and `listNamesWithAnd` in
+    `plan-file.js` and `transfer-designer.js` put each name in quotes, as messages about property
+    names do), so none of those is reused. It's not a problem (not in the problem color, not counted): the well's osmolality just isn't known.
+
+  Nothing of this for an empty well, or in a plan where no component has an osmolality, so a plan
+  that doesn't use osmolality sees no change, and cards don't all say `unknown`. In a plan whose
+  only osmolality is Water at 0, the line still shows: `≈ 0 mOsm/kg` for a well holding only Water,
+  and `Osmolality unknown: no value for …` for a well holding anything else;
 - (Andy, 2026-10-31: no total, usable-volume or capacity lines. The components add up to the
   total, the labware's limits are the same for every well of it, and holding only dead volume is
   neither a problem nor a warning: the stripes say it. The card shows only problems and warnings
@@ -1055,6 +1089,9 @@ first unless it's the component's own name, then ` +N` for the rest, e.g. `Dye s
 `Feeding media` `Hy-Soy 4 g/L +2`; on one line, never wrapped. The chip's tooltip lists them all,
 in the same number formats (a cell figure for cells): `Contains Hy-Soy 4 g/L, Yeast 0.5 g/L,
 Glutamine 1 g/L`, `Contains Cells 1.5 × 10⁶ cells/mL`. A component carrying nothing has neither.
+A component with an osmolality has it in the chip's tooltip, on a line of its own after any
+`Contains` line: `Osmolality 300 mOsm/kg` (the value as the component's box shows it, section 13,
+with no `≈`: it's the measured value). The chip's text doesn't show it, so chips stay short.
 
 **Adding components.** `+ New` becomes a text box (`Component name`). Enter adds the typed name
 (spaces at the ends removed) with `addComponent`, picks it, and opens a fresh box for the next name,
@@ -1088,16 +1125,32 @@ the chips below, moved left if needed to stay inside the Start card:
   Enter in any of the row's boxes saves the box, as in a name box. The rows are a draft until Save,
   like the rest of the box, so a row with a bad amount is reported then, by `setConstituents`'s
   message, and the box stays open.
+- **Osmolality** (ADR 0016), under Contains: a field label `Osmolality` like the box's others, then
+  one row: a text box (an ordinary text box like the Amount box, but 112px wide, so its
+  placeholder shows whole), its placeholder `Not measured`, then `mOsm/kg` in gray. It shows the component's stored osmolality as
+  `String(n)` (section 13), e.g. `300`, `290.5`, `1e-7`, or is empty when it has none. Its tooltip:
+  `The stock's measured osmolality. Leave it empty if it isn't known.` Enter in it saves the box.
+  **Reading it back**, one rule: the text is trimmed; empty (or only spaces) means none (`null`);
+  otherwise, if `Number(trimmed)` is a finite number, that number is passed on (so `300.0` gives
+  300, and exponent forms such as `1e-7` round-trip with what the box shows); otherwise the trimmed
+  text is passed on as typed, so `ten` is refused by `setOsmolality`'s message, as `-5` is (a
+  number below 0), and the box stays open. `0` is a value (water), not none. (This differs from
+  section 13's rule for a typed volume, which accepts only digits, `-` and a decimal part: a
+  volume is typed key by key and never shown in exponent form in a box, while this box shows
+  `String(n)`, which can be in exponent form.)
 - **Remove**: takes the component out at once with `removeComponent` (message `Removed Media from
   4 wells. Undo can bring it back.`, or `Removed Media. Undo can bring it back.`). No question
   first: Undo brings it back (Andy, 2026-10-31; every box's Remove works this way).
   and closes the box. If it was picked, the first component left is picked, or the eraser if none is.
-- **Save** renames, recolors and sets the constituents as one edit (`renameComponent`, then
-  `setComponentColor` if the color changed, then `setConstituents`, under the new name, if the
-  rows, with each amount passed on as above, differ from what the component carries, compared as
-  JSON in order; message `Saved Media.`). If it was picked, the renamed component stays picked. A
-  box counts as changed (section 10) when its name, color or rows (as typed) differ from the
-  component's.
+- **Save** renames, recolors and sets the constituents and the osmolality as one edit
+  (`renameComponent`, then `setComponentColor` if the color changed, then `setConstituents`, under
+  the new name, if the rows, with each amount passed on as above, differ from what the component
+  carries, compared as JSON in order, then `setOsmolality`, under the new name, if the value passed
+  on differs from the component's; message `Saved Media.`). If it was picked, the renamed component
+  stays picked. A box counts as changed (section 10) when its name, color, rows (as typed) or
+  osmolality differ from the component's. The osmolality box isn't changed when its text equals
+  what it first showed; otherwise it's compared as the value it would pass on (above), so `300.0`
+  and `300` are the same, and so are an emptied box and a component with none.
 
 ## 9. Transfers (a stage open)
 While a stage is open, transfers made on the deck go into it, with the next transfer's volume.
@@ -1340,6 +1393,11 @@ A row's amount box shows a saved amount as JavaScript writes the number, e.g. `1
   the unit; below 0.001 but not 0, in exponent form with one decimal, e.g. `4.0e-4`. (On the card
   the unit is chosen to fit the value, so an amount below 1 appears only in a family's smallest
   unit or a one-unit family.)
+- **Osmolality**: a component's (in its box and chip tooltip) at full precision, as JavaScript's
+  `String(n)` writes the stored number, e.g. `300`, `290.5`, `1e-7` (section 8 says how the box
+  reads it back); a well's estimate (contents card) rounded to a whole number, e.g. `≈ 305`, with
+  no thousands separator (`≈ 1250`), since osmometers read to 1 mOsm/kg and the value is an
+  estimate.
 - **Cell figures** (2026-11-05: an amount in the cells' family, on a chip and in its tooltip, and
   a cell density or a seeding density on the contents card), in powers of ten, as labs write cell
   counts. The rule: work out `value.toExponential(2)` (JavaScript's exponent form with 2 decimals,
@@ -1437,6 +1495,13 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   opacity, 6px of space under the rule; its heading 11px semibold, uppercase with 0.3px letter
   spacing, at 60% opacity, 2px above its lines; each line as a component's (name left, amount and
   unit right in the monospace volume style), 12px between.
+- **The Osmolality line** (section 6): spaced and ruled as the `Concentrations` group (6px below
+  what's above it, a 1px rule in the light text at 20% opacity, 6px under the rule); `Osmolality`
+  left, the value right in the monospace volume style, 12px between; the unknown line 12px at 60%
+  opacity, wrapping within the card.
+- **A component's Osmolality row** (section 8): the text box 112px (72px cut its placeholder to
+  `Not mea`; found in the build review, 2026-11-05), then `mOsm/kg` 12px gray (`#5E5E58`), 6px
+  apart.
 - **What a chip carries** (section 8): 12px gray (`#5E5E58`), 2px after the name, never wrapped;
   the same gray when the chip is picked.
 - **A component's Contains rows** (section 8): a grid per row, the name box taking what's left,
@@ -1558,8 +1623,10 @@ page's configuration (ADR 0009):
   a saved plan reopens with the same mixing, and its Biomek files have the mix columns;
 - constituents: a component's box with no rows (`Contains nothing at a known concentration.`),
   `+ Add` pre-filling the component's name, a second row blank; name, amount and unit typed and
-  chosen, Enter in the amount box saving; `×` taking a row out; Save, then Undo and Redo of the
-  rows; a bad amount (`ten`, blank, `0`) refused with the message and the box kept open; a unit of
+  chosen, Enter in the amount box saving; the unit menu listing the offered units in the
+  configuration's order (today M, mM, µM, g/L, %, ×, cells/mL), and a constituent saved at `1 M` showing
+  `1 M` on the chip and, diluted 1 in 20 in a well, `50 mM` on the contents card; `×` taking a
+  row out; Save, then Undo and Redo of the rows; a bad amount (`ten`, blank, `0`) refused with the message and the box kept open; a unit of
   another family for a name another component carries refused, naming that component; the chip's
   text (`10 mM`; `Hy-Soy 4 g/L +2`) and tooltip; the contents card: no group for a well carrying
   nothing; one constituent at 25% of the well (10 mM → `2.5 mM`); the same constituent from two
@@ -1567,6 +1634,18 @@ page's configuration (ADR 0009):
   the trough it came from; g/L diluted a hundredfold shown in mg/L; `%` and `×` shown as they are;
   the card at Start, at a stage and at End; a renamed component keeping its rows; a plan saved
   (version 7) and reopened, and reloaded, keeping them, and a version 6 file opening with none;
+- osmolality: a component's box with the field empty (`Not measured`); `300` typed and saved, then
+  Undo and Redo; `0` kept as a value; emptied to remove it; `-5` and `ten` refused with the message
+  and the box kept open; Enter in the box saving; the chip's tooltip line; the contents card: no
+  line while no component has a value; `≈ 300 mOsm/kg` in a well of Media at 300; a 100 µL transfer
+  of Water at 0 into 900 µL of Media giving `≈ 270 mOsm/kg`; with Water given no value, `Osmolality
+  unknown: no value for Water`, and with two and three components missing, the `and` and comma
+  forms; a plan whose only osmolality is Water at 0 still showing the line: `≈ 0 mOsm/kg` in a well
+  of only Water, and `Osmolality unknown: no value for Media` in a well of Media; `1e-7` typed,
+  saved, and shown again as `1e-7`; a box reopened and closed without typing not counting as
+  changed; the card at Start, at a stage and at End; a renamed component keeping its value; a plan
+  saved (version 9) and reopened, and reloaded, keeping the values, and a version 8 file opening
+  with none;
 - cells (2026-11-05): the unit menu reading `M, mM, µM, g/L, %, ×, cells/mL`, `cells/mL` shown
   whole; typing an amount (section 13): `1.5e6`, `1.5E6` and `1500000` each saved as the same
   number, `.5` and `5.` saved as 0.5 and 5, `5e-3` in mM saved, and `e6`, `1,500,000` and
