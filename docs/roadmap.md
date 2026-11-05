@@ -743,6 +743,12 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **A component named like a built-in property breaks concentrations** (found 2026-11-05, reviewing
+  the osmolality build): `wellConcentrations` reads a well's share as `shares[name]`, so a
+  component named `constructor` or `toString` gets JavaScript's built-in function instead of no
+  share. Osmolality reads only the shares' own properties (#134); doing it properly means the same
+  in `concentrations`, specification first, with a failing test, on its own branch. Nobody is
+  likely to name a component that way, so it waits.
 - **A randomization's stages are protected by the page only** (2026-11-01): the transfer
   designer's ordinary edits (adding or removing a transfer, changing a stage's settings, removing
   a stage or its tip change) don't refuse an owned stage; the page simply doesn't offer them, and

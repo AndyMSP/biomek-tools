@@ -6072,7 +6072,7 @@ function componentBoxFields(plan) {
   return [nameField, colorField, createContainsField(draft), createOsmolalityField(draft)];
 }
 
-// A component's Osmolality field (section 8; ADR 0016): its label, then a 72px text box showing the
+// A component's Osmolality field (section 8; ADR 0016): its label, then a 112px text box showing the
 // draft's osmolality text (placeholder "Not measured"), updating the draft as typed in, and
 // "mOsm/kg" in gray. Enter in it saves the box, as in any of the box's text boxes.
 function createOsmolalityField(draft) {

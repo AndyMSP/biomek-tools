@@ -39,7 +39,8 @@ export function wellOsmolality(shares, components) {
   let sum = 0;
   let holdsSomething = false;
   for (const component of components) {
-    const share = shares[component.name] ?? 0;
+    // Its own property only, so a component named "constructor" doesn't read Object's built-in.
+    const share = Object.hasOwn(shares, component.name) ? shares[component.name] : 0;
     if (share <= 0) {
       continue;
     }
