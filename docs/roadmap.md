@@ -393,6 +393,10 @@ Last updated: 2026-11-05
   first); copied items version 3; the
   card's boxes, seams and dragging (`transfer-designer-page.md`, section 7); glossary "Source
   group". It changes what goes into the Biomek files (fewer tip changes) but not their format.
+  **Built (#137, 2026-11-05)**: code, tests and REPL of the sharing functions, the run, plan files
+  (version 10, versions 1 to 9 still opening) and copied items (version 3), and the card's boxes
+  of shared tips on the page; the specifications and the build each reviewed by a separate agent,
+  and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -736,8 +740,9 @@ added on 2026-10-28 (Andy).
       files when no source shares tips. It's not a golden file: nobody has verified those files.
     - **When merged with `tips-in-end` (#135)**: add a test that a run whose sources A1 to A3 share
       tips counts the group's tips once in `tipsUsed` (one set of tips for the three stages, not
-      three). Whichever of the two pull requests merges second adds it.
-    **Specified** (Draft, 2026-11-05): see "Where things stand".
+      three). Whichever of the two pull requests merges second adds it. Added here, after merging
+      #135 into this branch (2026-11-05).
+    **Specified** (Draft, 2026-11-05) and **Built (#137, 2026-11-05)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
