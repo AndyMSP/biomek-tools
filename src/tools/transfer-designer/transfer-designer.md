@@ -1843,7 +1843,8 @@ four sources are needed.
   randomization's source has `sharesTips` (`false` or `true`) is refused with the form message,
   `Can't paste: item N isn't a stage, tip group or randomization as the transfer designer copies
   them.`; a version 2 source that is `null` is refused with `setRandomization`'s message for a
-  source that isn't an object, after `Can't paste: item N: `.
+  source that isn't an object, after `Can't paste: item N: `; a version 2 copy whose second owned
+  stage's `tips` is `null` is refused with the form message.
 - **Copied items version 3 disagreeing:** a version 3 copy whose sources say A2 shares A1's tips
   but whose A2 stage has `tips` (its own tip group), and one whose sources say no source shares but
   whose A2 stage has `tips` `null`: each pastes, with its stages in the tip groups the copy gives,
