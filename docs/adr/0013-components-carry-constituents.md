@@ -30,7 +30,8 @@ component's shape changes once (Andy, 2026-11-01).
   volumes (`src/shared/concentrations/concentrations.md`).
 - **Units are the lab's own** (Andy, 2026-11-01, from the units its protocols use): g/L, mM, µM, %
   and ×, in `config/concentration-units.js`, with M, nM and mg/L kept for display, so a diluted
-  value reads as 7.5 mg/L rather than 0.0075 g/L.
+  value reads as 7.5 mg/L rather than 0.0075 g/L. *Amended 2026-11-05 (Andy):* M is offered too,
+  so the units offered are M, mM, µM, g/L, % and ×; nM and mg/L stay for display only.
 - **The same constituent name across components is the same thing**, so amounts add up in a well.
   Since one name in two families (g/L and mM) can't be added without a molecular weight, the
   transfer designer refuses the second family when it's entered.
