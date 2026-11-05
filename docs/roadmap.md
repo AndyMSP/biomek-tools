@@ -345,6 +345,15 @@ Last updated: 2026-11-05
   (`transfer-designer-page.md`), glossary "Randomization". **Built (#132, 2026-11-03)**: code,
   tests and REPL, and the page; the specifications and the build each reviewed by a separate
   agent, and checked in headless Chrome. Still to check by Andy.
+- **Decided: osmolality** (Andy, 2026-11-05; item 15, below; ADR 0016, Proposed): a measured
+  property of a whole solution, not a constituent. Each component may have its stock's measured
+  osmolality (mOsm/kg), and every well's is estimated as the share-weighted sum of its components',
+  shown on the contents card as `≈ 305 mOsm/kg`, only when every component in the well has a value
+  (otherwise `Osmolality unknown: no value for Buffer B`). **Specified** (Draft, 2026-11-05, in the
+  hands-off workflow): the new shared module `osmolality` (`src/shared/osmolality/osmolality.md`),
+  `setOsmolality` and `osmolalityOf` (`transfer-designer.md`, "Osmolality"), plan files version 9
+  (`plan-file.md`), the component's box, chip tooltip and contents card
+  (`transfer-designer-page.md`), glossary "Osmolality". It changes no Biomek files.
 - **Decided: a randomization's sources can share tips** (Andy, 2026-11-05; item 18, below; ADR
   0018, Proposed), from a preview he approved. **Specified** (Draft, 2026-11-05, in the hands-off
   workflow): `sharesTips` on each source, source groups, `sourceGroups`, `setSourceSharesTips`,
@@ -606,6 +615,25 @@ added on 2026-10-28 (Andy).
       transfers is safe). Plan files do: today they allow one filler, so a new format version, with
       older files still opening.
     **Specified** (Draft, 2026-11-03) and **built (#132)**: see "Where things stand".
+15. **Osmolality** (Andy, 2026-11-05; ADR 0016): what a well's osmolality is, so a plan shows when
+    adding drugs, buffers or DMSO stocks moves a well away from the medium's. Decided so far (Andy,
+    2026-11-05):
+    - **A measured property, not a constituent.** Modeling it as a constituent was rejected: "it's
+      something that is actually a part of the constituents rather than an additional thing".
+      Osmolality (per kg of water) is the term, not osmolarity (per liter): osmometers measure it.
+    - **Start from measured stocks, mix by volume.** Professionally it's measured (freezing-point
+      osmometers, including 96-well ones), and calculating it from solutes underestimates it
+      (ADR 0016, with sources), so each component's value is its stock's measured one, and a
+      well's is the share-weighted sum: only the mixing step is approximate, which is small for
+      media near 300 mOsm/kg. Shown with `≈`.
+    - **Entered once per component**, in its own field in the component's box, separate from
+      `Contains`. Optional; water is entered as 0 like anything else (no automatic zero).
+    - **Shown only when every component in the well has a value**; otherwise the card says which
+      have none, e.g. `Osmolality unknown: no value for Buffer B`.
+    - **Saved in plan files and undone** like other component edits: plan format version 9, with
+      versions 1 to 8 still opening (no osmolality). No Biomek file changes, so it needn't come
+      before the final runs.
+    **Specified** (Draft, 2026-11-05): see "Where things stand".
 18. **Sources sharing tips in a randomization** (Andy, 2026-11-05): a randomization is a point of
     heavy tip use (each source's stage starts on new tips), so each source can share the tips of
     the source before it, letting related sources (one drug at rising concentrations, lowest first)

@@ -1,7 +1,7 @@
 // transfer-designer.js — the transfer designer's rules: what a plan is, and every edit that can be
 // made to one, each checked so that a plan is always valid.
 //
-// A plan holds the components (each with its constituents; ADR 0013), the starting contents, the operation list, the stage list, the stage
+// A plan holds the components (each with its constituents, ADR 0013, and osmolality, ADR 0016), the starting contents, the operation list, the stage list, the stage
 // order (a list of stage IDs; ADR 0011), the tip changes, the labware labels, the well labels, the
 // randomizations (each owning the stages it made; ADR 0012) and the experiment name. A stage is a
 // transfer stage or a mix step, which only mixes its wells, each a transfer from the well into
@@ -54,6 +54,7 @@ import {
   unitsOf,
   wellConcentrations,
 } from "../../shared/concentrations/concentrations.js";
+import { checkOsmolality, wellOsmolality } from "../../shared/osmolality/osmolality.js";
 
 // START and tipGroups live in the tip-groups shared module, which the file writer uses too. They're
 // re-exported (passed on under the same names) so the page and plan-file.js can keep importing them
@@ -597,13 +598,14 @@ export function removeTipChange(plan, key) {
 // --- Components and starting contents ---
 
 // Returns the plan with a new component, last, called `name` (spaces at its ends removed) and drawn
-// in `color`, carrying no constituents yet, e.g. addComponent(plan, "Media", "#4e79a7"). Throws,
+// in `color`, carrying no constituents and with no osmolality (null) yet, e.g.
+// addComponent(plan, "Media", "#4e79a7"). Throws,
 // in this order, if the name isn't a name or is used, or the color isn't text or is used.
 export function addComponent(plan, name, color) {
   const trimmedName = checkNewComponentName(plan, name);
   checkComponentColor(plan, color, null);
   return withParts(plan, {
-    components: [...plan.components, { name: trimmedName, color, constituents: [] }],
+    components: [...plan.components, { name: trimmedName, color, constituents: [], osmolality: null }],
   });
 }
 
@@ -633,6 +635,31 @@ export function setConstituents(plan, name, constituents) {
 // has no record of is simply empty.
 export function concentrationsOf(plan, snapshot, end) {
   return wellConcentrations(snapshot.volumeFractionsOf(end?.labware, end?.well), plan.components);
+}
+
+// Returns the plan with component `name` having `osmolality`: its stock's measured osmolality in
+// mOsm/kg, 0 or more, or null for none (transfer-designer.md, section 3, "Osmolality"). Giving the
+// value it already has returns the plan unchanged. Throws, in this order, if there's no such
+// component, then as checkOsmolality does, e.g. setOsmolality(plan, "Media", 300).
+export function setOsmolality(plan, name, osmolality) {
+  checkComponentExists(plan, name);
+  checkOsmolality(osmolality, name);
+  if (plan.components.find((component) => component.name === name).osmolality === osmolality) {
+    return plan;
+  }
+  return withParts(plan, {
+    components: plan.components.map((component) =>
+      component.name === name ? { ...component, osmolality } : component,
+    ),
+  });
+}
+
+// The osmolality of the well `end` ({ labware, well }) in `snapshot`, a ContentsSnapshot of this
+// plan: { value, missing } (osmolality.md, wellOsmolality), e.g. { value: 270, missing: [] }, or
+// { value: null, missing: [] } for an empty well. The well is checked by the snapshot's
+// volumeFractionsOf alone, as in concentrationsOf.
+export function osmolalityOf(plan, snapshot, end) {
+  return wellOsmolality(snapshot.volumeFractionsOf(end?.labware, end?.well), plan.components);
 }
 
 // Returns the plan with component `oldName` called `newName` (spaces at its ends removed), in the
