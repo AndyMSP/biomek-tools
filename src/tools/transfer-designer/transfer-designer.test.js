@@ -4447,6 +4447,19 @@ describe("transfer-designer", () => {
     assert.deepEqual(tipChangeAt(plan, START), tipChangeAt(setUp, START));
   });
 
+  test("tipsUsed: a run whose sources A1 to A3 share tips counts that group's tips once", () => {
+    const { tipType, probes } = sharingTips();
+    // How many tips of the randomization's tip type `planned` uses.
+    const countOf = (planned) => tipsUsed(planned).find((entry) => entry.tipType === tipType)?.count ?? 0;
+    // How many tips running the randomization set up with `shares` adds to that count.
+    const addedByRun = (shares) => {
+      const { plan, id } = sharingPlan(shares);
+      return countOf(runRandomization(plan, id)) - countOf(plan);
+    };
+    assert.equal(addedByRun([false, true, true, false]), 2 * probes.length);
+    assert.equal(addedByRun([false, false, false, false]), 4 * probes.length);
+  });
+
   test("the filler's place: its stage is in its first filler well's group, at its place", () => {
     // The first filler well sharing the tips of the source above it.
     let { plan, id } = sharingPlan([false, false, false, true]);
