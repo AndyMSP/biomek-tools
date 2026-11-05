@@ -130,6 +130,12 @@
 > assumes PR #133 (M offered) is merged first, so the unit lists here include M. They become Final
 > once built and tested by Andy.
 
+> **Draft change (2026-11-05, tips used, item 17 of v0.2.0):** End's count says how many tips of
+> each tip type the run loads, after its transfers, e.g. `24 transfers done · 32 BC230 tips · 8
+> BC1070 tips` (Andy, 2026-11-05), with a tooltip (sections 7 and 16; `transfer-designer.md`,
+> `tipsUsed`). Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
+> Andy are listed in its pull request. It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -692,6 +698,30 @@ is; Andy, 2026-10-30), then:
 stages; mix steps' mixed wells aren't counted, since they move no liquid; Andy, 2026-10-30). Its card
 holds `The deck shows the plates after every stage has run. Open a stage to add or change
 transfers.`
+
+**End's tips** (Andy, 2026-11-05): End's count, row and card alike, goes on to say how many tips
+the run loads, by tip type, from `tipsUsed` (`transfer-designer.md`): after `N transfers done`, a
+` · ` and `N <tip type> tip` for each entry, in its order (`TIP_TYPES` order), joined by ` · `, e.g.
+`24 transfers done · 32 BC230 tips · 8 BC1070 tips`, or `24 transfers done · 32 BC230 tips` when
+the run uses one tip type (the tip types and counts here are illustrations, with today's
+`TIP_TYPES`). Counts follow section 13 (`1 BC230 tip`, `2 BC230 tips`). With no tips (a plan with
+no transfers), the count is `0 transfers done` alone. (A new plan whose only transfers are a mix
+step's mixed wells, on the `START` tips, shows `0 transfers done` and then `DEFAULT_PROBE_COUNT`
+tips of the first tip type, today `0 transfers done · 4 BC230 tips`: mixed wells move no liquid
+but do load tips.)
+- **It counts what the Biomek files load:** one tip per probe at each tip change whose tip group
+  has transfers (mixed wells included); a tip group with no transfers loads none. So the `START`
+  tips count when their group has transfers, a randomization's tip changes count as any others,
+  and adding the first transfer to an empty tip group raises the count.
+- **Tooltip**, on End's whole count text (`N transfers done` and the tips after it, as one), both
+  when End is a row and when it's the open card, whose count sits at the top right as on the row:
+  `The run loads 32 BC230 tips and 8 BC1070 tips: one per probe at each tip change whose stages
+  have transfers.` (the counts as in the count; with one tip type,
+  `The run loads 32 BC230 tips: …`; with three or more, `32 BC230 tips, 8 BC1070 tips and …`).
+  With no tips, no tooltip.
+- **Wrapping:** the count stays at the right of the row. If it doesn't fit beside `End`, it wraps
+  onto a second line, right-aligned, breaking only after a `·`, so each part (`32 BC230 tips`)
+  stays whole.
 
 **Tip group boxes.** Each is a rounded box around its stages, light blue, alternating with light
 sand, so each tip change stands out. Its heading, at the top left, is the tip change: a small tip
@@ -1685,6 +1715,18 @@ page's configuration (ADR 0009):
   message), right-click on a well (the message), Ctrl+C, typed digits; starting it with a stage's
   editing box open and with a randomization's card open (with and without changes); Done keeping
   what was open;
+- End's tips: a new plan (`0 transfers done`, no tooltip); a transfer added (`1 transfer done · `
+  then `DEFAULT_PROBE_COUNT` tips of the first tip type, today `1 transfer done · 4 BC230 tips`);
+  `1 BC230 tip` with one probe; a second tip group of the second tip type with transfers (both
+  types, the first type first) and without (not counted); the first stage with no transfers and a
+  later tip group with transfers (only the later group's tips counted, not the `START` ones); a mix
+  step alone in a tip group (its tips counted); a randomization run (each of its tip changes
+  counted); undo and redo changing the count; the tooltip, on the whole count, with End as a row
+  and as the open card; the count wrapping in a Stages column at its minimum width, with a plan
+  sure to overflow: two tip types, each with a three-digit count (e.g. 100 or more tips of each,
+  by many tip groups with transfers), and three-digit transfers done, so End's count runs to
+  `123 transfers done · 456 BC230 tips · 104 BC1070 tips`; the count wraps onto a second line,
+  right-aligned, the first line ends with a `·`, and no part (`456 BC230 tips`) is split;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels;
 - the version line: the built file's name and the line show the same version; a click selects the

@@ -67,6 +67,7 @@ import {
   setTipProbes,
   removeTipChange,
   tipGroups,
+  tipsUsed,
   addComponent,
   renameComponent,
   setComponentColor,
@@ -1932,7 +1933,7 @@ function createEntry(plan, key, open, problems) {
     row.classList.add("with-pencil");
     row.append(createPencil("stage", key, `Edit stage ${stageOrder(plan).indexOf(key) + 1}`));
   }
-  row.append(createElement("span", count, "entry-count"));
+  row.append(key === END ? createEndCount(plan) : createElement("span", count, "entry-count"));
   entry.append(row);
   if (isOpen) {
     entry.append(createEntryBody(plan, key));
@@ -1941,13 +1942,14 @@ function createEntry(plan, key, open, problems) {
 }
 
 // The badge, name and count of an entry: Start ("0", "N wells filled"), a stage (its place, "N
-// transfers"), a mix step (its place, "N wells mixed") or End ("✓", "N transfers done").
+// transfers"), a mix step (its place, "N wells mixed") or End ("✓" and no count: createEntry builds
+// End's count with createEndCount).
 function entryHeading(plan, key) {
   if (key === START) {
     return { badge: "0", name: "Start", count: `${countOf(plan.startingContents.length, "well")} filled` };
   }
   if (key === END) {
-    return { badge: "✓", name: "End", count: `${countOf(transfersDone(plan), "transfer")} done` };
+    return { badge: "✓", name: "End", count: null };
   }
   const count = transfersIn(plan, key).length;
   return {
@@ -1955,6 +1957,42 @@ function entryHeading(plan, key) {
     name: plan.stageList.get(key).name,
     count: isMixStep(plan, key) ? `${countOf(count, "well")} mixed` : countOf(count, "transfer"),
   };
+}
+
+// The parts of End's count (section 7, "End's tips"): "N transfers done", then "N <tip type> tips"
+// for each tip type the run loads (tipsUsed), e.g. ["24 transfers done", "32 BC230 tips",
+// "8 BC1070 tips"], or ["0 transfers done"] alone for a plan without transfers.
+function endCountParts(plan) {
+  return [`${countOf(transfersDone(plan), "transfer")} done`, ...tipCountTexts(plan)];
+}
+
+// "N <tip type> tips" for each tip type the run loads, in tipsUsed's order, e.g.
+// ["32 BC230 tips", "1 BC1070 tip"]; [] for a plan without transfers.
+function tipCountTexts(plan) {
+  return tipsUsed(plan).map(({ tipType, count }) => countOf(count, `${tipType} tip`));
+}
+
+// End's count, row and card alike (section 7, "End's tips"): its parts, joined by " · ", each kept
+// whole so a narrow column wraps it only after a "·", with a tooltip saying what the tips count.
+// The " ·" goes inside the part before it and the space after it outside, so the space is the only
+// place the line can break.
+function createEndCount(plan) {
+  const parts = endCountParts(plan);
+  const count = createElement("span", "", "entry-count end-count");
+  parts.forEach((part, index) => {
+    const isLast = index === parts.length - 1;
+    count.append(createElement("span", isLast ? part : `${part} ·`, "end-count-part"));
+    if (!isLast) {
+      count.append(" ");
+    }
+  });
+  const tips = tipCountTexts(plan);
+  if (tips.length > 0) {
+    count.title =
+      `The run loads ${listWithAnd(tips)}: one per probe at each tip change whose stages have ` +
+      "transfers.";
+  }
+  return count;
 }
 
 // How many transfers the plan's transfer stages hold, for End's count (section 7): a mix step's
@@ -5640,7 +5678,8 @@ function createOsmolalityLine({ value, missing }) {
 // `names` joined for reading, without quotes: one as it is, two with " and ", three or more with
 // ", " and " and " before the last, e.g. ["A"] → "A", ["A", "B"] → "A and B", ["A", "B", "C"] →
 // "A, B and C". (listNames and listNamesWithAnd elsewhere put each name in quotes, as messages about
-// property names do, so they don't fit here; section 6.)
+// property names do, so they don't fit here; section 6.) Used for End's tips tooltip (section 7)
+// too.
 function listWithAnd(names) {
   if (names.length <= 1) {
     return names.join("");

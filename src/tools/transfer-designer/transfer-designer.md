@@ -88,6 +88,12 @@
 > so the choices made for Andy are listed in its pull request. It becomes Final once built and
 > tested by Andy.
 
+> **Draft change (2026-11-05, tips used, item 17 of v0.2.0):** `tipsUsed`, how many tips of each
+> tip type the run loads, for a tool to show (sections 2, 3, 4 and 6; Andy, 2026-11-05). It counts
+> exactly the tips the Biomek files load, so it changes no Biomek files. Written in the hands-off
+> workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request.
+> It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
 and every edit that can be made to one, each checked so that a plan is always valid. A tool shows a
@@ -112,9 +118,9 @@ Version 1 creates an empty plan; adds, removes, changes, moves and copies stages
 copies tip groups and randomizations); adds, removes and changes transfers, tip changes,
 components (with their constituents and osmolality), starting contents, labware labels, well
 labels and the experiment name; and answers questions about a plan: its stage order, its tip
-groups, the stages with a contents problem or a mix problem, where each stage ends, the labware it
-uses, and what each well carries (its concentrations and osmolality, and its cells per cm² where
-its labware has a growth area).
+groups, the tips it uses, the stages with a contents problem or a mix problem, where each stage
+ends, the labware it uses, and what each well carries (its concentrations and osmolality, and its
+cells per cm² where its labware has a growth area).
 
 Not in version 1 (see `docs/roadmap.md`):
 - **Moving a transfer** to another stage, or within its stage (ADR 0014). A transfer can be removed
@@ -341,6 +347,33 @@ new for it (`plan-file.md`).
   before the first stage of a plan whose `START` tips are BC230 on `[1, 2, 3, 4]`: the new stage is
   first, with the `START` tips, and the old first stage gets a tip change of BC230 on
   `[1, 2, 3, 4]`.
+- **Tips used** (`tipsUsed`; Andy, 2026-11-05): how many tips of each tip type the run loads, so a
+  tool can show what a run needs. It's the sum, by tip type, of the tips each tip change loads, one
+  per probe it loads (its tip group's `probes`), with no special cases. Only the tip changes whose
+  tips the run actually loads count, so the count is what the Biomek files load (`file-writer.md`,
+  `Stages.csv`):
+  - **A tip group counts when any of its stages has transfers** (a mix step's mixed wells
+    included, since they're transfers): the file writer writes a tip-change row for it. A tip group
+    whose stages have no transfers counts nothing, since the file writer writes no row for it and
+    the Biomek loads no tips there. So the `START` tips count like any other, when their group has
+    transfers.
+  - **Every such tip change counts in full**, even when the one before it loaded the same tip type
+    on the same probes: the Biomek unloads all tips and loads new ones at each (ADR 0007, "The
+    method").
+  - **Randomizations count through their stages only:** a randomization's own `tipType` and
+    `probes` (its settings for the stages it makes) are never read. Only the tip changes of its
+    stages, as they stand in the plan, count, like any others; a randomization that hasn't run has
+    no stages, so it counts nothing.
+  - **Problems don't matter:** a plan with an overdraw, a mix problem or a randomization out of date
+    is counted as it stands, though the file writer refuses it until the problem is fixed.
+  - **Order:** by tip type, in `TIP_TYPES` order (`config/`, below), leaving out a tip type the run
+    loads none of. A plan's tip types are always in `TIP_TYPES` (`setTipType` and plan files check
+    them).
+
+  For example, `START` tips BC230 on `[1, 2, 3, 4]` before stages 1 and 2 (with transfers), a tip
+  change of BC1070 on `[1, 2]` before stage 3 (with transfers), BC230 on all eight probes before
+  stage 4 (with transfers), and BC1070 on `[1]` before stage 5 (no transfers): `[{ tipType: "BC230",
+  count: 12 }, { tipType: "BC1070", count: 2 }]`.
 
 ### Components and starting contents
 - Components are added by name and color, renamed, recolored and removed. Renaming changes the name
@@ -920,6 +953,7 @@ given; "returns the plan with …" means a new plan.
 | `setTipProbes(plan, key, probes)` | the plan with the tip change at `key` loading tips on `probes` (section 3, "Tip changes and tip groups"), stored smallest first. Throws if there's none at `key`, or `probes` isn't a list of probe numbers (below). |
 | `removeTipChange(plan, key)` | the plan without the tip change at `key`. Throws for `START`, or if there's none at `key`. |
 | `tipGroups(plan)` | the tip groups, in stage order, each with the tip change that starts it: `{ key, tipType, stages, probes }` each, `stages` being stage IDs in stage order and `probes` the probes that get tips, smallest first. Re-exported from the `tip-groups` shared module, which the file writer uses too (`tip-groups.md`; Andy, 2026-10-28). |
+| `tipsUsed(plan)` | how many tips of each tip type the run loads (section 3, "Tip changes and tip groups"), as a new list each time: `{ tipType, count }` each, in `TIP_TYPES` order, only types with a count above 0, e.g. `[{ tipType: "BC230", count: 32 }, { tipType: "BC1070", count: 8 }]`; `[]` when the plan has no transfers. |
 
 **Components and starting contents**
 | Function | Returns |
@@ -1348,6 +1382,44 @@ order of checks.
   the repeated-probe error, naming 3.
 - Changing the `probes` list given to `setTipProbes` afterwards doesn't change the plan.
 - `removeTipChange` merges the two tip groups; for `START` it throws.
+- `tipsUsed` (tip types named from `TIP_TYPES`, not written out, and counts from `probesFor`, so
+  changing `config/` breaks no test; CLAUDE.md, "Tests follow `config/`"). "The first tip type" is
+  `TIP_TYPES[0]` and "the second" `TIP_TYPES[1]`; each test that uses the second runs only when
+  `TIP_TYPES` has at least 2 entries (and is skipped otherwise), so shortening the list breaks no
+  test:
+  - a new plan (no transfers) gives `[]`;
+  - one stage with a transfer and the `START` tips on `probesFor(DEFAULT_PROBE_COUNT)` gives one
+    entry, the first tip type, counting `DEFAULT_PROBE_COUNT`;
+  - section 3's example gives the first type 12 and the second 2, in `TIP_TYPES` order, though the
+    second type's tips come before the first's last ones in the run;
+  - a plan using only the second tip type (the `START` tips set to it) gives only that type;
+  - the list is in `TIP_TYPES` order, not run order: the `START` tips set to the second tip type
+    with a transfer, then a tip change to the first tip type with a transfer, lists the first type
+    first;
+  - two tip groups of the same type and probes, each with transfers, count twice;
+  - a tip group whose stages have no transfers counts nothing, and adding one transfer to it makes
+    it count; a group with a transfer stage without transfers and one with transfers counts in
+    full;
+  - the `START` tip group's stages have no transfers and a later tip group's do (a tip change
+    loading the second tip type, or the first on other probes, before a later stage with a
+    transfer): only the later group counts, and the `START` tips count nothing;
+  - a group whose only stage is a mix step mixing one well counts;
+  - a randomization that has run counts the tips of its stages' tip changes, with nothing done for
+    it: the count equals the sum over `tipGroups` with transfers;
+  - a plan with a contents problem is still counted;
+  - **it matches the Biomek files:** for each of the plans above that has transfers, except the
+    one with a contents problem, the counts equal what `writeRunFiles(plan, timestamp)`
+    (`file-writer.md`) loads, so the two can't drift apart. The timestamp is a fixed `Date` (e.g.
+    `new Date(2026, 9, 28, 1, 57, 32)`), and each plan is given an experiment name and set up to
+    have no problems, so `writeRunFiles` accepts it: every transfer's draw is covered by starting
+    contents, and the mix-step plan gets starting contents so its mixed well holds enough to mix
+    (no mix problem) and the mix step's draw is covered. To read the files: take `Stages.csv`'s
+    rows (after the header) whose `NewTip` is `1` (the tip-change rows); strip the double quotes
+    from each one's `LoadProbes` (the file writer quotes a field holding a comma, e.g.
+    `"1,2,3,4"`; a single probe is written `1`, unquoted); count its comma-separated probe numbers;
+    and add the counts up by the row's `TipType`. The result, in `TIP_TYPES` order, equals
+    `tipsUsed(plan)`;
+  - changing the list it returned doesn't change the next one.
 
 **Components and starting contents**
 - `addComponent` refuses a used name or color, and a blank name; it trims the name.
@@ -1714,6 +1786,9 @@ transfers and label following it.
 - In the table of which parts of the plan each edit may change, `setWellLabel` and `setWellLabels`
   change only `wellLabels`; no other edit changes it. The plan that table's edits run on holds well
   labels, so the check means something.
+
+**The REPL** (`scripts/repl.js`): `tipsUsed` in the transfer designer's topic, with an example of
+two tip types and one of a tip group without transfers counting nothing.
 
 **The REPL** (`scripts/repl.js`): `wellLabelOf`, `setWellLabel` and `setWellLabels` in the transfer
 designer's topic, with examples; the plan file topic's examples of older and newer versions follow
