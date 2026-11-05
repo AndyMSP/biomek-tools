@@ -36,6 +36,8 @@ import {
   addRandomization,
   setRandomization,
   runRandomization,
+  isRandomizationOutOfDate,
+  tipGroups,
   setConstituents,
   setOsmolality,
 } from "./transfer-designer.js";
@@ -767,6 +769,142 @@ describe("plan-file", () => {
       { ...file, randomizations: [twoFillers] },
       "randomizations: Randomization 1: its filler has two stages.",
     );
+  });
+
+  // --- Version 10: sources sharing tips ---
+
+  // A plan with one stage and, after it, a randomization of DEEP A1, A2 and A3 (each at 2
+  // replicates, holding Drug A, Drug B and Drug C) and the filler trough 3 (Media), with sources'
+  // sharesTips from `shares`, filling PLATE's B2 to B9; run unless `run` is false. Last, so its
+  // stages keep their IDs when the file is opened.
+  function sharingPlan(shares = [false, true, true, false], { run = true } = {}) {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Drug A", "#4e79a7");
+    plan = addComponent(plan, "Drug B", "#e15759");
+    plan = addComponent(plan, "Drug C", "#f28e2b");
+    plan = addComponent(plan, "Media", "#59a14f");
+    plan = addToWells(plan, [deepWell("A1")], "Drug A", 500);
+    plan = addToWells(plan, [deepWell("A2")], "Drug B", 500);
+    plan = addToWells(plan, [deepWell("A3")], "Drug C", 500);
+    plan = addToWells(plan, [trough("3")], "Media", deadVolumeOf(RESERVOIR) + 100);
+    plan = addRandomization(plan, null, { seed: 37, volume: 10 }).plan;
+    plan = setRandomization(plan, "r1", {
+      sources: [
+        ...["A1", "A2", "A3"].map((well, index) => ({
+          ...deepWell(well),
+          replicates: 2,
+          filler: false,
+          sharesTips: shares[index],
+        })),
+        { ...trough("3"), replicates: null, filler: true, sharesTips: shares[3] },
+      ],
+      fill: ["B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9"].map((well) => ({ labware: PLATE, well })),
+    });
+    return run ? runRandomization(plan, "r1") : plan;
+  }
+
+  // The stages of a plan's tip groups, e.g. [["1"], ["2", "3", "4"], ["5"]].
+  function tipGroupStages(plan) {
+    return tipGroups(plan).map((group) => group.stages);
+  }
+
+  test("a run randomization with sources sharing tips is saved as version 10, sharesTips last, and opens as the same plan", () => {
+    const plan = sharingPlan();
+    const text = planToText(plan, SAVED_BY);
+    const file = JSON.parse(text);
+    assert.equal(file.version, 10);
+    for (const entry of file.randomizations[0].sources) {
+      assert.deepEqual(Object.keys(entry), ["labware", "well", "replicates", "filler", "sharesTips"]);
+    }
+    assert.deepEqual(file.randomizations[0].sources.map((entry) => entry.sharesTips), [false, true, true, false]);
+    const opened = planFromText(text);
+    assert.deepEqual(contentsOf(opened), contentsOf(plan));
+    assert.deepEqual(opened.randomizations, plan.randomizations);
+    assert.deepEqual(tipGroupStages(opened), [["1"], ["2", "3", "4"], ["5"]]);
+    assert.equal(isRandomizationOutOfDate(opened, "r1"), false);
+  });
+
+  test("a randomization that hasn't run keeps its sharing when saved and opened", () => {
+    const plan = sharingPlan([false, true, false, false], { run: false });
+    const opened = planFromText(planToText(plan, SAVED_BY));
+    assert.deepEqual(opened.randomizations[0].sources.map((entry) => entry.sharesTips), [false, true, false, false]);
+  });
+
+  test("version 9 and version 6 files holding a run randomization open with every source on new tips, as before", () => {
+    const file = JSON.parse(planToText(sharingPlan([false, false, false, false]), SAVED_BY));
+    const expected = contentsOf(open(file));
+    for (const older of [asVersion9(file), asVersion(asVersion8(file), 6)]) {
+      if (older.version === 6) {
+        older.components = older.components.map(({ name, color }) => ({ name, color }));
+      }
+      const opened = open(older);
+      assert.deepEqual(opened.randomizations[0].sources.map((entry) => entry.sharesTips), [false, false, false, false]);
+      assert.deepEqual(opened.randomizations[0].stages, open(file).randomizations[0].stages);
+      assert.deepEqual(contentsOf(opened).tipChanges, expected.tipChanges, `version ${older.version}`);
+    }
+  });
+
+  test("a version 9 source with sharesTips, and a version 10 source without it, are refused", () => {
+    const file = JSON.parse(planToText(sharingPlan(), SAVED_BY));
+    const version9 = asVersion9(file);
+    version9.randomizations[0].sources[1].sharesTips = false;
+    assertRefused(version9, 'randomization 1, source 2, has "sharesTips", which a version 9 file\'s sources don\'t have.');
+    delete file.randomizations[0].sources[1].sharesTips;
+    assertRefused(file, 'randomization 1, source 2, is missing "sharesTips", which a version 10 file\'s sources have.');
+  });
+
+  test("a version 10 file whose first source shares tips is refused with setRandomizations' message", () => {
+    const file = JSON.parse(planToText(sharingPlan(), SAVED_BY));
+    file.randomizations[0].sources[0].sharesTips = true;
+    assertRefused(
+      file,
+      'randomizations: Randomization 1: Source 1 is the first source, so it starts on new tips: its "sharesTips" must be false. A randomization never shares tips with stages outside it.',
+    );
+  });
+
+  test("a version 10 file whose randomization's first stage shares the stage before's tips is refused; one with sharing its stages don't follow opens, out of date", () => {
+    const file = JSON.parse(planToText(sharingPlan(), SAVED_BY));
+    const joined = structuredClone(file);
+    delete joined.tipChanges["2"];
+    assertRefused(
+      joined,
+      'randomizations: Randomization 1: stage "2" shares tips with a stage outside the randomization. A randomization never shares tips with other stages.',
+    );
+    // Saved after A2 was set to share and before a run: its stages each on tips of their own.
+    const unrun = JSON.parse(planToText(sharingPlan([false, false, false, false]), SAVED_BY));
+    unrun.randomizations[0].sources[1].sharesTips = true;
+    const opened = open(unrun);
+    assert.equal(opened.randomizations[0].sources[1].sharesTips, true);
+    assert.equal(isRandomizationOutOfDate(opened, "r1"), true);
+  });
+
+  test("check 13's order: a stage that isn't the file's is reported before a missing sharesTips, which is reported before setRandomizations' checks", () => {
+    const file = JSON.parse(planToText(sharingPlan(), SAVED_BY));
+    delete file.randomizations[0].sources[1].sharesTips;
+    const badStage = structuredClone(file);
+    badStage.randomizations[0].stages[0].stage = "9";
+    assertRefused(badStage, 'randomization 1 names stage "9", which isn\'t one of the file\'s stages.');
+    const badSeed = structuredClone(file);
+    badSeed.randomizations[0].seed = -1;
+    assertRefused(badSeed, 'randomization 1, source 2, is missing "sharesTips", which a version 10 file\'s sources have.');
+  });
+
+  test("a source that isn't an object is left to setRandomizations, in versions 9, 6 and 10", () => {
+    const file = JSON.parse(planToText(sharingPlan([false, false, false, false]), SAVED_BY));
+    const notObject =
+      'randomizations: Randomization 1: Source 2 must be an object with exactly "labware", "well", "replicates", "filler" and "sharesTips".';
+    const version6 = asVersion(asVersion8(file), 6);
+    version6.components = version6.components.map(({ name, color }) => ({ name, color }));
+    for (const base of [asVersion9(file), version6, file]) {
+      for (const value of [null, 5]) {
+        const changed = structuredClone(base);
+        changed.randomizations[0].sources[1] = value;
+        assertRefused(changed, notObject);
+      }
+    }
+    const notList = asVersion9(file);
+    notList.randomizations[0].sources = {};
+    assertRefused(notList, "randomizations: Randomization 1: A randomization's sources must be a list, but got an object.");
   });
 
   test("a version 5 file opens, with no randomizations", () => {
