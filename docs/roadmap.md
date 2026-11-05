@@ -361,7 +361,10 @@ Last updated: 2026-11-05
   hands-off workflow): the new shared module `osmolality` (`src/shared/osmolality/osmolality.md`),
   `setOsmolality` and `osmolalityOf` (`transfer-designer.md`, "Osmolality"), plan files version 9
   (`plan-file.md`), the component's box, chip tooltip and contents card
-  (`transfer-designer-page.md`), glossary "Osmolality". It changes no Biomek files.
+  (`transfer-designer-page.md`), glossary "Osmolality". It changes no Biomek files. **Built (#134,
+  2026-11-05)**: code, tests and REPL of `osmolality`, the transfer designer, plan files (version
+  9, versions 1 to 8 still opening) and the page; the specifications and the build each reviewed
+  by a separate agent, and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -640,7 +643,7 @@ added on 2026-10-28 (Andy).
     - **Saved in plan files and undone** like other component edits: plan format version 9, with
       versions 1 to 8 still opening (no osmolality). No Biomek file changes, so it needn't come
       before the final runs.
-    **Specified** (Draft, 2026-11-05): see "Where things stand".
+    **Specified** (Draft, 2026-11-05) and **Built (#134, 2026-11-05)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
