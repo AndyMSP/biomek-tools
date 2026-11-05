@@ -23,6 +23,18 @@
 > changes: a version 8 file holds what a version 7 file does, so where this specification says a
 > version 7 file, a version 8 file is meant too. Written in the hands-off workflow; it becomes
 > Final once built and tested by Andy.
+>
+> **Draft change (2026-11-05, format version 10, shared tips; ADR 0018):** each randomization
+> source's `sharesTips` (`transfer-designer.md`, "Sharing tips"), and a randomization's stages may
+> share tip groups with each other (section 3, "Version 10"). **It assumes format version 9**
+> (osmolality, PR #134), which merges first: this change is written against it, so it opens
+> versions 1 to 10, and where the rest of this specification names the version written or the
+> newest version read, version 10 is meant, and where it says a version 7 or 8 file (its tests
+> included), versions 9 and 10 are meant too. **If this merges before #134**, it is renumbered to
+> version 9 (opening 1 to 9) and #134's osmolality becomes version 10, adding `sharesTips` to its
+> list of what older files lack. Shaped in a preview Andy approved on 2026-11-05 and written in the
+> hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull
+> request. It becomes Final once built and tested by Andy.
 
 ## 1. Purpose
 `plan-file.js` turns a **plan** (`docs/glossary.md`) into the text of a **plan file**, and a plan
@@ -124,6 +136,27 @@ stage's `settings` also hold `probes` (a list of probe numbers), and a tip chang
 only. **Version 1** files
 are like version 2 without `experimentName`, with `"version": 1`.
 
+### Version 10 (shared tips, 2026-11-05)
+A version 10 file holds exactly what a version 9 file holds, with `"version": 10`, except that each
+randomization's sources are each `{ labware, well, replicates, filler, sharesTips }` (in that
+order), `sharesTips` being `true` or `false` (`transfer-designer.md`, "Sharing tips"):
+
+```json
+"sources": [{ "labware": "Deep", "well": "A1", "replicates": 4, "filler": false, "sharesTips": false },
+            { "labware": "Deep", "well": "A2", "replicates": 4, "filler": false, "sharesTips": true }]
+```
+
+- **Versions 6 to 9**: each source is `{ labware, well, replicates, filler }`, as before, with no
+  `sharesTips`; on opening, each gets `sharesTips` `false` before `setRandomizations` checks it, so
+  every source starts on new tips, as every randomization did then. A version 6 to 9 source *with*
+  `sharesTips` is refused (below), as is a version 10 source without it.
+- **Its stages may share tip groups with each other** in any version (`setRandomizations` now
+  accepts it; `transfer-designer.md`, section 5), though no tool wrote such a file before version
+  10. Whether they share as the sources say isn't a check on opening: a plan saved between an edit
+  of its sources and a run can differ, and opens out of date, as it was saved.
+- Why a new version: a version 9 tool would refuse a source with `sharesTips` as not having exactly
+  its properties, with a confusing message; a new version makes it say the file is newer (ADR 0010).
+
 The text is written with an indent of 2 spaces, so it's easy to read. Volumes are written at full
 precision; JSON keeps numbers exactly, so a plan reads back with the same volumes.
 
@@ -206,7 +239,10 @@ Opening a file checks, in this order:
     named is one of the file's stages. Then their stage IDs (`beforeId`, each of `stages`' `stage`)
     are changed to the stages' new IDs (above), and they're checked and set all at once by
     `setRandomizations` (`transfer-designer.md`). A version 1 to 5 file opens with no
-    randomizations.
+    randomizations. **Before renumbering, the sources' form by version** (version 10): if
+    `sources` is a list, each entry that is an object must, in a version 10 file, have
+    `sharesTips`, and in a version 6 to 9 file must not; anything else about a source is left to
+    `setRandomizations`. Then, in a version 6 to 9 file, each source gets `sharesTips: false`.
 The first problem found is reported (section 5).
 
 ## 4. Interface
@@ -258,6 +294,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | The well labels are refused (`setWellLabels`) | `well labels: ` and its message, e.g. `well labels: The label for Deep A1 is blank. A well without a label is left out of the well labels.` |
 | A randomization names a stage that isn't one of the file's (`beforeId` or one of its `stages`) | `randomization 1 names stage "9", which isn't one of the file's stages.` |
 | The randomizations are refused (`setRandomizations`) | `randomizations: ` and its message, e.g. `randomizations: Randomization 1: its stages must come one after another, in stage order.` |
+| A randomization's source has `sharesTips` in a version 6 to 9 file, or lacks it in a version 10 file | `randomization 1, source 2, has "sharesTips", which a version 9 file's sources don't have.` / `randomization 1, source 2, is missing "sharesTips", which a version 10 file's sources have.` (with the file's version) |
 | The experiment name is refused (`checkExperimentName`) | `the experiment name: ` and its message. |
 | No tip change at `"start"` | `it has no tips at the start of the run.` |
 | A tip change at a stage that isn't in the file, or at the first stage | `a tip change is before stage "9", which isn't one of the file's stages.` / `a tip change is before stage "1", the first stage, which always starts with the tips at "start".` |
@@ -314,6 +351,25 @@ row of section 5 has at least one test.
 - A file whose randomization's filler stage entry names a filler well that isn't the first opens;
   one with two entries naming filler wells of one randomization is refused with `randomizations: `
   and `Randomization 1: its filler has two stages.`
+
+**Version 10** (2026-11-05, shared tips)
+- A plan whose run randomization has sources sharing tips (A1 new tips, A2 and A3 sharing, the
+  filler new tips), saved, is written as version 10 with `sharesTips` on each source in the order
+  `labware`, `well`, `replicates`, `filler`, `sharesTips`, and opens as the same plan: the same
+  sharing, the same tip groups (A1, A2 and A3's stages in one), not out of date.
+- A plan whose randomization hasn't run, with a source sharing tips, saved and opened, keeps the
+  sharing (so closing a card with sharing set keeps it across a reload).
+- A version 9 file (and a version 6 file) holding a run randomization opens with every source
+  `sharesTips` `false`, the same as before.
+- A version 9 file whose source has `sharesTips`, and a version 10 file whose source lacks it, are
+  refused with their messages, naming the randomization and source.
+- A version 10 file whose first source has `sharesTips` `true` is refused with `randomizations: `
+  and `setRandomizations`' message (`Randomization 1: Source 1 is the first source…`).
+- A version 10 file whose randomization's first stage shares the tip group of the stage before it
+  is refused with `randomizations: ` and `Randomization 1: stage "N" shares tips with a stage outside
+  the randomization. …`; one whose sources say A2 shares but whose stages don't (saved before a
+  run) opens, out of date.
+- The newer-version test uses version 11.
 
 **Refusing**
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
