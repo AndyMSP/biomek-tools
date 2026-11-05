@@ -2345,7 +2345,8 @@ function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, dr
   box.dataset.group = group.key;
   const heading = createTipGroupHeading(plan, group, owned);
   // An ordinary tip group is an item, selected and dragged by its heading; a randomization's own
-  // tip group's heading counts as its one stage's row (section 7, "Moving and copying").
+  // tip group's heading counts as its first stage's row, since that tip group may hold several
+  // stages when sources share tips (section 7, "Moving and copying").
   const item = owned ? { kind: "stage", id: group.stages[0] } : { kind: "tipGroup", id: group.stages[0] };
   heading.dataset.itemHandle = itemKey(item);
   heading.tabIndex = 0;
