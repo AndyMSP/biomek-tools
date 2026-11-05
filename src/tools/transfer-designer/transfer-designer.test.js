@@ -2120,14 +2120,16 @@ describe("transfer-designer", () => {
     let plan = addComponent(planWithCells(), "Second suspension", "#76b7b2");
     plan = setConstituents(plan, "Second suspension", [constituentOf("Cells", 500000, CELL_DENSITY_UNIT)]);
     const well = wellOn(GROWING, "A1");
-    plan = addToWells(plan, [well], "Suspension", 10);
-    plan = addToWells(plan, [well], "Second suspension", 20);
-    plan = addToWells(plan, [well], "Media", 70);
+    // Half the well's capacity, from config/, so a change there never breaks this test.
+    const total = capacityOf(GROWING) / 2;
+    plan = addToWells(plan, [well], "Suspension", total * 0.1);
+    plan = addToWells(plan, [well], "Second suspension", total * 0.2);
+    plan = addToWells(plan, [well], "Media", total * 0.7);
     const start = replay(plan.startingContents, plan.operationList, 0);
     const result = seedingDensitiesOf(plan, start, well);
     assert.equal(result.length, 1);
     const cellDensity = 0.1 * 1500000 + 0.2 * 500000;
-    assertWithin(result[0].value, seedingDensity(cellDensity, 100, growthAreaOf(GROWING)));
+    assertWithin(result[0].value, seedingDensity(cellDensity, total, growthAreaOf(GROWING)));
   });
 
   test("seedingDensitiesOf counts the whole well, dead volume included", () => {
