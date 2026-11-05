@@ -47,6 +47,7 @@ import {
   wellConcentrations,
   bestUnit,
 } from "../src/shared/concentrations/concentrations.js";
+import { checkOsmolality, wellOsmolality } from "../src/shared/osmolality/osmolality.js";
 import {
   writeRunFiles,
   checkExperimentName,
@@ -379,6 +380,16 @@ const TOPICS = {
       'bestUnit("mass", 0.0075)',
       'bestUnit("percent", 0.5)',
       'bestUnit("volume", 1)',
+    ],
+  },
+  osmolality: {
+    loaded: { checkOsmolality, wellOsmolality },
+    examples: [
+      'checkOsmolality(300, "Media")',
+      'checkOsmolality(-5, "Media")',
+      'const osmComponents = [{ name: "Media", osmolality: 300 }, { name: "Water", osmolality: 0 }, { name: "Buffer B", osmolality: null }]',
+      "wellOsmolality({ Media: 0.9, Water: 0.1 }, osmComponents)",
+      'wellOsmolality({ Media: 0.9, "Buffer B": 0.1 }, osmComponents)',
     ],
   },
   "file-writer": {
