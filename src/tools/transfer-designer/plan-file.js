@@ -6,10 +6,12 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 11, which holds each component's constituents and osmolality, the
-// randomizations (whose filler may be several wells, and whose sources say whether they share tips),
-// the transfer tables and the well labels, each stage's settings hold its mixes and each tip change
-// its probes. It still reads version 10 files (no transfer tables), version 9 files (sources without sharesTips, each opening on new tips), version 8 files (components
+// It writes format version 12, which holds each component's constituents and osmolality, the
+// randomizations (whose filler may be several wells, whose sources say whether they share tips, and
+// whose settings and tips, once run, are only their stages'), the transfer tables and the well
+// labels, each stage's settings hold its mixes and each tip change its probes. It still reads
+// version 11 files (a run randomization's settings and tips dropped on opening), version 10 files
+// (no transfer tables), version 9 files (sources without sharesTips, each opening on new tips), version 8 files (components
 // without osmolality), version 7 files (the same properties, written when a filler
 // was one well), version 6 files (components without constituents), version 5 files (also no
 // randomizations), version 4 files (also no well labels), version 3 files (also no mixes), version
@@ -48,6 +50,9 @@ import {
   setLabels,
   setWellLabels,
   setRandomizations,
+  addRandomization,
+  randomizationAt,
+  setRandomization,
   setTransferTables,
   setExperimentName,
   setConstituents,
@@ -67,10 +72,13 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // with the same properties, so a tool that knows only version 7 refuses such a file as newer;
 // version 9 (2026-11-05) added each component's osmolality (ADR 0016); version 10 (2026-11-05) added
 // whether each randomization source shares tips (ADR 0018); version 11 (2026-11-05) added the
-// transfer tables (ADR 0019).
-export const PLAN_FILE_VERSION = 11;
+// transfer tables (ADR 0019); version 12 (2026-11-05) holds a run randomization's settings, tip type
+// and probes as null, its stages holding them (ADR 0012, amended), so a version 11 tool refuses such
+// a file as newer rather than with a confusing message.
+export const PLAN_FILE_VERSION = 12;
 
-// The versions this module can read: the one it writes, version 10 (plans saved on 2026-11-05,
+// The versions this module can read: the one it writes, version 11 (plans saved on 2026-11-05,
+// before a randomization's settings lived only on its stages), version 10 (plans saved on 2026-11-05,
 // before transfer tables), version 9 (plans saved on 2026-11-05, before sources sharing tips),
 // version 8 (plans saved from 2026-11-02 to
 // 2026-11-05, before osmolality), version 7 (plans saved from 2026-11-01 to
@@ -79,7 +87,7 @@ export const PLAN_FILE_VERSION = 11;
 // version 4 (plans saved from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved
 // on 2026-10-30, before mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version
 // 1 (plans saved before 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+const VERSIONS_READ = [PLAN_FILE_VERSION, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 
 // The first version whose components hold their constituents. An older file's components are
 // { name, color } only, and open carrying nothing.
@@ -92,6 +100,14 @@ const FIRST_VERSION_WITH_OSMOLALITY = 9;
 // The first version whose randomization sources hold sharesTips. An older file's sources (versions
 // 6 to 9) open with sharesTips false, each on new tips, as every source was then.
 const FIRST_VERSION_WITH_SHARES_TIPS = 10;
+
+// The first version whose run randomizations hold their settings, tip type and probes as null. An
+// older file's (versions 6 to 11) are checked, then dropped on opening (plan-file.md, check 13, step
+// 4a), since its stages already hold what every run gave them.
+const FIRST_VERSION_WITH_STAGE_SETTINGS = 12;
+
+// A randomization's values for its first run, null once it has stages.
+const FIRST_RUN_PROPERTIES = ["settings", "tipType", "probes"];
 
 // A component's properties in a file: name and color, plus constituents from version 7 on, plus
 // osmolality from version 9 on.
@@ -112,9 +128,10 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 // table: an older file's stages can't hold them, and get them as null.
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3). Version 11 has
-// all of them, and versions 6 to 10 all but the transfer tables: version 7's and version 9's changes
-// are inside each component, and version 8's and version 10's inside the randomizations.
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 11 and
+// 12 have all of them, and versions 6 to 10 all but the transfer tables: version 7's and version 9's
+// changes are inside each component, and version 8's, version 10's and version 12's inside the
+// randomizations.
 const FILE_PROPERTIES = [
   "format",
   "version",
@@ -710,7 +727,37 @@ function withRandomizations(plan, file, newIds) {
     beforeId: randomization.beforeId === null ? null : newIds.get(randomization.beforeId),
     stages: randomization.stages.map((owned) => ({ ...owned, stage: newIds.get(owned.stage) })),
   }));
-  return withPlace("randomizations", () => setRandomizations(plan, renumbered));
+  const asVersion12 = renumbered.map((randomization, index) =>
+    firstRunValuesAsVersion12(randomization, index, file.version),
+  );
+  return withPlace("randomizations", () => setRandomizations(plan, asVersion12));
+}
+
+// Check 13, step 4a: a file's randomization as version 12 holds it. In a version 6 to 11 file, one
+// with stages has its settings, tipType and probes checked as setRandomization checks them, then
+// probes smallest first, each refused with 'randomizations: Randomization N: ' and the message, and
+// then set to null, since its stages hold them; otherwise it's given back as it is.
+function firstRunValuesAsVersion12(randomization, index, version) {
+  if (version >= FIRST_VERSION_WITH_STAGE_SETTINGS || randomization.stages.length === 0) {
+    return randomization;
+  }
+  withPlace(`randomizations: Randomization ${index + 1}`, () => {
+    checkFirstRunValues(randomization);
+  });
+  return { ...randomization, settings: null, tipType: null, probes: null };
+}
+
+// Throws setRandomization's message if a randomization's settings, tipType or probes (in that
+// order) aren't valid for a first run, then setRandomizations' message if its probes aren't listed
+// smallest first. They're checked by setting them on a new randomization in an empty plan, so the
+// rules are the transfer designer's own.
+function checkFirstRunValues(randomization) {
+  const { plan, id } = addRandomization(emptyPlan().plan, null);
+  const values = Object.fromEntries(FIRST_RUN_PROPERTIES.map((property) => [property, randomization[property]]));
+  const checked = randomizationAt(setRandomization(plan, id, values), id);
+  if (randomization.probes.some((probe, place) => probe !== checked.probes[place])) {
+    throw new Error("its probes must be listed smallest first.");
+  }
 }
 
 // Throws if the randomization at `index` hasn't just enough form for its stage IDs to be renumbered
