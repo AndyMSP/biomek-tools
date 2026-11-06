@@ -771,7 +771,13 @@ added on 2026-10-28 (Andy).
       different table means a new wizard (Cancel, or Remove the transfer table, and start again).
       **The table's cells can be edited in the wizard** (Andy, 2026-11-05), in a new transfer
       table or when one is reopened, so a volume or label can be fixed without going back to
-      Excel.
+      Excel, and **rows and columns can be added and deleted** there (Andy, 2026-11-05).
+    - **Pipetting settings are edited the normal way** (Andy, 2026-11-05, from the preview), not in
+      the wizard: each of a transfer table's stages has its ✎ and editing box, and each of its tip
+      changes its ✎, as ordinary stages and tips do. The wizard drops its Settings step (Table,
+      Sources, Review). What stays locked: a stage's name (its component's), its transfers, its
+      seams, and removing a stage or tip change on its own. Update keeps each stage's settings
+      and tips; a new column's stage starts with the settings of the column before it.
     - **Out of date is flagged, not rebuilt** (Andy, 2026-11-05), as for a randomization: when the
       plan changes so its stages no longer match its table (a well relabeled, a stock moved or
       emptied), it reads `needs update`, counts as a problem, and the Biomek files wait for Update.
