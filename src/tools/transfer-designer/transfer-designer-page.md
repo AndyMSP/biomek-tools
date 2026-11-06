@@ -1060,7 +1060,9 @@ right spot (6px from it), holding the **table button**: a 26px circle, white wit
 the table icon in blue (16px), like the dice button. Tooltip `Add a transfer table here`;
 accessible name `Add a transfer table before stage 3, “Drugs”`, or `… at the end of the run`. It
 opens a new **wizard** for a transfer table there (`beforeId` as the seam's `+`); nothing is added
-until **Add**. Seams inside a tip group box have no table button, and their fourth spot is empty.
+until **Add**. On the seam **below a randomization that hasn't run**, Add works as that seam's `+`
+does: `addTransferTable` before the same stage, then `placeRandomization` onto the transfer table's
+first stage, in the same edit, so the transfer table lands below the randomization. Seams inside a tip group box have no table button, and their fourth spot is empty.
 Keyboard focus reaches it after the dice button. (Ctrl+V on the page doesn't start a transfer table:
 Andy, 2026-11-05, only the button.)
 
@@ -1160,8 +1162,10 @@ Then a table, `Stage` and `Draws from`, one row per column that makes a stage, i
   that no longer holds only its component is dropped from its list (falling back to the first stock
   well if none is left).
 - **No stock well**: in red, `No well holds only this at Start`, and under the table the problem
-  `No well holds only Media at Start. Close this, fill one at Start, then open the table again.`
-  (the logic's message names the fix in its terms; the page's adds where to do it).
+  `No well holds only Media at Start. Cancel, fill one at Start, and start the transfer table
+  again.` (Cancel discards the paste, so it says so.) The page knows this case from
+  `stockWellsOf(plan, component)` being `[]`, and shows its own wording in place of the logic's;
+  every other problem on this step is shown as the logic gives it.
 
 **Review step** (Andy, 2026-11-05: kept, as the last check before the plan changes; read-only). In
 gray: `4 stages, each on new tips, before stage 3, “Drugs”.` (`at the end of the run`, or `where its
@@ -1170,9 +1174,10 @@ in the Stages column.` Then a table from `transferTableStages` (with `renamedFro
 Sources), `From` (its wells, `Res1 1, then Res1 2`), `Into` (`9 wells`), `Total` (µL, its
 transfers' volumes added, `1,710 µL`, as numbers are shown, section 13), `Aspirate · Dispense`
 (each end's mode name, `modeOf`, `(other)` if none, with ` ⟳` after an end that mixes: `Slow ⟳ ·
-Medium`) and `Tips` (`4 × BC230`: probes × tip type). When a stage's largest amount is more than
-`MIX_VOLUME_LIMITS` gives for its tip type (`config/tip-types.js`), its Tips cell adds, in 11px gray,
-`up to 250 µL per well`, with the tooltip `More than one BC230 tip holds in one trip.` (decided in
+Medium`) and `Tips` (`4 × BC230`: probes × tip type). When a stage's largest amount is more than its tip
+type's value in `MIX_VOLUME_LIMITS` (`config/tip-types.js`), its Tips cell adds, in 11px gray, `up
+to ` and that largest amount, ` µL per well` (as numbers are shown, section 13), with the tooltip
+`More than one BC230 tip holds in one trip.` (naming its tip type) (decided in
 the hands-off workflow: there's no other configured tip capacity, so the mix limits, themselves
 stand-ins, are used; roadmap, "Technical debt"). Under the table, columns making no stage, in gray:
 `No stage for DMSO: every amount is blank or 0.`
@@ -1639,8 +1644,8 @@ and the deck shows its point again.
 - **While the transfer table wizard is open** (section 7), none of these keys act on the page: the
   wizard's own keys apply (Enter, Tab and Escape in its cells; Escape elsewhere in it closes it, as
   Cancel), and Ctrl+V pastes only into its paste zone or a cell.
-- **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups and randomizations (section 7, "Moving
-  and copying"); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
+- **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups, randomizations and transfer tables
+  (section 7, "Moving and copying"); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
   right-click menu. While a drag is on, **Escape** cancels it, and **Ctrl** switches it between
   moving and copying. Escape, when nothing above uses it, forgets the selection.
 
@@ -2027,7 +2032,8 @@ page's configuration (ADR 0009):
   `123 transfers done · 456 BC230 tips · 104 BC1070 tips`; the count wraps onto a second line,
   right-aligned, the first line ends with a `·`, and no part (`456 BC230 tips`) is split;
 - transfer tables (2026-11-05): the table button on every seam between tip groups (not inside a
-  box), after the dice in Tab order; the wizard from it: the paste zone, a paste from Excel (blank
+  box), after the dice in Tab order; on the seam below a randomization that hasn't run, Add puts
+  the transfer table below it (the randomization stays above, one undo); the wizard from it: the paste zone, a paste from Excel (blank
   lines dropped, ragged rows filled), a paste of one cell refused; the grid: matched headers'
   swatches, labels' well counts, each problem cell red with its tooltip, Enter moving down, Tab
   along, Escape restoring a cell, `+ Row` and `+ Column` focusing the new cell, the `×`s deleting
