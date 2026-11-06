@@ -343,7 +343,8 @@ Opening a file checks, in this order:
        (`changeStageSettings`), then the mixing rule (section 3 of `transfer-designer.md`), then
        not a mix step's (`MIX_STEP_MODE`); `tipType` one of `TIP_TYPES` (`setTipType`); `probes` by
        `setTipProbes`' rules, then smallest first. A randomization that isn't an object, or lacks
-       any of the three, is skipped here and refused in step 5 with its form message.
+       any of the three, is refused before this step, by step 1, with `setRandomizations`' form message
+       (it can't reach step 4a).
        Randomizations are taken in order.
     5. **`setRandomizations`** (`transfer-designer.md`) checks and sets them all at once.
 

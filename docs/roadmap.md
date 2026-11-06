@@ -919,7 +919,10 @@ final Biomek runs, so they test the files as they will be:
     build. It writes ordinary stages and transfers, so it changes neither the Biomek files' format
     nor what a given plan writes, and needn't come before the final runs.
 14. A randomization's settings edited on its stages (item 20), added on 2026-11-05: preview,
-    specifications, then build. Changes plan files, not the Biomek files.
+    specifications, then build. Changes plan files. The same plan still writes the same Biomek
+    files, but what a user ends up sending can change: a new randomization starts from the stage
+    before it, new stages start from their neighbors, and Update no longer re-applies the card's
+    values to every stage. So it needs Andy's sign-off, by merging, before the final runs.
 15. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):

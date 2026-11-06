@@ -1769,7 +1769,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setWellLabels`: a label has spaces at its ends | `The label for Deep A1, " Cond 1", has spaces at the start or end. Remove them.` |
 | A randomization's `id` isn't one of the plan's | `There's no randomization "r9" in the plan.` |
 | `addRandomization`, `placeRandomization`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a randomization before.` |
-| `addRandomization`, `placeRandomization`: `beforeId` is inside a tip group, or inside another randomization | `A randomization sits between tip groups, so it can't go before stage 3, “Drugs”.` |
+| `addRandomization`, `placeRandomization`: `beforeId` is inside a tip group; `setRandomizations` (loading a file): a stored `beforeId` inside a tip group or inside another randomization | `A randomization sits between tip groups, so it can't go before stage 3, “Drugs”.` (A `beforeId` inside another randomization's stages, given to `addRandomization` or `placeRandomization`, gets the "stay together" message below; 2026-11-05, item 20.) |
 | `placeRandomization`: it has stages | `This randomization has run, so it sits where its stages are.` |
 | `setRandomization`: `changes` isn't an object, or gives a property it can't change | `The changes to a randomization must be an object of "sources", "fill", "seed", "volume", "settings", "tipType" and "probes", but got "stages".` (naming the first wrong property, or the value) |
 | `sources` or `fill` isn't a list | `A randomization's sources must be a list, but got 5.` (or `wells to fill`) |
@@ -1845,7 +1845,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `sourceSplit`: the component's column isn't in the draft, or makes no stage; or it has no wells | `Media has no column with an amount in this table.` / `Choose a well for Media to draw from.` |
 | `addTransferTable`, `updateTransferTable`, `transferTableStages`: the draft has problems | the first problem's message |
 | `addTransferTable`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a transfer table before.` |
-| `addTransferTable`: `beforeId` is inside a tip group, a randomization or a transfer table | `A transfer table sits between tip groups, so it can't go before stage 3, “Drugs”.` |
+| `addTransferTable`: `beforeId` is inside a tip group | `A transfer table sits between tip groups, so it can't go before stage 3, “Drugs”.` (Inside a transfer table or a randomization: each one's "stay together" message.) |
 | `transferTableProblems`, `sourceSplit`, `transferTableStages`: `at` isn't a stage or `null` | `There's no stage "9" in the plan.` |
 | `removeTransferTable`: its stages are all the plan's stages | `This transfer table's stages are all the plan's stages, and a plan needs at least one. Add a stage outside it first.` |
 | an edit of its stages' transfers (`addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer`) | `Stage 3, “Media”, is part of a transfer table: change its amounts in the table.` |
@@ -1882,7 +1882,11 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   its source well on the deck, then its destination well (`deck`'s messages), then its stage in the
   plan, then, for a mix step, that it's a mixed well. So a badly formed transfer gets the operation
   list's message, never a confusing one from a later check.
-- `addTipChange`: in the table's order.
+- `addTipChange`: in the table's order (not a stage, the first stage, already has new tips), then
+  a randomization's stage (2026-11-05, item 20).
+- `removeTipChange`: `START`, then none at `key`, then the transfer table refusals (its stage's,
+  then the stage just after it), then a randomization's stage, then the stage just after a
+  randomization's last stage, then a stage a randomization without stages sits before.
 - `setTipType`: none at `key`, then the tip type.
 - `changeStageSettings`: the stage list's checks, then the source's mixing, then the
   destination's, then the mix step checks in the table's order (one end only, source mix,
@@ -1914,7 +1918,9 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   on, then a stage whose end isn't one of the modes or can't mix), first stage first, checked on the
   run's result before it's given back.
 - `addRandomization`, `placeRandomization`: the randomization (for `placeRandomization`), whether
-  it has stages, `beforeId` a stage, then a place it can sit; then `seed`, then `volume`.
+  it has stages, then `beforeId` inside another randomization's stages (the "stay together"
+  message), then `beforeId` a stage, then inside a transfer table, then a place it can sit; then
+  `seed`, then `volume`.
 - `setRandomizations`: the list; then each randomization in turn: its form (exactly its
   properties), its ID, the checks of `setRandomization` on its values (`settings`, `tipType` and
   `probes` only when not `null`), `fill`'s order and `probes`' order, then `stages` (form, then
@@ -1955,7 +1961,11 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   then each randomization without stages, in order, sitting before a transfer table's stage other
   than its first.
 - `addStage`, `addMixStep`: `beforeId` a stage or `null`, then the transfer table refusals (inside
-  it, `takeTips` before its first stage, then just after its last stage).
+  it, `takeTips` before its first stage, then just after its last stage), then the randomization
+  refusals in the same order (inside it, `takeTips` before its first stage, then just after its
+  last stage).
+- `addStageWithNewTips`, `addMixStepWithNewTips`: `beforeId` a stage or `null`, then inside a
+  transfer table, then inside a randomization.
 - `moveWell`: `from` on the deck, then `to` on the deck (`deck.checkWell`'s order), then the same
   well, then `from` in use, then `from` a well to fill, then `to` in use.
 - `pasteItems`: the copied items' form and version, then each item in turn, in order (its form,
