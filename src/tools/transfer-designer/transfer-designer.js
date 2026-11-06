@@ -788,7 +788,8 @@ export function seedingDensitiesOf(plan, snapshot, end) {
 // list, in every well, and in every transfer table (its header cells, sources and stages, and the
 // name of its stage; section 3, "Transfer tables"), keeping each well's components in order, as one
 // edit. Renaming it to its own name returns the plan unchanged. Throws if there's no such
-// component, then as addComponent does for the new name.
+// component, then as addComponent does for the new name, then if a transfer table has a column of
+// each name (it would have two columns of one name).
 export function renameComponent(plan, oldName, newName) {
   checkComponentExists(plan, oldName);
   const trimmedName = typeof newName === "string" ? newName.trim() : newName;
@@ -796,6 +797,7 @@ export function renameComponent(plan, oldName, newName) {
     return plan;
   }
   checkNewComponentName(plan, trimmedName);
+  checkNoTableColumnsOfBoth(plan, oldName, trimmedName);
   // Rebuilding the object from its entries in order keeps the renamed component in its place.
   const renamed = (components) =>
     Object.fromEntries(
@@ -825,10 +827,11 @@ export function setComponentColor(plan, name, color) {
   });
 }
 
-// Returns the plan without component `name`, in the list or in any well, or in any transfer table's
-// sources (its header stays, so the table reads as out of date; section 3, "Transfer tables"). A
-// well left with nothing is no longer listed in the starting contents. Throws if there's no such
-// component.
+// Returns the plan without component `name`, in the list or in any well. Transfer tables keep their
+// headers and sources (a column's name may still be a well label; section 3, "Transfer tables",
+// "Components"): a header that now names nothing, or a chosen well that's no longer a source well,
+// makes its table out of date. A well left with nothing is no longer listed in the starting
+// contents. Throws if there's no such component.
 export function removeComponent(plan, name) {
   checkComponentExists(plan, name);
   const withoutComponent = (components) => withoutKey(components, name);
@@ -838,7 +841,6 @@ export function removeComponent(plan, name) {
   return withParts(plan, {
     components: plan.components.filter((component) => component.name !== name),
     startingContents,
-    transferTables: transferTablesWithoutSource(plan, name),
   });
 }
 
@@ -2134,20 +2136,21 @@ const TRANSFER_TABLE_STAYS_TOGETHER =
 const AMOUNT_PATTERN = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
 
 // The table read against the plan (section 3, "Reading the table"): { columns, problems }, each
-// column { column, component, amounts } for a header naming a component (amounts above 0 only, each
-// { row, label, wells, volume }, wells in deck order), and each problem { row, column, message }, in
-// reading order. Throws if `table` isn't in its form, e.g. readTransferTable(plan, [["Dest Well
-// Label", "Media"], ["Control", "190"]]) → { columns: [{ column: 1, component: "Media", amounts:
-// [{ row: 1, label: "Control", wells: […], volume: 190 }] }], problems: [] }.
+// column { column, component, isComponent, labelWells, amounts } for a header naming a component or
+// a well label (`component` the name, whichever it is; amounts above 0 only, each { row, label,
+// wells, volume }, wells in deck order), and each problem { row, column, message }, in reading
+// order. Throws if `table` isn't in its form, e.g. readTransferTable(plan, [["Dest Well Label",
+// "Media"], ["Control", "190"]]) → { columns: [{ column: 1, component: "Media", isComponent: true,
+// labelWells: [], amounts: [{ row: 1, label: "Control", wells: […], volume: 190 }] }], problems: [] }.
 export function readTransferTable(plan, table) {
   checkTableForm(table);
   return readCheckedTable(plan, table);
 }
 
 // The wells holding only `component` at Start (their starting contents name no other), in deck
-// order, each { labware, well }, e.g. [{ labware: "Res1", well: "1" }]; [] if none. A column draws
-// only from these (Andy, 2026-11-05: a well holding a mix is never mistaken for a stock). Throws if
-// there's no such component.
+// order, each { labware, well }, e.g. [{ labware: "Res1", well: "1" }]; [] if none. A column named
+// by a component draws from these, never from a well holding a mix (Andy, 2026-11-05), unless the
+// well carries its name as a label (sourceWellsOf). Throws if there's no such component.
 export function stockWellsOf(plan, component) {
   checkComponentExists(plan, component);
   return plan.startingContents
@@ -2157,6 +2160,23 @@ export function stockWellsOf(plan, component) {
     })
     .map(endOf)
     .sort((first, second) => deckOrderIndex(first) - deckOrderIndex(second));
+}
+
+// The wells a transfer table column named `name` (trimmed) may draw from (section 3, "A column's
+// source wells"; Andy, 2026-11-06): its stock wells if it's a component, then the wells labeled
+// `name` not already listed, each in deck order, each { labware, well }; [] if it's neither. What a
+// labeled well holds isn't checked: it may hold a mix, or nothing yet. E.g. Media in Res1 1 and
+// Res1 2, and Deep1 B1 labeled "Media" → [Res1 1, Res1 2, Deep1 B1]. Throws if `name` isn't text or
+// is blank.
+export function sourceWellsOf(plan, name) {
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new Error(`A column's name must be a component or a well label, but got ${describeValue(name)}.`);
+  }
+  const trimmed = name.trim();
+  const stock = hasComponentNamed(plan, trimmed) ? stockWellsOf(plan, trimmed) : [];
+  const listed = new Set(stock.map(wellKey));
+  const labeled = (wellsByLabelOf(plan).get(trimmed) ?? []).filter((end) => !listed.has(wellKey(end)));
+  return [...stock, ...labeled.map(endOf)];
 }
 
 // The draft's problems (section 3, "A draft"), each { row, column, message } (row and column null
@@ -2170,24 +2190,24 @@ export function transferTableProblems(plan, draft, at) {
   return draftProblems(plan, checked);
 }
 
-// How the transfers of `component`'s column split among its source wells (section 3, "A column's
-// transfers"), [{ well, count }] in its sources' order, from what each holds just before stage `at`
-// (null: after every stage), e.g. [{ well: Res1 1, count: 5 }, { well: Res1 2, count: 7 }]. Other
-// problems in the draft don't stop it, and its wells needn't be stock wells. Throws if the draft or
-// `at` isn't in its form, then if the column has no amount, then if it has no wells.
-export function sourceSplit(plan, draft, component, at) {
+// How the transfers of the column named `name` (a component or a well label) split among its
+// source wells (section 3, "A column's transfers"), [{ well, count }] in its sources' order, from
+// what each holds just before stage `at` (null: after every stage), e.g. [{ well: Res1 1, count: 5
+// }, { well: Res1 2, count: 7 }]. Other problems in the draft don't stop it, and its wells needn't
+// be source wells. Throws if the draft or `at` isn't in its form, then if the column has no amount,
+// then if it has no wells.
+export function sourceSplit(plan, draft, name, at) {
   const checked = checkedDraft(plan, draft);
   checkAt(plan, at);
-  const column = readCheckedTable(plan, checked.table).columns.find(
-    (candidate) => candidate.component === component,
-  );
+  const column = readCheckedTable(plan, checked.table).columns.find((candidate) => candidate.component === name);
+  const shown = columnNameShown(plan, name);
   if (column === undefined || column.amounts.length === 0) {
-    throw new Error(`${component} has no column with an amount in this table.`);
+    throw new Error(`${shown} has no column with an amount in this table.`);
   }
-  if (!Object.hasOwn(checked.sources, component)) {
-    throw new Error(`Choose a well for ${component} to draw from.`);
+  if (!Object.hasOwn(checked.sources, name)) {
+    throw new Error(`Choose a well for ${shown} to draw from.`);
   }
-  const wells = checked.sources[component];
+  const wells = checked.sources[name];
   const drawsFrom = sourceIndexes(columnTransfers(column), wells, contentsBeforeStage(plan, at));
   return wells.map((well, index) => ({
     well: endOf(well),
@@ -2405,8 +2425,8 @@ function checkTableForm(table, kind = "A transfer table") {
 // readTransferTable for a table already in its form.
 function readCheckedTable(plan, table) {
   const problems = [];
-  const columns = componentColumnsOf(plan, table, problems);
   const wellsByLabel = wellsByLabelOf(plan);
+  const columns = amountColumnsOf(plan, table, wellsByLabel, problems);
   const labelsAbove = new Set();
   for (let row = 1; row < table.length; row += 1) {
     const cells = table[row];
@@ -2440,10 +2460,13 @@ function readCheckedTable(plan, table) {
   return { columns, problems };
 }
 
-// The component columns of `table`'s header, left to right, each { column, component, amounts: [] }
-// for a header naming a component not named by a column to its left; the header's problems are
-// pushed onto `problems`, in order.
-function componentColumnsOf(plan, table, problems) {
+// The amount columns of `table`'s header, left to right, each { column, component, isComponent,
+// labelWells, amounts: [] } for a header naming a component or a well label (or both; Andy,
+// 2026-11-06), matched exactly, not named by a column to its left: `component` is the name,
+// `isComponent` whether it's a component, `labelWells` the wells with it as their label, in deck
+// order (from `wellsByLabel`, wellsByLabelOf). The header's problems are pushed onto `problems`, in
+// order.
+function amountColumnsOf(plan, table, wellsByLabel, problems) {
   const names = new Set(plan.components.map((component) => component.name));
   const columns = [];
   const header = table[0];
@@ -2452,13 +2475,19 @@ function componentColumnsOf(plan, table, problems) {
     let message = null;
     if (name === "") {
       const hasAmount = table.slice(1).some((row) => row[column].trim() !== "");
-      message = hasAmount ? `Column ${column + 1} has amounts but no component.` : null;
-    } else if (!names.has(name)) {
-      message = `“${name}” isn't a component in the plan.`;
+      message = hasAmount ? `Column ${column + 1} has amounts but no component or label.` : null;
+    } else if (!names.has(name) && !wellsByLabel.has(name)) {
+      message = `“${name}” isn't a component or a well label in the plan.`;
     } else if (columns.some((entry) => entry.component === name)) {
-      message = `“${name}” is in more than one column. Each component gets one column.`;
+      message = `“${name}” is in more than one column. Each component or label gets one column.`;
     } else {
-      columns.push({ column, component: name, amounts: [] });
+      columns.push({
+        column,
+        component: name,
+        isComponent: names.has(name),
+        labelWells: (wellsByLabel.get(name) ?? []).map(endOf),
+        amounts: [],
+      });
     }
     if (message !== null) {
       problems.push({ row: 0, column, message });
@@ -2524,26 +2553,24 @@ function checkedDraft(plan, draft) {
   };
 }
 
-// A copy of a transfer table's `sources`, checked: an object; then each key in order: a component
-// of the plan, its list, its wells each on the deck, none twice. Each well is copied as
-// { labware, well }.
+// A copy of a transfer table's `sources`, checked: an object; then each key in order: not blank,
+// its list, its wells each on the deck, none twice. Each well is copied as { labware, well }. A key
+// is a column's name, a component's or a well label's (Andy, 2026-11-06), so it isn't checked
+// against the plan: one naming nothing is kept, unused, and its column reads as a problem.
 function checkedTableSources(plan, sources) {
   // The form message, naming the value that's wrong.
   const formError = (value) =>
     new Error(
-      "A transfer table's sources must be an object of component names, each with a list of wells, " +
-        `like { Media: [{ labware: "Res1", well: "1" }] }, but got ${describeValue(value)}.`,
+      "A transfer table's sources must be an object of names (a component or a well label), each with a " +
+        `list of wells, like { Media: [{ labware: "Res1", well: "1" }] }, but got ${describeValue(value)}.`,
     );
   if (!isObject(sources)) {
     throw formError(sources);
   }
   const copied = {};
   for (const [component, wells] of Object.entries(sources)) {
-    if (!plan.components.some((entry) => entry.name === component)) {
-      throw new Error(
-        `A transfer table draws ${component} from wells, but there's no component called ` +
-          `${describeValue(component)} in this plan.`,
-      );
+    if (component.trim() === "") {
+      throw formError(component);
     }
     if (!Array.isArray(wells)) {
       throw formError(wells);
@@ -2588,7 +2615,7 @@ function draftProblems(plan, draft) {
   }
   const filled = new Set(making.flatMap((column) => column.amounts.flatMap((amount) => amount.wells.map(wellKey))));
   return making
-    .map((column) => columnSourceProblem(plan, draft, column.component, filled))
+    .map((column) => columnSourceProblem(plan, draft, column, filled))
     .filter((message) => message !== null)
     .map(draftProblem);
 }
@@ -2598,27 +2625,54 @@ function draftProblem(message) {
   return { row: null, column: null, message };
 }
 
-// The first problem with `component`'s column's sources in `draft`, or null: no stock well, no
-// wells chosen, a well that isn't a stock well, or a well the table fills (`filled`, wellKeys), the
-// last two naming the first such well in its list.
-function columnSourceProblem(plan, draft, component, filled) {
-  const stock = new Set(stockWellsOf(plan, component).map(wellKey));
-  if (stock.size === 0) {
-    return `No well holds only ${component} at Start. Fill one with ${component} at Start first.`;
+// The first problem with the sources of `column` (a column of readTransferTable) in `draft`, or
+// null: no source well, no wells chosen, a well that isn't a source well (sourceWellsOf), or a well
+// the table fills (`filled`, wellKeys), the last two naming the first such well in its list.
+function columnSourceProblem(plan, draft, column, filled) {
+  const name = column.component;
+  const shown = columnNameShown(plan, name);
+  const allowed = new Set(sourceWellsOf(plan, name).map(wellKey));
+  if (allowed.size === 0) {
+    return `No well holds only ${name} at Start. Fill one with ${name} at Start first, or label the well to draw from “${name}”.`;
   }
-  if (!Object.hasOwn(draft.sources, component)) {
-    return `Choose a well for ${component} to draw from.`;
+  if (!Object.hasOwn(draft.sources, name)) {
+    return `Choose a well for ${shown} to draw from.`;
   }
-  const wells = draft.sources[component];
-  const notStock = wells.find((end) => !stock.has(wellKey(end)));
-  if (notStock !== undefined) {
-    return `${wellText(notStock)} doesn't hold only ${component} at Start, so ${component} can't draw from it.`;
+  const wells = draft.sources[name];
+  const notSource = wells.find((end) => !allowed.has(wellKey(end)));
+  if (notSource !== undefined) {
+    return notSourceMessage(column, wellText(notSource));
   }
   const alsoFilled = wells.find((end) => filled.has(wellKey(end)));
   if (alsoFilled !== undefined) {
-    return `${wellText(alsoFilled)} is both a source of ${component} and a well the table fills. Choose another well.`;
+    return `${wellText(alsoFilled)} is both a source of ${shown} and a well the table fills. Choose another well.`;
   }
   return null;
+}
+
+// Why `column` (a column of readTransferTable) can't draw from the well named `where`, worded for
+// what its name is: a component only, a well label only, or both (section 3, "A draft"), e.g.
+// 'Res1 1 isn't labeled “Premix”, so “Premix” can't draw from it.'
+function notSourceMessage(column, where) {
+  const name = column.component;
+  if (!column.isComponent) {
+    return `${where} isn't labeled “${name}”, so “${name}” can't draw from it.`;
+  }
+  if (column.labelWells.length === 0) {
+    return `${where} doesn't hold only ${name} at Start, so ${name} can't draw from it.`;
+  }
+  return `${where} doesn't hold only ${name} at Start and isn't labeled “${name}”, so ${name} can't draw from it.`;
+}
+
+// A column's name as messages show it (section 3, "Naming a column in messages"): a component's
+// as it is, any other in curly quotes, as labels are, e.g. "Media", "“Premix”".
+function columnNameShown(plan, name) {
+  return hasComponentNamed(plan, name) ? name : `“${name}”`;
+}
+
+// True if the plan has a component called `name`, e.g. hasComponentNamed(plan, "Media") → true.
+function hasComponentNamed(plan, name) {
+  return plan.components.some((component) => component.name === name);
 }
 
 // A column's transfers, without their sources: one per amount and well, rows in table order and
@@ -3057,12 +3111,7 @@ function withTransferTablesRenamed(plan, oldName, newName) {
     changed = true;
     const [header, ...rows] = transferTable.table;
     const renamedHeader = header.map((cell, column) => (headerNames(cell, column, oldName) ? newName : cell));
-    const sources = Object.fromEntries(
-      Object.entries(transferTable.sources).map(([component, wells]) => [
-        component === oldName ? newName : component,
-        wells,
-      ]),
-    );
+    const sources = sourcesRenamed(transferTable, oldName, newName);
     const stages = transferTable.stages.map((owned) => {
       if (owned.component !== oldName) {
         return owned;
@@ -3075,18 +3124,39 @@ function withTransferTablesRenamed(plan, oldName, newName) {
   return changed ? withParts(plan, { stageList, transferTables }) : plan;
 }
 
-// The plan's transfer tables with component `name`'s key taken out of their sources; a transfer
-// table without it is the very same object, and the list is the same list if none has it.
-function transferTablesWithoutSource(plan, name) {
-  let changed = false;
-  const transferTables = plan.transferTables.map((transferTable) => {
-    if (!Object.hasOwn(transferTable.sources, name)) {
-      return transferTable;
-    }
-    changed = true;
-    return { ...transferTable, sources: withoutKey(transferTable.sources, name) };
-  });
-  return changed ? transferTables : plan.transferTables;
+// `transferTable`'s sources with key `oldName` renamed `newName`, in its place (section 3,
+// "Components"). A key of the new name already there gives way to the renamed one if its column
+// isn't in the table (an unused key); if its column is, it's kept and the old key, unused since
+// the table has no column of the old name (renameComponent refuses both), is dropped.
+function sourcesRenamed(transferTable, oldName, newName) {
+  const { sources, table } = transferTable;
+  if (!Object.hasOwn(sources, oldName)) {
+    return sources;
+  }
+  if (Object.hasOwn(sources, newName) && columnOfComponent(table, newName) !== -1) {
+    return withoutKey(sources, oldName);
+  }
+  return Object.fromEntries(
+    Object.entries(sources)
+      .filter(([name]) => name !== newName)
+      .map(([name, wells]) => [name === oldName ? newName : name, wells]),
+  );
+}
+
+// Throws if a transfer table has a column named `oldName` and another named `newName` (the first
+// such in the plan's order), since renaming the component would give it two columns of one name:
+// 'A transfer table already has a column “Premix”. Choose another name, or change that column
+// first.'
+function checkNoTableColumnsOfBoth(plan, oldName, newName) {
+  const both = plan.transferTables.some(
+    (transferTable) =>
+      columnOfComponent(transferTable.table, oldName) !== -1 && columnOfComponent(transferTable.table, newName) !== -1,
+  );
+  if (both) {
+    throw new Error(
+      `A transfer table already has a column “${newName}”. Choose another name, or change that column first.`,
+    );
+  }
 }
 
 // True if header cell `cell`, in column `column` of a transfer table, names `component`: a
@@ -4113,20 +4183,16 @@ function pastedPiece(plan, item, existing, existingTables, version) {
   return pastedRandomization(plan, item, existing, version);
 }
 
-// Pastes a copied transfer table (pastedPiece): its table's form, then its sources' form, with keys
-// naming no component in this plan dropped (as removeComponent drops them); its stages as new stages,
+// Pastes a copied transfer table (pastedPiece): its table's form, then its sources' form, keeping
+// every key (a column's name may be a component or a well label; one this plan lacks reads as a
+// problem, so the pasted table is out of date; Andy, 2026-11-06); its stages as new stages,
 // each a tip group of its own loading its copied tips; then its stages checked as setTransferTables
 // checks a plan file's, but for their places, which the paste sets. It gets the next free ID among
 // `existing`. Whether its stages match what it would make isn't checked: it may be out of date.
 function pastedTransferTable(plan, item, existing) {
   const { table, sources } = item.transferTable;
   checkTableForm(table);
-  const known = isObject(sources)
-    ? Object.fromEntries(
-        Object.entries(sources).filter(([component]) => plan.components.some((entry) => entry.name === component)),
-      )
-    : sources;
-  const checkedSources = checkedTableSources(plan, known);
+  const checkedSources = checkedTableSources(plan, sources);
   let pasting = plan;
   const groups = [];
   const stages = [];
