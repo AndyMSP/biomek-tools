@@ -817,6 +817,10 @@ added on 2026-10-28 (Andy).
       their cells), Sources (each column's well), Settings (each column's modes, mixing, tip type
       and probes, starting from the column before), Review (each stage's wells, total µL and tips),
       then Add or Update; Back and Next between steps.
+    - **The wizard's steps are Table, Sources and Review** (Andy, 2026-11-05, from the preview).
+      Review is read-only: each stage's sources, wells, total µL, modes and tips, and a note when
+      a well's volume is more than one tip holds; kept as the last check before the plan changes.
+      A transfer table already in the plan reopens at Review, any step reachable from there.
     - **The wizard is a dialog over the page** (Andy, 2026-11-05), for room to work with the grid,
       rather than a card in the Stages column.
     - **A new transfer table starts from a new button on a seam** (Andy, 2026-11-05), as a
