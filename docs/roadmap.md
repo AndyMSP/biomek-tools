@@ -909,8 +909,7 @@ added on 2026-10-28 (Andy).
     **Specified** (Draft, 2026-11-05, in the hands-off workflow) and **Built (#139, 2026-11-05)**:
     see "Where things stand".
 
-21. **Ctrl-click to pick scattered wells** (Andy, 2026-11-05; numbered after items 19 and 20, which
-    are on their own branches, #138 and #139): wherever wells are picked on the deck, Ctrl-click
+21. **Ctrl-click to pick scattered wells** (Andy, 2026-11-05): wherever wells are picked on the deck, Ctrl-click
     (Cmd on a Mac) picks wells that don't form a box. Decided so far (Andy, 2026-11-05):
     - **No selection step** (Andy, 2026-11-05, after trying a first preview in which Ctrl-click
       built a selection applied with Enter or a button, the Excel pattern): an extra click to
