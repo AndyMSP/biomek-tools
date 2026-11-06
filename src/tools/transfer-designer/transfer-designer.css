@@ -1682,6 +1682,26 @@ button.entry-row {
   background: var(--page-background);
 }
 
+/* A transfer table's heading row: the heading button, then its ✎. */
+.transfer-table-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.transfer-table-head .transfer-table-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The ▸/▾ at the start of a transfer table's heading, like a folder's. */
+.folder-mark {
+  flex: none;
+  width: 12px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
 .transfer-table.glowing {
   --glow-end: var(--page-background);
 }

@@ -363,8 +363,16 @@ const outOfDateByPlan = new WeakMap();
 // randomizations, since each check reads its table again.
 const tablesOutOfDateByPlan = new WeakMap();
 
-// The transfer table wizard while it's open (section 7, "The wizard"), or null: see openWizard.
+// The transfer table wizard while it's open (section 7, "The wizard"), or null: see openNewWizard.
 let wizard = null;
+
+// The IDs of the transfer tables whose box is open, showing its stages (section 7, "Its box"):
+// remembered while the page is open, not saved in plan files and not an undo step.
+const openTables = new Set();
+
+// The open entry when refresh last looked, so a transfer table's box opens once when one of its
+// stages becomes the open entry, and can then be closed by its heading.
+let openEntrySeen = null;
 
 // The page's elements that transfer-designer.html gives an id, looked up once.
 const elements = {
@@ -644,6 +652,7 @@ function refresh() {
     history = history.replacePresent({ plan, open: place });
   }
   syncCard(plan, currentOpen());
+  openTableOfNewlyOpenStage(plan);
   // Undo or redo can take the picked component away (e.g. undoing a rename): then, as when a picked
   // component is removed, the first component is picked, or the eraser if there's none.
   if (brush.pick.kind === "component" && !hasComponent(plan, brush.pick.name)) {
@@ -666,6 +675,20 @@ function refresh() {
   keepVolumeBoxTransferHighlighted();
   updateCursorLabel();
   requestAnimationFrame(fitStagesColumn);
+}
+
+// Opens the box of the transfer table whose stage has just become the open entry (section 7, "Its
+// box"), once: after that, its heading can close it while the stage stays open.
+function openTableOfNewlyOpenStage(plan) {
+  const open = currentOpen();
+  if (open === openEntrySeen) {
+    return;
+  }
+  openEntrySeen = open;
+  const owner = isStage(plan, open) ? transferTableOf(plan, open) : null;
+  if (owner !== null) {
+    openTables.add(owner);
+  }
 }
 
 // Keeps the card in step with what's open: a randomization open (after redo, say) has its card,
@@ -800,6 +823,8 @@ function showReplacedPlan(plan, open) {
   addingComponent = null;
   bringOutUsedLabware(plan);
   pickFirstComponent(plan);
+  // Another plan's transfer tables may reuse the IDs, so every box starts closed (section 7).
+  openTables.clear();
   recordEdit(plan, open);
 }
 
@@ -3943,9 +3968,8 @@ function isOwnedStage(plan, id) {
 // The most problems the Table step lists before "…and N more." (section 7).
 const TABLE_PROBLEMS_LISTED = 6;
 
-// A transfer table's box in the Stages column (section 7): its heading, then its stages' tip group
-// boxes (one stage each), unless it's collapsed to its heading: it is, unless one of its stages is
-// open. Between its tip group boxes (and above the first, below the last) are the places where its
+// A transfer table's box in the Stages column (section 7): its heading and ✎, then, while the box
+// is open (openTables), its stages' tip group boxes (one stage each). Between its tip group boxes (and above the first, below the last) are the places where its
 // own stages can be dropped while one is dragged, never shown otherwise. `block` is from
 // columnBlocks; `groupIndex` the place of its first tip group among all of them, for their colors;
 // `boxIndex` its box's index in the column.
@@ -3954,10 +3978,12 @@ function createTransferTableBox(plan, block, groupIndex, open, problems, drawnKe
   const box = createElement("div", "", "transfer-table");
   box.dataset.item = itemKey({ kind: "transferTable", id: transferTable.id });
   applyGlow(box, box.dataset.item, drawnKeys, { whenNew: false });
-  const heading = createTransferTableHeading(transferTable, outOfDateTransferTables(plan).has(transferTable.id));
+  const expanded = openTables.has(transferTable.id);
+  const heading = createTransferTableHeading(transferTable, outOfDateTransferTables(plan).has(transferTable.id), expanded);
   heading.dataset.itemHandle = box.dataset.item;
-  box.append(heading);
-  const expanded = groups.some(({ group }) => group.stages.includes(open));
+  const head = createElement("div", "", "transfer-table-head");
+  head.append(heading, createTablePencil(transferTable.id));
+  box.append(head);
   if (!expanded) {
     groups.forEach(({ group }) => noteDrawnWithoutGlow(group, drawnKeys));
     return box;
@@ -3983,23 +4009,64 @@ function createTableDropPlace(id, boxIndex, position) {
   return withDropPlace(place, { kind: "inTransferTable", index: boxIndex, position });
 }
 
-// A transfer table's heading (section 7): a button the box's width, with the table icon,
-// "Transfer table", and, at the right, "4 stages", or, when `outOfDate`, "needs update" in red.
-// Clicking it opens its wizard at Review (clickItem, as for any item's handle).
-function createTransferTableHeading(transferTable, outOfDate) {
+// A transfer table's heading (section 7): a button with ▸ (closed) or ▾ (open, `expanded`), the
+// table icon, "Transfer table", and, at the right, "4 stages", or, when `outOfDate`, "needs update"
+// in red. Clicking it opens or closes the box (clickItem, as for any item's handle).
+function createTransferTableHeading(transferTable, outOfDate, expanded) {
   const heading = createElement("button", "", "randomization-heading transfer-table-heading");
   heading.type = "button";
+  heading.setAttribute("aria-expanded", String(expanded));
   heading.title = outOfDate
-    ? "The plan changed since this was made: open it and press Update."
-    : "Open to change it";
+    ? "The plan changed since this was made: press ✎, then Update."
+    : expanded
+      ? "Hide its stages"
+      : "Show its stages";
   const status = createElement(
     "span",
     outOfDate ? "needs update" : countOf(transferTable.stages.length, "stage"),
     "randomization-status",
   );
   status.classList.toggle("needs-update", outOfDate);
-  heading.append(createTableIcon(), createElement("span", "Transfer table", "randomization-title"), status);
+  heading.append(
+    createElement("span", expanded ? "▾" : "▸", "folder-mark"),
+    createTableIcon(),
+    createElement("span", "Transfer table", "randomization-title"),
+    status,
+  );
   return heading;
+}
+
+// The ✎ on a transfer table's heading (section 7): opens its wizard at Review and selects it.
+function createTablePencil(id) {
+  const pencil = createElement("button", "✎", "edit-button table-edit");
+  pencil.type = "button";
+  pencil.title = "Change the table, its sources or remove it";
+  pencil.setAttribute("aria-label", "Edit transfer table");
+  pencil.addEventListener("click", () => {
+    if (closeRandomizationCard()) {
+      pickedSet = [{ kind: "transferTable", id }];
+      markSelection(selectedItems());
+      openWizardFor(id);
+    }
+  });
+  return pencil;
+}
+
+// Opens transfer table `id`'s box if it's closed, or closes it (section 7, "Its box"); it only
+// shows or hides, so it's no edit.
+function toggleTableBox(id) {
+  if (openTables.has(id)) {
+    openTables.delete(id);
+  } else {
+    openTables.add(id);
+  }
+  const key = itemKey({ kind: "transferTable", id });
+  const hadFocus = document.activeElement?.dataset?.itemHandle === key;
+  refreshStages();
+  // The column is drawn afresh, so a heading toggled from the keyboard gets its focus back.
+  if (hadFocus) {
+    elements.stagesList.querySelector(`.transfer-table-heading[data-item-handle="${cssEscape(key)}"]`)?.focus();
+  }
 }
 
 // The table icon (section 7): a rounded rectangle 15 by 13 with two lines across and two down,
@@ -5137,10 +5204,10 @@ function clickItem(item, keys) {
   } else if (item.kind === "tipGroup") {
     pickedSet = [item];
   } else if (item.kind === "transferTable") {
-    // Its heading opens its wizard at Review, and selects it alone (section 7).
+    // Its heading opens or closes its box, and selects it alone (section 7); its ✎ opens the wizard.
     if (closeRandomizationCard()) {
       pickedSet = [item];
-      openWizardFor(item.id);
+      toggleTableBox(item.id);
     }
   } else if (card !== null && card.id === item.id) {
     if (closeRandomizationCard()) {
@@ -6859,6 +6926,14 @@ function clickInColumnWhileMoving(event) {
     return;
   }
   if (target.closest("button.entry-row, .toggle-list") !== null) {
+    return;
+  }
+  // A transfer table's heading only shows or hides its stages, so it works while moving wells.
+  const tableHeading = target.closest(".transfer-table-heading");
+  if (tableHeading !== null) {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleTableBox(itemFromKey(tableHeading.dataset.itemHandle).id);
     return;
   }
   if (target.closest("button, input, select, textarea, label, [data-item-handle]") === null) {
