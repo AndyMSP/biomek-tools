@@ -23,7 +23,11 @@ import {
   checkName,
   checkVolume,
 } from "../src/shared/input-checks/input-checks.js";
-import { parsePastedTable, isMultiCell } from "../src/shared/pasted-table/pasted-table.js";
+import {
+  parsePastedTable,
+  isMultiCell,
+  tableToText,
+} from "../src/shared/pasted-table/pasted-table.js";
 import { OperationList } from "../src/shared/operation-list/operation-list.js";
 import { replay, ContentsSnapshot } from "../src/shared/contents-tracking/contents-tracking.js";
 import { StageList } from "../src/shared/stage-list/stage-list.js";
@@ -266,14 +270,16 @@ const TOPICS = {
     ],
   },
   "pasted-table": {
-    loaded: { parsePastedTable, isMultiCell },
+    loaded: { parsePastedTable, isMultiCell, tableToText },
     examples: [
       'parsePastedTable("Drug A\\t4\\r\\nVehicle\\t3\\r\\n")',
       'parsePastedTable("A\\t\\tC")',
       'parsePastedTable("A\\n\\n")',
       'isMultiCell("Drug A\\t4")',
       'isMultiCell("Drug A")',
+      'tableToText([["Drug A", "4"], ["Vehicle", "3"]])',
       "parsePastedTable(5)",
+      'tableToText([["Feed\\tA"]])',
     ],
   },
   "operation-list": {
