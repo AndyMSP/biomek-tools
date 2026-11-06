@@ -242,7 +242,7 @@ Opening a file checks, in this order:
    `constituents` (a version 1 to 6 component can't have it), and in a version 9 to 11 file `osmolality`
    (a version 1 to 8 component can't have it), then added as `addComponent` would
    add it: a name and a color, each unique. The name must already be a name (`checkName`): it
-   isn't trimmed, so it always matches the names in the starting contents. In a version 7 to 10
+   isn't trimmed, so it always matches the names in the starting contents. In a version 7 to 11
    file, its constituents are then set as `setConstituents` would set them (`transfer-designer.md`,
    "Constituents"), with one check first: if `constituents` is a list, each of its entries that is
    an object with a text `name` has that name checked by `checkName` (subject `constituent name`)
