@@ -1,6 +1,6 @@
 # pasted-table — specification
 
-> **Draft change (2026-11-05, stock tables, item 21 of v0.2.0):** `tableToText`, the reverse of
+> **Draft change (2026-11-05, stock tables, item 22 of v0.2.0):** `tableToText`, the reverse of
 > `parsePastedTable`, so a tool can put a table on the clipboard for a spreadsheet or another paste
 > (sections 1, 4 and 5). Written in the hands-off workflow (CLAUDE.md, "Workflows"). It becomes
 > Final once built and tested by Andy.

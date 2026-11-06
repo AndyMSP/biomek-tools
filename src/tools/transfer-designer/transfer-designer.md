@@ -136,7 +136,7 @@
 > workflow, so the choices made for Andy are listed in its pull request. Still to review: every new
 > message. It becomes Final once built and tested by Andy.
 
-> **Draft change (2026-11-05, stock tables, item 21 of v0.2.0):** a **stock table**
+> **Draft change (2026-11-05, stock tables, item 22 of v0.2.0):** a **stock table**
 > (`docs/glossary.md`) adds many components at once, each with its constituents and osmolality,
 > and the plan's components can be written out as one: `readStockTable`, `addStocks` and
 > `stockTable`; `UNIT_SPELLINGS` in `config/concentration-units.js` (sections 3 to 6). Nothing new
@@ -506,7 +506,7 @@ the names of those that have none. A tool makes the snapshot and asks per well, 
 checked by the snapshot alone, exactly as for `concentrationsOf` (above).
 
 ### Stock tables
-(Andy, 2026-11-05; roadmap, item 21 of v0.2.0.) A **stock table** (`docs/glossary.md`) is a table,
+(Andy, 2026-11-05; roadmap, item 22 of v0.2.0.) A **stock table** (`docs/glossary.md`) is a table,
 usually pasted from a spreadsheet, of components to add, one row each, with what each carries and its
 osmolality. It isn't kept in the plan: adding one adds ordinary components, and the plan can be
 written back out as one, to copy into another plan or a spreadsheet.

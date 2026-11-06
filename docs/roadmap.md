@@ -424,7 +424,14 @@ Last updated: 2026-11-05
   tip groups, and its heading opening and closing its box with a ✎ for the card; the
   specifications and the build each reviewed by a separate agent, and checked in headless Chrome.
   Still to check by Andy.
-- **Decided: pasting and copying a table of stocks** (Andy, 2026-11-05; item 21, below): components,
+- **Decided: Ctrl-click keeps a transfer's source** (Andy, 2026-11-05; item 21, below), from a
+  second preview he approved. **Specified** (Draft, 2026-11-05, in the hands-off workflow):
+  `transfer-designer-page.md`, section 9 ("Keeping the source"), with its keys (section 12) and
+  by-hand checks (section 16). Page only: it changes no plan files and no Biomek files. **Built
+  (#140, 2026-11-05)**: the page script only; the specification and the build each reviewed by a
+  separate agent, and checked in headless Chrome (Cmd and a Mac's Ctrl-click simulated). Still to
+  check by Andy, on a Mac too if one is used.
+- **Decided: pasting and copying a table of stocks** (Andy, 2026-11-05; item 22, below): components,
   with what they contain and their osmolality, pasted from a spreadsheet in one go, and copied out
   the same way, from a preview Andy approved. **Specified** (Draft, 2026-11-05, in the hands-off
   workflow): `readStockTable`, `addStocks`, `stockTable` and `UNIT_SPELLINGS`
@@ -915,7 +922,24 @@ added on 2026-10-28 (Andy).
       opens its card like its ✎ (Claude's choice).
     **Specified** (Draft, 2026-11-05, in the hands-off workflow) and **Built (#139, 2026-11-05)**:
     see "Where things stand".
-21. **Pasting a table of stocks** (Andy, 2026-11-05): a table copied from a spreadsheet adds many
+21. **Ctrl-click to pick scattered wells** (Andy, 2026-11-05): wherever wells are picked on the deck, Ctrl-click
+    (Cmd on a Mac) picks wells that don't form a box. Decided so far (Andy, 2026-11-05):
+    - **No selection step** (Andy, 2026-11-05, after trying a first preview in which Ctrl-click
+      built a selection applied with Enter or a button, the Excel pattern): an extra click to
+      finish is unwanted, and at Start (and in a mix step) a click already acts on its well at
+      once, so a selection adds nothing there. Tried in a second preview and approved (Andy, 2026-11-05: "works great"): **in a transfer
+      stage, Ctrl-click a destination adds the transfer at once and keeps the source chosen**, so
+      the next destination is one more Ctrl-click (Ctrl+drag a box does the same); a plain click
+      adds one transfer and clears the source, as today; Escape clears the source. Elsewhere
+      Ctrl-click acts as a click. Each click is its own undo step.
+    - **Tried in a preview first** (done, 2026-11-05). It changes no plan files and no Biomek files.
+    - Decided in the hands-off workflow (2026-11-05; reasons in its pull request): Ctrl counts when
+      the click or drag finishes, as for copying in the Stages column; Ctrl or Cmd on every
+      platform, a press that opens the browser's context menu (a Mac's Ctrl-click) only naming the
+      well; a refused transfer keeps the source; a drag that adds nothing keeps it; Undo and Redo
+      keep it; Ctrl+Enter or Cmd+Enter on a focused well acts as a Ctrl-click (not Space).
+    **Specified** (Draft, 2026-11-05) and **Built (#140, 2026-11-05)**: see "Where things stand".
+22. **Pasting a table of stocks** (Andy, 2026-11-05): a table copied from a spreadsheet adds many
     components at once, each with its constituents (its `Contains`) and its osmolality, so a lab's
     stock list doesn't have to be typed in one component at a time. Shaped in the standard
     workflow, then specified and built in the hands-off workflow (Andy, 2026-11-05). Decided so
@@ -980,7 +1004,11 @@ final Biomek runs, so they test the files as they will be:
     files, but what a user ends up sending can change: a new randomization starts from the stage
     before it, new stages start from their neighbors, and Update no longer re-applies the card's
     values to every stage. So it needs Andy's sign-off, by merging, before the final runs.
-15. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+15. Ctrl-click keeps a transfer's source (item 21), added on 2026-11-05: preview,
+    specification, then build. Page only, so it needn't come before the final runs.
+16. Pasting and copying a table of stocks (item 22), added on 2026-11-05: preview, specifications,
+    then build. It changes no Biomek files or plan files, so it needn't come before the final runs.
+17. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
