@@ -597,7 +597,7 @@ row of section 5 has at least one test.
 
 **Refusing**
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
-- `version` `12` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
+- `version` `13` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
   message.
 - **Version 6:** a version 6 file (as saved before constituents, its components `{ name, color }`)
   opens, every component carrying `[]`; a version 6 file whose component *has* `constituents` is
