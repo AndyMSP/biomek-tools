@@ -769,8 +769,12 @@ added on 2026-10-28 (Andy).
     - **Out of date is flagged, not rebuilt** (Andy, 2026-11-05), as for a randomization: when the
       plan changes so its stages no longer match its table (a well relabeled, a stock moved or
       emptied), it reads `needs update`, counts as a problem, and the Biomek files wait for Update.
-    Still to decide: one set of settings for all its stages or one per column, and its name. Then a
-    preview of the unit. From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
+    - **Settings per column** (Andy, 2026-11-05): each column's stage has its own settings (mode,
+      mixing, tip type, probes), so 190 µL of Media and 2 µL of a drug can use different tips and
+      modes; a new column starts with the settings of the column before it. (Claude first
+      recommended one set for all, as a randomization has, then changed it for this reason.)
+    Still to decide: its name ("Transfer table" or "Combined transfer table" are being considered).
+    Then a preview of the unit. From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
     opens a box listing each column's stage, source, wells and total, and the problems found;
     blank and 0 cells add nothing; a column draws only from a well holding nothing but that
     component at Start; a label in two rows is refused.
