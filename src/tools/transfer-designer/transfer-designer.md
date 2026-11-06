@@ -1289,9 +1289,10 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
 - A copied randomization is a **new randomization**: the next free ID (`r` and one more than the
   largest number in use, as `addRandomization` gives), the copied values, and the copies of its
   stages as its `stages`, each with its source's well, in the same tip groups as the original's
-  (a stage that started new tips starts new tips loading the tips it had, normally the
-  randomization's `tipType` and `probes`; one that shared the tips of the stage before it shares
-  the copy's). Its `beforeId` follows
+  (a stage that started new tips starts new tips loading the tips it had; one that shared the tips
+  of the stage before it shares the copy's), each keeping its settings. A copy of a run
+  randomization has `null` `settings`, `tipType` and `probes`, as the original has (since
+  2026-11-05, item 20). Its `beforeId` follows
   from where it lands. The box just below it already starts a tip group (it's between boxes), so it
   keeps its own tips. Stages left over from its last run (section 3, "Randomizations": a source
   taken out, not run again) are copied too, as the plan holds them.
