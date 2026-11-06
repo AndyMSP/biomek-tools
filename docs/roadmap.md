@@ -915,12 +915,13 @@ added on 2026-10-28 (Andy).
     - **No selection step** (Andy, 2026-11-05, after trying a first preview in which Ctrl-click
       built a selection applied with Enter or a button, the Excel pattern): an extra click to
       finish is unwanted, and at Start (and in a mix step) a click already acts on its well at
-      once, so a selection adds nothing there. Proposed in the second preview: **in a transfer
+      once, so a selection adds nothing there. Tried in a second preview and approved (Andy, 2026-11-05: "works great"): **in a transfer
       stage, Ctrl-click a destination adds the transfer at once and keeps the source chosen**, so
       the next destination is one more Ctrl-click (Ctrl+drag a box does the same); a plain click
       adds one transfer and clears the source, as today; Escape clears the source. Elsewhere
       Ctrl-click acts as a click. Each click is its own undo step.
-    - **Tried in a preview first.** It changes no plan files and no Biomek files.
+    - **Tried in a preview first** (done, 2026-11-05). It changes no plan files and no Biomek files.
+      Next: the page specification.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
