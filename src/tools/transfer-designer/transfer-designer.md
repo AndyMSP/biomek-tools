@@ -1059,7 +1059,7 @@ randomizations, whose protection is the page's only: roadmap, "Technical debt"):
   message; no new rule);
 - `moveItems` with one of its stages without the transfer table, to any place but inside its own
   transfer table (section 3, "Moving inside a transfer table"); any other item to a place inside its
-  box; `copyOf` and `copyItems` with one of its stages without the transfer table;
+  box;
 - `removeStage` of the stage just after its last stage gives the next stage a tip change loading the
   tips the removed one used, if it has none (as for a randomization).
 - `addStage` and `addMixStep` without `takeTips` before its first stage when that's the plan's first
@@ -1207,9 +1207,8 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
   more than the largest number in use), the copied `table` and `sources`, and the copies of its
   stages as its `stages`, each with its component and on tips of its own loading the tips it had.
   It fills the same labeled wells as the original (Andy, 2026-11-05: as a copied randomization
-  does), so it usually makes overfills, shown as any others. **A stage of a transfer table can't be
-  copied alone** (Andy, 2026-11-05: only the whole table copies): `copyOf` and `copyItems` refuse a
-  list holding one whose transfer table isn't listed too.
+  does), so it usually makes overfills, shown as any others. Copies of its stages copied alone are
+  ordinary stages, owned by nothing, as a randomization's are.
 - A copied randomization is a **new randomization**: the next free ID (`r` and one more than the
   largest number in use, as `addRandomization` gives), the copied values, and the copies of its
   stages as its `stages`, each with its source's well, in the same tip groups as the original's
@@ -1695,11 +1694,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `removeTipChange` of the stage just after it | `This tip change keeps stage 7, “Wash”, off the transfer table's tips. A transfer table never shares tips with other stages.` |
 | `addStage`, `addMixStep` without `takeTips` just after its last stage (a `beforeId` that's the stage after it, or `null` when it's last) | `A stage added here would share the transfer table's tips. Add it with new tips, from the seam between tip groups.` |
 | adding a stage, mix step, randomization or transfer table inside it (a `beforeId` that's one of its stages but its first), or a stage or mix step with `takeTips` before its first stage | `A transfer table's stages stay together, each on its own tips: add before its first stage or after its last.` |
-| `moveItems`: one of its stages without the transfer table, to a place outside its own transfer table | `Stage 3, “Media”, belongs to a transfer table: move it within the table, or move the whole transfer table.` |
+| `moveItems`: one of its stages without the transfer table, to a place outside its own transfer table | `Stage 3, “Media”, belongs to a transfer table, which moves its stages with it: move it within the table, move the whole transfer table, or copy the stage.` |
 | `inTipGroup` names a transfer table's box | `Box 3 is a transfer table: only its own stages can be moved inside it.` |
 | `inTransferTable` names a box that isn't a transfer table, or with items that aren't only that transfer table's stages | `Box 3 isn't a transfer table.` / `Box 3 is a transfer table: only its own stages can be moved inside it.` |
 | `inTransferTable`'s position is outside its stages | as for `inTipGroup`: `Box 2 has positions 0 to 3, but got 7.` |
-| `copyOf`, `copyItems`: one of its stages without the transfer table | `Stage 3, “Media”, belongs to a transfer table: copy the whole transfer table.` |
 | `setTransferTables`: not a list, or an entry isn't an object with exactly its four properties | `The transfer tables must be a list, but got 5.` / `Transfer table 2 must be an object with exactly "id", "table", "sources" and "stages".` |
 | `setTransferTables`: an ID isn't `"t"` and a whole number of at least 1, or is repeated | `Transfer table 2's ID must be "t" and a whole number, like "t1", but got "x".` / `Transfer tables 1 and 3 both have the ID "t2".` |
 | `setTransferTables`: `stages` isn't a non-empty list of `{ component, stage }`, names a stage not in the plan or twice, a component twice, or a component that isn't one of its table's headers (trimmed) | `Transfer table 2: its stages must be a non-empty list of objects with exactly "component" and "stage".` / `Transfer table 2: its stage "9" isn't in the plan.` / `Transfer table 2: stage "5" is listed twice.` / `Transfer table 2: Media has two stages.` / `Transfer table 2: its stage for Dye has no column in its table.` |
@@ -1767,8 +1765,7 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   in the plan, then for a tip group that its ID starts one); then the place's form and range, then
   a randomization's or transfer table's box, then the container rule; then, for `moveItems`, a
   randomization's stage without its randomization, then a transfer table's stage without its
-  transfer table (for `moveItems`, unless the place is inside its own transfer table; for `copyOf`
-  and `copyItems`, always).
+  transfer table (unless the place is inside its own transfer table).
 - `readTransferTable`: the table's form (the list, then each row in turn: a list, its length,
   then each cell text); then the problems, in reading order (section 3).
 - A draft (`transferTableProblems`, `sourceSplit`, `transferTableStages`, `addTransferTable`,
@@ -2502,8 +2499,8 @@ ordinary stage moved into one, a tip group or randomization put there, and a tab
 between boxes are refused with section 5's messages; a pasted table whose stage names a
   component without a column is refused with `Can't paste: item 1: its stage for Dye has no column
   in its table.`; a copy whose `sources` name a component this plan lacks (and whose header names
-  it) pastes, without that key, and is out of date; `copyOf` and `copyItems` with one of its
-  stages alone are refused.
+  it) pastes, without that key, and is out of date; copies of its stages copied alone are ordinary
+  stages, owned by nothing.
 - **Moving wells:** `isWellUsed` is `true` for a source well with no starting contents and no
   transfers (one emptied at Start after adding); Res1 1 is in use (a source); moving it to Res1 5 puts Res1 5 in Res1 1's place in
   `sources` and in the transfers, and the table stays up to date; moving a labeled destination moves
