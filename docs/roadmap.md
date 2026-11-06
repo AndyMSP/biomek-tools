@@ -864,6 +864,17 @@ added on 2026-10-28 (Andy).
     blank and 0 cells add nothing; a column draws only from a well holding nothing but that
     component at Start; a label in two rows is refused.
 
+20. **A randomization's pipetting settings edited on its stages** (Andy, 2026-11-05, moved from
+    "Later" the same day, so the tools work consistently with one source of truth): a
+    randomization's card keeps its own Each transfer settings (modes, mixing, tip type, probes)
+    and copies them onto the stages it makes, so they're held in two places. Transfer tables
+    (item 19) keep settings only on their stages. Decided so far (Andy, 2026-11-05): the same
+    rule here, a topic of its own after transfer tables (its branch built on theirs, so plan
+    files go to the next version), **tried in a preview first**. Proposed for the preview: the
+    card drops Mode, Mix and Tips, keeping its sources, wells to fill, Volume and Seed; each of its
+    stages and tip groups gets its ✎; a first run copies the stage before it; Update keeps each
+    source's stage settings and tips.
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
@@ -892,7 +903,9 @@ final Biomek runs, so they test the files as they will be:
 13. Transfer tables (item 19), added on 2026-11-05: preview, specifications, then
     build. It writes ordinary stages and transfers, so it changes neither the Biomek files' format
     nor what a given plan writes, and needn't come before the final runs.
-14. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+14. A randomization's settings edited on its stages (item 20), added on 2026-11-05: preview,
+    specifications, then build. Changes plan files, not the Biomek files.
+15. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
@@ -900,13 +913,6 @@ final Biomek runs, so they test the files as they will be:
   layout. Needs the random layout to stop depending on the card's source order (random-pool
   numbers sources by place), so it's a bigger change; reordering sources in the card reshuffles
   today.
-- **A randomization's pipetting settings edited on its stages** (Andy, 2026-11-05, from the
-  transfer table work): a randomization's card keeps its own Each transfer settings (modes,
-  mixing, tip type, probes) and copies them onto the stages it makes, so they're held in two
-  places, though the stages can't be changed to disagree. Transfer tables keep settings only on
-  their stages, edited with each stage's ✎ (item 19). Doing it the same way here means one rule
-  everywhere: the card drops its settings, each stage and tip change has its ✎, and a run keeps
-  each source's stage settings. Shaped in a preview first; changes plan files (a new version).
 - **Moving a randomization's source with the keyboard** (2026-11-05, from the shared-tips topic):
   sources are reordered only by dragging. The join and split buttons work from the keyboard, so
   sharing can be set without a mouse, and order can be changed by removing a source and picking it
