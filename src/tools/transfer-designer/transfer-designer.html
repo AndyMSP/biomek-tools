@@ -60,8 +60,8 @@
       <section id="deck-panel" class="panel deck-panel" aria-labelledby="deck-heading">
         <h2 id="deck-heading" class="visually-hidden">Deck</h2>
 
-        <!-- First bar (section 6): the timeline on the left; Move wells, Undo, Redo and the
-             problem count on the right. -->
+        <!-- First bar (section 6): the timeline on the left; Copy deck, Paste deck, Move wells,
+             Undo, Redo and the problem count on the right. -->
         <div class="deck-bar">
           <div class="timeline">
             <button id="previous-point" class="action small-button" type="button" aria-label="Open the entry before">‹</button>
@@ -69,6 +69,10 @@
             <span id="timeline-caption" class="timeline-caption"></span>
           </div>
           <div class="deck-bar-right">
+            <!-- Copy the deck as it shows now, and start this plan from the deck last copied
+                 (section 6, "Copying the deck"). -->
+            <button id="copy-deck" class="action" type="button" title="Copy every well as the deck shows it now, to paste into another plan with Paste deck">Copy deck</button>
+            <button id="paste-deck" class="action" type="button">Paste deck</button>
             <!-- Starts and ends moving wells (section 6); reads Done while it's on. -->
             <button id="move-wells" class="action move-wells" type="button" aria-pressed="false">Move wells</button>
             <button id="undo" class="action" type="button">Undo</button>
