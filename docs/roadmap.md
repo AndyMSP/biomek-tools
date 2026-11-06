@@ -445,7 +445,10 @@ Last updated: 2026-11-05
   it, pasted as another plan's Start, from a preview. **Specified** (Draft, 2026-11-06, in the
   hands-off workflow): `copyDeck`, `pasteDeck` and the copied deck's format (`transfer-designer.md`,
   "Copied decks"), `Copy deck` and `Paste deck` on the page (`transfer-designer-page.md`, section
-  6), glossary "Copied deck". It changes no Biomek files and no plan files.
+  6), glossary "Copied deck". It changes no Biomek files and no plan files. **Built (#142,
+  2026-11-06)**: code, tests and REPL of `copyDeck` and `pasteDeck`, and the page's two buttons;
+  the specifications and the build each reviewed by a separate agent, and checked in headless
+  Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1005,7 +1008,8 @@ added on 2026-10-28 (Andy).
       overdraw or a draw into the dead volume, but not an overfill; labels that clash (a well or
       labware already labeled differently) are problems; a new component keeps its color when it's
       free; the pasted labware comes out onto the deck.
-    Shaped in a preview (2026-11-06).
+    Shaped in a preview (2026-11-06). **Specified** (Draft, 2026-11-06) and **Built (#142,
+    2026-11-06)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
