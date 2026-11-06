@@ -529,7 +529,9 @@ A **fully blank column** after column 0 (its header and every cell blank) and a 
   exactly, capitals included, or a key of `UNIT_SPELLINGS` (below), read as that unit; nothing else
   (Andy, 2026-11-05: "keep it tight"). Problems: a blank header over a column with any text; no
   brackets at the end; a blank name (`(mM)`); a unit the tool doesn't know; a name already given by
-  a column to its left (names compared as `checkConstituents` compares them: trimmed, exactly).
+  a column to its left (names compared as `checkConstituents` compares them: trimmed, exactly;
+  only columns read as constituents count, so a column with a header problem, such as `Drug A (g)`,
+  doesn't make a later `Drug A (mM)` a second column).
 - **Each row after the header** is one **stock**: its name is its first cell. Problems: a blank name
   (in a row that isn't fully blank); a name a component in the plan already has (Andy, 2026-11-05: a
   paste never changes an existing component); a name a row above already has.

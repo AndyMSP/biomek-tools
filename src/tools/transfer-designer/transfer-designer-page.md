@@ -1512,24 +1512,28 @@ stocks`. Nothing is added until Add.
   measured. For example:` and a small example table, read-only, in the wizard grid's look (header
   cells tinted): `Name`, `Osmolality`, `Hy-Soy (g/L)`, `Drug A (mM)`, `DMSO (%)`; `Media`, `300`,
   `4`; `Drug A stock`, `1450`, (blank), `10`, `100`.
-- **A paste** (`parsePastedTable`) drops rows and columns whose cells are all blank and fills short
-  rows with empty cells, as the wizard's Table step does. With fewer than two rows left, the paste
+- **A paste** (`parsePastedTable`) fills short rows with empty cells, then drops rows whose cells
+  are all blank (as the wizard's Table step does) and columns after the first whose cells are all
+  blank (column 0 is always kept, since it's the names, even when blank). With fewer than two rows left, the paste
   zone stays and says in red: `Paste a table with a header row and at least one row of stocks.`
   Otherwise the dialog shows **the table**: the wizard's editable grid (section 7, "Table step"), each
   cell a text box (header row tinted and sticky, the name column tinted, other cells right-aligned),
   a change saved when the box loses focus or on Enter. Each name cell starts with the swatch of the
   color its stock will take (`readStockTable`'s `color`), or no swatch (its space kept) when it has
   none; a row's name cell has the wizard's × (tooltip `Take this row out`), which takes the row out
-  (taking out the last row goes back to the paste zone). There's no adding rows or columns: the
+  and puts the focus on the name cell now in its place, or the one above if it was the last row, so
+  Escape still closes the dialog (taking out the last row goes back to the paste zone, focused). There's no adding rows or columns: the
   table comes from Excel.
 - **Problems:** the grid is read with `readStockTable(plan, table, COMPONENT_COLORS)` after every
   change. A cell with a problem is marked as the wizard marks one (red tint, red bold text); a
   whole-row problem marks its name cell. Under the grid, every problem's message, in order, in the
   wizard's red problems box. Then one line: with problems, `Fix the problems above (red), or take
   those rows out, to add the 3 stocks.` (`the stock` for one; the count is always
-  `readStockTable`'s `stocks.length`, here and on the Add button, rows with problems included); without, `Add puts 3 new components
-  in the Start card, each with what it contains and its osmolality. One Undo takes them all out.`
-  (`component` for one).
+  `readStockTable`'s `stocks.length`, here and on the Add button, rows with problems included);
+  without, `Add puts 3 new components in the Start card, each with what it contains and its
+  osmolality. One Undo takes them all out.`, for one `Add puts 1 new component in the Start card,
+  with what it contains and its osmolality. Undo takes it out.`, and with no stocks (every row
+  emptied) `Add at least one row of stocks under the header.`
 - **The footer:** once a table is in, `Paste a different table` at the left (back to the paste zone,
   focused; the table is dropped); then Cancel, and the main button `Add 3 stocks` (`Add 1 stock`;
   `Add` before a paste), disabled before a paste, with problems or with no stocks.
