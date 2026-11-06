@@ -925,6 +925,11 @@ added on 2026-10-28 (Andy).
       (chosen over updating it, and over skipping it).
     - **Started by a `Paste table` button** beside `+ New` in the Start card's palette, opening a
       dialog over the page: paste, see each stock and any problems, then Add. Not by Ctrl+V.
+    - **Units are read strictly** (Andy, 2026-11-05: "keep it tight"): a header's unit must be a
+      configured unit exactly, capitals included, or one of a few spellings of the same unit
+      (`uM` and `μM` for µM, `x` and `X` for ×, `g/l`, `mg/l`, `cells/ml`). Considered and
+      declined: ignoring capitals for mass and cell units, reading equivalent units such as
+      `mg/mL` as g/L, and accepting `% v/v` or `% w/v` as %.
     - Draft details, Claude's, to try in the preview (2026-11-05): new components get the next free
       colors, as `+ New` gives them; the whole paste is one edit, so one Undo takes it all out;
       the plan's other rules apply as when typed (e.g. one unit family per constituent name across
