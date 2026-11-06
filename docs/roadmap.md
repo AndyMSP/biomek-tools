@@ -925,9 +925,10 @@ added on 2026-10-28 (Andy).
       Ctrl-click acts as a click. Each click is its own undo step.
     - **Tried in a preview first** (done, 2026-11-05). It changes no plan files and no Biomek files.
     - Decided in the hands-off workflow (2026-11-05; reasons in its pull request): Ctrl counts when
-      the mouse button is released, as for copying in the Stages column; a refused transfer keeps
-      the source; a drag that adds nothing keeps it; Ctrl+Enter and Ctrl+Space on a focused well
-      act as a Ctrl-click; Cmd on a Mac, where Ctrl-click is the right-click that names a well.
+      the click or drag finishes, as for copying in the Stages column; Ctrl or Cmd on every
+      platform, a press that opens the browser's context menu (a Mac's Ctrl-click) only naming the
+      well; a refused transfer keeps the source; a drag that adds nothing keeps it; Undo and Redo
+      keep it; Ctrl+Enter or Cmd+Enter on a focused well acts as a Ctrl-click (not Space).
     **Specified** (Draft, 2026-11-05): see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
