@@ -111,6 +111,19 @@ import {
   isWellUsed,
   isWellToFill,
   moveWell,
+  readTransferTable,
+  stockWellsOf,
+  transferTableProblems,
+  sourceSplit,
+  transferTableStages,
+  addTransferTable,
+  updateTransferTable,
+  removeTransferTable,
+  canRemoveTransferTable,
+  transferTableAt,
+  transferTableOf,
+  isTransferTableOutOfDate,
+  setTransferTables,
 } from "./transfer-designer.js";
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
@@ -145,6 +158,7 @@ const PLAN_PARTS = [
   "labwareLabels",
   "wellLabels",
   "randomizations",
+  "transferTables",
   "experimentName",
 ];
 
@@ -525,6 +539,7 @@ describe("transfer-designer", () => {
     assert.deepEqual(plan.stageOrder, [stageId]);
     assert.deepEqual(plan.labwareLabels, {});
     assert.deepEqual(plan.wellLabels, {});
+    assert.deepEqual(plan.transferTables, []);
     assert.equal(plan.experimentName, "");
   });
 
@@ -3945,7 +3960,7 @@ describe("transfer-designer", () => {
   test("copying: a run randomization with three filler wells pastes with the same filler wells and one filler stage; version 1 pastes", () => {
     const { plan, id } = runFillerPlan();
     const copied = copyOf(plan, [{ kind: "randomization", id }]);
-    assert.equal(copied.version, 3);
+    assert.equal(copied.version, 4);
     const end = { kind: "between", index: columnBoxes(plan).length };
     const { plan: pasted, placed } = copyItems(plan, [{ kind: "randomization", id }], end);
     const copy = randomizationAt(pasted, placed[0].id);
@@ -4736,8 +4751,8 @@ describe("transfer-designer", () => {
     assert.deepEqual(groupsIn(moved, id), [3, 1]);
     assert.equal(isRandomizationOutOfDate(moved, id), false);
     const copied = copyOf(plan, [randomizationItem(id)]);
-    assert.equal(copied.version, 3);
-    assert.equal(COPIED_ITEMS_VERSION, 3);
+    assert.equal(copied.version, 4);
+    assert.equal(COPIED_ITEMS_VERSION, 4);
     assert.deepEqual(copied.items[0].randomization.sources.map((entry) => entry.sharesTips), [false, true, true, false]);
     assert.deepEqual(copied.items[0].stages.map((owned) => owned.tips), [sharingTips(), null, null, sharingTips()]);
     const { plan: pasted, placed } = pasteItems(plan, copied, between(columnBoxes(plan).length));
@@ -4746,7 +4761,7 @@ describe("transfer-designer", () => {
     assert.equal(isRandomizationOutOfDate(pasted, placed[0].id), false);
   });
 
-  test("copied items: a version 2 copy pastes each stage alone; version 3 with a first owned stage sharing, and version 4, are refused", () => {
+  test("copied items: a version 2 copy pastes each stage alone; version 3 with a first owned stage sharing, and version 5, are refused", () => {
     const { plan: apartPlan, id: apartId } = sharingPlan([false, false, false, false]);
     const apart = runRandomization(apartPlan, apartId);
     const version2 = copiedAsVersion(copyOf(apart, [randomizationItem(apartId)]), 2);
@@ -4762,8 +4777,8 @@ describe("transfer-designer", () => {
     assert.throws(() => pasteItems(plan, copied, between(0)), {
       message: "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.",
     });
-    assert.throws(() => pasteItems(plan, { ...copyOf(plan, [randomizationItem(id)]), version: 4 }, between(0)), {
-      message: "Can't paste: these were copied by a newer version of the tools (version 4).",
+    assert.throws(() => pasteItems(plan, { ...copyOf(plan, [randomizationItem(id)]), version: 5 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 5).",
     });
   });
 
@@ -5558,7 +5573,7 @@ describe("transfer-designer", () => {
     const copied = copyOf(plan, [groupItem("3")]);
     assert.equal(snapshot(plan), before);
     assert.equal(copied.format, "biomek-tools copied items");
-    assert.equal(copied.version, 3);
+    assert.equal(copied.version, 4);
     assert.equal(COPIED_ITEMS_FORMAT, copied.format);
     assert.equal(COPIED_ITEMS_VERSION, copied.version);
     const throughJson = JSON.parse(JSON.stringify(copied));
@@ -5668,8 +5683,8 @@ describe("transfer-designer", () => {
     ]) {
       assert.throws(() => pasteItems(plan, copied, between(0)), { message: notCopied });
     }
-    assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 4 }, between(0)), {
-      message: "Can't paste: these were copied by a newer version of the tools (version 4).",
+    assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 5 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 5).",
     });
     const second = { kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS }, group: 2 };
     assert.throws(
@@ -6153,5 +6168,1035 @@ describe("transfer-designer", () => {
     assert.throws(() => {
       plan.startingContents[0].components.Media = 5;
     }, TypeError);
+  });
+
+  // --- Transfer tables (transfer-designer.md, section 6, "Transfer tables") ---
+
+  // The usable volume of a well holding `held` µL on `labware`, from config/labware-types.js's dead
+  // volumes, so these tests never name a dead volume.
+  function usableOf(labware, held) {
+    return held - deadVolumeOf(labware);
+  }
+
+  // The test plan: components Media, Drug A and DMSO; Res1 1 holding Media 3,000 µL, Res1 2 Media
+  // 10,000 µL, Deep1 A1 Drug A 1,000 µL, Deep1 A3 DMSO 1,000 µL, Deep1 A4 Media and DMSO (a mix);
+  // Plate1 A1 to A3 labeled "Control", B1 to B3 "A low"; one stage, "New stage".
+  function tablePlan() {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addComponent(plan, "Drug A", "#e15759");
+    plan = addComponent(plan, "DMSO", "#59a14f");
+    plan = addToWells(plan, [trough("1")], "Media", 3000);
+    plan = addToWells(plan, [trough("2")], "Media", 10000);
+    plan = addToWells(plan, [deepWell("A1")], "Drug A", 1000);
+    plan = addToWells(plan, [deepWell("A3")], "DMSO", 1000);
+    plan = addToWells(plan, [deepWell("A4")], "Media", 500);
+    plan = addToWells(plan, [deepWell("A4")], "DMSO", 500);
+    for (const well of ["A1", "A2", "A3"]) {
+      plan = setWellLabel(plan, plateWell(well), "Control");
+    }
+    for (const well of ["B1", "B2", "B3"]) {
+      plan = setWellLabel(plan, plateWell(well), "A low");
+    }
+    return plan;
+  }
+
+  // The example table: Media into both rows, Drug A into "A low", DMSO blank everywhere. A new
+  // grid each time.
+  function exampleTable() {
+    return [
+      ["Dest Well Label", "Media", "Drug A", "DMSO"],
+      ["Control", "190", "", ""],
+      ["A low", "190", "2", ""],
+    ];
+  }
+
+  // The example draft: the example table, Media from Res1 1 then Res1 2, Drug A from Deep1 A1.
+  function exampleDraft() {
+    return { table: exampleTable(), sources: { Media: [trough("1"), trough("2")], "Drug A": [deepWell("A1")] } };
+  }
+
+  // The test plan with the example draft added before stage `beforeId` (default: at the end):
+  // { plan, id }.
+  function withExampleTable(plan = tablePlan(), beforeId = null) {
+    return addTransferTable(plan, exampleDraft(), beforeId);
+  }
+
+  // The stage IDs a transfer table owns, in order, e.g. ["2", "3"].
+  function tableStages(plan, id) {
+    return transferTableAt(plan, id).stages.map((owned) => owned.stage);
+  }
+
+  // A draft from a stored transfer table, to edit and update, e.g. draftOf(plan, "t1").
+  function draftOf(plan, id) {
+    const { table, sources } = transferTableAt(plan, id);
+    return { table: table.map((row) => [...row]), sources: { ...sources } };
+  }
+
+  // A transfer's source, destination and volume, e.g. for comparing transfers.
+  function outlineOf({ source, destination, volume }) {
+    return { source: { ...source }, destination: { ...destination }, volume };
+  }
+
+  // A stage's transfers as outlines.
+  function outlinesIn(plan, stage) {
+    return transfersIn(plan, stage).map(outlineOf);
+  }
+
+  // A place inside the transfer table that is box `index`, before its stage at `position`.
+  function inTable(index, position) {
+    return { kind: "inTransferTable", index, position };
+  }
+
+  // The index of transfer table `id`'s box in the column.
+  function tableBoxIndex(plan, id) {
+    return columnBoxes(plan).findIndex((box) => box.kind === "transferTable" && box.id === id);
+  }
+
+  // A plan whose transfer table holds three stages (Media, Drug A and DMSO), added at the end, with
+  // a blank-header column and a column making no stage among its columns: { plan, id }.
+  function threeStageTablePlan() {
+    const table = [
+      ["Label", "Media", "", "Drug A", "DMSO"],
+      ["Control", "190", "", "", "5"],
+      ["A low", "190", "", "2", "5"],
+    ];
+    const sources = { Media: [trough("1"), trough("2")], "Drug A": [deepWell("A1")], DMSO: [deepWell("A3")] };
+    return addTransferTable(tablePlan(), { table, sources }, null);
+  }
+
+  test("readTransferTable reads one column per component, each amount's wells in deck order, trimming cells", () => {
+    const plan = tablePlan();
+    const { columns, problems } = readTransferTable(plan, [
+      [" Label ", " Media ", "Drug A", "DMSO"],
+      [" Control ", " 1,500 ", "2.5", ""],
+      ["A low", "0", ".5", "0.0"],
+    ]);
+    assert.deepEqual(problems, []);
+    assert.deepEqual(columns, [
+      {
+        column: 1,
+        component: "Media",
+        amounts: [{ row: 1, label: "Control", wells: ["A1", "A2", "A3"].map(plateWell), volume: 1500 }],
+      },
+      {
+        column: 2,
+        component: "Drug A",
+        amounts: [
+          { row: 1, label: "Control", wells: ["A1", "A2", "A3"].map(plateWell), volume: 2.5 },
+          { row: 2, label: "A low", wells: ["B1", "B2", "B3"].map(plateWell), volume: 0.5 },
+        ],
+      },
+      { column: 3, component: "DMSO", amounts: [] },
+    ]);
+  });
+
+  test("readTransferTable: a label's wells come in deck order, whatever order they were labeled in", () => {
+    let plan = tablePlan();
+    plan = setWellLabel(plan, deepWell("H12"), "Control");
+    plan = setWellLabel(plan, plateWell("H1"), "Control");
+    const { columns } = readTransferTable(plan, [["L", "Media"], ["Control", "10"]]);
+    assert.deepEqual(columns[0].amounts[0].wells, [
+      ...["A1", "A2", "A3", "H1"].map(plateWell),
+      deepWell("H12"),
+    ]);
+  });
+
+  test("readTransferTable gives each reading problem with its row, column and message, in reading order", () => {
+    const plan = tablePlan();
+    const { problems } = readTransferTable(plan, [
+      ["L", "Drug C", "Media", "Media", "", ""],
+      ["Control", "lots", "-5", "x", "", "3"],
+      ["", "1", "1", "1", "", ""],
+      ["Control", "1", "1", "1", "", ""],
+      ["Cond 9", "1", "1", "1", "", ""],
+      ["A low", "1", "1e3", "1", "", ""],
+      ["A low2", "1", "5 µL", "1", "", ""],
+    ]);
+    assert.deepEqual(problems, [
+      { row: 0, column: 1, message: "“Drug C” isn't a component in the plan." },
+      { row: 0, column: 3, message: "“Media” is in more than one column. Each component gets one column." },
+      { row: 0, column: 5, message: "Column 6 has amounts but no component." },
+      { row: 1, column: 2, message: "Control, Media: “-5” isn't an amount in µL." },
+      { row: 2, column: 0, message: "Row 3 has no well label." },
+      { row: 3, column: 0, message: "“Control” is in more than one row." },
+      { row: 4, column: 0, message: "No well is labeled “Cond 9”." },
+      { row: 5, column: 2, message: "A low, Media: “1e3” isn't an amount in µL." },
+      { row: 6, column: 0, message: "No well is labeled “A low2”." },
+    ]);
+  });
+
+  test("readTransferTable: “lots” and “5 µL” aren't amounts", () => {
+    const plan = tablePlan();
+    const { problems } = readTransferTable(plan, [["L", "Media", "Drug A"], ["Control", "lots", "5 µL"]]);
+    assert.deepEqual(
+      problems.map((problem) => problem.message),
+      ["Control, Media: “lots” isn't an amount in µL.", "Control, Drug A: “5 µL” isn't an amount in µL."],
+    );
+  });
+
+  test("readTransferTable refuses a table not in its form, naming what's wrong", () => {
+    const plan = tablePlan();
+    const start =
+      "A transfer table must be a list of rows, each a list of the same number of cells, each text, but ";
+    assert.throws(() => readTransferTable(plan, 5), { message: `${start}got 5.` });
+    assert.throws(() => readTransferTable(plan, []), { message: `${start}got [].` });
+    assert.throws(() => readTransferTable(plan, [["L", "Media"], []]), { message: `${start}row 2 is [].` });
+    assert.throws(() => readTransferTable(plan, [["L", "M", "D", "X", "Y"], ["a", "b", "c", "d", "e"], ["a", "b", "c", "d"]]), {
+      message: `${start}row 3 has 4 cells and row 1 has 5.`,
+    });
+    assert.throws(() => readTransferTable(plan, [["L", "Media", "x"], ["a", "b", null]]), {
+      message: `${start}row 2, cell 3 is null.`,
+    });
+  });
+
+  test("a one-row table and a one-column table are read with no amounts, and their draft's only problem is that it adds nothing", () => {
+    const plan = tablePlan();
+    for (const table of [[["L", "Media"]], [["L"], ["Control"]]]) {
+      const { columns, problems } = readTransferTable(plan, table);
+      assert.deepEqual(problems, []);
+      assert.ok(columns.every((column) => column.amounts.length === 0));
+      assert.deepEqual(transferTableProblems(plan, { table, sources: {} }, null), [
+        { row: null, column: null, message: "The table adds nothing: every amount is blank or 0." },
+      ]);
+    }
+  });
+
+  test("readTransferTable ignores fully blank rows, which keep the rows after them numbered by place", () => {
+    const plan = tablePlan();
+    const { columns, problems } = readTransferTable(plan, [
+      ["L", "Media"],
+      ["Control", "10"],
+      [" ", ""],
+      ["", "x"],
+      ["", ""],
+    ]);
+    assert.deepEqual(problems, [{ row: 3, column: 0, message: "Row 4 has no well label." }]);
+    assert.equal(columns[0].amounts.length, 1);
+  });
+
+  test("stockWellsOf gives the wells holding only that component at Start, in deck order", () => {
+    const plan = tablePlan();
+    assert.deepEqual(stockWellsOf(plan, "Media"), [trough("1"), trough("2")]);
+    const withEmpty = addComponent(plan, "Water", "#76b7b2");
+    assert.deepEqual(stockWellsOf(withEmpty, "Water"), []);
+    assert.deepEqual(stockWellsOf(emptyWells(plan, [trough("1")]), "Media"), [trough("2")]);
+    assert.throws(() => stockWellsOf(plan, "Dye"), {
+      message: 'There\'s no component called "Dye" in this plan. Add it to the plan\'s components first.',
+    });
+  });
+
+  test("transferTableProblems lists a draft's problems in section 3's order, and [] for a good one", () => {
+    let plan = tablePlan();
+    assert.deepEqual(transferTableProblems(plan, exampleDraft(), null), []);
+    const blank = { table: [["L", "Media"], ["Control", ""]], sources: {} };
+    assert.deepEqual(transferTableProblems(plan, blank, null).map((problem) => problem.message), [
+      "The table adds nothing: every amount is blank or 0.",
+    ]);
+    plan = addComponent(plan, "Water", "#76b7b2");
+    const table = [["L", "Water", "Media", "Drug A", "DMSO"], ["Control", "1", "1", "1", "1"]];
+    const sources = { "Drug A": [deepWell("A3")], DMSO: [deepWell("A4")] };
+    assert.deepEqual(transferTableProblems(plan, { table, sources }, null), [
+      { row: null, column: null, message: "No well holds only Water at Start. Fill one with Water at Start first." },
+      { row: null, column: null, message: "Choose a well for Media to draw from." },
+      { row: null, column: null, message: `${DEEP} A3 doesn't hold only Drug A at Start, so Drug A can't draw from it.` },
+      { row: null, column: null, message: `${DEEP} A4 doesn't hold only DMSO at Start, so DMSO can't draw from it.` },
+    ]);
+  });
+
+  test("transferTableProblems: a source well the table also fills is a problem", () => {
+    let plan = setWellLabel(tablePlan(), trough("1"), "Control");
+    const table = [["L", "Media"], ["Control", "10"]];
+    assert.deepEqual(transferTableProblems(plan, { table, sources: { Media: [trough("1")] } }, null).map((p) => p.message), [
+      `${RESERVOIR} 1 is both a source of Media and a well the table fills. Choose another well.`,
+    ]);
+    plan = setWellLabel(tablePlan(), trough("2"), "Spike");
+    const spiked = [["L", "Media", "Drug A"], ["Control", "10", ""], ["Spike", "", "2"]];
+    const sources = { Media: [trough("1"), trough("2")], "Drug A": [deepWell("A1")] };
+    assert.deepEqual(transferTableProblems(plan, { table: spiked, sources }, null).map((p) => p.message), [
+      `${RESERVOIR} 2 is both a source of Media and a well the table fills. Choose another well.`,
+    ]);
+  });
+
+  test("a draft's form is checked, with section 5's messages", () => {
+    const plan = tablePlan();
+    const table = exampleTable();
+    assert.throws(() => transferTableProblems(plan, 5, null), {
+      message: 'A transfer table\'s draft must be an object with exactly "table" and "sources", but got 5.',
+    });
+    assert.throws(() => transferTableProblems(plan, { table, sources: 5 }, null), {
+      message:
+        "A transfer table's sources must be an object of component names, each with a list of wells, " +
+        'like { Media: [{ labware: "Res1", well: "1" }] }, but got 5.',
+    });
+    assert.throws(() => transferTableProblems(plan, { table, sources: { Dye: [trough("1")] } }, null), {
+      message: 'A transfer table draws Dye from wells, but there\'s no component called "Dye" in this plan.',
+    });
+    assert.throws(() => transferTableProblems(plan, { table, sources: { Media: [] } }, null), {
+      message: "Media's source wells are empty. List at least one, or leave Media out.",
+    });
+    assert.throws(() => transferTableProblems(plan, { table, sources: { Media: [trough("1"), { labware: PLATE, well: "Z99" }] } }, null), {
+      message: /^Media's source well 2: "Z99" isn't a well on /,
+    });
+    assert.throws(() => transferTableProblems(plan, { table, sources: { Media: [trough("1"), trough("1")] } }, null), {
+      message: `${RESERVOIR} 1 is one of Media's source wells twice. List each once.`,
+    });
+    assert.throws(() => transferTableProblems(plan, exampleDraft(), "9"), { message: 'There\'s no stage "9" in the plan.' });
+    assert.throws(() => sourceSplit(plan, exampleDraft(), "Media", "9"), { message: 'There\'s no stage "9" in the plan.' });
+    assert.throws(() => transferTableStages(plan, exampleDraft(), "9"), { message: 'There\'s no stage "9" in the plan.' });
+  });
+
+  test("sourceSplit: each well takes whole transfers until the next doesn't fit, the last the rest", () => {
+    let plan = tablePlan();
+    const wells = [...GRID_96.wellsInBox("C1", "C12")];
+    for (const well of wells) {
+      plan = setWellLabel(plan, plateWell(well), "More");
+    }
+    const table = [["L", "Media"], ["More", "190"]];
+    const draft = { table, sources: { Media: [trough("1"), trough("2")] } };
+    const first = Math.floor(usableOf(RESERVOIR, 3000) / 190);
+    assert.deepEqual(sourceSplit(plan, draft, "Media", null), [
+      { well: trough("1"), count: first },
+      { well: trough("2"), count: wells.length - first },
+    ]);
+    // A well with room for exactly n transfers takes n.
+    const exact = addToWells(emptyWells(plan, [trough("1")]), [trough("1")], "Media", deadVolumeOf(RESERVOIR) + 4 * 190);
+    assert.deepEqual(sourceSplit(exact, draft, "Media", null).map((entry) => entry.count), [4, wells.length - 4]);
+    // A first well with no room passes every transfer on.
+    const none = addToWells(emptyWells(plan, [trough("1")]), [trough("1")], "Media", deadVolumeOf(RESERVOIR));
+    assert.deepEqual(sourceSplit(none, draft, "Media", null).map((entry) => entry.count), [0, wells.length]);
+  });
+
+  test("sourceSplit: a well stops at the first transfer that doesn't fit, and later smaller ones go on too", () => {
+    let plan = tablePlan();
+    plan = addToWells(emptyWells(plan, [trough("1")]), [trough("1")], "Media", deadVolumeOf(RESERVOIR) + 350);
+    const table = [["L", "Media"], ["Control", "300"], ["A low", "100"]];
+    const draft = { table, sources: { Media: [trough("1"), trough("2")] } };
+    // 300 fits once (350), then 300 doesn't fit in the 50 left: everything after goes to Res1 2.
+    assert.deepEqual(sourceSplit(plan, draft, "Media", null).map((entry) => entry.count), [1, 5]);
+  });
+
+  test("sourceSplit uses what the wells hold just before `at`, and works while another column has a problem", () => {
+    let plan = tablePlan();
+    const draft = { table: [["L", "Media", "Drug C"], ["Control", "190", "1"]], sources: { Media: [trough("1"), trough("2")] } };
+    const fits = Math.floor(usableOf(RESERVOIR, 3000) / 190);
+    assert.deepEqual(sourceSplit(plan, draft, "Media", null)[0].count, Math.min(fits, 3));
+    // A stage before `at` drawing from Res1 1 lowers its share; one after it doesn't.
+    plan = addTransfer(plan, { ...transferTo("1", "H12", usableOf(RESERVOIR, 3000) - 190), source: trough("1") });
+    const { plan: withSecond, id: second } = addStageWithNewTips(plan, null);
+    assert.deepEqual(sourceSplit(withSecond, draft, "Media", second)[0].count, 1);
+    assert.deepEqual(sourceSplit(withSecond, draft, "Media", "1")[0].count, Math.min(fits, 3));
+    assert.throws(() => sourceSplit(plan, draft, "Drug A", null), { message: "Drug A has no column with an amount in this table." });
+    assert.throws(() => sourceSplit(plan, { ...draft, sources: {} }, "Media", null), {
+      message: "Choose a well for Media to draw from.",
+    });
+  });
+
+  test("a new transfer table's first stage copies the nearest transfer stage before it, not a mix step, and its tips", () => {
+    let plan = tablePlan();
+    plan = changeStageSettings(plan, "1", otherSettings());
+    plan = setTipType(plan, START, TIP_TYPES.at(-1));
+    const { plan: mixAdded, id: mixId } = addMixStepWithNewTips(plan, null);
+    const withMix = setTipType(mixAdded, mixId, TIP_TYPES[0]);
+    const [first] = transferTableStages(withMix, exampleDraft(), null);
+    assert.deepEqual(first.settings, otherSettings());
+    assert.deepEqual(first.tips, { tipType: TIP_TYPES.at(-1), probes: startTips().probes });
+  });
+
+  test("addTransferTable adds one stage per column with an amount, in column order, each on its own tips", () => {
+    const plan = tablePlan();
+    const { plan: added, id } = withExampleTable(plan, "1");
+    assert.equal(id, "t1");
+    const stages = tableStages(added, id);
+    assert.deepEqual(stageOrder(added), [...stages, "1"]);
+    assert.deepEqual(stages.map((stage) => added.stageList.get(stage).name), ["Media", "Drug A"]);
+    for (const group of tipGroups(added)) {
+      assert.equal(group.stages.length, 1);
+    }
+    assert.deepEqual(tipChangeAt(added, "1"), startTips());
+    const expected = transferTableStages(plan, exampleDraft(), "1");
+    assert.deepEqual(stages.map((stage) => outlinesIn(added, stage)), expected.map((entry) => entry.transfers));
+    // No stage before: the first gets the default settings and the START tips; the second the first's.
+    assert.deepEqual(added.stageList.get(stages[0]).settings, defaultSettings());
+    assert.deepEqual(added.stageList.get(stages[1]).settings, defaultSettings());
+    assert.deepEqual(tipChangeAt(added, START), startTips());
+    assert.deepEqual(tipChangeAt(added, stages[1]), startTips());
+    assert.deepEqual(added.transferTables, [
+      { id: "t1", table: exampleTable(), sources: exampleDraft().sources, stages: [
+        { component: "Media", stage: stages[0] },
+        { component: "Drug A", stage: stages[1] },
+      ] },
+    ]);
+  });
+
+  test("addTransferTable at the end copies the stage before it; copies its draft; the next is t2", () => {
+    let plan = tablePlan();
+    plan = changeStageSettings(plan, "1", otherSettings());
+    plan = setTipType(plan, START, TIP_TYPES.at(-1));
+    plan = setTipProbes(plan, START, probesFor(8));
+    const draft = exampleDraft();
+    const { plan: added, id } = addTransferTable(plan, draft, null);
+    for (const stage of tableStages(added, id)) {
+      assert.deepEqual(added.stageList.get(stage).settings, otherSettings());
+      assert.deepEqual(tipChangeAt(added, stage), { tipType: TIP_TYPES.at(-1), probes: probesFor(8) });
+    }
+    draft.table[1][1] = "5";
+    draft.sources.Media.push(trough("3"));
+    assert.equal(transferTableAt(added, id).table[1][1], "190");
+    assert.equal(transferTableAt(added, id).sources.Media.length, 2);
+    assert.equal(new PlanHistory(plan).record(added).undo().present, plan);
+    assert.equal(addTransferTable(added, exampleDraft(), null).id, "t2");
+  });
+
+  test("addTransferTable: where it can be added", () => {
+    const plan = tablePlan();
+    const { plan: withTable, id } = withExampleTable(plan, null);
+    // Before another transfer table's first stage: it goes above.
+    const first = tableStages(withTable, id)[0];
+    const { plan: above, id: second } = addTransferTable(withTable, exampleDraft(), first);
+    assert.equal(stageOrder(above).indexOf(tableStages(above, second).at(-1)) + 1, stageOrder(above).indexOf(first));
+    assert.throws(() => addTransferTable(withTable, exampleDraft(), tableStages(withTable, id)[1]), {
+      message: "A transfer table's stages stay together, each on its own tips: add before its first stage or after its last.",
+    });
+    // Inside a tip group.
+    const { plan: twoInGroup, id: inGroupId } = addStage(plan, null);
+    assert.throws(() => addTransferTable(twoInGroup, exampleDraft(), inGroupId), {
+      message: `A transfer table sits between tip groups, so it can't go before stage 2, “${NEW_STAGE_NAME}”.`,
+    });
+    assert.throws(() => addTransferTable(plan, exampleDraft(), "9"), {
+      message: 'There\'s no stage "9" to add a transfer table before.',
+    });
+    // Before a randomization's first stage, but not inside it.
+    let randomized = addStageWithNewTips(plan, null).plan;
+    const { plan: withR, id: rId } = addRandomization(randomized, null, { seed: 3, volume: 10 });
+    randomized = setRandomization(withR, rId, {
+      sources: [
+        { labware: DEEP, well: "A1", replicates: 1, filler: false, sharesTips: false },
+        { labware: DEEP, well: "A3", replicates: 1, filler: false, sharesTips: false },
+      ],
+      fill: [plateWell("H1"), plateWell("H2")],
+    });
+    randomized = runRandomization(randomized, rId);
+    const owned = randomizationAt(randomized, rId).stages.map((entry) => entry.stage);
+    assert.equal(addTransferTable(randomized, exampleDraft(), owned[0]).id, "t1");
+    assert.throws(() => addTransferTable(randomized, exampleDraft(), owned[1]), {
+      message: /^A transfer table sits between tip groups, so it can't go before stage/,
+    });
+  });
+
+  test("addTransferTable and updateTransferTable refuse a draft with problems with the first one's message", () => {
+    const plan = tablePlan();
+    const bad = { table: [["L", "Drug C"], ["Control", "1"]], sources: {} };
+    assert.throws(() => addTransferTable(plan, bad, null), { message: "“Drug C” isn't a component in the plan." });
+    assert.throws(() => transferTableStages(plan, bad, null), { message: "“Drug C” isn't a component in the plan." });
+    const { plan: added, id } = withExampleTable();
+    assert.throws(() => updateTransferTable(added, id, bad), { message: "“Drug C” isn't a component in the plan." });
+    assert.throws(() => updateTransferTable(added, "t9", bad), { message: 'There\'s no transfer table "t9" in the plan.' });
+  });
+
+  test("updateTransferTable keeps a stage's ID, settings and tips, replacing its transfers", () => {
+    let { plan, id } = withExampleTable();
+    const [media, drug] = tableStages(plan, id);
+    plan = changeStageSettings(plan, media, otherSettings());
+    plan = setTipType(plan, media, TIP_TYPES.at(-1));
+    plan = setTipProbes(plan, media, probesFor(8));
+    const draft = draftOf(plan, id);
+    draft.table[1][1] = "100";
+    const updated = updateTransferTable(plan, id, draft);
+    assert.deepEqual(tableStages(updated, id), [media, drug]);
+    assert.deepEqual(updated.stageList.get(media).settings, otherSettings());
+    assert.deepEqual(tipChangeAt(updated, media), { tipType: TIP_TYPES.at(-1), probes: probesFor(8) });
+    assert.deepEqual(outlinesIn(updated, media).map((transfer) => transfer.volume), [100, 100, 100, 190, 190, 190]);
+    assert.equal(transferTableAt(updated, id).table[1][1], "100");
+    assert.equal(new PlanHistory(plan).record(updated).undo().present, plan);
+    assert.equal(updateTransferTable(updated, id, draftOf(updated, id)), updated);
+  });
+
+  test("updateTransferTable: a column added gets a new stage copying the column before it; a column cleared loses its stage", () => {
+    let { plan, id } = withExampleTable();
+    plan = addStageWithNewTips(plan, null).plan;
+    const after = stageOrder(plan).at(-1);
+    const [media, drug] = tableStages(plan, id);
+    plan = changeStageSettings(plan, media, otherSettings());
+    plan = setTipType(plan, media, TIP_TYPES.at(-1));
+    const draft = draftOf(plan, id);
+    draft.table = [
+      ["Dest Well Label", "Media", "DMSO", "Drug A"],
+      ["Control", "190", "5", ""],
+      ["A low", "190", "5", "2"],
+    ];
+    draft.sources.DMSO = [deepWell("A3")];
+    const updated = updateTransferTable(plan, id, draft);
+    const stages = tableStages(updated, id);
+    assert.equal(stages.length, 3);
+    assert.deepEqual([stages[0], stages[2]], [media, drug]);
+    assert.equal(updated.stageList.get(stages[1]).name, "DMSO");
+    assert.deepEqual(updated.stageList.get(stages[1]).settings, otherSettings());
+    assert.equal(tipChangeAt(updated, stages[1]).tipType, TIP_TYPES.at(-1));
+    assert.deepEqual(stageOrder(updated).slice(-4), [...stages, after]);
+    assert.ok(tipChangeAt(updated, after) !== null);
+    for (const group of tipGroups(updated)) {
+      assert.equal(group.stages.length, 1);
+    }
+    // Drug A cleared: its stage goes.
+    const cleared = draftOf(updated, id);
+    cleared.table = cleared.table.map((row, index) => (index === 0 ? row : [row[0], row[1], row[2], ""]));
+    const without = updateTransferTable(updated, id, cleared);
+    assert.deepEqual(tableStages(without, id), [media, stages[1]]);
+    assert.equal(without.stageList.has(drug), false);
+    assert.ok(tipChangeAt(without, after) !== null);
+  });
+
+  test("updateTransferTable: after two columns swap places, the stages follow, keeping their IDs", () => {
+    const { plan, id } = withExampleTable();
+    const [media, drug] = tableStages(plan, id);
+    const draft = draftOf(plan, id);
+    draft.table = draft.table.map(([label, m, d, x]) => [label, d, m, x]);
+    const updated = updateTransferTable(plan, id, draft);
+    assert.deepEqual(tableStages(updated, id), [drug, media]);
+    assert.deepEqual(stageOrder(updated).slice(-2), [drug, media]);
+    assert.deepEqual(tipChangeAt(updated, media), startTips());
+    assert.equal(isTransferTableOutOfDate(updated, id), false);
+    assert.deepEqual(
+      updated.operationList.groupByStage().map((group) => group.stage),
+      stageOrder(updated).filter((stage) => transfersIn(updated, stage).length > 0),
+    );
+  });
+
+  test("updateTransferTable with renamedFrom keeps the old column's stage, renamed", () => {
+    let { plan, id } = withExampleTable();
+    const [media] = tableStages(plan, id);
+    plan = changeStageSettings(plan, media, otherSettings());
+    const draft = draftOf(plan, id);
+    draft.table = draft.table.map(([label, media, drug]) => [label, media, drug]);
+    draft.table[0][1] = "DMSO";
+    draft.sources.DMSO = [deepWell("A3")];
+    const renamed = updateTransferTable(plan, id, draft, { renamedFrom: { DMSO: "Media" } });
+    assert.equal(tableStages(renamed, id)[0], media);
+    assert.equal(renamed.stageList.get(media).name, "DMSO");
+    assert.deepEqual(renamed.stageList.get(media).settings, otherSettings());
+    assert.deepEqual(outlinesIn(renamed, media)[0].source, deepWell("A3"));
+    // Without it, the Media stage goes and DMSO gets a new one, copying the stage before the table.
+    const plain = updateTransferTable(plan, id, draft);
+    assert.equal(plain.stageList.has(media), false);
+    assert.deepEqual(plain.stageList.get(tableStages(plain, id)[0]).settings, defaultSettings());
+    // Entries that don't apply are ignored: an old component with no stage, or a stage another column keeps.
+    const ignored = updateTransferTable(plan, id, draft, { renamedFrom: { DMSO: "Water", Media: "Drug A" } });
+    assert.deepEqual(stageOrder(ignored).length, stageOrder(plain).length);
+    assert.equal(ignored.stageList.has(media), false);
+    const both = draftOf(plan, id);
+    both.table = [["L", "Media", "Drug A", "DMSO"], ["Control", "190", "", "1"], ["A low", "190", "2", "1"]];
+    both.sources.DMSO = [deepWell("A3")];
+    const keptByOwn = updateTransferTable(plan, id, both, { renamedFrom: { DMSO: "Media" } });
+    assert.equal(tableStages(keptByOwn, id)[0], media);
+    assert.notEqual(tableStages(keptByOwn, id)[2], media);
+    assert.throws(() => updateTransferTable(plan, id, draft, { renamedFrom: 5 }), {
+      message: /^renamedFrom must be an object/,
+    });
+  });
+
+  test("transferTableStages with an id gives the same with `at` null as with its first stage", () => {
+    const { plan, id } = withExampleTable();
+    const first = tableStages(plan, id)[0];
+    assert.deepEqual(
+      transferTableStages(plan, exampleDraft(), null, { id }),
+      transferTableStages(plan, exampleDraft(), first, { id }),
+    );
+    assert.deepEqual(
+      transferTableStages(plan, exampleDraft(), null, { id }).map((entry) => entry.stage),
+      tableStages(plan, id),
+    );
+  });
+
+  test("a randomization without stages above a transfer table stays above it through updates", () => {
+    let { plan, id } = withExampleTable();
+    const [media] = tableStages(plan, id);
+    const { plan: withR, id: rId } = addRandomization(plan, media, { seed: 1, volume: 1 });
+    plan = withR;
+    // Its first column cleared: the stage it sat before goes.
+    const cleared = draftOf(plan, id);
+    cleared.table = cleared.table.map(([label, , drug, dmso]) => [label, "", drug, dmso]);
+    const updated = updateTransferTable(plan, id, cleared);
+    assert.equal(randomizationAt(updated, rId).beforeId, tableStages(updated, id)[0]);
+    // Its columns reordered, so another stage is first.
+    const swapped = draftOf(plan, id);
+    swapped.table = swapped.table.map(([label, m, d, x]) => [label, d, m, x]);
+    const reordered = updateTransferTable(plan, id, swapped);
+    assert.equal(randomizationAt(reordered, rId).beforeId, tableStages(reordered, id)[0]);
+    // setTransferTables refuses one sitting before a stage other than its first.
+    const inside = setRandomizations(setTransferTables(plan, []), [
+      { ...randomizationAt(plan, rId), beforeId: tableStages(plan, id)[1] },
+    ]);
+    assert.throws(() => setTransferTables(inside, plan.transferTables), {
+      message: `Randomization 1 sits before stage "${tableStages(plan, id)[1]}", inside transfer table 1. A randomization sits between tip groups.`,
+    });
+  });
+
+  test("isTransferTableOutOfDate: false after adding and updating, true after edits it depends on", () => {
+    const { plan, id } = withExampleTable(tablePlan(), "1");
+    assert.equal(isTransferTableOutOfDate(plan, id), false);
+    const relabeled = setWellLabel(plan, plateWell("A1"), "");
+    assert.equal(isTransferTableOutOfDate(relabeled, id), true);
+    assert.equal(isTransferTableOutOfDate(updateTransferTable(relabeled, id, draftOf(relabeled, id)), id), false);
+    assert.equal(isTransferTableOutOfDate(emptyWells(plan, [trough("2")]), id), true);
+    // A stage after it drawing from Res1 1 doesn't change the split; one before it does.
+    const drawing = addTransfer(plan, { ...transferTo("1", "H12", 900), source: trough("1") });
+    assert.equal(isTransferTableOutOfDate(drawing, id), false);
+    const { plan: before, id: beforeId } = addStageWithNewTips(plan, tableStages(plan, id)[0]);
+    const drawsBefore = addTransfer(before, { ...transferTo(beforeId, "H12", 900), source: trough("1") });
+    assert.equal(isTransferTableOutOfDate(drawsBefore, id), true);
+    assert.equal(isTransferTableOutOfDate(updateTransferTable(drawsBefore, id, draftOf(drawsBefore, id)), id), false);
+    // Moved below a stage that draws from Res1 1.
+    const tableFirst = withExampleTable(addTransfer(tablePlan(), { ...transferTo("1", "H12", 900), source: trough("1") }), "1");
+    assert.equal(isTransferTableOutOfDate(tableFirst.plan, tableFirst.id), false);
+    const { plan: movedDown } = moveItems(tableFirst.plan, [{ kind: "transferTable", id: tableFirst.id }], between(columnBoxes(tableFirst.plan).length));
+    assert.equal(isTransferTableOutOfDate(movedDown, tableFirst.id), true);
+    // A component a header names removed; false again once its column is deleted.
+    const removed = removeComponent(plan, "Drug A");
+    assert.equal(isTransferTableOutOfDate(removed, id), true);
+    const draft = draftOf(removed, id);
+    draft.table = draft.table.map(([label, media, , dmso]) => [label, media, dmso]);
+    assert.equal(isTransferTableOutOfDate(updateTransferTable(removed, id, draft), id), false);
+    // Settings and tips aren't compared.
+    const [media] = tableStages(plan, id);
+    let set = changeStageSettings(plan, media, otherSettings());
+    set = setStageMix(set, media, "source", exampleMix());
+    set = setTipType(set, START, TIP_TYPES.at(-1));
+    set = setTipProbes(set, tableStages(plan, id)[1], [1]);
+    assert.equal(isTransferTableOutOfDate(set, id), false);
+    assert.throws(() => isTransferTableOutOfDate(plan, "t9"), { message: 'There\'s no transfer table "t9" in the plan.' });
+  });
+
+  test("renameComponent renames a transfer table's header cells, sources, stages and stage, in one edit", () => {
+    let { plan, id } = withExampleTable();
+    const draft = draftOf(plan, id);
+    draft.table[0][1] = " Media ";
+    plan = updateTransferTable(plan, id, draft);
+    const renamed = renameComponent(plan, "Media", "DMEM");
+    const table = transferTableAt(renamed, id);
+    assert.equal(table.table[0][1], "DMEM");
+    assert.deepEqual(Object.keys(table.sources), ["DMEM", "Drug A"]);
+    assert.equal(table.stages[0].component, "DMEM");
+    assert.equal(renamed.stageList.get(table.stages[0].stage).name, "DMEM");
+    assert.equal(isTransferTableOutOfDate(renamed, id), false);
+    assert.equal(new PlanHistory(plan).record(renamed).undo().present, plan);
+  });
+
+  test("removeComponent takes its key out of a transfer table's sources, leaving its header and stage", () => {
+    const { plan, id } = withExampleTable();
+    const removed = removeComponent(plan, "Drug A");
+    const table = transferTableAt(removed, id);
+    assert.deepEqual(Object.keys(table.sources), ["Media"]);
+    assert.equal(table.table[0][2], "Drug A");
+    assert.equal(transferTableOf(removed, table.stages[1].stage), id);
+    assert.equal(isTransferTableOutOfDate(removed, id), true);
+  });
+
+  test("a transfer table's stages refuse edits from outside, with section 5's messages", () => {
+    let { plan, id } = withExampleTable(tablePlan(), null);
+    plan = addStageWithNewTips(plan, null).plan;
+    const wash = stageOrder(plan).at(-1);
+    plan = renameStage(plan, wash, "Wash");
+    const [media, drug] = tableStages(plan, id);
+    const position = transfersIn(plan, media)[0].position;
+    const amounts = "Stage 2, “Media”, is part of a transfer table: change its amounts in the table.";
+    assert.throws(() => addTransfer(plan, transferTo(media, "H1")), { message: amounts });
+    assert.throws(() => addTransfers(plan, [transferTo(media, "H1")]), { message: amounts });
+    assert.throws(() => changeVolume(plan, position, 5), { message: amounts });
+    assert.throws(() => removeTransfer(plan, position), { message: amounts });
+    assert.throws(() => renameStage(plan, media, "X"), {
+      message: "Stage 2, “Media”, is part of a transfer table: it's named after its component.",
+    });
+    assert.throws(() => removeStage(plan, media), {
+      message: "Stage 2, “Media”, is part of a transfer table: clear its column in the table, or remove the whole table.",
+    });
+    assert.throws(() => removeTipChange(plan, drug), {
+      message: "Every stage of a transfer table starts on new tips, so these can't be removed.",
+    });
+    assert.throws(() => removeTipChange(plan, wash), {
+      message: "This tip change keeps stage 4, “Wash”, off the transfer table's tips. A transfer table never shares tips with other stages.",
+    });
+    const together = "A transfer table's stages stay together, each on its own tips: add before its first stage or after its last.";
+    assert.throws(() => addStage(plan, drug), { message: together });
+    assert.throws(() => addMixStep(plan, drug, { takeTips: true }), { message: together });
+    assert.throws(() => addStageWithNewTips(plan, drug), { message: together });
+    assert.throws(() => addMixStepWithNewTips(plan, drug), { message: together });
+    assert.throws(() => addRandomization(plan, drug), { message: together });
+    const { plan: notRun, id: rId } = addRandomization(plan, null);
+    assert.throws(() => placeRandomization(notRun, rId, drug), { message: together });
+    assert.throws(() => addTransferTable(plan, exampleDraft(), drug), { message: together });
+    assert.throws(() => addStage(plan, media, { takeTips: true }), { message: together });
+    const shares = "A stage added here would share the transfer table's tips. Add it with new tips, from the seam between tip groups.";
+    assert.throws(() => addStage(plan, wash), { message: shares });
+    assert.throws(() => addMixStep(plan, wash), { message: shares });
+    assert.throws(() => addTipChange(plan, drug), { message: `There are already new tips before stage "${drug}".` });
+    const last = withExampleTable().plan;
+    assert.throws(() => addStage(last, null), { message: shares });
+    assert.throws(() => addMixStep(last, null), { message: shares });
+  });
+
+  test("a transfer table's stages allow pipetting edits and stages added beside it on new tips", () => {
+    let { plan, id } = withExampleTable(addStageWithNewTips(tablePlan(), null).plan, null);
+    const [media, drug] = tableStages(plan, id);
+    const before = stageOrder(plan)[1];
+    plan = changeStageSettings(plan, media, otherSettings());
+    plan = setStageMix(plan, media, "destination", exampleMix());
+    plan = setTipType(plan, drug, TIP_TYPES.at(-1));
+    plan = setTipProbes(plan, drug, [1, 2]);
+    assert.deepEqual(tipChangeAt(plan, drug), { tipType: TIP_TYPES.at(-1), probes: [1, 2] });
+    // addStage before its first stage without takeTips joins the tip group above.
+    const { plan: joined, id: joinedId } = addStage(plan, media);
+    assert.ok(tipGroups(joined).some((group) => group.stages.includes(before) && group.stages.includes(joinedId)));
+    for (const add of [addStageWithNewTips, addMixStepWithNewTips]) {
+      for (const beforeId of [media, null]) {
+        const { plan: added, id: newId } = add(plan, beforeId);
+        assert.ok(tipChangeAt(added, newId) !== null);
+        assert.ok(tipChangeAt(added, media) !== null);
+        assert.equal(isTransferTableOutOfDate(added, id), false);
+      }
+    }
+  });
+
+  test("adding above a transfer table that starts the plan keeps its first stage's tips", () => {
+    let plan = setTipType(tablePlan(), START, TIP_TYPES.at(-1));
+    const added = withExampleTable(plan, "1");
+    plan = removeStage(added.plan, "1");
+    const [media] = tableStages(plan, added.id);
+    for (const add of [addStage, addMixStep]) {
+      const { plan: above, id: newId } = add(plan, media);
+      assert.equal(stageOrder(above)[0], newId);
+      assert.deepEqual(tipChangeAt(above, media), { tipType: TIP_TYPES.at(-1), probes: startTips().probes });
+      for (const stage of tableStages(above, added.id)) {
+        assert.equal(tipGroups(above).find((group) => group.stages.includes(stage)).stages.length, 1);
+      }
+    }
+  });
+
+  test("removeStage of the stage just after a transfer table gives the next stage the removed one's tips", () => {
+    let { plan, id } = withExampleTable();
+    plan = addStageWithNewTips(plan, null).plan;
+    const next = stageOrder(plan).at(-1);
+    plan = setTipType(plan, next, TIP_TYPES.at(-1));
+    plan = addStage(plan, null).plan;
+    const last = stageOrder(plan).at(-1);
+    const removed = removeStage(plan, next);
+    assert.deepEqual(tipChangeAt(removed, last), { tipType: TIP_TYPES.at(-1), probes: startTips().probes });
+    assert.equal(isTransferTableOutOfDate(removed, id), false);
+  });
+
+  test("removeTransferTable takes out the table and its stages, keeping the tips after it", () => {
+    let { plan, id } = withExampleTable(tablePlan(), "1");
+    const stages = tableStages(plan, id);
+    const { plan: withR, id: rId } = addRandomization(plan, stages[0]);
+    plan = withR;
+    const removed = removeTransferTable(plan, id);
+    assert.deepEqual(removed.transferTables, []);
+    assert.deepEqual(stageOrder(removed), ["1"]);
+    assert.deepEqual(tipChangeAt(removed, START), startTips());
+    assert.equal(randomizationAt(removed, rId).beforeId, "1");
+    assert.equal(new PlanHistory(plan).record(removed).undo().present, plan);
+    const only = removeStage(withExampleTable().plan, "1");
+    assert.equal(canRemoveTransferTable(only, "t1"), false);
+    assert.equal(canRemoveTransferTable(only, "t9"), false);
+    assert.equal(canRemoveTransferTable(plan, id), true);
+    assert.throws(() => removeTransferTable(only, "t1"), {
+      message: "This transfer table's stages are all the plan's stages, and a plan needs at least one. Add a stage outside it first.",
+    });
+    assert.throws(() => removeTransferTable(plan, "t9"), { message: 'There\'s no transfer table "t9" in the plan.' });
+    // At the end: a randomization before it then sits at the end.
+    let { plan: atEnd, id: endId } = withExampleTable();
+    const { plan: endR, id: endRId } = addRandomization(atEnd, tableStages(atEnd, endId)[0]);
+    assert.equal(randomizationAt(removeTransferTable(endR, endId), endRId).beforeId, null);
+  });
+
+  test("a transfer table's own edits change its stages despite the refusals", () => {
+    let { plan, id } = withExampleTable();
+    const [media, drug] = tableStages(plan, id);
+    const cleared = draftOf(plan, id);
+    cleared.table = cleared.table.map(([label, m, , x]) => [label, m, "", x]);
+    assert.equal(updateTransferTable(plan, id, cleared).stageList.has(drug), false);
+    assert.equal(removeTransferTable(plan, id).stageList.has(media), false);
+    assert.equal(renameComponent(plan, "Media", "DMEM").stageList.get(media).name, "DMEM");
+    const moved = moveWell(plan, trough("1"), trough("5"));
+    assert.deepEqual(outlinesIn(moved, media)[0].source, trough("5"));
+  });
+
+  test("setTransferTables accepts what adding gives, and refuses each wrong value in order", () => {
+    const { plan, id } = withExampleTable(addStageWithNewTips(tablePlan(), null).plan, null);
+    const stored = transferTableAt(plan, id);
+    const [media, drug] = stored.stages.map((owned) => owned.stage);
+    assert.deepEqual(setTransferTables(plan, plan.transferTables).transferTables, plan.transferTables);
+    // A list of one stored transfer table with `changes`.
+    const withChanges = (changes) => [{ ...stored, ...changes }];
+    const cases = [
+      [5, "The transfer tables must be a list, but got 5."],
+      [[5], 'Transfer table 1 must be an object with exactly "id", "table", "sources" and "stages".'],
+      [withChanges({ id: "x" }), 'Transfer table 1\'s ID must be "t" and a whole number, like "t1", but got "x".'],
+      [withChanges({ table: [] }), "Transfer table 1: A transfer table must be a list of rows, each a list of the same number of cells, each text, but got []."],
+      [withChanges({ sources: { Dye: [trough("1")] } }), 'Transfer table 1: A transfer table draws Dye from wells, but there\'s no component called "Dye" in this plan.'],
+      [withChanges({ stages: [] }), 'Transfer table 1: its stages must be a non-empty list of objects with exactly "component" and "stage".'],
+      [withChanges({ stages: [{ component: "Media", stage: "9" }] }), 'Transfer table 1: its stage "9" isn\'t in the plan.'],
+      [withChanges({ stages: [{ component: "Media", stage: media }, { component: "Drug A", stage: media }] }), `Transfer table 1: stage "${media}" is listed twice.`],
+      [withChanges({ stages: [{ component: "Dye", stage: media }] }), "Transfer table 1: its stage for Dye has no column in its table."],
+      [withChanges({ stages: [{ component: "Media", stage: media }, { component: "Media", stage: drug }] }), "Transfer table 1: Media has two stages."],
+      [withChanges({ stages: [{ component: "DMSO", stage: media }] }), `Transfer table 1: stage "${media}" must be named “DMSO”, after its component.`],
+    ];
+    for (const [value, message] of cases) {
+      assert.throws(() => setTransferTables(plan, value), { message });
+    }
+    // In its columns' order.
+    const swappedTable = stored.table.map(([label, m, d, x]) => [label, d, m, x]);
+    assert.throws(
+      () => setTransferTables(plan, withChanges({ stages: [{ component: "Media", stage: media }, { component: "Drug A", stage: drug }], table: swappedTable })),
+      { message: "Transfer table 1: its stages must be in the order of its columns." },
+    );
+    // Consecutive, in stage order (the plan's stages are "1", "2", then the table's).
+    const base = setTransferTables(plan, []);
+    const apart = renameStage(base, "2", "Media");
+    assert.throws(
+      () => setTransferTables(apart, withChanges({ stages: [{ component: "Media", stage: "2" }, { component: "Drug A", stage: drug }] })),
+      { message: "Transfer table 1: its stages must come one after another, in stage order." },
+    );
+    // Each the only stage of its tip group: its first, then each after it, then the last.
+    const sharedFirst = removeTipChange(base, media);
+    assert.throws(() => setTransferTables(sharedFirst, plan.transferTables), {
+      message: `Transfer table 1: stage "${media}" shares tips with another stage. Every stage of a transfer table starts on new tips.`,
+    });
+    const sharedSecond = removeTipChange(base, drug);
+    assert.throws(() => setTransferTables(sharedSecond, plan.transferTables), {
+      message: `Transfer table 1: stage "${drug}" shares tips with another stage. Every stage of a transfer table starts on new tips.`,
+    });
+    const { plan: tailPlan, id: tailId } = withExampleTable();
+    const tail = addStage(setTransferTables(tailPlan, []), null).plan;
+    assert.throws(() => setTransferTables(tail, tailPlan.transferTables), {
+      message: `Transfer table 1: stage "${tableStages(tailPlan, tailId)[1]}" shares tips with another stage. Every stage of a transfer table starts on new tips.`,
+    });
+    // A mix step.
+    const emptyDrug = removeTransfersOf(base, drug);
+    const mixed = changeStageSettings(emptyDrug, drug, mixStepDefaults());
+    assert.throws(() => setTransferTables(mixed, plan.transferTables), {
+      message: `Transfer table 1: stage "${drug}" is a mix step.`,
+    });
+    // IDs repeated; stages owned twice; a stage owned by a randomization too.
+    const second = addTransferTable(plan, exampleDraft(), null).plan;
+    const [firstTable, secondTable] = second.transferTables;
+    assert.throws(() => setTransferTables(second, [firstTable, { ...secondTable, id: "t1" }]), {
+      message: 'Transfer tables 1 and 2 both have the ID "t1".',
+    });
+    assert.throws(() => setTransferTables(plan, [stored, { ...stored, id: "t2" }]), {
+      message: `Stage "${media}" belongs to two transfer tables, 1 and 2.`,
+    });
+  });
+
+  test("setTransferTables refuses a stage owned by a transfer table and a randomization", () => {
+    let plan = tablePlan();
+    const { plan: withR, id: rId } = addRandomization(plan, null, { seed: 3, volume: 10 });
+    plan = setRandomization(withR, rId, {
+      sources: [{ labware: DEEP, well: "A1", replicates: 1, filler: false, sharesTips: false }],
+      fill: [plateWell("H1")],
+    });
+    plan = runRandomization(plan, rId);
+    const owned = randomizationAt(plan, rId).stages[0].stage;
+    plan = renameStage(plan, owned, "Media");
+    const table = { id: "t1", table: [["L", "Media"], ["Control", "1"]], sources: {}, stages: [{ component: "Media", stage: owned }] };
+    assert.throws(() => setTransferTables(plan, [table]), {
+      message: `Stage "${owned}" belongs to transfer table 1 and randomization 1.`,
+    });
+  });
+
+  test("columnBoxes gives a transfer table as one box, each of its tip groups holding one stage", () => {
+    let { plan, id } = withExampleTable();
+    const { plan: withR, id: rId } = addRandomization(plan, null);
+    plan = withR;
+    const boxes = columnBoxes(plan);
+    assert.deepEqual(boxes.map((box) => box.kind), ["tipGroup", "transferTable", "randomization"]);
+    assert.equal(boxes[1].id, id);
+    assert.deepEqual(boxes[1].tipGroups.map((group) => group.stages), tableStages(plan, id).map((stage) => [stage]));
+    assert.equal(boxes[2].id, rId);
+  });
+
+  test("moving a transfer table between boxes keeps its stages, settings and tips; it can't go inside a tip group, and its stage can't move alone", () => {
+    let { plan, id } = withExampleTable();
+    const [media] = tableStages(plan, id);
+    plan = changeStageSettings(plan, media, otherSettings());
+    plan = setTipType(plan, media, TIP_TYPES.at(-1));
+    const { plan: moved, placed } = moveItems(plan, [{ kind: "transferTable", id }], between(0));
+    assert.deepEqual(placed, [{ kind: "transferTable", id }]);
+    assert.deepEqual(stageOrder(moved), [...tableStages(plan, id), "1"]);
+    assert.deepEqual(moved.stageList.get(media).settings, otherSettings());
+    assert.deepEqual(tipChangeAt(moved, START).tipType, TIP_TYPES.at(-1));
+    assert.ok(tipChangeAt(moved, "1") !== null);
+    assert.equal(isTransferTableOutOfDate(moved, id), false);
+    assert.throws(() => moveItems(plan, [{ kind: "transferTable", id }], inGroup(0, 0)), {
+      message: "A tip group or randomization can't go inside another tip group: put it between tip groups.",
+    });
+    assert.throws(() => moveItems(plan, [stageItem(media)], between(0)), {
+      message: "Stage 2, “Media”, belongs to a transfer table, which moves its stages with it: move it within the table, move the whole transfer table, or copy the stage.",
+    });
+    assert.throws(() => moveItems(plan, [stageItem("1")], inGroup(1, 0)), {
+      message: "Box 1 is a transfer table: only its own stages can be moved inside it.",
+    });
+  });
+
+  test("copying a transfer table writes version 4 and pastes a new transfer table with new stages", () => {
+    let { plan, id } = withExampleTable();
+    const [media] = tableStages(plan, id);
+    plan = setTipType(plan, media, TIP_TYPES.at(-1));
+    const copied = copyOf(plan, [{ kind: "transferTable", id }]);
+    assert.equal(copied.version, 4);
+    assert.deepEqual(copied.items[0].transferTable, { table: exampleTable(), sources: exampleDraft().sources });
+    assert.deepEqual(copied.items[0].stages.map((entry) => [entry.component, entry.tips.tipType]), [
+      ["Media", TIP_TYPES.at(-1)],
+      ["Drug A", TIP_TYPES[0]],
+    ]);
+    const { plan: pasted, placed } = pasteItems(plan, copied, between(columnBoxes(plan).length));
+    assert.deepEqual(placed, [{ kind: "transferTable", id: "t2" }]);
+    const copy = transferTableAt(pasted, "t2");
+    assert.deepEqual(copy.table, exampleTable());
+    assert.deepEqual(copy.sources, exampleDraft().sources);
+    assert.equal(copy.stages.some((owned) => tableStages(plan, id).includes(owned.stage)), false);
+    assert.equal(tipChangeAt(pasted, copy.stages[0].stage).tipType, TIP_TYPES.at(-1));
+    for (const owned of copy.stages) {
+      assert.equal(tipGroups(pasted).find((group) => group.stages.includes(owned.stage)).stages.length, 1);
+    }
+    assert.deepEqual(setTransferTables(pasted, pasted.transferTables).transferTables, pasted.transferTables);
+    // A stage of it copied alone is an ordinary stage.
+    const { plan: alone, placed: alonePlaced } = copyItems(plan, [stageItem(media)], between(0));
+    assert.equal(transferTableOf(alone, alonePlaced[0].id), null);
+    // A version 3 copy holding a transfer table item is refused with the form message.
+    assert.throws(() => pasteItems(plan, { ...copied, version: 3 }, between(0)), {
+      message: "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.",
+    });
+  });
+
+  test("pasting a transfer table checks its values; sources naming no component here are dropped", () => {
+    const { plan, id } = withExampleTable();
+    const copied = copyOf(plan, [{ kind: "transferTable", id }]);
+    const badStage = structuredClone(copied);
+    badStage.items[0].stages[1].component = "Dye";
+    assert.throws(() => pasteItems(plan, badStage, between(0)), {
+      message: "Can't paste: item 1: its stage for Dye has no column in its table.",
+    });
+    // Into a plan without Drug A: its key is dropped, and the pasted table is out of date.
+    let other = tablePlan();
+    other = removeComponent(other, "Drug A");
+    const { plan: pasted, placed } = pasteItems(other, copied, between(1));
+    const copy = transferTableAt(pasted, placed[0].id);
+    assert.deepEqual(Object.keys(copy.sources), ["Media"]);
+    assert.equal(isTransferTableOutOfDate(pasted, copy.id), true);
+    assert.throws(() => pasteItems(plan, copied, inTable(1, 0)), {
+      message: "Box 1 is a transfer table: only its own stages can be moved inside it.",
+    });
+  });
+
+  test("moving a stage inside its transfer table reorders its stages and its columns, keeping its tips", () => {
+    let { plan, id } = threeStageTablePlan();
+    plan = addStageWithNewTips(plan, null).plan;
+    const after = stageOrder(plan).at(-1);
+    const [media, drug, dmso] = tableStages(plan, id);
+    plan = setTipType(plan, drug, TIP_TYPES.at(-1));
+    const index = tableBoxIndex(plan, id);
+    const { plan: moved, placed } = moveItems(plan, [stageItem(drug)], inTable(index, 0));
+    assert.deepEqual(placed, [stageItem(drug)]);
+    assert.deepEqual(tableStages(moved, id), [drug, media, dmso]);
+    assert.deepEqual(stageOrder(moved), ["1", drug, media, dmso, after]);
+    assert.deepEqual(transferTableAt(moved, id).table[0], ["Label", "Drug A", "Media", "", "DMSO"]);
+    assert.equal(tipChangeAt(moved, drug).tipType, TIP_TYPES.at(-1));
+    assert.equal(tipChangeAt(moved, media).tipType, TIP_TYPES[0]);
+    assert.ok(tipChangeAt(moved, after) !== null);
+    assert.equal(isTransferTableOutOfDate(moved, id), false);
+    assert.equal(new PlanHistory(plan).record(moved).undo().present, plan);
+    // To the bottom: its column last among the stages' columns.
+    const { plan: bottom } = moveItems(plan, [stageItem(media)], inTable(index, 3));
+    assert.deepEqual(tableStages(bottom, id), [drug, dmso, media]);
+    assert.deepEqual(transferTableAt(bottom, id).table[0], ["Label", "", "Drug A", "DMSO", "Media"]);
+    // The same order gives the same plan.
+    assert.equal(moveItems(plan, [stageItem(media)], inTable(index, 1)).plan, plan);
+  });
+
+  test("moving a transfer table's stage to the top of a table that starts the plan gives it the START tips", () => {
+    let { plan, id } = threeStageTablePlan();
+    plan = removeStage(plan, "1");
+    const [media, drug] = tableStages(plan, id);
+    plan = setTipType(plan, drug, TIP_TYPES.at(-1));
+    const { plan: moved } = moveItems(plan, [stageItem(drug)], inTable(0, 0));
+    assert.equal(stageOrder(moved)[0], drug);
+    assert.equal(tipChangeAt(moved, START).tipType, TIP_TYPES.at(-1));
+    assert.equal(tipChangeAt(moved, drug), null);
+    assert.equal(tipChangeAt(moved, media).tipType, TIP_TYPES[0]);
+  });
+
+  test("moving inside a transfer table refuses anything but its own stages, with section 5's messages", () => {
+    let { plan, id } = threeStageTablePlan();
+    const second = addTransferTable(plan, exampleDraft(), null);
+    plan = second.plan;
+    const index = tableBoxIndex(plan, id);
+    const otherIndex = tableBoxIndex(plan, second.id);
+    const [media] = tableStages(plan, id);
+    const ownOnly = (box) => `Box ${box} is a transfer table: only its own stages can be moved inside it.`;
+    assert.throws(() => moveItems(plan, [stageItem(media)], inTable(otherIndex, 0)), { message: ownOnly(otherIndex) });
+    assert.throws(() => moveItems(plan, [stageItem("1")], inTable(index, 0)), { message: ownOnly(index) });
+    assert.throws(() => moveItems(plan, [groupItem("1")], inTable(index, 0)), { message: ownOnly(index) });
+    assert.throws(() => moveItems(plan, [{ kind: "transferTable", id: second.id }], inTable(index, 0)), { message: ownOnly(index) });
+    assert.throws(() => moveItems(plan, [stageItem(media)], inTable(0, 0)), { message: "Box 0 isn't a transfer table." });
+    assert.throws(() => moveItems(plan, [stageItem(media)], inTable(index, 7)), {
+      message: `Box ${index} has positions 0 to 3, but got 7.`,
+    });
+    assert.throws(() => moveItems(plan, [stageItem(media)], between(0)), {
+      message: /belongs to a transfer table, which moves its stages with it/,
+    });
+  });
+
+  test("moving wells: a transfer table's source well is in use, and moving it keeps the table up to date", () => {
+    let { plan, id } = withExampleTable();
+    plan = emptyWells(plan, [trough("2")]);
+    assert.equal(isWellUsed(plan, trough("2")), true);
+    plan = addToWells(plan, [trough("2")], "Media", 10000);
+    const moved = moveWell(plan, trough("1"), trough("5"));
+    assert.deepEqual(transferTableAt(moved, id).sources.Media, [trough("5"), trough("2")]);
+    assert.equal(isTransferTableOutOfDate(moved, id), false);
+    // A3 to A4 keeps the label's wells in the same deck order (section 3, "Out of date", compares
+    // transfers in order).
+    const destination = moveWell(plan, plateWell("A3"), plateWell("A4"));
+    assert.equal(wellLabelOf(destination, plateWell("A4")), "Control");
+    assert.equal(isTransferTableOutOfDate(destination, id), false);
+    const sourceOnly = setTransferTables(tablePlan(), []);
+    assert.equal(isWellUsed(sourceOnly, trough("3")), false);
+  });
+
+  test("transfer table functions leave the plan and the draft unchanged; a plan's table and sources are frozen", () => {
+    const plan = tablePlan();
+    const before = snapshot(plan);
+    const draft = exampleDraft();
+    const draftBefore = JSON.stringify(draft);
+    readTransferTable(plan, draft.table);
+    stockWellsOf(plan, "Media");
+    transferTableProblems(plan, draft, null);
+    sourceSplit(plan, draft, "Media", null);
+    transferTableStages(plan, draft, null);
+    const { plan: added, id } = addTransferTable(plan, draft, null);
+    const addedBefore = snapshot(added);
+    updateTransferTable(added, id, draftOf(added, id));
+    isTransferTableOutOfDate(added, id);
+    removeTransferTable(addStageWithNewTips(added, null).plan, id);
+    setTransferTables(added, added.transferTables);
+    assert.equal(snapshot(plan), before);
+    assert.equal(snapshot(added), addedBefore);
+    assert.equal(JSON.stringify(draft), draftBefore);
+    const stored = transferTableAt(added, id);
+    assert.throws(() => {
+      stored.table[0][0] = "x";
+    }, TypeError);
+    assert.throws(() => {
+      stored.sources.Media.push(trough("3"));
+    }, TypeError);
+  });
+
+  test("transferTableAt and transferTableOf find transfer tables and their stages", () => {
+    const { plan, id } = withExampleTable();
+    assert.equal(transferTableAt(plan, id).id, id);
+    assert.equal(transferTableAt(plan, "t9"), null);
+    assert.equal(transferTableOf(plan, tableStages(plan, id)[0]), id);
+    assert.equal(transferTableOf(plan, "1"), null);
   });
 });
