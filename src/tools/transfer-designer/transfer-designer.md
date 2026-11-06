@@ -874,6 +874,10 @@ read (the stored text keeps its spaces). Each column after the first is a **comp
   `1,500`); what's left must be digits with at most one decimal point (`190`, `2.5`, `.5`; no sign,
   no exponent). Blank, `0`, `0.0` and the like **add nothing**.
 - A cell under a blank header or a problem header, or in a problem row, isn't read as an amount.
+- **A fully blank row** (every cell blank after trimming) is ignored: it fills nothing and is no
+  problem, so stray empty lines are harmless. Rows are still counted by their place in the grid.
+- A table of only the header row, or only the label column, is read as any other: it has no
+  amounts, so its draft's problem is that it adds nothing (below).
 
 It gives `{ columns, problems }`:
 - `columns`: one per component column with a valid header, left to right, `{ column, component,
@@ -906,8 +910,13 @@ go (below): `readTransferTable`'s problems, then, if there are none:
 |---|---|
 | no column has an amount | `The table adds nothing: every amount is blank or 0.` |
 | for each column with an amount, in column order: no stock well exists | `No well holds only Media at Start. Fill one with Media at Start first.` |
-| its `sources` entry is missing or empty | `Choose a well for Media to draw from.` |
+| its `sources` entry is missing | `Choose a well for Media to draw from.` |
 | one of its wells isn't a stock well of it | `Res1 1 doesn't hold only Media at Start, so Media can't draw from it.` (the first such) |
+| one of its wells is a destination of any column of the table (a stock well carrying a label a row uses, or a well another column fills) | `Res1 1 is both a source of Media and a well the table fills. Choose another well.` (the first such) |
+
+(The last one keeps the operation list's stage rule from refusing the table's stages with a message
+about operations: a well can't be both drawn from and filled in one table, so it's caught here, in
+the table's terms.)
 
 These are `{ row: null, column: null, message }`, so all of a draft's problems have one form.
 `sources` itself must be in its form (an object of component names and lists of wells on the deck,
@@ -938,7 +947,8 @@ and 12 transfers of 190 µL: `[{ Res1 1, 5 }, { Res1 2, 7 }]`.
 
 **What the stages will be** (`transferTableStages(plan, draft, at, { id, renamedFrom })`), for a
 caller to show before adding or updating; `id` is the transfer table's ID when it's in the plan
-(`null` for a new one), `renamedFrom` as for updating (below). One entry per column with an amount,
+(`null` for a new one), `renamedFrom` as for updating (below). With an `id`, `at` is ignored: it's
+worked out as that transfer table's first stage (a caller may pass `null`). One entry per column with an amount,
 in column order: `{ component, stage, transfers, settings, tips }`, `stage` the ID of the stage it
 keeps (below; `null` for a new one), `transfers` the column's transfers (each `{ source,
 destination, volume }`), `settings` the stage settings it will have and `tips` `{ tipType, probes
@@ -994,12 +1004,18 @@ has no problems (`at` = its first stage):
    stage has the `START` tips set to those, and a tip change keyed by it is taken out. The stage
    just after its last stage keeps its own tip change (step 2 gives it one when a new stage goes
    before it).
-7. `table`, `sources` and `stages` are set; its place in `transferTables` doesn't change.
+7. **Randomizations sitting here**: a randomization without stages whose `beforeId`, before the
+   update, was the transfer table's first stage, or is now one of its stages, sits before its new
+   first stage (step 3 can move one onto a later stage of it, and step 5 can reorder its first
+   stage away), so it stays above the transfer table and never inside it.
+8. `table`, `sources` and `stages` are set; its place in `transferTables` doesn't change.
 
 A draft equal to the stored one with nothing to change gives back the same plan.
 
 **Removing** (`removeTransferTable(plan, id)`) takes out the transfer table and every stage it owns,
-as one edit. Tip changes on the stage after it stay. It's refused when its stages are all the plan's
+as one edit. Tip changes on the stage after it stay. A randomization without stages sitting before
+its first stage then sits before the stage just after it (or `null`), as `removeStage`'s rule moves
+it. It's refused when its stages are all the plan's
 stages (`canRemoveTransferTable` is `false`), as for a randomization: a plan needs at least one stage.
 
 **Out of date** (`isTransferTableOutOfDate(plan, id)`; Andy, 2026-11-05). A transfer table's stages
@@ -1016,6 +1032,12 @@ the split), or removing a component named by a header, makes it out of date; not
 group (so none shares tips with any other stage, inside it or out), in the order of its `stages`.
 Every edit keeps this so:
 
+**The refusals below are for calls from outside**: a transfer table's own edits (adding, updating,
+removing it, `renameComponent`, `moveItems`, `pasteItems`, `moveWell`) change its stages through
+internal helpers that skip these refusals but keep every other rule of the edit they stand for
+(the stage rule, the tip rules, and `removeStage`'s rules for randomizations: moving one that sits
+before a removed stage, and giving the stage after one's last stage a tip change).
+
 **What can be edited** on its stages (Andy, 2026-11-05: pipetting the normal way): `changeStageSettings`
 and `setStageMix` on any of its stages; `setTipType` and `setTipProbes` on their tip changes (or
 `START`, for one that's the plan's first). **Refused, in the logic** (not only by a caller; unlike
@@ -1029,12 +1051,20 @@ randomizations, whose protection is the page's only: roadmap, "Technical debt"):
   `addMixStepWithNewTips`, `addRandomization`, `placeRandomization` and `addTransferTable` with a
   `beforeId` that is one of its stages other than its first; and `addStage` and `addMixStep` with
   `takeTips` before its first stage (the new stage would take its first stage's tips);
+- `addStage` and `addMixStep` without `takeTips` whose new stage would land just after its last
+  stage, joining its last tip group: a `beforeId` that is the stage just after its last stage, or
+  `null` when its last stage is the plan's last (own message, section 5); `addStageWithNewTips`
+  and `addMixStepWithNewTips` there are allowed, since they start new tips;
 - `addTipChange` before one of its stages (each has one already, so this is the existing
   message; no new rule);
 - `moveItems` with one of its stages without the transfer table (as for a randomization's), and any
   place inside its box;
 - `removeStage` of the stage just after its last stage gives the next stage a tip change loading the
   tips the removed one used, if it has none (as for a randomization).
+- `addStage` and `addMixStep` without `takeTips` before its first stage when that's the plan's first
+  stage: the new stage becomes the first, on the `START` tips, and the transfer table's first stage
+  gets a tip change of its own loading the tips it had, as `addStageWithNewTips` gives the stage
+  that was first (so its first stage keeps its own tips).
 
 **Components** (Andy, 2026-11-05):
 - **`renameComponent`** renames it in every transfer table too, as part of the same edit: each
@@ -1190,8 +1220,11 @@ writes version 4; `pasteItems` reads versions 1 to 4, and a transfer table item 
 copy is refused with the form message, unchanged (`Can't paste: item 2 isn't a stage, tip group or
 randomization as the transfer designer copies them.`; kept as it is in every version so existing
 copies and tests keep their wording). A pasted transfer table is checked as `setTransferTables`
-checks a plan file's (its `table`'s and `sources`' form, each stage's component one of its columns'
-with an amount, in column order, none twice), with the messages prefixed `Can't paste: item 2: `.
+checks a plan file's (its `table`'s and `sources`' form, each stage's component one of its table's
+headers, trimmed, none twice: the same rule a plan file's gets), with the messages prefixed `Can't
+paste: item 2: `, except that **`sources` keys naming no component in this plan aren't refused**:
+they're dropped, as `removeComponent` drops them, and the column's header then names no component,
+so the pasted transfer table is out of date (copied from a plan with a component this one lacks).
 Whether its stages match what it would make isn't checked: a copy pasted where its sources hold
 something else is out of date, as a plan file can be.
 
@@ -1617,7 +1650,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `pasteItems`: a value refused by the edit that would make it | `Can't paste: item 2: ` and that edit's message, e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1. Its wells are A1 to H12.` (Messages pass through unchanged, so the operation list's stage rule names the new stage's ID and an operation number, which the user never sees; roadmap, "Technical debt", "Some messages use internal terms".) |
 | `pasteItems`: two stages for one well, or a stage that's a mix step, in a randomization | `Can't paste: item 2: Deep A1 has two stages.` / `Can't paste: item 2: its stage for Deep A1 is a mix step.` |
 | A transfer table's `id` isn't one of the plan's | `There's no transfer table "t9" in the plan.` |
-| `readTransferTable`, and every function taking a draft: `table` isn't a list of at least two rows, each a list of the same number of cells (at least two), each text | `A transfer table must be a list of at least two rows, each a list of the same number of cells (at least two), each text, but got 5.` (naming the value, or the first row or cell that's wrong: `… but row 3 has 4 cells and row 1 has 5.` / `… but row 2, cell 3 is null.`) |
+| `readTransferTable`, and every function taking a draft: `table` isn't a non-empty list of rows, each a non-empty list of the same number of cells, each text | `A transfer table must be a list of rows, each a list of the same number of cells, each text, but got 5.` (naming the value, or the first row or cell that's wrong: `… but row 3 has 4 cells and row 1 has 5.` / `… but row 2, cell 3 is null.` / `… but got [].`). One row, or one column, is accepted (it adds nothing). |
 | a draft isn't an object with exactly `table` and `sources` | `A transfer table's draft must be an object with exactly "table" and "sources", but got 5.` |
 | `sources` isn't an object of lists | `A transfer table's sources must be an object of component names, each with a list of wells, like { Media: [{ labware: "Res1", well: "1" }] }, but got 5.` |
 | a `sources` key isn't a component | `A transfer table draws Dye from wells, but there's no component called "Dye" in this plan.` |
@@ -1634,6 +1667,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `removeStage` of one of its stages | `Stage 3, “Media”, is part of a transfer table: clear its column in the table, or remove the whole table.` |
 | `removeTipChange` of one of its stages | `Every stage of a transfer table starts on new tips, so these can't be removed.` |
 | `removeTipChange` of the stage just after it | `This tip change keeps stage 7, “Wash”, off the transfer table's tips. A transfer table never shares tips with other stages.` |
+| `addStage`, `addMixStep` without `takeTips` just after its last stage (a `beforeId` that's the stage after it, or `null` when it's last) | `A stage added here would share the transfer table's tips. Add it with new tips, from the seam between tip groups.` |
 | adding a stage, mix step, randomization or transfer table inside it (a `beforeId` that's one of its stages but its first), or a stage or mix step with `takeTips` before its first stage | `A transfer table's stages stay together, each on its own tips: add before its first stage or after its last.` |
 | `moveItems`: one of its stages without the transfer table | `Stage 3, “Media”, belongs to a transfer table, which moves its stages with it: move the whole transfer table, or copy the stage.` |
 | `inTipGroup` names a transfer table's box | `Box 3 is a transfer table: nothing can be put inside it.` |
@@ -1642,6 +1676,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setTransferTables`: `stages` isn't a non-empty list of `{ component, stage }`, names a stage not in the plan or twice, a component twice, or a component that isn't one of its table's headers (trimmed) | `Transfer table 2: its stages must be a non-empty list of objects with exactly "component" and "stage".` / `Transfer table 2: its stage "9" isn't in the plan.` / `Transfer table 2: stage "5" is listed twice.` / `Transfer table 2: Media has two stages.` / `Transfer table 2: its stage for Dye has no column in its table.` |
 | `setTransferTables`: a stage isn't named after its component | `Transfer table 2: stage "5" must be named “Media”, after its component.` |
 | `setTransferTables`: its stages aren't in its columns' order, aren't consecutive in stage order, one isn't the only stage of its tip group, or one is a mix step | `Transfer table 2: its stages must be in the order of its columns.` / `Transfer table 2: its stages must come one after another, in stage order.` / `Transfer table 2: stage "5" shares tips with another stage. Every stage of a transfer table starts on new tips.` / `Transfer table 2: stage "5" is a mix step.` |
+| `setTransferTables`: a randomization without stages sits before one of its stages other than its first | `Randomization 2 sits before stage "5", inside transfer table 1. A randomization sits between tip groups.` |
 | `setTransferTables`: a stage is owned by another transfer table, or by a randomization | `Stage "5" belongs to two transfer tables, 1 and 2.` / `Stage "5" belongs to transfer table 2 and randomization 1.` |
 | `pasteItems`: a transfer table item in a version 1 to 3 copy | the form message: `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.` |
 | `pasteItems`: a transfer table's values or stages refused | `Can't paste: item 2: ` and `setTransferTables`' message without its `Transfer table 2: ` prefix, e.g. `Can't paste: item 2: its stage for Dye has no column in its table.` |
@@ -1701,8 +1736,9 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   then its label is text, not blank, without spaces at its ends.
 - `moveItems`, `copyOf`, `copyItems`: the list, then each item in turn (its form, then that it's
   in the plan, then for a tip group that its ID starts one); then the place's form and range, then
-  a randomization's box, then the container rule; then, for `moveItems`, a randomization's stage
-  without its randomization.
+  a randomization's or transfer table's box, then the container rule; then, for `moveItems`, a
+  randomization's stage without its randomization, then a transfer table's stage without its
+  transfer table.
 - `readTransferTable`: the table's form (the list, then each row in turn: a list, its length,
   then each cell text); then the problems, in reading order (section 3).
 - A draft (`transferTableProblems`, `sourceSplit`, `transferTableStages`, `addTransferTable`,
@@ -1711,7 +1747,8 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   each key in its order: a component, then its list, then each well on the deck, then repeats);
   then `at` (or `beforeId`: a stage or `null`, then a place it can sit); then the problems, the
   table's in reading order, then "adds nothing", then each column's sources in column order (no
-  stock well, no wells chosen, a well that isn't a stock well, the first such in its list).
+  stock well, no wells chosen, a well that isn't a stock well, a well the table fills; for each,
+  the first such in its list).
 - The refusals for a transfer table's stages come after the edit's own checks that the stage (or
   `beforeId`, or tip change) exists, and before any other check.
 - `setTransferTables`: the list; then each transfer table in turn: its form (exactly its
@@ -1719,7 +1756,11 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   stage in the plan, not twice, each component a column's header, no component twice, each stage
   named after its component, in the columns' order, consecutive and in stage order, each the only
   stage of its tip group (its first, then each after it), not a mix step); then IDs repeated; then
-  stages owned by two transfer tables; then a stage owned by a transfer table and a randomization.
+  stages owned by two transfer tables; then a stage owned by a transfer table and a randomization;
+  then each randomization without stages, in order, sitting before a transfer table's stage other
+  than its first.
+- `addStage`, `addMixStep`: `beforeId` a stage or `null`, then the transfer table refusals (inside
+  it, `takeTips` before its first stage, then just after its last stage).
 - `moveWell`: `from` on the deck, then `to` on the deck (`deck.checkWell`'s order), then the same
   well, then `from` in use, then `from` a well to fill, then `to` in use.
 - `pasteItems`: the copied items' form and version, then each item in turn, in order (its form,
@@ -2328,13 +2369,18 @@ B1 to B3 `A low`; one stage, `New stage`. Volumes and counts in these tests are 
 - **Each reading problem** of section 3's table, with its `row`, `column` and message; `-5`, `1e3`,
   `lots` and `5 µL` aren't amounts; a cell under a problem header or in a problem row gives no
   amount problem of its own; problems come in reading order.
-- **The form:** `readTransferTable` throws for a one-row table, a one-column table, rows of
-  different lengths, and a cell that isn't text, each with section 5's message.
+- **The form:** `readTransferTable` throws for `[]`, a row that's `[]`, rows of different lengths,
+  and a cell that isn't text, each with section 5's message; a one-row table and a one-column table
+  are read (no amounts, no problems), and their draft's only problem is "adds nothing".
+- **Blank rows:** a fully blank row between two rows (and one at the end) is ignored: no problem,
+  no amounts, and the rows after it keep their row numbers in messages.
 - **Stock wells:** Media gives Res1 1 then Res1 2 (deck order), not Deep1 A4; a component in no well
   gives `[]`; after `emptyWells` of Res1 1, only Res1 2.
 - **A draft's problems:** "adds nothing" when every amount is blank; no stock well; no wells chosen
-  (key missing); a chosen well holding a mix (Deep1 A4) or another component; in section 3's order;
-  `[]` for a good draft. An empty source list, a well off the deck or listed twice, and a key that
+  (key missing); a chosen well holding a mix (Deep1 A4) or another component; a source well that's
+  also a destination: a stock of Media labeled `Control` (a label a row uses), and Drug A's column
+  filling Res1 2 (labeled) while Media draws from Res1 2; in section 3's order; `[]` for a good
+  draft. An empty source list, a well off the deck or listed twice, and a key that
   isn't a component are refused as the draft's form (thrown).
 - **The split:** Media at 190 µL into 12 wells from Res1 1 then Res1 2: Res1 1 takes as many whole
   transfers as fit in its usable volume (worked out from the dead volume) and Res1 2 the rest; a
@@ -2343,6 +2389,9 @@ B1 to B3 `A low`; one stage, `New stage`. Volumes and counts in these tests are 
   fit, and later, smaller ones go to the next well too; contents are those just before `at` (a
   stage before `at` drawing from Res1 1 lowers its share; one after it doesn't); `sourceSplit`
   works while another column has a problem.
+- **Copying the nearest transfer stage:** with a transfer stage on Slow and then a mix step just
+  before `at`, the first new column copies the transfer stage's settings (not the mix step's) and
+  that stage's tips.
 - **Adding:** a draft of Media, Drug A and DMSO (DMSO blank in every row) before stage 1: two
   stages, named Media and Drug A, in column order, before stage 1, each the only stage of its tip
   group, stage 1 keeping its tips; their transfers as `transferTableStages` gives them; with no
@@ -2366,9 +2415,16 @@ B1 to B3 `A low`; one stage, `New stage`. Volumes and counts in these tests are 
   is removed and DMSO gets a new stage copying the column before it (or the stage before the
   table); an entry whose old component has no stage, or whose stage another column keeps, is
   ignored.
+- **Randomizations around an update:** a randomization without stages sitting before the transfer
+  table's first stage still sits before its first stage after an update that removes that stage
+  (its column cleared), and after one that reorders its columns so another stage is first;
+  `setTransferTables` refuses a not-run randomization sitting before a stage of it other than its
+  first, with its message.
+- **`transferTableStages` with an `id`:** gives the same with `at` `null` as with its first stage.
 - **Out of date:** `false` right after adding and after updating; `true` after relabeling one of its
   wells, emptying a stock at Start, adding a stage before it that draws from Res1 1 (changing the
-  split), or `removeComponent` of Drug A; `false` again after updating (for the removed component,
+  split), or `removeComponent` of Drug A, or the transfer table moved (`moveItems`) below a stage that draws
+from Res1 1 (changing the split); `false` again after updating (for the removed component,
   after its column is deleted from the draft); still `false` after changing a stage's settings or
   tips (`changeStageSettings`, `setStageMix`, `setTipType`, `setTipProbes`).
 - **Renaming a component:** Media renamed DMEM renames the header cell (also one written ` Media `,
@@ -2379,13 +2435,23 @@ B1 to B3 `A low`; one stage, `New stage`. Volumes and counts in these tests are 
 - **Protection:** each refusal of section 5 for a transfer table's stage: adding, removing and
   changing a transfer's volume, renaming, removing the stage, removing its tip change, removing the
   tip change just after it, adding a stage, mix step, randomization or transfer table before its
-  second stage, and `takeTips` before its first; and each allowed edit works: `changeStageSettings`,
-  `setStageMix`, `setTipType`, `setTipProbes`, `addStage` before its first stage without `takeTips`
-  (the new stage joins the tip group above), `addStageWithNewTips` before its first stage, and
-  adding after its last stage. `removeStage` of the stage just after it gives the next stage a tip
+  second stage, and `takeTips` before its first; `addStage` and `addMixStep` without `takeTips`
+  before the stage just after it, and with `null` when it's last, refused with their own message;
+  and each allowed edit works: `changeStageSettings`, `setStageMix`, `setTipType`, `setTipProbes`,
+  `addStage` before its first stage without `takeTips` (the new stage joins the tip group above),
+  `addStageWithNewTips` and `addMixStepWithNewTips` before its first stage and just after its last
+  (new tips of their own, the stage below keeping its tips).
+- **Adding above a first transfer table:** with the transfer table's first stage the plan's first,
+  `addStage` (and `addMixStep`) without `takeTips` before it: the new stage is first, on the
+  `START` tips, and the transfer table's first stage has a tip change loading the tips it had
+  (each of its stages still the only stage of its tip group). `removeStage` of the stage just after it gives the next stage a tip
   change loading the removed one's tips.
 - **Removing:** takes out the table and its stages; tip changes on the stage after it stay; refused,
-  and `canRemoveTransferTable` `false`, when its stages are all the plan's.
+  and `canRemoveTransferTable` `false`, when its stages are all the plan's; a randomization without
+  stages sitting before its first stage then sits before the stage just after it (or `null`).
+- **Its own edits skip the refusals:** updating (removing a cleared column's stage, replacing
+  transfers), removing, `renameComponent` (renaming its stage) and `moveWell` (its transfers) all
+  work on its stages, and `removeStage`'s randomization rules still apply in them.
 - **`setTransferTables`:** accepts what adding gives; each refusal of section 5, in the order of
   checks, including a stage owned by a randomization and a transfer table.
 - **`columnBoxes`:** a transfer table is a `transferTable` box whose tip groups each hold one stage;
@@ -2396,8 +2462,11 @@ B1 to B3 `A low`; one stage, `New stage`. Volumes and counts in these tests are 
   stages, each on its own tips as copied, and the same table and sources; a version 3 copy holding
   a transfer table item is refused with the form message; a pasted table whose stage names a
   component without a column is refused with `Can't paste: item 1: its stage for Dye has no column
-  in its table.`; copies of its stages copied alone are ordinary stages.
-- **Moving wells:** Res1 1 is in use (a source); moving it to Res1 5 puts Res1 5 in Res1 1's place in
+  in its table.`; a copy whose `sources` name a component this plan lacks (and whose header names
+  it) pastes, without that key, and is out of date; copies of its stages copied alone are ordinary
+  stages.
+- **Moving wells:** `isWellUsed` is `true` for a source well with no starting contents and no
+  transfers (one emptied at Start after adding); Res1 1 is in use (a source); moving it to Res1 5 puts Res1 5 in Res1 1's place in
   `sources` and in the transfers, and the table stays up to date; moving a labeled destination moves
   its label and transfers, and it stays up to date.
 - **Immutability:** every function above leaves the plan and the draft given unchanged; a plan's
