@@ -956,6 +956,11 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **Pasted cells holding tabs or line breaks** (2026-11-05, transfer tables): Excel copies such a
+  cell inside double quotes, and `parsePastedTable` (`pasted-table.md`) doesn't read quotes, so the
+  cell splits into several cells or rows, and the quotes stay in the text. Transfer tables' cells
+  are names and numbers, so it's unlikely. Properly: read Excel's quoting (a quoted cell may hold
+  tabs, line breaks and doubled quotes) in `parsePastedTable`, with tests.
 - **A transfer table's per-tip note uses the mix limits** (2026-11-05, transfer tables): the wizard's
   Review notes an amount bigger than one tip holds by comparing it with `MIX_VOLUME_LIMITS`
   (`config/tip-types.js`), which are themselves stand-ins for the most a tip type mixes, since no
