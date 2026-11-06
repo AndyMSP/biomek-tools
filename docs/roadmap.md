@@ -894,6 +894,12 @@ added on 2026-10-28 (Andy).
       chosen there goes to every stage on Update, and Mixed leaves each as it is. It's a view and
       a way to set them, not a second copy. Before the first run there are no stages, so the card
       holds what's chosen until the run makes them.
+    - **Its box opens and closes like a transfer table's** (Andy, 2026-11-05): clicking its heading
+      shows or hides its stages (▸/▾, Enter or Space too), a ✎ on the heading opens its card, and
+      whether each box is open is remembered while the page is open (not saved, not an undo step);
+      the box also opens when its card or one of its stages opens; dragging, copying and the menu
+      by the heading as before. One not set up yet has no ▸/▾ (nothing to show), and its heading
+      opens its card like its ✎ (Claude's choice).
     **Specified** (Draft, 2026-11-05, in the hands-off workflow): see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the

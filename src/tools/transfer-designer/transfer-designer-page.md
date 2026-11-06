@@ -850,18 +850,36 @@ like a tip group's, with seams between tip groups above and below it as for any 
   its heading. **Run**: a solid border, its heading, then its stages' tip group boxes, as usual
   (as `columnBoxes` gives them; since 2026-11-05 one may hold several of its stages, when their
   sources share tips, each heading counting its tips as any tip group's does).
-  It **collapses to its heading** unless its card is open or one of its stages is the open entry
-  (Andy, 2026-11-01: a randomization of 68 stages would fill the column). The timeline's `‹` and
-  `›` (section 11) step into and through its stages as any others, opening the box.
-- **Its heading**, a button the box's width: the **dice icon** (a small SVG of two dice, one tilted
-  behind showing three, one in front showing five, in the text's color, so it's the same on every
-  PC), then `Randomize` (not set up yet) or `Randomized` (run), semibold, then at the right, in
-  gray, `not set up yet` or `68 stages · seed 360310` (the stages it owns; `1 stage`), or, when
+  A run randomization's box is **open** (showing its stages) or **closed** (its heading only, and
+  its card if that's open), like a folder, exactly as a transfer table's box (below, "Transfer
+  tables", "Its box"; Andy, 2026-11-05, item 20: "a randomization's box works the same way";
+  until then it collapsed to its heading unless its card or one of its stages was open, so its
+  stages couldn't be seen or dragged otherwise): clicking its heading opens or closes it. It also
+  opens whenever its card opens or one of its stages becomes the open entry (the timeline's `‹`
+  and `›`, section 11, step into and through its stages as any others), and stays open after that
+  until its heading closes it. Closing it while its card is open closes the card as `Close` does
+  (one with unsaved changes after a run refuses, as `Close` does, and the box stays open). Whether
+  each randomization's box is open is remembered while the page is open, by its ID, with the
+  transfer tables': not saved in plan files or the browser copy, not an undo step; a new page, or
+  a plan opened from a file, starts with every box closed, except one whose card or stage is open.
+- **Its heading**, a row the box's width, as a transfer table's: a button (most of the row) holding,
+  once it has run, `▸` (closed) or `▾` (open); the **dice icon** (a small SVG of two dice, one
+  tilted behind showing three, one in front showing five, in the text's color, so it's the same on
+  every PC), then `Randomize` (not set up yet) or `Randomized` (run), semibold, then at the right,
+  in gray, `not set up yet` or `68 stages · seed 360310` (the stages it owns; `1 stage`), or, when
   it's out of date (`isRandomizationOutOfDate`), `needs update` in red, semibold (Andy,
-  2026-11-02). Tooltip, not set up yet: `Not set up yet: open it to finish setting it up.`; run:
-  `Open to change it`; out of date: `The plan changed since this last ran: open it and press
-  Update.` Clicking it opens its card, or, if
-  open, closes it (saving, below).
+  2026-11-02); then, after the button, a **✎** (as a stage's, accessible name `Edit
+  randomization`, tooltip `Change its sources, wells and settings, or remove it`), which opens its
+  card, or closes it if open (as `Close`), and selects the randomization. **Run**: clicking the
+  button (or Enter or Space on it) opens or closes the box and selects the randomization; its
+  `aria-expanded` says whether the box is open; tooltip `Show its stages` / `Hide its stages`, or,
+  out of date, `The plan changed since this last ran: press ✎, then Update.` **Not set up yet**
+  (no stages, so nothing to show or hide; Claude's choice, 2026-11-05): no `▸`/`▾`, and clicking
+  the button opens its card, as its ✎ does (or closes it if open); tooltip `Not set up yet: open it
+  to finish setting it up.` The button is what the randomization is dragged, copied and given the
+  right-click menu by (a press on the ✎ starts no drag). While moving wells (below), a run
+  randomization's heading opens and closes its box as usual; a not-set-up one's, which would open
+  its card, says why it can't; its ✎ is hidden with the others.
 - **Seams around it**: a seam between tip groups above its box and one below, as for any box, and
   **none inside it** (not between its stages' boxes, nor inside them). For one that hasn't run,
   the seam below adds before the same stage as the seam above, then moves the randomization above
@@ -1283,8 +1301,9 @@ one of its stages without the table copies it as an ordinary stage, as for a ran
 - **Click** a stage's row opens it, as before, and forgets the picked set (so it's selected alone).
 - **Click an ordinary tip group's heading** (anywhere but its ✎) makes the picked set that group
   alone, and opens nothing.
-- **Click a randomization's heading** opens or closes its card, as before, and makes the picked set
-  that randomization alone.
+- **Click a randomization's heading** opens or closes its box (one not set up yet: its card), and
+  makes the picked set that randomization alone (2026-11-05, item 20; until then it opened or
+  closed its card). Its ✎ opens or closes its card and selects it alone.
 - **Ctrl-click** (Cmd on a Mac) a stage's row or a heading: with no picked set, one starts, holding
   what was selected (what's open), and then this thing is added or taken out; with one, this thing
   is added to it or taken out. Nothing opens. A picked set can be empty: then nothing is selected,
@@ -1411,13 +1430,13 @@ the column keeps its look, but only three things work there: clicking a closed e
 (Start, a stage, End; a randomization's stages too), `Show transfers` / `Hide transfers`, and
 pointing at a transfer row, which singles out its transfer as usual. The ✎
 buttons, the `×` on transfer rows and the seams are hidden (their space kept, so nothing shifts).
-Any other click on a control or heading in the column (a volume, a component chip, a randomization's
-heading, which would open its card) does nothing but say `Stages can't be changed while moving
+Any other click on a control or heading in the column (a volume, a component chip, the heading of a
+randomization not set up yet, which would open its card) does nothing but say `Stages can't be changed while moving
 wells. Press Done first.` (note); a click on plain text or empty space does nothing and says
 nothing. An undo or redo that would open a randomization's card while moving wells opens instead
 the point it sits at (its first stage, or the stage it sits before, or End), so no card opens. A
-transfer table's heading opens and closes its box as usual (it only shows or hides); its ✎ is
-hidden with the others. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
+transfer table's or run randomization's heading opens and closes its box as usual (it only shows or
+hides); its ✎ is hidden with the others. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
 are off.
 
 ## 8. Starting contents (Start open)
@@ -1985,7 +2004,15 @@ page's configuration (ADR 0009):
   starting like its neighbor; a randomization not run yet showing its own values and its first-run note, and a new
   one starting from the stage before it; each problem message; Randomize: stages in source order, named, each on
   new tips, the stage after keeping its tips, every well filled once; Update with the same seed (same
-  wells) and a new one; a source removed and added; Remove before and after running, and Undo; the
+  wells) and a new one; a source removed and added; Remove before and after running, and Undo; its
+  box (2026-11-05, item 20): a closed run randomization's box opening on a click of its heading to
+  show its stages and closing again (▸/▾, `aria-expanded`, Enter and Space), its ✎ (`Edit
+  randomization`) opening the card (and the box) and closing it, a press on it starting no drag,
+  the randomization still dragged and copied by its heading, the box opening when `‹` and `›` step
+  into its stages and staying open after, closing it with the card open after a run with changes
+  refused, its open state kept across edits and undo but not across a reload; a not-set-up one
+  showing no ▸/▾, its heading and ✎ each opening its card; while moving wells, a run one's heading
+  opening and closing its box, a not-set-up one's saying why it can't; the
   Sources list's boxes (2026-11-05): every new source in a box of its own, blue and sand
   alternating, the headings `New tips` and `New tips · shared by 3 sources`; the tip button on a
   seam between boxes joining them and on a seam inside a box splitting it, each showing only while
