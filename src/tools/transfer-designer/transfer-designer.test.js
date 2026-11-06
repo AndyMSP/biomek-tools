@@ -114,6 +114,8 @@ import {
   moveWell,
   readTransferTable,
   stockWellsOf,
+  sourceWellsOf,
+  hasComponentNamed,
   transferTableProblems,
   sourceSplit,
   transferTableStages,
@@ -6222,6 +6224,15 @@ describe("transfer-designer", () => {
     return held - deadVolumeOf(labware);
   }
 
+  // The sources form message (section 5), ending with `got`, the value named as describeValue names
+  // it, e.g. sourcesFormMessage("5").
+  function sourcesFormMessage(got) {
+    return (
+      "A transfer table's sources must be an object of names (a component or a well label), each with a " +
+      `list of wells, like { Media: [{ labware: "Res1", well: "1" }] }, but got ${got}.`
+    );
+  }
+
   // The test plan: components Media, Drug A and DMSO; Res1 1 holding Media 3,000 µL, Res1 2 Media
   // 10,000 µL, Deep1 A1 Drug A 1,000 µL, Deep1 A3 DMSO 1,000 µL, Deep1 A4 Media and DMSO (a mix);
   // Plate1 A1 to A3 labeled "Control", B1 to B3 "A low"; one stage, "New stage".
@@ -6321,17 +6332,21 @@ describe("transfer-designer", () => {
       {
         column: 1,
         component: "Media",
+        isComponent: true,
+        labelWells: [],
         amounts: [{ row: 1, label: "Control", wells: ["A1", "A2", "A3"].map(plateWell), volume: 1500 }],
       },
       {
         column: 2,
         component: "Drug A",
+        isComponent: true,
+        labelWells: [],
         amounts: [
           { row: 1, label: "Control", wells: ["A1", "A2", "A3"].map(plateWell), volume: 2.5 },
           { row: 2, label: "A low", wells: ["B1", "B2", "B3"].map(plateWell), volume: 0.5 },
         ],
       },
-      { column: 3, component: "DMSO", amounts: [] },
+      { column: 3, component: "DMSO", isComponent: true, labelWells: [], amounts: [] },
     ]);
   });
 
@@ -6358,9 +6373,9 @@ describe("transfer-designer", () => {
       ["A low2", "1", "5 µL", "1", "", ""],
     ]);
     assert.deepEqual(problems, [
-      { row: 0, column: 1, message: "“Drug C” isn't a component in the plan." },
-      { row: 0, column: 3, message: "“Media” is in more than one column. Each component gets one column." },
-      { row: 0, column: 5, message: "Column 6 has amounts but no component." },
+      { row: 0, column: 1, message: "“Drug C” isn't a component or a well label in the plan." },
+      { row: 0, column: 3, message: "“Media” is in more than one column. Each component or label gets one column." },
+      { row: 0, column: 5, message: "Column 6 has amounts but no component or label." },
       { row: 1, column: 2, message: "Control, Media: “-5” isn't an amount in µL." },
       { row: 2, column: 0, message: "Row 3 has no well label." },
       { row: 3, column: 0, message: "“Control” is in more than one row." },
@@ -6441,10 +6456,10 @@ describe("transfer-designer", () => {
     const table = [["L", "Water", "Media", "Drug A", "DMSO"], ["Control", "1", "1", "1", "1"]];
     const sources = { "Drug A": [deepWell("A3")], DMSO: [deepWell("A4")] };
     assert.deepEqual(transferTableProblems(plan, { table, sources }, null), [
-      { row: null, column: null, message: "No well holds only Water at Start. Fill one with Water at Start first." },
-      { row: null, column: null, message: "Choose a well for Media to draw from." },
-      { row: null, column: null, message: `${DEEP} A3 doesn't hold only Drug A at Start, so Drug A can't draw from it.` },
-      { row: null, column: null, message: `${DEEP} A4 doesn't hold only DMSO at Start, so DMSO can't draw from it.` },
+      { row: null, column: 1, message: "No well holds only Water at Start. Fill one with Water at Start first, or label the well to draw from “Water”." },
+      { row: null, column: 2, message: "Choose a well for Media to draw from." },
+      { row: null, column: 3, message: `${DEEP} A3 doesn't hold only Drug A at Start, so Drug A can't draw from it.` },
+      { row: null, column: 4, message: `${DEEP} A4 doesn't hold only DMSO at Start, so DMSO can't draw from it.` },
     ]);
   });
 
@@ -6469,13 +6484,9 @@ describe("transfer-designer", () => {
       message: 'A transfer table\'s draft must be an object with exactly "table" and "sources", but got 5.',
     });
     assert.throws(() => transferTableProblems(plan, { table, sources: 5 }, null), {
-      message:
-        "A transfer table's sources must be an object of component names, each with a list of wells, " +
-        'like { Media: [{ labware: "Res1", well: "1" }] }, but got 5.',
+      message: sourcesFormMessage("5"),
     });
-    assert.throws(() => transferTableProblems(plan, { table, sources: { Dye: [trough("1")] } }, null), {
-      message: 'A transfer table draws Dye from wells, but there\'s no component called "Dye" in this plan.',
-    });
+    assert.deepEqual(transferTableProblems(plan, { table, sources: { ...exampleDraft().sources, Dye: [trough("1")] } }, null), []);
     assert.throws(() => transferTableProblems(plan, { table, sources: { Media: [] } }, null), {
       message: "Media's source wells are empty. List at least one, or leave Media out.",
     });
@@ -6631,10 +6642,10 @@ describe("transfer-designer", () => {
   test("addTransferTable and updateTransferTable refuse a draft with problems with the first one's message", () => {
     const plan = tablePlan();
     const bad = { table: [["L", "Drug C"], ["Control", "1"]], sources: {} };
-    assert.throws(() => addTransferTable(plan, bad, null), { message: "“Drug C” isn't a component in the plan." });
-    assert.throws(() => transferTableStages(plan, bad, null), { message: "“Drug C” isn't a component in the plan." });
+    assert.throws(() => addTransferTable(plan, bad, null), { message: "“Drug C” isn't a component or a well label in the plan." });
+    assert.throws(() => transferTableStages(plan, bad, null), { message: "“Drug C” isn't a component or a well label in the plan." });
     const { plan: added, id } = withExampleTable();
-    assert.throws(() => updateTransferTable(added, id, bad), { message: "“Drug C” isn't a component in the plan." });
+    assert.throws(() => updateTransferTable(added, id, bad), { message: "“Drug C” isn't a component or a well label in the plan." });
     assert.throws(() => updateTransferTable(added, "t9", bad), { message: 'There\'s no transfer table "t9" in the plan.' });
   });
 
@@ -6864,11 +6875,11 @@ describe("transfer-designer", () => {
     assert.equal(new PlanHistory(plan).record(renamed).undo().present, plan);
   });
 
-  test("removeComponent takes its key out of a transfer table's sources, leaving its header and stage", () => {
+  test("removeComponent keeps its key in a transfer table's sources, and its header and stage", () => {
     const { plan, id } = withExampleTable();
     const removed = removeComponent(plan, "Drug A");
     const table = transferTableAt(removed, id);
-    assert.deepEqual(Object.keys(table.sources), ["Media"]);
+    assert.deepEqual(Object.keys(table.sources), ["Media", "Drug A"]);
     assert.equal(table.table[0][2], "Drug A");
     assert.equal(transferTableOf(removed, table.stages[1].stage), id);
     assert.equal(isTransferTableOutOfDate(removed, id), true);
@@ -7015,7 +7026,7 @@ describe("transfer-designer", () => {
       [[5], 'Transfer table 1 must be an object with exactly "id", "table", "sources" and "stages".'],
       [withChanges({ id: "x" }), 'Transfer table 1\'s ID must be "t" and a whole number, like "t1", but got "x".'],
       [withChanges({ table: [] }), "Transfer table 1: A transfer table must be a list of rows, each a list of the same number of cells, each text, but got []."],
-      [withChanges({ sources: { Dye: [trough("1")] } }), 'Transfer table 1: A transfer table draws Dye from wells, but there\'s no component called "Dye" in this plan.'],
+      [withChanges({ sources: { "  ": [trough("1")] } }), `Transfer table 1: ${sourcesFormMessage('"  "')}`],
       [withChanges({ stages: [] }), 'Transfer table 1: its stages must be a non-empty list of objects with exactly "component" and "stage".'],
       [withChanges({ stages: [{ component: "Media", stage: "9" }] }), 'Transfer table 1: its stage "9" isn\'t in the plan.'],
       [withChanges({ stages: [{ component: "Media", stage: media }, { component: "Drug A", stage: media }] }), `Transfer table 1: stage "${media}" is listed twice.`],
@@ -7155,7 +7166,7 @@ describe("transfer-designer", () => {
     });
   });
 
-  test("pasting a transfer table checks its values; sources naming no component here are dropped", () => {
+  test("pasting a transfer table checks its values; sources naming no component here are kept", () => {
     const { plan, id } = withExampleTable();
     const copied = copyOf(plan, [{ kind: "transferTable", id }]);
     const badStage = structuredClone(copied);
@@ -7163,12 +7174,12 @@ describe("transfer-designer", () => {
     assert.throws(() => pasteItems(plan, badStage, between(0)), {
       message: "Can't paste: item 1: its stage for Dye has no column in its table.",
     });
-    // Into a plan without Drug A: its key is dropped, and the pasted table is out of date.
+    // Into a plan without Drug A: its key is kept, and the pasted table is out of date.
     let other = tablePlan();
     other = removeComponent(other, "Drug A");
     const { plan: pasted, placed } = pasteItems(other, copied, between(1));
     const copy = transferTableAt(pasted, placed[0].id);
-    assert.deepEqual(Object.keys(copy.sources), ["Media"]);
+    assert.deepEqual(Object.keys(copy.sources), ["Media", "Drug A"]);
     assert.equal(isTransferTableOutOfDate(pasted, copy.id), true);
     assert.throws(() => pasteItems(plan, copied, inTable(1, 0)), {
       message: "Box 1 is a transfer table: only its own stages can be moved inside it.",
@@ -7266,6 +7277,261 @@ describe("transfer-designer", () => {
     assert.equal(isWellUsed(sourceOnly, trough("3")), false);
   });
 
+  // --- Transfer tables: label-named columns (transfer-designer.md, section 6, item 24) ---
+
+  // The test plan (tablePlan) with Deep1 A4 (the Media and DMSO mix) labeled "Premix", and Deep1 B1
+  // (holding DMSO) and Deep1 B2 (empty) labeled "Media".
+  function labelPlan() {
+    let plan = tablePlan();
+    plan = setWellLabel(plan, deepWell("A4"), "Premix");
+    plan = addToWells(plan, [deepWell("B1")], "DMSO", 1000);
+    plan = setWellLabel(plan, deepWell("B1"), "Media");
+    return setWellLabel(plan, deepWell("B2"), "Media");
+  }
+
+  // A draft with one column, `name`, adding `volume` µL into every "Control" well, drawing from
+  // `wells`, e.g. oneColumnDraft("Premix", [deepWell("A4")]).
+  function oneColumnDraft(name, wells, volume = "10") {
+    return { table: [["L", name], ["Control", volume]], sources: { [name]: wells } };
+  }
+
+  // The problems' messages of a draft on `plan`, at the end.
+  function problemMessages(plan, draft) {
+    return transferTableProblems(plan, draft, null).map((problem) => problem.message);
+  }
+
+  test("label-named columns, reading: a label header, a component and label header, and the header problems", () => {
+    const plan = labelPlan();
+    const { columns, problems } = readTransferTable(plan, [["L", "Premix ", "Media"], ["Control", "10", "5"]]);
+    assert.deepEqual(problems, []);
+    const controls = ["A1", "A2", "A3"].map(plateWell);
+    assert.deepEqual(columns, [
+      {
+        column: 1,
+        component: "Premix",
+        isComponent: false,
+        labelWells: [deepWell("A4")],
+        amounts: [{ row: 1, label: "Control", wells: controls, volume: 10 }],
+      },
+      {
+        column: 2,
+        component: "Media",
+        isComponent: true,
+        labelWells: [deepWell("B1"), deepWell("B2")],
+        amounts: [{ row: 1, label: "Control", wells: controls, volume: 5 }],
+      },
+    ]);
+    const bad = readTransferTable(plan, [["L", "Drug C", "Premix", "Premix", "", "premix"], ["Control", "1", "1", "1", "1", ""]]);
+    assert.deepEqual(bad.problems, [
+      { row: 0, column: 1, message: "“Drug C” isn't a component or a well label in the plan." },
+      { row: 0, column: 3, message: "“Premix” is in more than one column. Each component or label gets one column." },
+      { row: 0, column: 4, message: "Column 5 has amounts but no component or label." },
+      { row: 0, column: 5, message: "“premix” isn't a component or a well label in the plan." },
+    ]);
+  });
+
+  test("hasComponentNamed: true for a component, exactly; false for a label, another case or a non-name", () => {
+    const plan = labelPlan();
+    assert.equal(hasComponentNamed(plan, "Media"), true);
+    assert.equal(hasComponentNamed(plan, "media"), false);
+    assert.equal(hasComponentNamed(plan, "Premix"), false);
+    assert.equal(hasComponentNamed(plan, 5), false);
+  });
+
+  test("sourceWellsOf: stock wells, then labeled wells, each in deck order, a labeled stock well once", () => {
+    let plan = labelPlan();
+    assert.deepEqual(sourceWellsOf(plan, "Media"), [trough("1"), trough("2"), deepWell("B1"), deepWell("B2")]);
+    assert.deepEqual(sourceWellsOf(plan, "Premix"), [deepWell("A4")]);
+    assert.deepEqual(sourceWellsOf(plan, " Premix "), [deepWell("A4")]);
+    assert.deepEqual(sourceWellsOf(plan, "premix"), []);
+    assert.deepEqual(sourceWellsOf(plan, "Drug A"), [deepWell("A1")]);
+    assert.deepEqual(sourceWellsOf(plan, "Drug C"), []);
+    plan = setWellLabel(plan, trough("2"), "Media");
+    assert.deepEqual(sourceWellsOf(plan, "Media"), [trough("1"), trough("2"), deepWell("B1"), deepWell("B2")]);
+    assert.throws(() => sourceWellsOf(plan, 5), {
+      message: "A column's name must be a component or a well label, but got 5.",
+    });
+    assert.throws(() => sourceWellsOf(plan, "  "), {
+      message: 'A column\'s name must be a component or a well label, but got "  ".',
+    });
+  });
+
+  test("label-named columns, a draft's problems: a labeled well may hold anything; others give their messages", () => {
+    let plan = labelPlan();
+    assert.deepEqual(problemMessages(plan, oneColumnDraft("Premix", [deepWell("A4")])), []);
+    assert.deepEqual(problemMessages(plan, oneColumnDraft("Media", [deepWell("B2")])), []);
+    assert.deepEqual(problemMessages(plan, { table: oneColumnDraft("Premix", []).table, sources: {} }), [
+      "Choose a well for “Premix” to draw from.",
+    ]);
+    assert.deepEqual(problemMessages(plan, oneColumnDraft("Premix", [trough("1")])), [
+      `${RESERVOIR} 1 isn't labeled “Premix”, so “Premix” can't draw from it.`,
+    ]);
+    assert.deepEqual(problemMessages(plan, oneColumnDraft("Media", [deepWell("A1")])), [
+      `${DEEP} A1 doesn't hold only Media at Start and isn't labeled “Media”, so Media can't draw from it.`,
+    ]);
+    assert.deepEqual(problemMessages(plan, oneColumnDraft("Drug A", [deepWell("A4")])), [
+      `${DEEP} A4 doesn't hold only Drug A at Start, so Drug A can't draw from it.`,
+    ]);
+    // Both DMSO stocks emptied (Deep1 B1 holds only DMSO in this plan too).
+    plan = emptyWells(plan, [deepWell("A3"), deepWell("B1")]);
+    assert.deepEqual(problemMessages(plan, oneColumnDraft("DMSO", [deepWell("A3")])), [
+      "No well holds only DMSO at Start. Fill one with DMSO at Start first, or label the well to draw from “DMSO”.",
+    ]);
+    assert.deepEqual(problemMessages(plan, oneColumnDraft("Control", [plateWell("A1")])), [
+      `${PLATE} A1 is both a source of “Control” and a well the table fills. Choose another well.`,
+    ]);
+  });
+
+  test("label-named columns, adding: a stage named after the label, drawing from the mixed well", () => {
+    const plan = labelPlan();
+    const { plan: added, id } = addTransferTable(plan, oneColumnDraft("Premix", [deepWell("A4")]), null);
+    const [stage] = tableStages(added, id);
+    assert.deepEqual(transferTableAt(added, id).stages, [{ component: "Premix", stage }]);
+    assert.equal(added.stageList.get(stage).name, "Premix");
+    assert.deepEqual(
+      outlinesIn(added, stage),
+      ["A1", "A2", "A3"].map((well) => ({ source: deepWell("A4"), destination: plateWell(well), volume: 10 })),
+    );
+    // The mix is drawn in proportion: half Media and half DMSO, as contents tracking gives it.
+    const end = replay(added.startingContents, added.operationList);
+    assert.deepEqual(end.componentsOf(DEEP, "A4"), { Media: 485, DMSO: 485 });
+    assert.deepEqual(end.componentsOf(PLATE, "A1"), { Media: 5, DMSO: 5 });
+    // An empty labeled well has no table problem: its transfers show the ordinary contents problem.
+    const empty = addTransferTable(plan, oneColumnDraft("Media", [deepWell("B2")]), null);
+    assert.deepEqual(stagesWithContentsProblem(empty.plan), new Set(tableStages(empty.plan, empty.id)));
+  });
+
+  test("label-named columns, splitting: two labeled wells split by what each holds just before the table", () => {
+    let plan = labelPlan();
+    plan = emptyWells(plan, [deepWell("B1")]);
+    plan = addToWells(plan, [deepWell("B1")], "DMSO", deadVolumeOf(DEEP) + 2 * 190 + 50);
+    plan = addToWells(plan, [deepWell("B2")], "DMSO", 1000);
+    const draft = oneColumnDraft("Media", [deepWell("B1"), deepWell("B2")], "190");
+    assert.deepEqual(problemMessages(plan, draft), []);
+    assert.deepEqual(sourceSplit(plan, draft, "Media", null), [
+      { well: deepWell("B1"), count: 2 },
+      { well: deepWell("B2"), count: 1 },
+    ]);
+    // Deep1 B1 emptied (down to its dead volume) by an earlier stage: every transfer draws from B2.
+    const drawn = addTransfer(plan, {
+      ...transferTo("1", "H12", usableOf(DEEP, deadVolumeOf(DEEP) + 2 * 190 + 50)),
+      source: deepWell("B1"),
+    });
+    assert.deepEqual(sourceSplit(drawn, draft, "Media", null), [
+      { well: deepWell("B1"), count: 0 },
+      { well: deepWell("B2"), count: 3 },
+    ]);
+    const [entry] = transferTableStages(drawn, draft, null);
+    assert.ok(entry.transfers.every((transfer) => transfer.source.well === "B2"));
+  });
+
+  test("label-named columns, out of date: the label cleared or moved; not a change in what one source well holds, a move, or a second labeled well", () => {
+    const { plan, id } = addTransferTable(labelPlan(), oneColumnDraft("Premix", [deepWell("A4")]), null);
+    assert.equal(isTransferTableOutOfDate(plan, id), false);
+    const cleared = setWellLabel(plan, deepWell("A4"), "");
+    assert.equal(isTransferTableOutOfDate(cleared, id), true);
+    assert.equal(isTransferTableOutOfDate(setWellLabel(cleared, deepWell("A5"), "Premix"), id), true);
+    const moreDmso = addTransfer(plan, { ...transferTo("1", "A4", 100), source: deepWell("A3"), destination: deepWell("A4") });
+    assert.equal(isTransferTableOutOfDate(moreDmso, id), false);
+    const moved = moveWell(plan, deepWell("A4"), deepWell("A6"));
+    assert.deepEqual(transferTableAt(moved, id).sources.Premix, [deepWell("A6")]);
+    assert.equal(isTransferTableOutOfDate(moved, id), false);
+    const second = setWellLabel(plan, deepWell("A5"), "Premix");
+    assert.equal(isTransferTableOutOfDate(second, id), false);
+    assert.deepEqual(sourceWellsOf(second, "Premix"), [deepWell("A4"), deepWell("A5")]);
+  });
+
+  test("label-named columns, renameComponent: a component header that's also a label follows the component; a label header isn't touched", () => {
+    const table = [["L", "Media", "Premix"], ["Control", "10", ""], ["A low", "", "5"]];
+    const { plan, id } = addTransferTable(labelPlan(), { table, sources: { Media: [deepWell("B1")], Premix: [deepWell("A4")] } }, null);
+    assert.equal(isTransferTableOutOfDate(plan, id), false);
+    const renamed = renameComponent(plan, "Media", "DMEM");
+    const stored = transferTableAt(renamed, id);
+    assert.deepEqual(stored.table[0], ["L", "DMEM", "Premix"]);
+    assert.deepEqual(Object.keys(stored.sources), ["DMEM", "Premix"]);
+    assert.deepEqual(stored.stages.map((owned) => owned.component), ["DMEM", "Premix"]);
+    assert.equal(renamed.stageList.get(stored.stages[0].stage).name, "DMEM");
+    assert.equal(renamed.stageList.get(stored.stages[1].stage).name, "Premix");
+    // Deep1 B1 is labeled "Media", not "DMEM", so it's no longer a source well of the column.
+    assert.equal(isTransferTableOutOfDate(renamed, id), true);
+  });
+
+  test("label-named columns, renameComponent to a column's name: refused with both columns, else an unused key gives way", () => {
+    const both = [["L", "Media", "Premix"], ["Control", "10", "5"]];
+    const { plan } = addTransferTable(labelPlan(), { table: both, sources: { Media: [trough("1")], Premix: [deepWell("A4")] } }, null);
+    assert.throws(() => renameComponent(plan, "Media", "Premix"), {
+      message: "A transfer table already has a column “Premix”. Choose another name, or change that column first.",
+    });
+    // No Media column: an unused Media key replaces an unused Premix key, in Media's place.
+    const unused = { table: [["L", "Drug A"], ["Control", "1"]], sources: { Media: [trough("1")], "Drug A": [deepWell("A1")], Premix: [deepWell("A4")] } };
+    const added = addTransferTable(labelPlan(), unused, null);
+    const renamed = renameComponent(added.plan, "Media", "Premix");
+    assert.deepEqual(transferTableAt(renamed, added.id).sources, { Premix: [trough("1")], "Drug A": [deepWell("A1")] });
+    // A Premix column whose key is in use keeps it; the unused Media key goes.
+    const used = { table: [["L", "Premix"], ["Control", "1"]], sources: { Media: [trough("1")], Premix: [deepWell("A4")] } };
+    const withUsed = addTransferTable(labelPlan(), used, null);
+    const renamedUsed = renameComponent(withUsed.plan, "Media", "Premix");
+    assert.deepEqual(transferTableAt(renamedUsed, withUsed.id).sources, { Premix: [deepWell("A4")] });
+  });
+
+  test("label-named columns, removeComponent: the key stays; up to date only while the header is a label and its wells are labeled", () => {
+    const table = [["L", "DMSO"], ["Control", "10"]];
+    const stock = addTransferTable(tablePlan(), { table, sources: { DMSO: [deepWell("A3")] } }, null);
+    const removed = removeComponent(stock.plan, "DMSO");
+    assert.deepEqual(Object.keys(transferTableAt(removed, stock.id).sources), ["DMSO"]);
+    assert.equal(isTransferTableOutOfDate(removed, stock.id), true);
+    const labeledPlan = setWellLabel(tablePlan(), deepWell("A3"), "DMSO");
+    const labeled = addTransferTable(labeledPlan, { table, sources: { DMSO: [deepWell("A3")] } }, null);
+    assert.equal(isTransferTableOutOfDate(removeComponent(labeled.plan, "DMSO"), labeled.id), false);
+    // Drawing from a stock well that isn't labeled, with another well labeled DMSO: out of date.
+    const otherLabeled = setWellLabel(tablePlan(), deepWell("A5"), "DMSO");
+    const fromStock = addTransferTable(otherLabeled, { table, sources: { DMSO: [deepWell("A3")] } }, null);
+    assert.equal(isTransferTableOutOfDate(removeComponent(fromStock.plan, "DMSO"), fromStock.id), true);
+  });
+
+  test("label-named columns, pasting: the key is kept; up to date only where the plan's labeled wells are its sources", () => {
+    const { plan, id } = addTransferTable(labelPlan(), oneColumnDraft("Premix", [deepWell("A4")]), null);
+    const copied = copyOf(plan, [{ kind: "transferTable", id }]);
+    // The test plan with Deep1 A4 labeled `label`.
+    const withLabel = (label) => setWellLabel(tablePlan(), deepWell("A4"), label);
+    for (const [target, outOfDate] of [
+      [tablePlan(), true],
+      [withLabel("Premix"), false],
+      [setWellLabel(tablePlan(), deepWell("A5"), "Premix"), true],
+    ]) {
+      const { plan: pasted, placed } = pasteItems(target, copied, between(1));
+      const copy = transferTableAt(pasted, placed[0].id);
+      assert.deepEqual(copy.sources, { Premix: [deepWell("A4")] });
+      assert.equal(isTransferTableOutOfDate(pasted, copy.id), outOfDate);
+    }
+  });
+
+  test("label-named columns, the form: a key naming no component is accepted; a blank key is refused", () => {
+    const plan = labelPlan();
+    assert.deepEqual(problemMessages(plan, oneColumnDraft("Premix", [deepWell("A4")])), []);
+    for (const key of ["", "  "]) {
+      assert.throws(() => transferTableProblems(plan, { table: exampleTable(), sources: { [key]: [trough("1")] } }, null), {
+        message: sourcesFormMessage(`"${key}"`),
+      });
+    }
+  });
+
+  test("label-named columns, settings by name: an update keeps a label column's stage, also through renamedFrom", () => {
+    let { plan, id } = addTransferTable(labelPlan(), oneColumnDraft("Premix", [deepWell("A4")]), null);
+    const [stage] = tableStages(plan, id);
+    plan = changeStageSettings(plan, stage, otherSettings());
+    const changed = updateTransferTable(plan, id, oneColumnDraft("Premix", [deepWell("A4")], "20"));
+    assert.deepEqual(tableStages(changed, id), [stage]);
+    assert.deepEqual(changed.stageList.get(stage).settings, otherSettings());
+    const relabeled = setWellLabel(plan, deepWell("A5"), "Premix 2");
+    const renamed = updateTransferTable(relabeled, id, oneColumnDraft("Premix 2", [deepWell("A5")]), {
+      renamedFrom: { "Premix 2": "Premix" },
+    });
+    assert.deepEqual(tableStages(renamed, id), [stage]);
+    assert.equal(renamed.stageList.get(stage).name, "Premix 2");
+    assert.deepEqual(renamed.stageList.get(stage).settings, otherSettings());
+  });
+
   test("transfer table functions leave the plan and the draft unchanged; a plan's table and sources are frozen", () => {
     const plan = tablePlan();
     const before = snapshot(plan);
@@ -7273,6 +7539,7 @@ describe("transfer-designer", () => {
     const draftBefore = JSON.stringify(draft);
     readTransferTable(plan, draft.table);
     stockWellsOf(plan, "Media");
+    sourceWellsOf(plan, "Media");
     transferTableProblems(plan, draft, null);
     sourceSplit(plan, draft, "Media", null);
     transferTableStages(plan, draft, null);

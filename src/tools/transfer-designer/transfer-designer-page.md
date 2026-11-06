@@ -178,6 +178,13 @@
 > "Workflows"), so the choices made for Andy are listed in its pull request. They become Final once
 > built and tested by Andy.
 
+> **Draft changes (2026-11-06, label-named sources, item 24 of v0.2.0):** in the transfer table
+> wizard, a column can be named by a well label and drawn from the wells with that label: the Table
+> step's help text, header marks and summary, and the Sources step's text, menus and its
+> no-source-well wording (sections 7 and 16; `transfer-designer.md`, "Transfer tables"). Written in
+> the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its
+> pull request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -1225,13 +1232,14 @@ clicked. From the top:
 **Table step, before a paste.** A paste zone across the body: a dashed blue box (2px `#9DB7DB`,
 8px corners, blue tint), one line high, saying `Click here and press Ctrl+V to paste a table from
 Excel`, focused when the step opens; under it, in gray: `The table's first row is a header: the
-first column is a well label, each other column a component's name. Each row after it gives the µL
-of each component to add to every well with that label. Blank or 0 adds nothing.` A paste into the
+first column is a well label, each other column a component's name, or a well label to draw from
+the wells with that label. Each row after it gives the µL to add to every well with that label.
+Blank or 0 adds nothing.` (since 2026-11-06, item 24) A paste into the
 zone takes the clipboard's plain text, read with `parsePastedTable` (`pasted-table.md`): rows whose
 cells are all blank are dropped (Excel's empty lines), and shorter rows are filled with empty cells
 to the widest row's length, so the grid is a rectangle. With fewer than two rows or two columns
 left, the zone stays and says, in red under it, `Paste a table with a header row, at least one
-row of well labels, and at least one component column.` Typing in the zone does nothing.
+row of well labels, and at least one column of amounts.` Typing in the zone does nothing.
 
 **One paste per wizard** (Andy, 2026-11-05): once a table is in, the zone is gone, and the wizard
 never takes another paste as a table: a different table means Cancel (or Remove) and a new
@@ -1244,7 +1252,12 @@ pointed at (input border, white) or focused (blue border, white). The header row
 column have the sand tint (`#F5F1E8`); the header row is semibold and stays in view while the
 frame scrolls; amounts are right-aligned, 13px.
 - **Matched cells**: a header naming a component shows that component's swatch (10px rounded
-  square) before its text; a label some wells have shows, after its text, `3 wells` (11px gray).
+  square) before its text; a header that's a well label (and no component) shows no swatch, and
+  after its text `label · 2 wells` (11px gray; `1 well`); a header that's both shows the swatch and,
+  after its text, `and a label · 2 wells` (item 24, 2026-11-06: the column draws from either kind of
+  well, so both are shown). A header cell with a problem (e.g. a column to its left has the same
+  header) shows no `label · …` mark: only its red and its message. A row's label some wells have
+  shows, after its text, `3 wells` (11px gray).
 - **Problem cells** (`readTransferTable`'s problems, by `row` and `column`) are red (red tint
   background, red text, semibold), with the problem's message as their tooltip.
 - **Editing a cell**: a cell's box selects its text when focused. A change is read when the cell is
@@ -1268,38 +1281,48 @@ frame scrolls; amounts are right-aligned, 13px.
   goes from cell to cell. The header row and the label column can't be deleted. A table left with
   only the header row, or only the label column, is shown as it is, with Next disabled (its problem
   is that it adds nothing).
-- **Under it**: with no problems, `6 well labels (18 wells), 4 components.` in gray (`components`
-  counting columns that make a stage; `1 well label`, `1 well`, `1 component`); otherwise the
+- **Under it**: with no problems, `6 well labels (18 wells), 4 columns.` in gray (`columns`
+  counting columns that make a stage; `1 well label`, `1 well`, `1 column`; `components` until
+  2026-11-06, since a column may now be a label); otherwise the
   problems in a red-tinted box (8px corners), one per line, at most 6, then `…and 3 more.`, then
   `Fix the red cells above: click one and type.` in gray.
 
 **Sources step** (Andy, 2026-11-05: chosen from a menu, since the dialog hides the deck). In gray:
-`Each stage draws from a well holding only its component at Start. Add more wells when one can't
-hold enough: they're used in order, each until the next transfer would reach into its dead volume.`
-Then a table, `Stage` and `Draws from`, one row per column that makes a stage, in column order:
-- **Stage**: `1. ` then the component's swatch and name, semibold.
+`Each stage draws from a well holding only its component at Start, or, for a column named by a
+well label, from the wells with that label, whatever they hold. Add more wells when one can't hold
+enough: they're used in order, each until the next transfer would reach into its dead volume.`
+(the second clause since 2026-11-06, item 24). Then a table, `Stage` and `Draws from`, one row per
+column that makes a stage, in column order:
+- **Stage**: `1. ` then the column's swatch (a component's; none for a label only) and its name,
+  semibold.
 - **Draws from**: its wells, one line each, numbered in a small gray circle (`1`, `2` …), each a
-  menu of the component's stock wells (`stockWellsOf`) named `Res1 1 · Media stock` (the well, then
-  ` · ` and its label if it has one), offering the line's own well and the stock wells no other line
-  of this column has. With more than one line, each has a `×` (`Don't draw from this well`) taking
-  it out. Then `+ Another well` (small action button) while a stock well isn't on a line, adding the
-  first such. With more than one line, under them in 11px gray, how the transfers split
-  (`sourceSplit`): `Res1 1: 5 wells · Res1 2: 13 wells`.
-- **A new column's wells**: the first stock well, chosen for it when the column first makes a stage
-  (and kept in the draft's `sources`, so a column deleted and brought back keeps its wells); a well
-  that no longer holds only its component is dropped from its list (falling back to the first stock
-  well if none is left).
-- **No stock well**: in red, `No well holds only this at Start`, and under the table the problem
-  `No well holds only Media at Start. Cancel, fill one at Start, and start the transfer table
-  again.` (Cancel discards the paste, so it says so.) The page knows this case from
-  `stockWellsOf(plan, component)` being `[]`, and shows its own wording in place of the logic's;
-  every other problem on this step is shown as the logic gives it.
+  menu of the column's source wells (`sourceWellsOf`, item 24: its stock wells, then its labeled
+  wells) named `Res1 1 · Media stock` (the well, then ` · ` and its label if it has one), offering
+  the line's own well and the source wells no other line of this column has. A labeled well is
+  offered whatever it holds, and nothing on this step says what it holds (the deck shows it). With
+  more than one line, each has a `×` (`Don't draw from this well`) taking it out. Then `+ Another
+  well` (small action button) while a source well isn't on a line, adding the first such. With more
+  than one line, under them in 11px gray, how the transfers split (`sourceSplit`): `Res1 1: 5 wells
+  · Res1 2: 13 wells`.
+- **A new column's wells**: the first source well, chosen for it when the column first makes a
+  stage (and kept in the draft's `sources`, so a column deleted and brought back keeps its wells); a
+  well that's no longer one of its source wells (it no longer holds only its component at Start, or
+  no longer has the label) is dropped from its list (falling back to the first source well if none
+  is left).
+- **No source well**: in red, `No well holds only this at Start`, and under the table the problem
+  `No well holds only Media at Start. Cancel, fill one at Start or label the well to draw from
+  “Media”, and start the transfer table again.` (Cancel discards the paste, so it says so.) The
+  page knows this case from `sourceWellsOf(plan, name)` being `[]` (only a component with no stock
+  well and no well with its label: a label always has wells), and shows its own wording in place of
+  the logic's problem for that column (found by the problem's `column`, not by its text); every
+  other problem on this step is shown as the logic gives it.
 
 **Review step** (Andy, 2026-11-05: kept, as the last check before the plan changes; read-only). In
 gray: `4 stages, each on new tips, before stage 3, “Drugs”.` (`at the end of the run`, or `where its
 stages are now` for one in the plan), then ` Change a stage's pipetting or tips afterwards with its ✎
 in the Stages column.` Then a table from `transferTableStages` (with `renamedFrom`): `Stage` (as on
-Sources), `From` (its wells, `Res1 1, then Res1 2`), `Into` (`9 wells`), `Total` (µL, its
+Sources), `From` (its wells, `Res1 1, then Res1 2`; a labeled well with its label, `Deep1 A4 ·
+Premix`, as on Sources), `Into` (`9 wells`), `Total` (µL, its
 transfers' volumes added, `1710 µL`, as numbers are shown, section 13), `Aspirate · Dispense`
 (each end's mode name, `modeOf`, `(other)` if none, with ` ⟳` after an end that mixes: `Slow ⟳ ·
 Medium`) and `Tips` (`4 × BC230`: probes × tip type). When a stage's largest amount is more than its tip
@@ -2352,6 +2375,20 @@ page's configuration (ADR 0009):
   out of date; Cancel, Escape and the backdrop changing nothing; Remove and Undo; moving a
   transfer table by its heading, copying and pasting it, and moving a stage of it alone out of it refused (copying one alone pastes an ordinary stage); saving
   and opening a plan with one (version 11); moving a source well with Move wells;
+- transfer table columns named by a well label (2026-11-06, item 24): a header that's a label only
+  (no swatch, `label · 2 wells`), one that's a component and a label (swatch, `and a label · 2
+  wells`), one that's neither (red, its message); Sources offering a component's stock wells then
+  its labeled wells, a label column offering its labeled wells, including one holding a mix and one
+  empty at Start (offered; nothing says what it holds); Add drawing from a mixed labeled well (the
+  stage named after the label, the deck's contents showing the mix drawn from); an empty labeled
+  well's transfers showing the ordinary contents problem, not a table problem; two labeled wells
+  splitting, the split line right; the label cleared on a source well making the table `needs
+  update`, and Update after choosing its sources again; a component with neither stock well nor
+  label: the Sources step's wording with "label the well"; a column named by a label a row also
+  uses: its first source well chosen automatically, and the problem `… is both a source of
+  “Control” and a well the table fills. Choose another well.` shown, Next disabled. Existing
+  checks whose expected text changes: the paste zone's error (`… at least one column of
+  amounts.`), the Table step's summary (`4 columns.`) and the no-stock-well wording on Sources;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels;
 - the version line: the built file's name and the line show the same version; a click selects the

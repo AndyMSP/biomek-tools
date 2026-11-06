@@ -449,6 +449,16 @@ Last updated: 2026-11-05
   2026-11-06)**: code, tests and REPL of `copyDeck` and `pasteDeck`, and the page's two buttons;
   the specifications and the build each reviewed by a separate agent, and checked in headless
   Chrome. Still to check by Andy.
+- **Decided: transfer table columns named by a well label** (Andy, 2026-11-06; item 24, below): a
+  header can be a well label, and the column then draws from the wells with that label, whatever
+  they hold (a premix, or a dilution made earlier in the run). **Specified** (Draft, 2026-11-06, in
+  the hands-off workflow): `transfer-designer.md`, "Transfer tables" (a column's name,
+  `sourceWellsOf`, the draft's problems, `renameComponent`, `removeComponent`, well labels,
+  pasting), the wizard's Table and Sources steps (`transfer-designer-page.md`, section 7), ADR 0019
+  amended, glossary "Transfer table". It changes no plan files and no Biomek file format.
+  **Built (#143, 2026-11-06)**: logic, tests and REPL (`sourceWellsOf`, `hasComponentNamed`), and
+  the wizard's Table, Sources and Review steps; the specifications and the build each reviewed by
+  a separate agent, and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1011,6 +1021,30 @@ added on 2026-10-28 (Andy).
     Shaped in a preview (2026-11-06). **Specified** (Draft, 2026-11-06) and **Built (#142,
     2026-11-06)**: see "Where things stand".
 
+24. **A transfer table column can draw from wells named by their label** (Andy, 2026-11-06), so a
+    premix or dilution can be a source, not only a well holding nothing but one component.
+    Decided (Andy, 2026-11-06):
+    - **A header can be a well label**, matching it exactly: the column draws from the wells with
+      that label. The existing rule stands for a header that's a component: wells holding nothing
+      but it at Start.
+    - **A label-named well can hold anything**, including a mix made earlier in the run, and the
+      table doesn't check what's in it: its transfers are ordinary transfers, and an empty or
+      overdrawn well shows as any contents problem does. Contents matter only for splitting a
+      column across several wells, as now (taken just before the table).
+    - **A header that is both a component and a label** offers both kinds of well (the pure stock
+      wells and the wells with that label); a header that is neither is a problem, as now.
+    - **Several wells with the label** are all offered on the Sources step and used in the order
+      chosen, as several stock wells are now.
+    - **Out of date as now:** a chosen source well losing its label (relabeled or unlabeled) or the
+      split across several wells changing makes it `needs update`; a change to what's in a
+      label-named well with one source well doesn't. Moving a labeled source well keeps it up to
+      date (the label and transfers move with it), and putting the label on a second well only
+      adds that well as a choice (corrected after the specification review, 2026-11-06). A label that's also a row label is a source and a destination, refused as now.
+    - **Hands-off workflow** (Andy, 2026-11-06). No plan-file format change: `sources` and `stages`
+      are keyed by the column's name, a component's or a label, as before.
+    **Specified** (Draft, 2026-11-06, in the hands-off workflow) and **Built (#143, 2026-11-06)**:
+    see "Where things stand".
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
@@ -1050,7 +1084,10 @@ final Biomek runs, so they test the files as they will be:
     then build. It changes no Biomek files or plan files, so it needn't come before the final runs.
 17. Copying the deck (item 23), added on 2026-11-06: preview, specifications, then build. It
     changes no Biomek files or plan files, so it needn't come before the final runs.
-18. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+18. Transfer table columns named by a well label (item 24), added on 2026-11-06: specifications,
+    then build. It writes ordinary stages and transfers and changes no plan files, so it needn't
+    come before the final runs.
+19. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a

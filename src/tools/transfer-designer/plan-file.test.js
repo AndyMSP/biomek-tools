@@ -1649,6 +1649,45 @@ describe("plan-file", () => {
     assert.equal(isTransferTableOutOfDate(opened, id), false);
   });
 
+  // --- Label-named transfer table columns (plan-file.md, "Version 12", item 24) ---
+
+  // The transfer table plan (transferTablePlan) with DEEP A4 holding Media and Drug A, labeled
+  // "Premix", and a second transfer table with a "Premix" column drawing from it into "A low":
+  // { plan, id } (the second table's ID).
+  function premixTablePlan() {
+    let { plan } = transferTablePlan();
+    const premix = { labware: DEEP, well: "A4" };
+    plan = addToWells(plan, [premix], "Media", 500);
+    plan = addToWells(plan, [premix], "Drug A", 50);
+    plan = setWellLabel(plan, premix, "Premix");
+    const table = [["Label", "Premix"], ["A low", "20"]];
+    const added = addTransferTable(plan, { table, sources: { Premix: [premix] } }, null);
+    return { plan: added.plan, id: added.id };
+  }
+
+  test("a version 11 and a version 12 file with a label-named column open, its transfer table up to date", () => {
+    const { plan, id } = premixTablePlan();
+    const file = JSON.parse(planToText(plan, SAVED_BY));
+    assert.equal(file.version, 12);
+    assert.deepEqual(Object.keys(file.transferTables[1].sources), ["Premix"]);
+    for (const version of [file, asVersion11(file)]) {
+      const opened = open(version);
+      assert.deepEqual(contentsOf(opened), contentsOf(plan));
+      assert.deepEqual(transferTableAt(opened, id).table[0], ["Label", "Premix"]);
+      assert.deepEqual(transferTableAt(opened, id).stages.map((owned) => owned.component), ["Premix"]);
+      assert.equal(isTransferTableOutOfDate(opened, id), false);
+    }
+  });
+
+  test("a version 12 file saved before label-named columns (component columns only) opens unchanged and up to date", () => {
+    const { plan, id } = transferTablePlan();
+    const file = JSON.parse(planToText(plan, SAVED_BY));
+    const opened = open(structuredClone(file));
+    assert.deepEqual(JSON.parse(planToText(opened, SAVED_BY)), file);
+    assert.deepEqual(transferTableAt(opened, id).sources, transferTableAt(plan, id).sources);
+    assert.equal(isTransferTableOutOfDate(opened, id), false);
+  });
+
   test("a transfer table's stages are renumbered when a file opens", () => {
     const { plan, id } = transferTablePlan();
     const file = JSON.parse(planToText(plan, SAVED_BY));

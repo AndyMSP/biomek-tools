@@ -116,7 +116,8 @@ import {
   pasteDeck,
   moveWell,
   readTransferTable,
-  stockWellsOf,
+  sourceWellsOf,
+  hasComponentNamed,
   transferTableProblems,
   sourceSplit,
   transferTableStages,
@@ -704,7 +705,7 @@ function refresh() {
   openBoxOfNewlyOpenEntry(plan);
   // Undo or redo can take the picked component away (e.g. undoing a rename): then, as when a picked
   // component is removed, the first component is picked, or the eraser if there's none.
-  if (brush.pick.kind === "component" && !hasComponent(plan, brush.pick.name)) {
+  if (brush.pick.kind === "component" && !hasComponentNamed(plan, brush.pick.name)) {
     const first = plan.components[0];
     brush.pick = first === undefined ? { kind: "eraser" } : { kind: "component", name: first.name };
   }
@@ -4340,7 +4341,8 @@ function wizardReading(plan) {
   return wizard.draft.table === null ? null : readTransferTable(plan, wizard.draft.table);
 }
 
-// The draft's columns that make a stage (a component and an amount), in column order.
+// The draft's columns that make a stage (a name, a component's or a well label's, and an amount),
+// in column order.
 function makingColumns(plan) {
   const reading = wizardReading(plan);
   return reading === null ? [] : reading.columns.filter((column) => column.amounts.length > 0);
@@ -4389,19 +4391,20 @@ function wizardRenamedFrom() {
 }
 
 // Keeps the draft's sources usable (section 7, "A new column's wells"): each column making a stage
-// draws from its stock wells only, a well that no longer holds only its component being dropped,
-// and gets the first stock well when it has none left (or none yet). Other columns' wells are kept,
-// so a column deleted and brought back keeps them.
+// draws from its source wells only (sourceWellsOf: its stock wells, then the wells with its name as
+// their label), a well that's no longer one being dropped, and gets the first source well when it
+// has none left (or none yet). Other columns' wells are kept, so a column deleted and brought back
+// keeps them.
 function keepDraftSourcesUsable(plan) {
   const { sources } = wizard.draft;
   for (const { component } of makingColumns(plan)) {
-    const stock = stockWellsOf(plan, component);
-    const stockKeys = new Set(stock.map(wellKey));
-    const kept = (sources[component] ?? []).filter((end) => stockKeys.has(wellKey(end)));
+    const allowed = sourceWellsOf(plan, component);
+    const allowedKeys = new Set(allowed.map(wellKey));
+    const kept = (sources[component] ?? []).filter((end) => allowedKeys.has(wellKey(end)));
     if (kept.length > 0) {
       sources[component] = kept;
-    } else if (stock.length > 0) {
-      sources[component] = [{ ...stock[0] }];
+    } else if (allowed.length > 0) {
+      sources[component] = [{ ...allowed[0] }];
     } else {
       delete sources[component];
     }
@@ -4503,8 +4506,8 @@ function createPasteZone() {
     createElement(
       "p",
       "The table's first row is a header: the first column is a well label, each other column a " +
-        "component's name. Each row after it gives the µL of each component to add to every well " +
-        "with that label. Blank or 0 adds nothing.",
+        "component's name, or a well label to draw from the wells with that label. Each row after it " +
+        "gives the µL to add to every well with that label. Blank or 0 adds nothing.",
       "wizard-help",
     ),
   ];
@@ -4512,7 +4515,7 @@ function createPasteZone() {
     parts.push(
       createElement(
         "p",
-        "Paste a table with a header row, at least one row of well labels, and at least one component column.",
+        "Paste a table with a header row, at least one row of well labels, and at least one column of amounts.",
         "wizard-error",
       ),
     );
@@ -4577,8 +4580,8 @@ function createTableGrid(plan) {
 }
 
 // One cell of the grid at `row` and `column`: a text box, with a swatch before it (header cells),
-// a well count after it (label cells), and a × deleting its row or column (label cells after the
-// header, header cells after the first).
+// a well count after it (label cells, and header cells, for a header that's a well label), and a ×
+// deleting its row or column (label cells after the header, header cells after the first).
 function createGridCell(row, column) {
   const cell = createElement(row === 0 ? "th" : "td", "", "wizard-cell");
   cell.classList.toggle("header-cell", row === 0);
@@ -4599,7 +4602,7 @@ function createGridCell(row, column) {
   box.setAttribute("aria-label", cellName(row, column));
   connectGridCell(box, row, column);
   inner.append(box);
-  if (row > 0 && column === 0) {
+  if ((row > 0 && column === 0) || (row === 0 && column > 0)) {
     const count = createElement("span", "", "cell-well-count");
     count.hidden = true;
     inner.append(count);
@@ -4665,7 +4668,7 @@ function pastePlainTextInto(box, event) {
 
 // Reads a cell's new text into the draft, if it changed, and re-reads the table (its problems,
 // matches and summary) without drawing the grid again, so the focus stays where it went. A header
-// that named a component, changed, is remembered as a rename (section 7).
+// that named a component or a well label, changed, is remembered as a rename (section 7).
 function commitCell(row, column, text) {
   if (wizard === null || wizard.draft.table === null || wizard.draft.table[row]?.[column] === undefined) {
     return;
@@ -4675,7 +4678,7 @@ function commitCell(row, column, text) {
     return;
   }
   const plan = currentPlan();
-  if (row === 0 && wizard.origins[column] === undefined && hasComponent(plan, old.trim()) && old.trim() !== text.trim()) {
+  if (row === 0 && wizard.origins[column] === undefined && namesSomething(plan, old.trim()) && old.trim() !== text.trim()) {
     wizard.origins[column] = old.trim();
   }
   wizard.draft.table[row][column] = text;
@@ -4685,7 +4688,8 @@ function commitCell(row, column, text) {
 }
 
 // Marks the grid's cells from the draft read against the plan: problem cells red with their
-// message as tooltip, matched headers' swatches, and matched labels' well counts.
+// message as tooltip, matched headers' swatches (a component's) and well counts (a label's), and
+// matched labels' well counts.
 function decorateGrid(plan) {
   const reading = wizardReading(plan);
   const problems = new Map();
@@ -4702,16 +4706,29 @@ function decorateGrid(plan) {
     const text = wizard.draft.table[row][column].trim();
     const swatch = cell.querySelector(".cell-swatch");
     if (swatch !== null) {
-      swatch.hidden = !hasComponent(plan, text);
+      swatch.hidden = !hasComponentNamed(plan, text);
       swatch.style.setProperty("--swatch-color", componentColor(plan, text));
     }
     const count = cell.querySelector(".cell-well-count");
     if (count !== null) {
       const wells = wellsLabeled(plan, text);
-      count.hidden = text === "" || wells === 0;
-      count.textContent = countOf(wells, "well");
+      // A header with a problem (e.g. a repeated one) shows only its red and message.
+      count.hidden = text === "" || wells === 0 || (row === 0 && message !== undefined);
+      count.textContent = row === 0 ? headerLabelText(plan, text, wells) : countOf(wells, "well");
     }
   }
+}
+
+// What a header that's a well label shows after its text (section 7, "Matched cells"): "label · 2
+// wells", or "and a label · 2 wells" when it's also a component (its swatch shows that).
+function headerLabelText(plan, name, wells) {
+  const start = hasComponentNamed(plan, name) ? "and a label" : "label";
+  return `${start} · ${countOf(wells, "well")}`;
+}
+
+// True if `name` is a component or a well label in the plan, so a header of it names something.
+function namesSomething(plan, name) {
+  return hasComponentNamed(plan, name) || wellsLabeled(plan, name) > 0;
 }
 
 // How many wells carry the well label `label`, e.g. 3.
@@ -4796,7 +4813,7 @@ function afterGridShapeChange(focusKey) {
   }
 }
 
-// Under the grid: with no problems, "6 well labels (18 wells), 4 components." in gray; otherwise
+// Under the grid: with no problems, "6 well labels (18 wells), 4 columns." in gray; otherwise
 // the problems in a red-tinted box, at most TABLE_PROBLEMS_LISTED, then "…and N more.", then how to
 // fix them.
 function createTableSummary(plan) {
@@ -4811,7 +4828,7 @@ function createTableSummary(plan) {
     const wells = [...labels].reduce((total, label) => total + wellsLabeled(plan, label), 0);
     const text =
       `${countOf(labels.size, "well label")} (${countOf(wells, "well")}), ` +
-      `${countOf(makingColumns(plan).length, "component")}.`;
+      `${countOf(makingColumns(plan).length, "column")}.`;
     return createElement("p", text, "wizard-help table-summary");
   }
   const box = createElement("div", "", "wizard-problems");
@@ -4833,8 +4850,9 @@ function createTableSummary(plan) {
 function createSourcesStep(plan) {
   const help = createElement(
     "p",
-    "Each stage draws from a well holding only its component at Start. Add more wells when one can't " +
-      "hold enough: they're used in order, each until the next transfer would reach into its dead volume.",
+    "Each stage draws from a well holding only its component at Start, or, for a column named by a well " +
+      "label, from the wells with that label, whatever they hold. Add more wells when one can't hold " +
+      "enough: they're used in order, each until the next transfer would reach into its dead volume.",
     "wizard-help",
   );
   const table = createElement("table", "", "wizard-table");
@@ -4851,25 +4869,27 @@ function createSourcesStep(plan) {
   return [help, table, ...createSourcesProblems(plan)];
 }
 
-// A Stage cell: "1. " then the component's swatch and name, semibold.
-function createStageCell(plan, component, index) {
+// A Stage cell: "1. " then the column's swatch (a component's; none for a well label only) and its
+// name, semibold.
+function createStageCell(plan, name, index) {
   const cell = createElement("td", "", "wizard-stage-cell");
-  cell.append(`${index + 1}. `, createSwatch(componentColor(plan, component)), createElement("strong", component));
+  const swatch = hasComponentNamed(plan, name) ? [createSwatch(componentColor(plan, name))] : [];
+  cell.append(`${index + 1}. `, ...swatch, createElement("strong", name));
   return cell;
 }
 
-// A column's Draws from cell: its wells, one line each, numbered, each a menu of its stock wells
-// (its own and those no other line has), with × when there's more than one; then "+ Another well"
-// while a stock well isn't on a line; then, with more than one line, how the transfers split. With
-// no stock well, says so in red.
+// A column's Draws from cell: its wells, one line each, numbered, each a menu of its source wells
+// (sourceWellsOf: stock wells, then labeled wells; its own and those no other line has), with ×
+// when there's more than one; then "+ Another well" while a source well isn't on a line; then, with
+// more than one line, how the transfers split. With no source well, says so in red.
 function createDrawsFrom(plan, component) {
-  const stock = stockWellsOf(plan, component);
-  if (stock.length === 0) {
+  const sourceWells = sourceWellsOf(plan, component);
+  if (sourceWells.length === 0) {
     return [createElement("span", "No well holds only this at Start", "wizard-error-text")];
   }
   const wells = wizard.draft.sources[component] ?? [];
-  const parts = wells.map((end, line) => createSourceLine(plan, component, stock, wells, line));
-  const unused = stock.filter((candidate) => !wells.some((end) => wellKey(end) === wellKey(candidate)));
+  const parts = wells.map((end, line) => createSourceLine(plan, component, sourceWells, wells, line));
+  const unused = sourceWells.filter((candidate) => !wells.some((end) => wellKey(end) === wellKey(candidate)));
   if (unused.length > 0) {
     const another = withFocusKey(createElement("button", "+ Another well", "action small-button"), `another:${component}`);
     another.type = "button";
@@ -4889,17 +4909,17 @@ function createDrawsFrom(plan, component) {
   return parts;
 }
 
-// One line of a column's wells: its number, its menu, and × with more than one line.
-function createSourceLine(plan, component, stock, wells, line) {
+// One line of a column's wells: its number, its menu of `sourceWells` (its source wells), and × with
+// more than one line.
+function createSourceLine(plan, component, sourceWells, wells, line) {
   const holder = createElement("div", "", "source-line");
-  const offered = stock.filter(
+  const offered = sourceWells.filter(
     (candidate) => !wells.some((end, other) => other !== line && wellKey(end) === wellKey(candidate)),
   );
   const menu = withFocusKey(document.createElement("select"), `source:${component}:${line}`);
   menu.setAttribute("aria-label", `${component}'s well ${line + 1}`);
   for (const candidate of offered) {
-    const label = wellLabelOf(plan, candidate);
-    const option = createElement("option", `${wellName(plan, candidate)}${label === null ? "" : ` · ${label}`}`);
+    const option = createElement("option", wellNameWithLabel(plan, candidate));
     option.value = wellKey(candidate);
     option.selected = wellKey(candidate) === wellKey(wells[line]);
     menu.append(option);
@@ -4925,17 +4945,19 @@ function createSourceLine(plan, component, stock, wells, line) {
 }
 
 // The Sources step's problems under its table, as the logic gives them, except that a column with
-// no stock well gets the page's own words, saying Cancel discards the paste.
+// no source well (a component with no stock well and no well with its label) gets the page's own
+// words, saying Cancel discards the paste, in place of the logic's problem for that column (found by
+// the problem's column, not its text).
 function createSourcesProblems(plan) {
   if (!isTableStepDone(plan)) {
     return [];
   }
-  const noStock = new Map(
+  const noSourceWording = new Map(
     makingColumns(plan)
-      .filter(({ component }) => stockWellsOf(plan, component).length === 0)
-      .map(({ component }) => [
-        `No well holds only ${component} at Start. Fill one with ${component} at Start first.`,
-        `No well holds only ${component} at Start. Cancel, fill one at Start, and start the transfer table again.`,
+      .filter(({ component }) => sourceWellsOf(plan, component).length === 0)
+      .map(({ column, component }) => [
+        column,
+        `No well holds only ${component} at Start. Cancel, fill one at Start or label the well to draw from “${component}”, and start the transfer table again.`,
       ]),
   );
   const problems = transferTableProblems(plan, wizard.draft, wizardAt(plan));
@@ -4943,8 +4965,8 @@ function createSourcesProblems(plan) {
     return [];
   }
   const box = createElement("div", "", "wizard-problems");
-  for (const { message } of problems) {
-    box.append(createElement("p", noStock.get(message) ?? message));
+  for (const { column, message } of problems) {
+    box.append(createElement("p", noSourceWording.get(column) ?? message));
   }
   return [box];
 }
@@ -4987,7 +5009,7 @@ function createReviewStep(plan) {
 // debt"), a note saying so.
 function createReviewRow(plan, entry, index) {
   const row = createElement("tr");
-  const wells = wizard.draft.sources[entry.component].map((end) => wellName(plan, end)).join(", then ");
+  const wells = wizard.draft.sources[entry.component].map((end) => wellNameWithLabel(plan, end)).join(", then ");
   const total = entry.transfers.reduce((sum, transfer) => sum + transfer.volume, 0);
   const tips = createElement("td", `${entry.tips.probes.length} × ${entry.tips.tipType}`);
   const largest = Math.max(...entry.transfers.map((transfer) => transfer.volume));
@@ -9349,6 +9371,13 @@ function wellName(plan, end) {
   return `${labelOf(plan, end.labware)} ${end.well}`;
 }
 
+// A well named as the transfer table wizard's Sources and Review steps name it: wellName, then
+// " · " and its well label if it has one, e.g. "Deep1 A4 · Premix".
+function wellNameWithLabel(plan, end) {
+  const label = wellLabelOf(plan, end);
+  return label === null ? wellName(plan, end) : `${wellName(plan, end)} · ${label}`;
+}
+
 // --- The message bar (section 12) ---
 
 // Shows a message of a kind ("ok", "note" or "error") in the message bar, replacing the last.
@@ -9470,11 +9499,6 @@ function createSwatch(color) {
 // The color of the component called `name`, or gray if the plan has no such component.
 function componentColor(plan, name) {
   return plan.components.find((component) => component.name === name)?.color ?? GRAY;
-}
-
-// True if the plan has a component called `name`.
-function hasComponent(plan, name) {
-  return plan.components.some((component) => component.name === name);
 }
 
 // One text key for a well, e.g. { labware: "Res", well: "1" } → '["Res","1"]'. A JSON list keeps the

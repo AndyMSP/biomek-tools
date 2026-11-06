@@ -214,9 +214,9 @@ file writer forms them.
 
 **Transfer table**
 Part of a plan: a table, usually pasted from a spreadsheet, saying how many µL of each component go
-into each labeled well (a header row of components, then one row per well label), with the wells
-each component draws from (ADR 0019; Andy, 2026-11-05). It owns one stage per component, in column
-order, each on new tips; its stages' pipetting and tips are edited on the stages, everything else
+into each labeled well (a header row naming components, or well labels to draw from labeled wells,
+then one row per well label), with the wells each column draws from (ADR 0019; Andy, 2026-11-05,
+labels 2026-11-06). It owns one stage per column, in column order, each on new tips; its stages' pipetting and tips are edited on the stages, everything else
 through it. A row fills every well with its label. It's **out of date** when its stages differ from
 what it would make now. Not to be confused with the Biomek's Transfer From File files, which list
 one transfer per row.
