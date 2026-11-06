@@ -851,6 +851,11 @@ added on 2026-10-28 (Andy).
     - **Sources are chosen from a menu in the dialog** (Andy, 2026-11-05), since the dialog hides
       the deck: each column lists the wells holding only its component at Start; with none, the
       step says to fill one at Start first.
+    - **A table's stages can be moved inside it, never out of it** (Andy, 2026-11-05): dragging a
+      stage (or its tip group, since each stage has its own tips) to another place in the same
+      transfer table reorders its stages and moves that stage's column in the table to match, as
+      one undoable edit, and nothing goes out of date. Copying a single stage of a table stays
+      refused (only the whole table copies), and moving one out of the table stays refused.
     **Specified** (Draft, 2026-11-05): see "Where things stand". From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
     opens a box listing each column's stage, source, wells and total, and the problems found;
     blank and 0 cells add nothing; a column draws only from a well holding nothing but that
@@ -887,6 +892,11 @@ final Biomek runs, so they test the files as they will be:
 14. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
+- **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
+  stage within its randomization to change only the order sources are added, keeping the plates'
+  layout. Needs the random layout to stop depending on the card's source order (random-pool
+  numbers sources by place), so it's a bigger change; reordering sources in the card reshuffles
+  today.
 - **A randomization's pipetting settings edited on its stages** (Andy, 2026-11-05, from the
   transfer table work): a randomization's card keeps its own Each transfer settings (modes,
   mixing, tip type, probes) and copies them onto the stages it makes, so they're held in two
