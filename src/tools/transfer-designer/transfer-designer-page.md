@@ -1047,7 +1047,12 @@ own, with seams between tip groups above and below it as for any box.
   (`isTransferTableOutOfDate`), `needs update` in red, semibold. Tooltip: `Open to change it`; out
   of date: `The plan changed since this was made: open it and press Update.` Clicking it opens its
   **wizard** (below) at Review, and selects it (section 7, "Moving and copying").
-- **No seams inside it**, as for a randomization.
+- **No seams with buttons inside it**, as for a randomization: no `+`, mix step, tip, dice or table
+  buttons. **While one of its own stages is dragged** (Andy, 2026-11-05), the places between its
+  stages (and above its first, below its last) are drop places, shown as a seam's line inside a tip
+  group box is during a drag; dropping there moves the stage within the table (`moveItems` with an
+  `inTransferTable` place), which also moves its column in the table, as one undoable edit
+  (message as any move's). They're never drop places for anything else.
 - **Its stages** look like any stage. **What can be changed on them** (Andy, 2026-11-05: pipetting
   the normal way): a stage's ✎ opens its box (section 10), and each tip group's heading has its ✎
   (section 10). **What can't**: their transfers (no `×`, volumes not buttons), their names, removing
@@ -1210,8 +1215,12 @@ is the logic's, and its messages are shown as they come. The column's boxes are 
 transfer tables (the logic's **items**, `docs/glossary.md`). **A transfer table** (2026-11-05) is
 selected, dragged, copied and pasted by its heading exactly as a randomization is, everywhere in
 this part ("Moving and copying"), its stages counting as its box; clicking its heading opens its
-wizard and makes the picked set that transfer table alone; its stages can't be moved alone (the
-logic's message), and nothing can be dropped inside its box. Messages name it `a transfer table`
+wizard and makes the picked set that transfer table alone. **Its stages** (Andy, 2026-11-05) can be
+dragged by their rows, and by their tip group's heading (each stage has its own tips, so it's the
+same as dragging the stage), only to a place **inside their own transfer table** (above); dropped
+anywhere else, the logic refuses with its message and nothing moves. Ctrl+C on a selection holding
+one of its stages without the table, and Ctrl+drag (copying) one, are refused with the logic's
+message: only the whole table copies. Nothing else can be dropped inside its box. Messages name it `a transfer table`
 (`2 transfer tables`). The page keeps a **picked set**, or none:
 - With **no picked set**, what's selected is what's open: a stage, or a randomization whose card is
   open; with Start or End open, nothing.
@@ -2033,7 +2042,13 @@ page's configuration (ADR 0009):
   right-aligned, the first line ends with a `·`, and no part (`456 BC230 tips`) is split;
 - transfer tables (2026-11-05): the table button on every seam between tip groups (not inside a
   box), after the dice in Tab order; on the seam below a randomization that hasn't run, Add puts
-  the transfer table below it (the randomization stays above, one undo); the wizard from it: the paste zone, a paste from Excel (blank
+  the transfer table below it (the randomization stays above, one undo);
+  dragging a table's stage (by its row, and by its tip heading) to another place in the table: the
+  stage and its column move, its settings and tips kept, not out of date, one undo; drop places
+  showing only for its own stages; dropped outside it, refused; Ctrl+C of it alone refused;
+  dragging a table's stage (by its row, and by its tip heading) to another place in the table: the
+  stage and its column move, its settings and tips kept, not out of date, one undo; drop places
+  showing only for its own stages; dropped outside it, refused; Ctrl+C of it alone refused; the wizard from it: the paste zone, a paste from Excel (blank
   lines dropped, ragged rows filled), a paste of one cell refused; the grid: matched headers'
   swatches, labels' well counts, each problem cell red with its tooltip, Enter moving down, Tab
   along, Escape restoring a cell, `+ Row` and `+ Column` focusing the new cell, the `×`s deleting
