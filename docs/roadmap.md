@@ -760,8 +760,20 @@ added on 2026-10-28 (Andy).
       so the order of addition is the columns' order and no component carries into the next.
     - **Amounts are volumes in µL** for now (Andy had no preference). Final concentrations, turned
       into volumes from each stock's constituents, could come later.
-    Still to shape in a preview: how a paste is started, where its stages go, their settings (mode,
-    tip type, probes), and what a table the tool can't use says.
+    - **One unit, like a randomization** (Andy, 2026-11-05, after trying a first preview in which
+      a paste made ordinary stages): it sits in the Stages column as one box owning its stages,
+      which can't be combined with other stages or tip changes by hand.
+    - **Its card can change everything, then Update** (Andy, 2026-11-05): it keeps the table; a
+      new table can be pasted over it, each column's source chosen and the settings changed, and
+      Update rebuilds its stages, as a randomization's does.
+    - **Out of date is flagged, not rebuilt** (Andy, 2026-11-05), as for a randomization: when the
+      plan changes so its stages no longer match its table (a well relabeled, a stock moved or
+      emptied), it reads `needs update`, counts as a problem, and the Biomek files wait for Update.
+    Still to decide: one set of settings for all its stages or one per column, and its name. Then a
+    preview of the unit. From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
+    opens a box listing each column's stage, source, wells and total, and the problems found;
+    blank and 0 cells add nothing; a column draws only from a well holding nothing but that
+    component at Start; a label in two rows is refused.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
