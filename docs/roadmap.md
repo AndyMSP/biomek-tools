@@ -783,8 +783,15 @@ added on 2026-10-28 (Andy).
       the plan). Not to be confused with the Biomek's Transfer From File files, one row per
       transfer; the glossary entry will say so.
     - **Its card acts like a wizard** (Andy, 2026-11-05): creating or editing a transfer table
-      steps through screens, filled in with what was set before when it's opened again. The steps
-      are still to be designed.
+      steps through screens, filled in with what was set before when it's opened again. Draft
+      steps (Claude, 2026-11-05, to try in the preview): Table (the pasted grid, problems marked on
+      their cells), Sources (each column's well), Settings (each column's modes, mixing, tip type
+      and probes, starting from the column before), Review (each stage's wells, total µL and tips),
+      then Add or Update; Back and Next between steps.
+    - **The wizard is a dialog over the page** (Andy, 2026-11-05), for room to work with the grid,
+      rather than a card in the Stages column.
+    - **A new transfer table starts from a new button on a seam** (Andy, 2026-11-05), as a
+      randomization starts from its dice button.
     Then a preview of the unit. From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
     opens a box listing each column's stage, source, wells and total, and the problems found;
     blank and 0 cells add nothing; a column draws only from a well holding nothing but that
