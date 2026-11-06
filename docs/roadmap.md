@@ -397,8 +397,9 @@ Last updated: 2026-11-05
   (version 10, versions 1 to 9 still opening) and copied items (version 3), and the card's boxes
   of shared tips on the page; the specifications and the build each reviewed by a separate agent,
   and checked in headless Chrome. Still to check by Andy.
-- **Decided: pasting amounts from Excel** (Andy, 2026-11-05; item 19, below): a table of how much
-  of each component goes into each labeled well becomes one stage per component. Next, a preview.
+- **Decided: transfer tables** (Andy, 2026-11-05; item 19, below): a table pasted from Excel, of how
+  much of each component goes into each labeled well, kept in the plan as one unit that makes one
+  stage per component, created and edited through a wizard. Next, the wizard's steps, then a preview.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -745,7 +746,7 @@ added on 2026-10-28 (Andy).
       three). Whichever of the two pull requests merges second adds it. Added here, after merging
       #135 into this branch (2026-11-05).
     **Specified** (Draft, 2026-11-05) and **Built (#137, 2026-11-05)**: see "Where things stand".
-19. **Pasting amounts from Excel** (Andy, 2026-11-05): a table copied from a spreadsheet, saying how
+19. **Transfer tables: pasting amounts from Excel** (Andy, 2026-11-05): a table copied from a spreadsheet, saying how
     much of each component goes into each well, becomes transfers, so a plate's recipe made in
     Excel doesn't have to be dragged in by hand. Decided so far (Andy, 2026-11-05):
     - **The table's shape:** a header row, then one row per destination. The first column is a
@@ -773,7 +774,17 @@ added on 2026-10-28 (Andy).
       mixing, tip type, probes), so 190 µL of Media and 2 µL of a drug can use different tips and
       modes; a new column starts with the settings of the column before it. (Claude first
       recommended one set for all, as a randomization has, then changed it for this reason.)
-    Still to decide: its name ("Transfer table" or "Combined transfer table" are being considered).
+    - **Named "Transfer table"** (Andy, 2026-11-05): the unit in the plan, holding the pasted
+      table, each column's source and settings, and owning its stages. The pasted data is simply
+      its table. Considered and set aside: "Amounts table" ("amount" already means a constituent's
+      amount), "Recipe" (could clash with the lab's media recipes), "Pasted table" (says where it
+      came from, not what it is), "Combined transfer table" (longer, where the name is shown in
+      tight spots), and "Transfer wizard" (a wizard is the process, not the thing that stays in
+      the plan). Not to be confused with the Biomek's Transfer From File files, one row per
+      transfer; the glossary entry will say so.
+    - **Its card acts like a wizard** (Andy, 2026-11-05): creating or editing a transfer table
+      steps through screens, filled in with what was set before when it's opened again. The steps
+      are still to be designed.
     Then a preview of the unit. From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
     opens a box listing each column's stage, source, wells and total, and the problems found;
     blank and 0 cells add nothing; a column draws only from a well holding nothing but that
@@ -804,7 +815,7 @@ final Biomek runs, so they test the files as they will be:
 12. Sources sharing tips in a randomization (item 18), added on 2026-11-05: preview,
     specifications, then build. It changes what goes into the Biomek files but not their format,
     so it needn't come before the final runs.
-13. Pasting amounts from Excel (item 19), added on 2026-11-05: preview, specifications, then
+13. Transfer tables (item 19), added on 2026-11-05: preview, specifications, then
     build. It writes ordinary stages and transfers, so it changes neither the Biomek files' format
     nor what a given plan writes, and needn't come before the final runs.
 14. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
