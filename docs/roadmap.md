@@ -791,7 +791,12 @@ added on 2026-10-28 (Andy).
     - **The wizard is a dialog over the page** (Andy, 2026-11-05), for room to work with the grid,
       rather than a card in the Stages column.
     - **A new transfer table starts from a new button on a seam** (Andy, 2026-11-05), as a
-      randomization starts from its dice button.
+      randomization starts from its dice button, on the seams **between tip groups** only, since
+      every column has tips of its own. **Only the button** starts one: Ctrl+V on the page doesn't
+      (inside the wizard's Table step, Ctrl+V pastes as usual).
+    - **Sources are chosen from a menu in the dialog** (Andy, 2026-11-05), since the dialog hides
+      the deck: each column lists the wells holding only its component at Start; with none, the
+      step says to fill one at Start first.
     Then a preview of the unit. From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
     opens a box listing each column's stage, source, wells and total, and the problems found;
     blank and 0 cells add nothing; a column draws only from a well holding nothing but that
