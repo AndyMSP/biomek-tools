@@ -790,6 +790,11 @@ added on 2026-10-28 (Andy).
       problem on the Table step (`“Drug A” is in more than one column.`), since each column is one
       stage; a component needed at two points in the run means two transfer tables.
     - **Part of v0.2.0** (Andy, 2026-11-05).
+    - **Renaming a component renames its columns** (Andy, 2026-11-05): as a rename already changes
+      the name in every well, it changes a transfer table's header and the table's stage of that
+      component too, as one edit, so the table stays up to date (the table then differs from the
+      Excel sheet by that name). Removing a component leaves its column without one, so the table
+      is out of date until the column is deleted or its header changed.
     - **Its box collapses like a randomization's** (Andy, 2026-11-05): to its heading
       (`Transfer table · 4 stages`) unless one of its stages is open.
     - **It can be moved and copied as a whole** (Andy, 2026-11-05), by its heading, as a
