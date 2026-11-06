@@ -1600,7 +1600,16 @@ wells that don't form a box: each click is its own edit (its own Undo step), as 
   Ctrl-click and Ctrl+drag do exactly what a click and a drag do there.
 - **A press that opens the browser's context menu** (a `contextmenu` event follows it, as a Ctrl-click
   on a Mac does) is not a click: it neither chooses, adds nor clears a source, and only names the
-  well, as a right-click does (section 6). So on a Mac, Cmd is the key in practice.
+  well, as a right-click does (section 6). So on a Mac, Cmd is the key in practice, for dragging
+  too: a Mac's Ctrl+drag opens the context menu as the button goes down, so it only names the well
+  and drags nothing; Cmd+drag is the Mac's way to keep the source across a box. Likewise, a context
+  menu asked for during a left-button drag (pressing the right button, on systems that open the
+  menu then) drops the drag: nothing is added, and the source stays as it was.
+- **A click passed on by a closing text box** (a transfer's volume box or a well's name box, which
+  saves and passes the click on to what's under the pointer) keeps its Ctrl or Cmd, so a Ctrl-click
+  on a well while such a box is open saves the box and then acts as a Ctrl-click.
+- **Ctrl+Enter or Cmd+Enter while an editing box with changes is open** is refused as a Ctrl-click
+  on a deck well is: the box shakes and nothing is added.
 **After adding** (`addTransfer`): `Added to stage 2, “Drugs”: Drug plate A1 → Assay plate A1, 20
 µL.` If the edit caused a **new contents problem**, the message is an error instead, by the
 problem's kind (`contents-tracking.md`): an overdraw, `Added, but transfer #5 asks for 60 µL from
@@ -2015,12 +2024,14 @@ page's configuration (ADR 0009):
   logic refuses; a box holding only the source, and a Ctrl+drag ending on other labware or off every
   labware, keep it, with the hint; Undo in the middle of a run keeps it, and an Undo or Redo that
   leaves a mix step or Start open clears it; opening another stage clears it; a Ctrl-click on a deck
-  well while an editing box with changes is open shakes the box, adds nothing and keeps the source;
-  a Ctrl-click in the Stages column during a run selects as usual and keeps the source; Ctrl+Enter
-  on a focused well keeps it; in a mix step, at Start, at End, in a randomization's or transfer
-  table's stage, with a randomization's card open and while moving wells, Ctrl-click acts as a
-  click; on a Mac, Cmd-click keeps the source, and Ctrl-click on a well with a source chosen opens
-  its name box, adds nothing and keeps the source;
+  well while an editing box with changes is open shakes the box, adds nothing and keeps the source,
+  and so does Ctrl+Enter on a focused well; a Ctrl-click on a well while a transfer's volume box or
+  a well's name box is open saves the box, adds the transfer and keeps the source, with the hint; a
+  Ctrl-click in the Stages column during a run selects as usual and keeps the source; Ctrl+Enter on
+  a focused well keeps it; in a mix step, at Start, at End, in a randomization's or transfer table's
+  stage, with a randomization's card open and while moving wells, Ctrl-click acts as a click; on a
+  Mac, Cmd-click keeps the source, and Ctrl-click on a well with a source chosen opens its name box,
+  adds nothing and keeps the source;
 - every editing box: Save, Discard, Escape, a click outside with and without changes, Remove;
 - a stage's ✎ beside its name: it opens the stage's box under the card's heading, its menus show
   `Non-Contact` whole, and a stage whose settings aren't one of the modes shows `(not one of the
