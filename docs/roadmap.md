@@ -1011,6 +1011,26 @@ added on 2026-10-28 (Andy).
     Shaped in a preview (2026-11-06). **Specified** (Draft, 2026-11-06) and **Built (#142,
     2026-11-06)**: see "Where things stand".
 
+22. **A transfer table column can draw from wells named by their label** (Andy, 2026-11-06), so a
+    premix or dilution can be a source, not only a well holding nothing but one component.
+    Decided (Andy, 2026-11-06):
+    - **A header can be a well label**, matching it exactly: the column draws from the wells with
+      that label. The existing rule stands for a header that's a component: wells holding nothing
+      but it at Start.
+    - **A label-named well can hold anything**, including a mix made earlier in the run, and the
+      table doesn't check what's in it: its transfers are ordinary transfers, and an empty or
+      overdrawn well shows as any contents problem does. Contents matter only for splitting a
+      column across several wells, as now (taken just before the table).
+    - **A header that is both a component and a label** offers both kinds of well (the pure stock
+      wells and the wells with that label); a header that is neither is a problem, as now.
+    - **Several wells with the label** are all offered on the Sources step and used in the order
+      chosen, as several stock wells are now.
+    - **Out of date as now:** a source well's label changing (relabeled, unlabeled, put on another
+      well, or a labeled well moved) or the split across several wells changing makes it
+      `needs update`; a change to what's in a label-named well, or contents with one source well,
+      doesn't. A label that's also a row label is a source and a destination, refused as now.
+    - **Hands-off workflow** (Andy, 2026-11-06). No plan-file format change expected.
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
