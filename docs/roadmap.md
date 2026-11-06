@@ -787,6 +787,9 @@ added on 2026-10-28 (Andy).
       and tips; a new column's stage starts with the settings of the column before it. Settings
       live only on the stages; the transfer table holds its grid and sources, never a copy of
       them (Andy's concern, 2026-11-05: no second source of truth).
+    - **No all-at-once settings** (Andy, 2026-11-05): unlike a randomization's card (item 20),
+      a transfer table has no Mode, Mix or Tips that set every stage, since each component usually
+      needs its own (Media and a 2 µL drug want different tips); each stage is set with its ✎.
     - **Settings follow a renamed column** (Andy, 2026-11-05, by voice): stages are matched to
       columns by component name, so settings stay with the liquid when columns move; when a
       column's header is changed in the wizard, the wizard remembers which column it was, and on
