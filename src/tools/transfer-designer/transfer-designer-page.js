@@ -522,6 +522,7 @@ function connectDeck() {
   document.addEventListener("pointermove", movePointer);
   document.addEventListener("pointerup", releasePointer);
   document.addEventListener("pointercancel", cancelPress);
+  document.addEventListener("contextmenu", cancelPress);
   elements.labwareArea.addEventListener("click", clickWellWithKeyboard);
   elements.labwareArea.addEventListener("pointerover", (event) => {
     const wellElement = event.target.closest(".well");
@@ -629,6 +630,7 @@ function undo() {
     return;
   }
   history = history.undo();
+  clearSourceOutsideTransferStage();
   afterPlanChange();
   showMessage("Undone.", "note");
 }
@@ -639,8 +641,24 @@ function redo() {
     return;
   }
   history = history.redo();
+  clearSourceOutsideTransferStage();
   afterPlanChange();
   showMessage("Redone.", "note");
+}
+
+// After an Undo or Redo, clears a chosen source if what's open is no longer a transfer stage (a
+// mix step, Start, End, or a stage of a randomization or transfer table), as opening it would
+// (section 9, "Keeping the source"). The deck is redrawn by the caller.
+function clearSourceOutsideTransferStage() {
+  if (source !== null && !isTransferStage(currentPlan(), currentOpen())) {
+    source = null;
+  }
+}
+
+// True if `key` is a stage that takes transfers made on the deck: a stage that is neither a mix
+// step nor a stage of a randomization or transfer table.
+function isTransferStage(plan, key) {
+  return isStage(plan, key) && !isMixStep(plan, key) && !isOwnedStage(plan, key);
 }
 
 // Redraws everything from the current plan and the page's state: the heading, the deck panel, the
@@ -6222,8 +6240,10 @@ function startingOverfills(plan) {
 // Acts on a click on a well: while moving wells, it picks, moves or lets go (section 6); while Start
 // is open it fills the well; while a stage is open it chooses the source, clears it, or adds the
 // transfer; while a mix step is open it mixes the well, or stops mixing it; while End is open it
-// says nothing can be added.
-function clickWell(end) {
+// says nothing can be added. `keepSource` is true for a click with Ctrl or Cmd held: in a transfer
+// stage it keeps the source chosen after adding (section 9, "Keeping the source"); elsewhere it
+// changes nothing.
+function clickWell(end, keepSource = false) {
   const open = currentOpen();
   if (movingWells) {
     clickWellWhileMoving(end);
@@ -6255,8 +6275,10 @@ function clickWell(end) {
     clearSource();
   } else {
     const from = source;
-    source = null;
-    addOneTransfer(from, end);
+    if (!keepSource) {
+      source = null;
+    }
+    addOneTransfer(from, end, keepSource);
   }
 }
 
@@ -6343,42 +6365,59 @@ function clearSource() {
 
 // Adds one transfer from `from` to `to` into the open stage, with the next transfer's volume
 // (section 9). Says what was added, or, if the edit caused a new contents problem, which transfer
-// has it and what kind it is.
-function addOneTransfer(from, to) {
+// has it and what kind it is. With `keepSource` (the source kept chosen), an ok message ends with
+// the hint that the source was kept.
+function addOneTransfer(from, to, keepSource = false) {
   const plan = currentPlan();
   const stage = currentOpen();
   const transfer = { type: "transfer", source: from, destination: to, volume: volumeValue(transferVolume.text), stage };
   const added = addTransfersWithReport(plan, [transfer]);
   if (added === null) {
+    // Refused: nothing was recorded, so the deck is redrawn here to show a cleared source.
+    refreshDeck();
     return;
   }
   if (added.newProblem === null) {
-    showMessage(
+    showTransferMessage(
       `Added to ${stageLabel(added.plan, stage)}: ${wellName(plan, from)} → ${wellName(plan, to)}, ` +
         `${formatVolume(transfer.volume)} µL.`,
       "ok",
+      keepSource,
     );
   } else {
     showMessage(`Added, but ${added.newProblem}`, "error");
   }
 }
 
-// Adds a transfer from `from` into each of `wells` (the source itself left out), as one edit.
-function addManyTransfers(from, wells) {
+// Adds a transfer from `from` into each of `wells` (the source itself left out), as one edit. With
+// `keepSource` (the source kept chosen), an ok message ends with the hint that the source was kept.
+function addManyTransfers(from, wells, keepSource = false) {
   const plan = currentPlan();
   const stage = currentOpen();
   const volume = volumeValue(transferVolume.text);
   const transfers = wells.map((well) => ({ type: "transfer", source: from, destination: well, volume, stage }));
   const added = addTransfersWithReport(plan, transfers);
   if (added === null) {
+    // Refused: nothing was recorded, so the deck is redrawn here to show a cleared source.
+    refreshDeck();
     return;
   }
   const what = `${countOf(transfers.length, "transfer")} of ${formatVolume(volume)} µL from ${wellName(plan, from)}`;
   if (added.newProblem === null) {
-    showMessage(`Added ${what} to ${stageLabel(added.plan, stage)}.`, "ok");
+    showTransferMessage(`Added ${what} to ${stageLabel(added.plan, stage)}.`, "ok", keepSource);
   } else {
     showMessage(`Added ${what}, but ${added.newProblem}`, "error");
   }
+}
+
+// The hint appended to an ok or note message when Ctrl or Cmd kept the source (section 9).
+const SOURCE_KEPT_HINT =
+  " Source kept: hold Ctrl (Cmd on a Mac) and click the next well, or press Escape to clear it.";
+
+// Shows a message about adding transfers, of `kind` "ok" or "note", ending with SOURCE_KEPT_HINT
+// when `keepSource` is true (section 9). Errors are shown with showMessage, without the hint.
+function showTransferMessage(text, kind, keepSource) {
+  showMessage(keepSource ? text + SOURCE_KEPT_HINT : text, kind);
 }
 
 // Adds `transfers` to the plan as one edit and records it. Returns null if the logic refuses (its
@@ -6520,23 +6559,27 @@ function beginDrag() {
   updateDragMarks();
 }
 
-// Ends a press or a drag: a press that never moved is a click on its well.
-function releasePointer() {
+// Ends a press or a drag: a press that never moved is a click on its well. Whether Ctrl or Cmd is
+// held is read from this release, the event that finishes the click or drag (section 9, "Keeping
+// the source").
+function releasePointer(event) {
+  const keepSource = event.ctrlKey || event.metaKey;
   if (drag !== null) {
     const finished = drag;
     drag = null;
     press = null;
-    finishDrag(finished);
+    finishDrag(finished, keepSource);
     return;
   }
   if (press !== null) {
     const end = press.end;
     press = null;
-    clickWell(end);
+    clickWell(end, keepSource);
   }
 }
 
-// Abandons a press or drag the browser interrupts (e.g. a touch turned into a scroll).
+// Abandons a press or drag the browser interrupts: a touch turned into a scroll, or a press that
+// opens the context menu (a Mac's Ctrl-click), which only names the well (section 9).
 function cancelPress() {
   press = null;
   drag = null;
@@ -6545,17 +6588,46 @@ function cancelPress() {
 }
 
 // Acts on a well chosen with Enter or Space as a click. A mouse or touch click is already handled
-// by the press; a click event from the keyboard has event.detail 0.
+// by the press; a click event from the keyboard has event.detail 0. Ctrl+Enter is handled by
+// clickWellWithCtrlEnter instead. A click passed on by a closing text box (passClickOn) also has
+// detail 0, and carries the press's Ctrl or Cmd, which keeps the source (section 9). Only that
+// made click is read for Ctrl: the browser's own click for Ctrl+Space carries Ctrl too, and
+// Ctrl+Space isn't a Ctrl-click (section 12). A made click is the one the browser doesn't trust.
 function clickWellWithKeyboard(event) {
   const end = endOf(event.target);
   if (end !== null && event.detail === 0) {
-    clickWell(end);
+    const passedOn = !event.isTrusted;
+    clickWell(end, passedOn && (event.ctrlKey || event.metaKey));
   }
 }
 
+// Acts on Ctrl+Enter or Cmd+Enter on a focused deck well as a Ctrl-click (section 12), and returns
+// true; returns false, doing nothing, for any other key or target. Ctrl+Space isn't one: systems
+// take it for themselves.
+function clickWellWithCtrlEnter(event) {
+  const isCtrlEnter = event.key === "Enter" && (event.ctrlKey || event.metaKey);
+  if (!isCtrlEnter || !elements.labwareArea.contains(event.target)) {
+    return false;
+  }
+  const end = endOf(event.target);
+  if (end === null) {
+    return false;
+  }
+  // Without this, the browser would also click the well button.
+  event.preventDefault();
+  // An editing box with changes refuses it, as it refuses a Ctrl-click (section 10).
+  if (editingBox !== null && editingBox.element !== undefined && isBoxDirty()) {
+    refuseOutsideClick();
+    return true;
+  }
+  clickWell(end, true);
+  return true;
+}
+
 // Finishes a drag (sections 6, 8 and 9): moves a picked well, fills the box, mixes the box, adds one
-// transfer, or sends the source into the box.
-function finishDrag({ kind, from, over, onLabware }) {
+// transfer, or sends the source into the box. `keepSource` is true when Ctrl or Cmd was held at the
+// release; it keeps a source sent into a box (section 9, "Keeping the source").
+function finishDrag({ kind, from, over, onLabware }, keepSource = false) {
   updateDragMarks();
   if (kind === "move") {
     dropPickedWell(over, onLabware);
@@ -6595,25 +6667,32 @@ function finishDrag({ kind, from, over, onLabware }) {
     }
     return;
   }
-  finishBoxDrag(from, over);
+  finishBoxDrag(from, over, keepSource);
 }
 
 // Finishes a drag across a box of wells with a source chosen: one transfer from the source into
-// each well of the box but the source itself, as one edit; the source is cleared afterwards.
-function finishBoxDrag(from, over) {
+// each well of the box but the source itself, as one edit; the source is cleared afterwards,
+// unless `keepSource` (Ctrl or Cmd held) keeps it. A drag that adds nothing keeps the source.
+function finishBoxDrag(from, over, keepSource) {
   if (over === null || over.labware !== from.labware) {
-    showMessage("Drag across wells of one labware to send the source into each of them.", "note");
+    showTransferMessage(
+      "Drag across wells of one labware to send the source into each of them.",
+      "note",
+      keepSource,
+    );
     return;
   }
   const sourceKey = wellKey(source);
   const wells = wellsInBox(from, over).filter((well) => wellKey(well) !== sourceKey);
   if (wells.length === 0) {
-    showMessage("The box held only the source well, so nothing was added.", "note");
+    showTransferMessage("The box held only the source well, so nothing was added.", "note", keepSource);
     return;
   }
   const chosen = source;
-  source = null;
-  addManyTransfers(chosen, wells);
+  if (!keepSource) {
+    source = null;
+  }
+  addManyTransfers(chosen, wells, keepSource);
 }
 
 // Shows the drag on the wells: the box being dragged across outlined, the well under a transfer
@@ -8392,11 +8471,26 @@ function guardInlineBox(event) {
   event.stopPropagation();
   const target = document.elementFromPoint(event.clientX, event.clientY);
   if (event.button === 0 && outcome !== "refused" && target instanceof HTMLElement) {
-    // A made click: it bubbles to the button it's inside, and a well treats it as a keyboard click.
-    target.click();
+    passClickOn(target, event);
   }
   // Set only after the made click, which this flag would otherwise stop too.
   pressPassedOn = true;
+}
+
+// Sends a made click to `target`, carrying the press's Ctrl, Cmd, Shift and Alt, so a Ctrl-click
+// on a well still keeps the source (section 9). Its detail is 0, so a well treats it as a keyboard
+// click; it bubbles to the button it's inside.
+function passClickOn(target, press) {
+  const click = new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    ctrlKey: press.ctrlKey,
+    metaKey: press.metaKey,
+    shiftKey: press.shiftKey,
+    altKey: press.altKey,
+  });
+  target.dispatchEvent(click);
 }
 
 // The rest of a passed-on press: stopped, so nothing acts on it twice.
@@ -8466,6 +8560,9 @@ function handleKey(event) {
   }
   // The menu key is ignored while moving wells (section 12).
   if (!movingWells && openColumnMenuFromKey(event)) {
+    return;
+  }
+  if (clickWellWithCtrlEnter(event)) {
     return;
   }
   const key = event.key.toLowerCase();

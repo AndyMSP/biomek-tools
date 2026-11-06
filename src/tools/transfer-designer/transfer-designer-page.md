@@ -158,6 +158,13 @@
 > the hands-off workflow, so the choices made for Andy are listed in its pull request. They become
 > Final once built and tested by Andy.
 
+> **Draft change (2026-11-05, Ctrl-click keeps the source, item 21 of v0.2.0):** in a transfer
+> stage, Ctrl-click (or Cmd-click) a destination, or Ctrl+drag across a box, adds as a click or
+> drag does and keeps the source chosen, so the next destination is one more Ctrl-click (sections
+> 9, 12 and 16), from a preview Andy approved on 2026-11-05. Written in the hands-off workflow, so
+> the choices made for Andy are listed in its pull request. It becomes Final once built and tested
+> by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -1555,6 +1562,54 @@ itself, as one edit (`addTransfers`): message `Added 4 transfers of 50 µL from 
 holding only the source: `The box held only the source well, so nothing was added.` A drag ending on
 other labware: `Drag across wells of one labware to send the source into each of them.`
 
+**Keeping the source: Ctrl** (or Cmd; Andy, 2026-11-05). With a source chosen, a click on another
+well, or a drag across a box, with **Ctrl or Cmd held** adds exactly as without it, then **keeps the
+source chosen** instead of clearing it, so the next destination is one more Ctrl-click. What's read
+is whether Ctrl or Cmd is held in the event that finishes the click or drag (the `click`, or the
+mouse button's release), on every platform, as for Ctrl+drag in the Stages column. The dashed arrow,
+its color and the volume at its tip stay, as for any chosen source. It's for sending one source into
+wells that don't form a box: each click is its own edit (its own Undo step), as a plain click is.
+- **The message** is the usual one (`Added to stage 2, “Drugs”: …`, `Added 4 transfers of 50 µL
+  from …`), with ` Source kept: hold Ctrl (Cmd on a Mac) and click the next well, or press Escape
+  to clear it.` appended when it's an **ok** or **note** message. An **error** (a new contents
+  problem, or the logic refusing the transfer) is shown as it is, without it.
+- **When the logic refuses** the transfer, its message is shown and the **source stays chosen**,
+  since the user is partway through a run of destinations and the refusal concerns that one well,
+  not the source.
+- **A drag that adds nothing** keeps the source too, with its usual message and the hint: a box
+  holding only the source (`The box held only the source well, so nothing was added.`), or a drag
+  ending on other labware or off every labware (`Drag across wells of one labware to send the
+  source into each of them.`).
+- **A typed volume** (section 13) between Ctrl-clicks changes the next transfer's volume, as at any
+  time, and keeps the source; the arrow's tip shows the new volume.
+- **Ctrl changes nothing else.** A Ctrl-click on the source itself clears it, and one with no
+  source chosen chooses the well as the source, as a click does. A Ctrl+drag from one well to
+  another with no source chosen adds one transfer, as a drag does.
+- **What clears a kept source**, as any chosen source: Escape; a plain click on the source; a plain
+  click on another well (after adding its transfer); opening another stage, Start, End or a
+  randomization's card, or a new stage, randomization or transfer table; pasting or moving in the
+  Stages column; Open; Reset; putting away the source's labware; starting moving wells.
+- **What keeps it:** Undo and Redo; typing a volume; opening a transfer's volume box or the open
+  stage's ✎ (a click on a deck well while an editing box with changes is open shakes the box, as
+  for any click, and adds nothing); selecting in the Stages column.
+- **After an Undo or Redo** during a kept run (Andy, 2026-11-05), or with a source just chosen,
+  if what's open is no longer a transfer stage (a mix step, Start, End, or a stage of a
+  randomization or transfer table), the source is cleared, as opening it would.
+- **Where it applies:** only in a transfer stage. In a mix step, at Start, at End, in a stage of a
+  randomization or transfer table, with a randomization's card open, or while moving wells,
+  Ctrl-click and Ctrl+drag do exactly what a click and a drag do there.
+- **A press that opens the browser's context menu** (a `contextmenu` event follows it, as a Ctrl-click
+  on a Mac does) is not a click: it neither chooses, adds nor clears a source, and only names the
+  well, as a right-click does (section 6). So on a Mac, Cmd is the key in practice, for dragging
+  too: a Mac's Ctrl+drag opens the context menu as the button goes down, so it only names the well
+  and drags nothing; Cmd+drag is the Mac's way to keep the source across a box. Likewise, a context
+  menu asked for during a left-button drag (pressing the right button, on systems that open the
+  menu then) drops the drag: nothing is added, and the source stays as it was.
+- **A click passed on by a closing text box** (a transfer's volume box or a well's name box, which
+  saves and passes the click on to what's under the pointer) keeps its Ctrl or Cmd, so a Ctrl-click
+  on a well while such a box is open saves the box and then acts as a Ctrl-click.
+- **Ctrl+Enter or Cmd+Enter while an editing box with changes is open** is refused as a Ctrl-click
+  on a deck well is: the box shakes and nothing is added.
 **After adding** (`addTransfer`): `Added to stage 2, “Drugs”: Drug plate A1 → Assay plate A1, 20
 µL.` If the edit caused a **new contents problem**, the message is an error instead, by the
 problem's kind (`contents-tracking.md`): an overdraw, `Added, but transfer #5 asks for 60 µL from
@@ -1562,7 +1617,7 @@ Drug plate A1, which holds 50 µL.`; a draw into the dead volume, `Added, but tr
 400 µL from Reservoir 5, which has only 300 µL above its dead volume.`; an overfill, `Added, but
 transfer #5 brings Assay plate A1 to 380 µL, over its 360 µL capacity.` (with several transfers,
 `Added 4 transfers of 50 µL from Drug plate A1, but transfer #5 asks …`). If the logic refuses
-the transfer, its message is shown.
+the transfer, its message is shown and the source is cleared (unless Ctrl or Cmd keeps it, below).
 - A **new contents problem** is one that wasn't there before the edit: a transfer that has a problem
   now but didn't, or wasn't in the plan. Transfers are recognized across the edit because the
   operation list keeps every unchanged transfer as the same object (`operation-list.md`). A
@@ -1732,6 +1787,10 @@ and the deck shows its point again.
 - **Escape** closes the open editing box without saving, or the open header box (section 5), or
   the open randomization's card (saving or discarding, section 7); otherwise clears a chosen source.
   Typed volumes (above) are ignored while a randomization's card is open.
+- **Ctrl** or **Cmd** held while clicking a destination, or at the end of a drag across a box, with
+  a transfer stage open and a source chosen, keeps the source chosen (section 9, "Keeping the
+  source", which says where it applies). On a focused well, **Ctrl+Enter** or **Cmd+Enter** does
+  what a Ctrl-click would (not Ctrl+Space or Cmd+Space, which systems take for themselves).
 - **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac). Not while an editing
   box or a randomization's card is open, since their changes aren't in the plan yet.
 - **While the transfer table wizard is open** (section 7), none of these keys act on the page: the
@@ -1955,6 +2014,24 @@ page's configuration (ADR 0009):
 - saving, then opening the saved file in a new window, gives the same plan; reloading the page
   brings the plan back; a private window starts empty and works;
 - clicking, dragging, and sending one source into a box of wells, in all four directions;
+- keeping the source (section 9): with a source chosen, three Ctrl-clicks on scattered wells add
+  three transfers, each its own Undo step, the arrow and volume staying, and the message ending
+  `Source kept: hold Ctrl (Cmd on a Mac) …`; a volume typed between them goes into the next one and
+  the source stays; a Ctrl+drag across a box adds the box and keeps the source; then a plain click
+  adds one more and clears it; Escape clears a kept source; a Ctrl-click on the source clears it; a
+  Ctrl-click with no source chooses one; a Ctrl+drag with no source adds one transfer; a Ctrl-click
+  that makes an overdraw shows the error without the hint and keeps the source, and so does one the
+  logic refuses; a box holding only the source, and a Ctrl+drag ending on other labware or off every
+  labware, keep it, with the hint; Undo in the middle of a run keeps it, and an Undo or Redo that
+  leaves a mix step or Start open clears it; opening another stage clears it; a Ctrl-click on a deck
+  well while an editing box with changes is open shakes the box, adds nothing and keeps the source,
+  and so does Ctrl+Enter on a focused well; a Ctrl-click on a well while a transfer's volume box or
+  a well's name box is open saves the box, adds the transfer and keeps the source, with the hint; a
+  Ctrl-click in the Stages column during a run selects as usual and keeps the source; Ctrl+Enter on
+  a focused well keeps it; in a mix step, at Start, at End, in a randomization's or transfer table's
+  stage, with a randomization's card open and while moving wells, Ctrl-click acts as a click; on a
+  Mac, Cmd-click keeps the source, and Ctrl-click on a well with a source chosen opens its name box,
+  adds nothing and keeps the source;
 - every editing box: Save, Discard, Escape, a click outside with and without changes, Remove;
 - a stage's ✎ beside its name: it opens the stage's box under the card's heading, its menus show
   `Non-Contact` whole, and a stage whose settings aren't one of the modes shows `(not one of the
