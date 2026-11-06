@@ -49,6 +49,13 @@ constituent name in different components is the same thing, so their amounts add
 it keeps one family of units (g/L and mg/L, say; not g/L in one component and mM in another).
 Constituents are part of the plan and saved in plan files.
 
+**Copied deck**
+What every well holds at one point of a plan (Start, after a stage, or End), with the components'
+details and the plan's well and labware labels, as plain data on the clipboard, so it can be added
+to another plan's starting contents: the end of one experiment becomes the start of the next (Andy,
+2026-11-06; `transfer-designer.md`, "Copied decks"). A well's mixture stays its components. It
+isn't kept in the plan.
+
 **Copied items**
 Stages, tip groups, randomizations or transfer tables copied from a plan, as plain data, so they can be pasted into
 the same plan or another one, through the system clipboard or the designer's own copy

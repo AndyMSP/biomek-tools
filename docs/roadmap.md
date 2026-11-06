@@ -441,6 +441,11 @@ Last updated: 2026-11-05
   `tableToText`, the three functions and `UNIT_SPELLINGS`, and the page's two buttons and dialog;
   the specifications and the build each reviewed by a separate agent, and checked in headless
   Chrome. Still to check by Andy.
+- **Decided: copying the deck** (Andy, 2026-11-06; item 23, below): every well as the deck shows
+  it, pasted into another plan's Start, from a preview. **Specified** (Draft, 2026-11-06, in the
+  hands-off workflow): `copyDeck`, `pasteDeck` and the copied deck's format (`transfer-designer.md`,
+  "Copied decks"), `Copy deck` and Ctrl+V on the page (`transfer-designer-page.md`, sections 6, 7
+  and 12), glossary "Copied deck". It changes no Biomek files and no plan files.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -975,6 +980,26 @@ added on 2026-10-28 (Andy).
     - Andy approved the preview (2026-11-05) and chose the hands-off workflow for the rest.
     **Specified** (Draft, 2026-11-05) and **Built (#141, 2026-11-06)**: see "Where things stand".
 
+23. **Copying the deck** (Andy, 2026-11-06): copy every well as the deck shows it, at any point of
+    the plan, and paste it as the starting condition of another transfer designer plan, so the end
+    of one experiment can start the next. Hands-off workflow (Andy, 2026-11-06). Decided (Andy,
+    2026-11-06):
+    - **A mixed well keeps its components** (e.g. 180 µL Media and 20 µL Drug A), so
+      concentrations and osmolality keep working from the original stocks; chosen over one new
+      component per mixture.
+    - **Along with the wells:** the components' details (colors, constituents, osmolality), the well
+      labels and the labware labels.
+    - **Pasted into any plan's Start, on top of what it holds**; a component of the same name must
+      carry the same contents and osmolality, or it's a problem. Chosen over only a new or empty
+      plan.
+    - Decided in the hands-off workflow (2026-11-06; reasons in its pull request): `Copy deck` in
+      the deck panel's first bar, copying the point the deck shows; Ctrl+V on the page pastes it
+      (no paste button, as the clipboard can be read without asking only in a paste); copying is
+      refused after an overdraw or a draw into the dead volume, but not an overfill; labels that
+      clash (a well or labware already labeled differently) are problems; a new component keeps
+      its color when it's free; the pasted labware comes out onto the deck.
+    Shaped in a preview (2026-11-06).
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
@@ -1012,7 +1037,9 @@ final Biomek runs, so they test the files as they will be:
     specification, then build. Page only, so it needn't come before the final runs.
 16. Pasting and copying a table of stocks (item 22), added on 2026-11-05: preview, specifications,
     then build. It changes no Biomek files or plan files, so it needn't come before the final runs.
-17. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+17. Copying the deck (item 23), added on 2026-11-06: preview, specifications, then build. It
+    changes no Biomek files or plan files, so it needn't come before the final runs.
+18. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
