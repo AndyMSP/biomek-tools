@@ -6589,11 +6589,15 @@ function cancelPress() {
 
 // Acts on a well chosen with Enter or Space as a click. A mouse or touch click is already handled
 // by the press; a click event from the keyboard has event.detail 0. Ctrl+Enter is handled by
-// clickWellWithCtrlEnter instead.
+// clickWellWithCtrlEnter instead. A click passed on by a closing text box (passClickOn) also has
+// detail 0, and carries the press's Ctrl or Cmd, which keeps the source (section 9). Only that
+// made click is read for Ctrl: the browser's own click for Ctrl+Space carries Ctrl too, and
+// Ctrl+Space isn't a Ctrl-click (section 12). A made click is the one the browser doesn't trust.
 function clickWellWithKeyboard(event) {
   const end = endOf(event.target);
   if (end !== null && event.detail === 0) {
-    clickWell(end);
+    const passedOn = !event.isTrusted;
+    clickWell(end, passedOn && (event.ctrlKey || event.metaKey));
   }
 }
 
@@ -6611,6 +6615,11 @@ function clickWellWithCtrlEnter(event) {
   }
   // Without this, the browser would also click the well button.
   event.preventDefault();
+  // An editing box with changes refuses it, as it refuses a Ctrl-click (section 10).
+  if (editingBox !== null && editingBox.element !== undefined && isBoxDirty()) {
+    refuseOutsideClick();
+    return true;
+  }
   clickWell(end, true);
   return true;
 }
@@ -8462,11 +8471,26 @@ function guardInlineBox(event) {
   event.stopPropagation();
   const target = document.elementFromPoint(event.clientX, event.clientY);
   if (event.button === 0 && outcome !== "refused" && target instanceof HTMLElement) {
-    // A made click: it bubbles to the button it's inside, and a well treats it as a keyboard click.
-    target.click();
+    passClickOn(target, event);
   }
   // Set only after the made click, which this flag would otherwise stop too.
   pressPassedOn = true;
+}
+
+// Sends a made click to `target`, carrying the press's Ctrl, Cmd, Shift and Alt, so a Ctrl-click
+// on a well still keeps the source (section 9). Its detail is 0, so a well treats it as a keyboard
+// click; it bubbles to the button it's inside.
+function passClickOn(target, press) {
+  const click = new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    ctrlKey: press.ctrlKey,
+    metaKey: press.metaKey,
+    shiftKey: press.shiftKey,
+    altKey: press.altKey,
+  });
+  target.dispatchEvent(click);
 }
 
 // The rest of a passed-on press: stopped, so nothing acts on it twice.
