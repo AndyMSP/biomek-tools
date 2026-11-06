@@ -810,6 +810,12 @@ added on 2026-10-28 (Andy).
       is out of date until the column is deleted or its header changed.
     - **Its box collapses like a randomization's** (Andy, 2026-11-05): to its heading
       (`Transfer table · 4 stages`) unless one of its stages is open.
+      **Its heading opens and closes the box, like a folder** (Andy, 2026-11-05, testing #138: a
+      collapsed table's heading opened the wizard, so its stages couldn't be seen or dragged unless
+      one was already open): clicking the heading shows or hides its stages (▸/▾), and a ✎ on the
+      heading opens the wizard, as ✎ opens a stage's or tip group's box. The box still opens when
+      one of its stages is opened; whether each box is open is remembered while the page is open,
+      not saved in plan files and not an undo step (Claude's choice, as Andy preferred).
     - **It can be moved and copied as a whole** (Andy, 2026-11-05), by its heading, as a
       randomization can (ADR 0014's container rule): only between tip groups, bringing its stages,
       tips and table; a copy fills the same labeled wells again.

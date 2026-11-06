@@ -1038,15 +1038,27 @@ transfer table is an entry in the column between tip groups, like a randomizatio
 own, with seams between tip groups above and below it as for any box.
 - **Its box**: as a run randomization's (12px corners, 1px `#9DB7DB` border, the page's
   background inside): its heading, then its stages' tip group boxes (`columnBoxes`' `transferTable`
-  box; one stage each). It **collapses to its heading** unless one of its stages is the open entry
-  (Andy, 2026-11-05: as a randomization's); the timeline's `‹` and `›` step into and through its
-  stages as any others, opening the box.
-- **Its heading**, a button the box's width: the **table icon** (an SVG: a rounded rectangle 15 by
-  13 with two lines across and two down, in the text's color), then `Transfer table`, semibold,
-  then at the right, in gray, `4 stages` (`1 stage`), or, when it's out of date
-  (`isTransferTableOutOfDate`), `needs update` in red, semibold. Tooltip: `Open to change it`; out
-  of date: `The plan changed since this was made: open it and press Update.` Clicking it opens its
-  **wizard** (below) at Review, and selects it (section 7, "Moving and copying").
+  box; one stage each). It's **open** (showing its stages) or **closed** (its heading only), like
+  a folder (Andy, 2026-11-05, from testing the build): clicking its heading opens or closes it.
+  It also opens whenever one of its stages becomes the open entry (the timeline's `‹` and `›` step
+  into and through its stages as any others, Add opens its first stage, a move or paste opens a
+  stage of it), and stays open after that stage is left until its heading closes it. Whether each
+  transfer table's box is open is remembered while the page is open, by its ID: it isn't saved in
+  plan files or the browser copy, and opening or closing it isn't an undo step. A box closed while
+  one of its stages is open hides that stage; the stage stays open (the deck still shows it). A new
+  page, or a plan opened from a file, starts with every box closed, except one whose stage is open.
+- **Its heading**, a row the box's width: a button (most of the row) holding `▸` (closed) or `▾`
+  (open), the **table icon** (an SVG: a rounded rectangle 15 by 13 with two lines across and two
+  down, in the text's color), then `Transfer table`, semibold, then at the right, in gray,
+  `4 stages` (`1 stage`), or, when it's out of date (`isTransferTableOutOfDate`), `needs update` in
+  red, semibold; then, after the button, a **✎** (as a stage's, accessible name `Edit transfer
+  table`, tooltip `Change the table, its sources or remove it`). Clicking the button (or Enter or
+  Space on it) opens or closes the box and selects the transfer table (section 7, "Moving and
+  copying"); its `aria-expanded` says whether it's open; its tooltip: `Show its stages` / `Hide its
+  stages`, or, out of date, `The plan changed since this was made: press ✎, then Update.`
+  **The ✎** opens its **wizard** (below) at Review and selects the transfer table. The button is
+  also what the transfer table is dragged, copied and given the right-click menu by (a press on the
+  ✎ starts no drag), as a randomization's heading is.
 - **No seams with buttons inside it**, as for a randomization: no `+`, mix step, tip, dice or table
   buttons. **While one of its own stages is dragged** (Andy, 2026-11-05), the places between its
   stages (and above its first, below its last) are drop places, shown as a seam's line inside a tip
@@ -1216,8 +1228,8 @@ is the logic's, and its messages are shown as they come. The column's boxes are 
 *Selecting.* The things that can be selected are stages, ordinary tip groups, randomizations and
 transfer tables (the logic's **items**, `docs/glossary.md`). **A transfer table** (2026-11-05) is
 selected, dragged, copied and pasted by its heading exactly as a randomization is, everywhere in
-this part ("Moving and copying"), its stages counting as its box; clicking its heading opens its
-wizard and makes the picked set that transfer table alone. **Its stages** (Andy, 2026-11-05) can be
+this part ("Moving and copying"), its stages counting as its box; clicking its heading opens or
+closes its box and makes the picked set that transfer table alone (its ✎ opens its wizard). **Its stages** (Andy, 2026-11-05) can be
 dragged by their rows, and by their tip group's heading (each stage has its own tips, so it's the
 same as dragging the stage), only to a place **inside their own transfer table** (above); dropped
 anywhere else, the logic refuses with its message and nothing moves. Ctrl+C or Ctrl+drag (copying)
@@ -1360,7 +1372,9 @@ Any other click on a control or heading in the column (a volume, a component chi
 heading, which would open its card) does nothing but say `Stages can't be changed while moving
 wells. Press Done first.` (note); a click on plain text or empty space does nothing and says
 nothing. An undo or redo that would open a randomization's card while moving wells opens instead
-the point it sits at (its first stage, or the stage it sits before, or End), so no card opens. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
+the point it sits at (its first stage, or the stage it sits before, or End), so no card opens. A
+transfer table's heading opens and closes its box as usual (it only shows or hides); its ✎ is
+hidden with the others. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
 are off.
 
 ## 8. Starting contents (Start open)
@@ -2054,10 +2068,13 @@ page's configuration (ADR 0009):
   a second well with its split line, `×`, `+ Another well` disappearing when every stock well is
   used, a component with no stock well; Review: from, into, totals, modes with ⟳, tips, the
   per-tip note; Add (stages in column order, each on new tips, the stage below keeping its tips,
-  the message, the first stage opening, the glow); the box collapsing and opening with its stages,
-  `‹` and `›` through them; a stage's ✎ (Name disabled, no Remove, its note; a mode changed and
+  the message, the first stage opening, the glow); the box opening and closing on a click of its
+  heading (▸/▾, `aria-expanded`, Enter and Space on it), a closed box opening to show its stages and
+  one of them then dragged inside it, the box opening when `‹` and `›` step through its stages and
+  staying open after, its open state kept across edits, undo and redo but not across a reload; its
+  ✎ (`Edit transfer table`) opening the wizard, and a press on it starting no drag; a stage's ✎ (Name disabled, no Remove, its note; a mode changed and
   saved) and a tip group's ✎ (no Remove, its note); no `×` on its transfers and the deck refusing
-  clicks with its note; reopening at Review; a header renamed (the stage keeps its settings and
+  clicks with its note; reopening at Review from its ✎; a header renamed (the stage keeps its settings and
   tips after Update); a column added (copying the column before), cleared (its stage gone) and
   moved; out of date after relabeling a well (heading, problem count, the Biomek files box) and
   Update clearing it; renaming a component renames its header and stage; removing one makes it
