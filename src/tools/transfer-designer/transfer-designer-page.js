@@ -112,6 +112,8 @@ import {
   copyItems,
   pasteItems,
   COPIED_ITEMS_FORMAT,
+  copyDeck,
+  pasteDeck,
   moveWell,
   readTransferTable,
   stockWellsOf,
@@ -155,6 +157,13 @@ const STORAGE_KEY = "biomek-tools transfer designer: plan";
 // The key the page's copy of copied items is stored under, in the browser's local storage, shared
 // by every tab of the designer (section 7, "Moving and copying").
 const COPIED_ITEMS_KEY = "biomek-tools transfer designer: copied items";
+
+// The key the page's deck copy is stored under, in the browser's local storage, shared by every tab
+// of the designer, as copied items are (section 6, "Copying the deck").
+const COPIED_DECK_KEY = "biomek-tools transfer designer: copied deck";
+
+// Paste deck's tooltip when it can be pressed (section 6, "Copying the deck").
+const PASTE_DECK_TOOLTIP = "Start this plan from the deck last copied with Copy deck";
 
 // While dragging in the Stages column: the drop line looks for seams while the pointer is within
 // this far (in pixels) of the column's sides, and the column scrolls when it's within this far of
@@ -332,6 +341,10 @@ let selectionAnchor = null;
 // in any tab is read from local storage first (COPIED_ITEMS_KEY).
 let copiedInMemory = null;
 
+// The page's deck copy, for a browser without local storage (section 6, "Copying the deck"); the
+// latest copy in any tab is read from local storage first (COPIED_DECK_KEY).
+let deckCopyInMemory = null;
+
 // A press on an item's handle in the Stages column that may become a drag: { item, x, y, pointerId },
 // or null.
 let columnPress = null;
@@ -404,6 +417,8 @@ const elements = {
   previousPoint: byId("previous-point"),
   nextPoint: byId("next-point"),
   timelineCaption: byId("timeline-caption"),
+  copyDeck: byId("copy-deck"),
+  pasteDeck: byId("paste-deck"),
   moveWells: byId("move-wells"),
   movingBar: byId("moving-bar"),
   undo: byId("undo"),
@@ -505,11 +520,13 @@ function connectHeader() {
   elements.resetEverything.addEventListener("click", resetEverything);
 }
 
-// Connects the deck panel's two bars (sections 6 and 11): the timeline, Move wells, Undo, Redo,
-// Names and Arrows.
+// Connects the deck panel's two bars (sections 6 and 11): the timeline, Copy deck, Paste deck,
+// Move wells, Undo, Redo, Names and Arrows.
 function connectDeckBars() {
   elements.previousPoint.addEventListener("click", () => openNeighbour(-1));
   elements.nextPoint.addEventListener("click", () => openNeighbour(1));
+  elements.copyDeck.addEventListener("click", copyShownDeck);
+  elements.pasteDeck.addEventListener("click", pasteCopiedDeck);
   elements.moveWells.addEventListener("click", toggleMovingWells);
   elements.undo.addEventListener("click", undo);
   elements.redo.addEventListener("click", redo);
@@ -5741,24 +5758,37 @@ function copySelection() {
 // the page's memory, for a browser without local storage.
 function keepPageCopy(copied) {
   copiedInMemory = copied;
-  try {
-    window.localStorage.setItem(COPIED_ITEMS_KEY, JSON.stringify(copied));
-  } catch {
-    // No local storage (e.g. a private window): the page's memory keeps it for this tab.
-  }
+  storeShared(COPIED_ITEMS_KEY, copied);
 }
 
 // The page's copy: the latest copied items in any tab (local storage), or this tab's own, or null.
 function pageCopy() {
+  return readShared(COPIED_ITEMS_KEY) ?? copiedInMemory;
+}
+
+// Stores `value` as JSON in local storage under `key`, shared by every tab of the designer in this
+// browser. Without local storage (e.g. a private window) it stores nothing; the caller keeps its
+// own copy in memory for this tab.
+function storeShared(key, value) {
   try {
-    const stored = window.localStorage.getItem(COPIED_ITEMS_KEY);
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // No local storage: the caller's copy in memory is used.
+  }
+}
+
+// The value stored under `key` in local storage by storeShared, or null if there's none, it can't
+// be read, or there's no local storage.
+function readShared(key) {
+  try {
+    const stored = window.localStorage.getItem(key);
     if (stored !== null) {
       return JSON.parse(stored);
     }
   } catch {
-    // Unreadable or no storage: this tab's own copy is used.
+    // Unreadable or no storage: the caller's copy in memory is used.
   }
-  return copiedInMemory;
+  return null;
 }
 
 // Copied items in `text` from the system clipboard, if it's JSON in their format (anything with
@@ -7214,6 +7244,68 @@ function endOf(element) {
   return wellElement === null ? null : { labware: wellElement.dataset.labware, well: wellElement.dataset.well };
 }
 
+// --- Copying the deck (section 6) ---
+
+// Copy deck: copies the deck at the point it shows (copyDeck, with the shown snapshot and the
+// timeline's caption) as the page's deck copy, and says so. Not an edit, so it works while moving
+// wells too. Nothing goes on the system clipboard.
+function copyShownDeck() {
+  const plan = currentPlan();
+  const caption = timelineCaption(plan, currentOpen());
+  const copied = tryLogic(() => copyDeck(plan, shownSnapshot, caption));
+  if (copied === false) {
+    return;
+  }
+  if (copied.wells.length === 0) {
+    showMessage("Nothing to copy: no well holds anything here.", "note");
+    return;
+  }
+  deckCopyInMemory = copied;
+  storeShared(COPIED_DECK_KEY, copied);
+  showMessage(
+    `Copied the deck (${lowerFirst(caption)}): ${countOf(copied.wells.length, "well")}, ` +
+      `${countOf(copied.components.length, "component")}. Press Paste deck in another plan to start it from these wells.`,
+    "ok",
+  );
+}
+
+// Paste deck: starts this plan from the deck copy (local storage first, then the page's memory) as
+// one edit, with Start open, first bringing out every labware the new plan uses on top of what's
+// out (none is put away). An open randomization's card closes first, as Close would (if it can't,
+// nothing happens), and an open editing box closes.
+function pasteCopiedDeck() {
+  const copied = readShared(COPIED_DECK_KEY) ?? deckCopyInMemory;
+  if (copied === null) {
+    showMessage("Nothing to paste yet: press Copy deck in a plan first.", "note");
+    return;
+  }
+  if (!closeRandomizationCard()) {
+    return;
+  }
+  closeEditingBox();
+  let pasted;
+  try {
+    pasted = pasteDeck(currentPlan(), copied, COMPONENT_COLORS);
+  } catch (error) {
+    showMessage(`Not pasted: ${error.message}`, "error");
+    return;
+  }
+  for (const name of labwareUsed(pasted)) {
+    labwareOut.add(name);
+  }
+  recordEdit(pasted, START);
+  showMessage(
+    `Started from the copied deck: ${countOf(copied.wells.length, "well")}, copied ${lowerFirst(copied.point)}. Undo takes it out.`,
+    "ok",
+  );
+}
+
+// `text` with its first letter made lowercase, e.g. "At the end, after all stages" → "at the end,
+// after all stages".
+function lowerFirst(text) {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
 // --- Moving wells (sections 6 and 7) ---
 
 // Move wells starts moving wells; Done ends it (section 6, "Moving wells").
@@ -7299,6 +7391,9 @@ function movingWellSets(plan) {
 function refreshMovingWellsControls(plan) {
   elements.moveWells.textContent = movingWells ? "Done" : "Move wells";
   elements.moveWells.setAttribute("aria-pressed", String(movingWells));
+  // Paste deck is an edit, so it's off while moving wells; Copy deck changes nothing and stays on.
+  elements.pasteDeck.disabled = movingWells;
+  elements.pasteDeck.title = movingWells ? "Press Done first." : PASTE_DECK_TOOLTIP;
   elements.deckPanel.classList.toggle("moving-wells", movingWells);
   elements.movingBar.hidden = !movingWells;
   if (!movingWells) {
