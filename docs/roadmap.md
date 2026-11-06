@@ -862,6 +862,13 @@ final Biomek runs, so they test the files as they will be:
 14. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
+- **A randomization's pipetting settings edited on its stages** (Andy, 2026-11-05, from the
+  transfer table work): a randomization's card keeps its own Each transfer settings (modes,
+  mixing, tip type, probes) and copies them onto the stages it makes, so they're held in two
+  places, though the stages can't be changed to disagree. Transfer tables keep settings only on
+  their stages, edited with each stage's ✎ (item 19). Doing it the same way here means one rule
+  everywhere: the card drops its settings, each stage and tip change has its ✎, and a run keeps
+  each source's stage settings. Shaped in a preview first; changes plan files (a new version).
 - **Moving a randomization's source with the keyboard** (2026-11-05, from the shared-tips topic):
   sources are reordered only by dragging. The join and split buttons work from the keyboard, so
   sharing can be set without a mouse, and order can be changed by removing a source and picking it
