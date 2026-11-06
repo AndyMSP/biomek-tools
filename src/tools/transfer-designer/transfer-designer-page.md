@@ -1592,9 +1592,9 @@ wells that don't form a box: each click is its own edit (its own Undo step), as 
 - **What keeps it:** Undo and Redo; typing a volume; opening a transfer's volume box or the open
   stage's ✎ (a click on a deck well while an editing box with changes is open shakes the box, as
   for any click, and adds nothing); selecting in the Stages column.
-- **After an Undo or Redo** during a kept run (Andy, 2026-11-05), if what's open is no longer a
-  transfer stage (a mix step, Start, End, or a stage of a randomization or transfer table), the
-  source is cleared, as opening it would.
+- **After an Undo or Redo** during a kept run (Andy, 2026-11-05), or with a source just chosen,
+  if what's open is no longer a transfer stage (a mix step, Start, End, or a stage of a
+  randomization or transfer table), the source is cleared, as opening it would.
 - **Where it applies:** only in a transfer stage. In a mix step, at Start, at End, in a stage of a
   randomization or transfer table, with a randomization's card open, or while moving wells,
   Ctrl-click and Ctrl+drag do exactly what a click and a drag do there.
