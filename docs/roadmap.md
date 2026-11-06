@@ -870,10 +870,16 @@ added on 2026-10-28 (Andy).
     and copies them onto the stages it makes, so they're held in two places. Transfer tables
     (item 19) keep settings only on their stages. Decided so far (Andy, 2026-11-05): the same
     rule here, a topic of its own after transfer tables (its branch built on theirs, so plan
-    files go to the next version), **tried in a preview first**. Proposed for the preview: the
-    card drops Mode, Mix and Tips, keeping its sources, wells to fill, Volume and Seed; each of its
-    stages and tip groups gets its ✎; a first run copies the stage before it; Update keeps each
-    source's stage settings and tips.
+    files go to the next version), **tried in a preview first**.
+    - **Settings live on its stages** (Andy, 2026-11-05): each of its stages gets its ✎ (name
+      locked, no Remove) and each of its tip groups its tip ✎; Update keeps each source's stage
+      settings and tips.
+    - **The card still sets them all at once** (Andy, 2026-11-05, "otherwise you'd need to set
+      dozens of settings manually"), like the All sources replicates box: once it has run, its
+      Mode, Mix and Tips show its stages' shared value, or **Mixed** where they differ; a value
+      chosen there goes to every stage on Update, and Mixed leaves each as it is. It's a view and
+      a way to set them, not a second copy. Before the first run there are no stages, so the card
+      holds what's chosen until the run makes them.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
