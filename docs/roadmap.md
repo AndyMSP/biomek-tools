@@ -766,10 +766,12 @@ added on 2026-10-28 (Andy).
       which can't be combined with other stages or tip changes by hand.
     - **Its card can change its sources and settings, then Update** (Andy, 2026-11-05): it keeps
       the table; each column's source and settings can be changed, and Update rebuilds its stages,
-      as a randomization's does. **Its table never changes** (Andy, 2026-11-05, from the preview,
-      replacing "a new table can be pasted over it"): a wizard takes one paste, and its paste box
-      goes once a table is in. A different table means a new wizard (Cancel, or Remove the
-      transfer table, and start again).
+      as a randomization's does. **One paste per wizard** (Andy, 2026-11-05, from the preview,
+      replacing "a new table can be pasted over it"): its paste box goes once a table is in, and a
+      different table means a new wizard (Cancel, or Remove the transfer table, and start again).
+      **The table's cells can be edited in the wizard** (Andy, 2026-11-05), in a new transfer
+      table or when one is reopened, so a volume or label can be fixed without going back to
+      Excel.
     - **Out of date is flagged, not rebuilt** (Andy, 2026-11-05), as for a randomization: when the
       plan changes so its stages no longer match its table (a well relabeled, a stock moved or
       emptied), it reads `needs update`, counts as a problem, and the Biomek files wait for Update.
