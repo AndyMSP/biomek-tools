@@ -1218,9 +1218,8 @@ this part ("Moving and copying"), its stages counting as its box; clicking its h
 wizard and makes the picked set that transfer table alone. **Its stages** (Andy, 2026-11-05) can be
 dragged by their rows, and by their tip group's heading (each stage has its own tips, so it's the
 same as dragging the stage), only to a place **inside their own transfer table** (above); dropped
-anywhere else, the logic refuses with its message and nothing moves. Ctrl+C on a selection holding
-one of its stages without the table, and Ctrl+drag (copying) one, are refused with the logic's
-message: only the whole table copies. Nothing else can be dropped inside its box. Messages name it `a transfer table`
+anywhere else, the logic refuses with its message and nothing moves. Ctrl+C or Ctrl+drag (copying)
+one of its stages without the table copies it as an ordinary stage, as for a randomization's. Nothing else can be dropped inside its box. Messages name it `a transfer table`
 (`2 transfer tables`). The page keeps a **picked set**, or none:
 - With **no picked set**, what's selected is what's open: a stage, or a randomization whose card is
   open; with Start or End open, nothing.
@@ -2045,10 +2044,7 @@ page's configuration (ADR 0009):
   the transfer table below it (the randomization stays above, one undo);
   dragging a table's stage (by its row, and by its tip heading) to another place in the table: the
   stage and its column move, its settings and tips kept, not out of date, one undo; drop places
-  showing only for its own stages; dropped outside it, refused; Ctrl+C of it alone refused;
-  dragging a table's stage (by its row, and by its tip heading) to another place in the table: the
-  stage and its column move, its settings and tips kept, not out of date, one undo; drop places
-  showing only for its own stages; dropped outside it, refused; Ctrl+C of it alone refused; the wizard from it: the paste zone, a paste from Excel (blank
+  showing only for its own stages; dropped outside it, refused; Ctrl+C and Ctrl+V of it alone pasting an ordinary stage; the wizard from it: the paste zone, a paste from Excel (blank
   lines dropped, ragged rows filled), a paste of one cell refused; the grid: matched headers'
   swatches, labels' well counts, each problem cell red with its tooltip, Enter moving down, Tab
   along, Escape restoring a cell, `+ Row` and `+ Column` focusing the new cell, the `×`s deleting

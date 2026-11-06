@@ -854,8 +854,8 @@ added on 2026-10-28 (Andy).
     - **A table's stages can be moved inside it, never out of it** (Andy, 2026-11-05): dragging a
       stage (or its tip group, since each stage has its own tips) to another place in the same
       transfer table reorders its stages and moves that stage's column in the table to match, as
-      one undoable edit, and nothing goes out of date. Copying a single stage of a table stays
-      refused (only the whole table copies), and moving one out of the table stays refused.
+      one undoable edit, and nothing goes out of date. Moving one out of the table stays refused;
+      copying one alone gives an ordinary stage, as for a randomization's.
     **Specified** (Draft, 2026-11-05): see "Where things stand". From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
     opens a box listing each column's stage, source, wells and total, and the problems found;
     blank and 0 cells add nothing; a column draws only from a well holding nothing but that
