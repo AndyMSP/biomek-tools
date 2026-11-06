@@ -5,7 +5,7 @@ Date: 2026-11-05
 ## Status
 Proposed (Andy, 2026-11-05: shaped in a preview he approved, "The current preview's randomization
 changes are good!"; written in the hands-off workflow, so it stands as a proposal until he merges
-its pull request).
+its pull request). Amended 2026-11-05 (each group's tips set on its own; "Amendment", below).
 
 ## Context
 A randomization (ADR 0012) makes one stage per source, and until now each started on new tips, so
@@ -67,3 +67,10 @@ randomization's layout).
   after unmarking its first filler well). Now a run puts them in the sources' order, so such a
   randomization reads as out of date, and Update reorders its stages, changing the order of their
   rows and files in the Biomek files (`transfer-designer.md`, "Out of date").
+
+## Amendment (2026-11-05): each source group's tips can differ
+Sources still choose only *whether* new tips come before them. But once a randomization has run,
+its settings and tips live on its stages (ADR 0012, amended 2026-11-05), so each source group's tip
+change can be set on its own with its ✎, and groups may then load different tips. The card's Tips
+shows the tips they share, or Mixed, and sets every group at once on Update; a run keeps each
+group's tips. Before the first run, every group starts on the same tips, as decided above.

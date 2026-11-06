@@ -1173,7 +1173,7 @@ before a removed stage, and giving the stage after one's last stage a tip change
 **What can be edited** on its stages (Andy, 2026-11-05: pipetting the normal way): `changeStageSettings`
 and `setStageMix` on any of its stages; `setTipType` and `setTipProbes` on their tip changes (or
 `START`, for one that's the plan's first). **Refused, in the logic** (not only by a caller; unlike
-randomizations, whose protection is the page's only: roadmap, "Technical debt"):
+randomizations, whose protection was the page's only until 2026-11-05, item 20, "It owns its stages"):
 - `addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer` on one of its stages;
 - `renameStage` of one of its stages (its name is its component's);
 - `removeStage` of one of its stages;

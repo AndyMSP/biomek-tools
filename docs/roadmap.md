@@ -1006,14 +1006,13 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   share. Osmolality reads only the shares' own properties (#134); doing it properly means the same
   in `concentrations`, specification first, with a failing test, on its own branch. Nobody is
   likely to name a component that way, so it waits.
-- **A randomization's stages are protected by the page only** (2026-11-01): the transfer
-  designer's ordinary edits (adding or removing a transfer, changing a stage's settings, removing
-  a stage or its tip change) don't refuse an owned stage; the page simply doesn't offer them, and
-  `setRandomizations` checks a plan file's randomizations. Likewise, `addStage` or `addMixStep`
-  without `takeTips`, called directly just after a randomization, would put a stage on its tips (the
-  page never does: there are no seams inside its boxes). Doing it properly: each of those edits
-  refuses an owned stage, or gives a new stage next to one its own tips, with a message pointing to
-  the randomization's card.
+- **A randomization can't be set all at once while it has problems** (2026-11-05, item 20): its
+  card's Mode, Mix and Tips are applied only by Update, which is disabled while it has problems, so
+  then its stages can be changed only one at a time, with their ✎. Doing it properly: apply the
+  card's values without a run (a `forAll` edit of its own), if Andy finds he needs it.
+- *Resolved 2026-11-05 (item 20):* "A randomization's stages are protected by the page only": the
+  logic now refuses every edit of a randomization's stages that the page doesn't offer
+  (`transfer-designer.md`, "It owns its stages"), as for transfer tables.
 - **Tests that hard-code config values** (2026-10-30): CLAUDE.md now says tests work out their
   numbers from `config/`, but tests written before then may name config values (e.g. default
   volumes, tip types, the experiment name's 40 characters if it moves to `config/`). The mixing
