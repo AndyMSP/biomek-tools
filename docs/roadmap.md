@@ -909,6 +909,22 @@ added on 2026-10-28 (Andy).
     **Specified** (Draft, 2026-11-05, in the hands-off workflow) and **Built (#139, 2026-11-05)**:
     see "Where things stand".
 
+21. **Ctrl-click to pick scattered wells** (Andy, 2026-11-05; numbered after items 19 and 20, which
+    are on their own branches, #138 and #139): wherever wells are picked on the deck, Ctrl-click
+    (Cmd on a Mac) picks wells that don't form a box. Decided so far (Andy, 2026-11-05):
+    - **Everywhere wells are picked**, not only transfer destinations: filling and erasing at
+      Start, a transfer's destinations (one source into each), mixing in a mix step, and a
+      randomization card's sources and wells to fill (where clicks already add one at a time,
+      Ctrl+drag adds more boxes). Not while moving wells, which move one at a time.
+    - **The standard pattern, as in Excel and File Explorer:** Ctrl-click (or Ctrl+drag a box)
+      builds a selection, outlined on the deck; Ctrl-clicking a selected well takes it out. The
+      selection stays when Ctrl is let go, and is applied as a separate step, with Enter or a
+      button beside the deck naming the action (e.g. `Fill 6 wells with Media`), as one edit.
+      Escape clears it; a plain click starts over as today. (Acting when Ctrl is let go was
+      considered and declined: not standard anywhere common, and letting go early would act on
+      a half-made selection.)
+    - **Tried in a preview first.** It changes no plan files and no Biomek files.
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
