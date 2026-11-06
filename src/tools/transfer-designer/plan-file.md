@@ -533,7 +533,7 @@ row of section 5 has at least one test.
 
 **Refusing**
 - Text that isn't JSON, and JSON that's a list, give the not-a-plan-file message.
-- `version` `11` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
+- `version` `12` gives the newer-version message; `0`, `"2"` and `1.5` give the unknown-version
   message.
 - **Version 6:** a version 6 file (as saved before constituents, its components `{ name, color }`)
   opens, every component carrying `[]`; a version 6 file whose component *has* `constituents` is
@@ -570,7 +570,7 @@ row of section 5 has at least one test.
   A version 2 stage without `probes` gets the missing-probes message; one with `[3, 1, 3]` gets
   `stage N: ` and the repeated-probe message. A version 2 tip change with `probes` is refused as
   not having exactly its properties; so is a version 3 to 11 tip change without them, and a version
-  3 to 10 stage with `probes` is refused by the stage list as an extra setting.
+  3 to 11 stage with `probes` is refused by the stage list as an extra setting.
 - **Version 1:** a version 1 file (as saved before 2026-10-28, without `experimentName`, with probes
   in its stages) opens, with an experiment name of `""` and probes as for version 2; a version 1
   file *with* `experimentName` is refused as having an extra property; a version 2 file without it
