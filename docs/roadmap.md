@@ -397,6 +397,19 @@ Last updated: 2026-11-05
   (version 10, versions 1 to 9 still opening) and copied items (version 3), and the card's boxes
   of shared tips on the page; the specifications and the build each reviewed by a separate agent,
   and checked in headless Chrome. Still to check by Andy.
+- **Decided: transfer tables** (Andy, 2026-11-05; item 19, below): a table pasted from Excel, of how
+  much of each component goes into each labeled well, kept in the plan as one unit that makes one
+  stage per component, created and edited through a wizard, shaped in previews (2026-11-05).
+  **Specified** (Draft, 2026-11-05, in the hands-off workflow; ADR 0019, Proposed): the transfer
+  tables in the plan and every edit of them (`transfer-designer.md`, "Transfer tables": reading,
+  problems, stock wells, the split among wells, adding, updating with `renamedFrom`, out of date,
+  their stages protected in the logic, renaming components, moving wells, moving and copying with
+  copied items version 4), plan files version 11 (`plan-file.md`), the page's table button, wizard
+  and box (`transfer-designer-page.md`), glossary "Transfer table". It changes no Biomek files'
+  format; its stages are ordinary stages to the file writer. **Built (#138, 2026-11-05)**: code,
+  tests and REPL of the transfer designer's transfer tables, plan files version 11 (versions 1 to
+  10 still opening) and the page's table button, wizard and box; the specifications and the build
+  each reviewed by a separate agent, and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -743,6 +756,119 @@ added on 2026-10-28 (Andy).
       three). Whichever of the two pull requests merges second adds it. Added here, after merging
       #135 into this branch (2026-11-05).
     **Specified** (Draft, 2026-11-05) and **Built (#137, 2026-11-05)**: see "Where things stand".
+19. **Transfer tables: pasting amounts from Excel** (Andy, 2026-11-05): a table copied from a spreadsheet, saying how
+    much of each component goes into each well, becomes transfers, so a plate's recipe made in
+    Excel doesn't have to be dragged in by hand. Decided so far (Andy, 2026-11-05):
+    - **The table's shape:** a header row, then one row per destination. The first column is a
+      **well label** (`Dest Well Label`); each other column is a **component**, its header exactly
+      the component's name in the plan (e.g. `Media`); each cell is how much of that component to
+      add to that row's wells.
+    - **A row fills every well with its label**, since labels may repeat: a row for `Cond 3` adds
+      its amounts to each of three replicate wells labeled `Cond 3`.
+    - **Each column draws from the well holding that component**, found by its name. When more
+      than one well holds it, the user picks which.
+    - **One stage per column, in column order, each on new tips**, like a randomization's sources,
+      so the order of addition is the columns' order and no component carries into the next.
+    - **Amounts are volumes in µL** for now (Andy had no preference). Final concentrations, turned
+      into volumes from each stock's constituents, could come later.
+    - **One unit, like a randomization** (Andy, 2026-11-05, after trying a first preview in which
+      a paste made ordinary stages): it sits in the Stages column as one box owning its stages,
+      which can't be combined with other stages or tip changes by hand.
+    - **Its card can change its sources and settings, then Update** (Andy, 2026-11-05): it keeps
+      the table; each column's source and settings can be changed, and Update rebuilds its stages,
+      as a randomization's does. **One paste per wizard** (Andy, 2026-11-05, from the preview,
+      replacing "a new table can be pasted over it"): its paste box goes once a table is in, and a
+      different table means a new wizard (Cancel, or Remove the transfer table, and start again).
+      **The table's cells can be edited in the wizard** (Andy, 2026-11-05), in a new transfer
+      table or when one is reopened, so a volume or label can be fixed without going back to
+      Excel, and **rows and columns can be added and deleted** there (Andy, 2026-11-05).
+    - **Pipetting settings are edited the normal way** (Andy, 2026-11-05, from the preview), not in
+      the wizard: each of a transfer table's stages has its ✎ and editing box, and each of its tip
+      changes its ✎, as ordinary stages and tips do. The wizard drops its Settings step (Table,
+      Sources, Review). What stays locked: a stage's name (its component's), its transfers, its
+      seams, and removing a stage or tip change on its own. Update keeps each stage's settings
+      and tips; a new column's stage starts with the settings of the column before it. Settings
+      live only on the stages; the transfer table holds its grid and sources, never a copy of
+      them (Andy's concern, 2026-11-05: no second source of truth).
+    - **No all-at-once settings** (Andy, 2026-11-05): unlike a randomization's card (item 20),
+      a transfer table has no Mode, Mix or Tips that set every stage, since each component usually
+      needs its own (Media and a 2 µL drug want different tips); each stage is set with its ✎.
+    - **Settings follow a renamed column** (Andy, 2026-11-05, by voice): stages are matched to
+      columns by component name, so settings stay with the liquid when columns move; when a
+      column's header is changed in the wizard, the wizard remembers which column it was, and on
+      Update the renamed column's stage starts from the old stage's settings and tips. Only the
+      wizard keeps that link, until Add or Update; nothing extra is stored in the plan. Deleting a
+      column and adding a new one isn't a rename: the new column copies the column before it.
+    - **One column per component** (Andy, 2026-11-05, by voice): a component in two columns is a
+      problem on the Table step (`“Drug A” is in more than one column.`), since each column is one
+      stage; a component needed at two points in the run means two transfer tables.
+    - **Part of v0.2.0** (Andy, 2026-11-05).
+    - **Renaming a component renames its columns** (Andy, 2026-11-05): as a rename already changes
+      the name in every well, it changes a transfer table's header and the table's stage of that
+      component too, as one edit, so the table stays up to date (the table then differs from the
+      Excel sheet by that name). Removing a component leaves its column without one, so the table
+      is out of date until the column is deleted or its header changed.
+    - **Its box collapses like a randomization's** (Andy, 2026-11-05): to its heading
+      (`Transfer table · 4 stages`) unless one of its stages is open.
+      **Its heading opens and closes the box, like a folder** (Andy, 2026-11-05, testing #138: a
+      collapsed table's heading opened the wizard, so its stages couldn't be seen or dragged unless
+      one was already open): clicking the heading shows or hides its stages (▸/▾), and a ✎ on the
+      heading opens the wizard, as ✎ opens a stage's or tip group's box. The box still opens when
+      one of its stages is opened; whether each box is open is remembered while the page is open,
+      not saved in plan files and not an undo step (Claude's choice, as Andy preferred).
+    - **It can be moved and copied as a whole** (Andy, 2026-11-05), by its heading, as a
+      randomization can (ADR 0014's container rule): only between tip groups, bringing its stages,
+      tips and table; a copy fills the same labeled wells again.
+    - **A column can draw from several wells, like a randomization's filler** (Andy, 2026-11-05,
+      by voice), for when one well can't hold enough (e.g. Media for every destination): its wells
+      are used in the order chosen, each giving **whole transfers** until the next would reach
+      into its dead volume, then the next well takes over; all in the column's one stage, on one
+      set of tips. If they don't hold enough together, the last one draws into its dead volume or
+      is overdrawn, shown and refused like any contents problem. What each well holds is taken
+      just before the transfer table, so an earlier edit can make it out of date.
+    - **Out of date is flagged, not rebuilt** (Andy, 2026-11-05), as for a randomization: when the
+      plan changes so its stages no longer match its table (a well relabeled, a stock moved or
+      emptied), it reads `needs update`, counts as a problem, and the Biomek files wait for Update.
+    - **Settings per column** (Andy, 2026-11-05): each column's stage has its own settings (mode,
+      mixing, tip type, probes), so 190 µL of Media and 2 µL of a drug can use different tips and
+      modes; a new column starts with the settings of the column before it. (Claude first
+      recommended one set for all, as a randomization has, then changed it for this reason.)
+    - **Named "Transfer table"** (Andy, 2026-11-05): the unit in the plan, holding the pasted
+      table, each column's source and settings, and owning its stages. The pasted data is simply
+      its table. Considered and set aside: "Amounts table" ("amount" already means a constituent's
+      amount), "Recipe" (could clash with the lab's media recipes), "Pasted table" (says where it
+      came from, not what it is), "Combined transfer table" (longer, where the name is shown in
+      tight spots), and "Transfer wizard" (a wizard is the process, not the thing that stays in
+      the plan). Not to be confused with the Biomek's Transfer From File files, one row per
+      transfer; the glossary entry will say so.
+    - **Its card acts like a wizard** (Andy, 2026-11-05): creating or editing a transfer table
+      steps through screens, filled in with what was set before when it's opened again. Draft
+      steps (Claude, 2026-11-05, to try in the preview): Table (the pasted grid, problems marked on
+      their cells), Sources (each column's well), Settings (each column's modes, mixing, tip type
+      and probes, starting from the column before), Review (each stage's wells, total µL and tips),
+      then Add or Update; Back and Next between steps.
+    - **The wizard's steps are Table, Sources and Review** (Andy, 2026-11-05, from the preview).
+      Review is read-only: each stage's sources, wells, total µL, modes and tips, and a note when
+      a well's volume is more than one tip holds; kept as the last check before the plan changes.
+      A transfer table already in the plan reopens at Review, any step reachable from there.
+    - **The wizard is a dialog over the page** (Andy, 2026-11-05), for room to work with the grid,
+      rather than a card in the Stages column.
+    - **A new transfer table starts from a new button on a seam** (Andy, 2026-11-05), as a
+      randomization starts from its dice button, on the seams **between tip groups** only, since
+      every column has tips of its own. **Only the button** starts one: Ctrl+V on the page doesn't
+      (inside the wizard's Table step, Ctrl+V pastes as usual).
+    - **Sources are chosen from a menu in the dialog** (Andy, 2026-11-05), since the dialog hides
+      the deck: each column lists the wells holding only its component at Start; with none, the
+      step says to fill one at Start first.
+    - **A table's stages can be moved inside it, never out of it** (Andy, 2026-11-05): dragging a
+      stage (or its tip group, since each stage has its own tips) to another place in the same
+      transfer table reorders its stages and moves that stage's column in the table to match, as
+      one undoable edit, and nothing goes out of date. Moving one out of the table stays refused;
+      copying one alone gives an ordinary stage, as for a randomization's.
+    **Specified** (Draft, 2026-11-05) and **Built (#138, 2026-11-05)**: see "Where things stand". From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
+    opens a box listing each column's stage, source, wells and total, and the problems found;
+    blank and 0 cells add nothing; a column draws only from a well holding nothing but that
+    component at Start; a label in two rows is refused.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -769,9 +895,24 @@ final Biomek runs, so they test the files as they will be:
 12. Sources sharing tips in a randomization (item 18), added on 2026-11-05: preview,
     specifications, then build. It changes what goes into the Biomek files but not their format,
     so it needn't come before the final runs.
-13. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+13. Transfer tables (item 19), added on 2026-11-05: preview, specifications, then
+    build. It writes ordinary stages and transfers, so it changes neither the Biomek files' format
+    nor what a given plan writes, and needn't come before the final runs.
+14. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
+- **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
+  stage within its randomization to change only the order sources are added, keeping the plates'
+  layout. Needs the random layout to stop depending on the card's source order (random-pool
+  numbers sources by place), so it's a bigger change; reordering sources in the card reshuffles
+  today.
+- **A randomization's pipetting settings edited on its stages** (Andy, 2026-11-05, from the
+  transfer table work): a randomization's card keeps its own Each transfer settings (modes,
+  mixing, tip type, probes) and copies them onto the stages it makes, so they're held in two
+  places, though the stages can't be changed to disagree. Transfer tables keep settings only on
+  their stages, edited with each stage's ✎ (item 19). Doing it the same way here means one rule
+  everywhere: the card drops its settings, each stage and tip change has its ✎, and a run keeps
+  each source's stage settings. Shaped in a preview first; changes plan files (a new version).
 - **Moving a randomization's source with the keyboard** (2026-11-05, from the shared-tips topic):
   sources are reordered only by dragging. The join and split buttons work from the keyboard, so
   sharing can be set without a mouse, and order can be changed by removing a source and picking it
@@ -834,6 +975,16 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **Pasted cells holding tabs or line breaks** (2026-11-05, transfer tables): Excel copies such a
+  cell inside double quotes, and `parsePastedTable` (`pasted-table.md`) doesn't read quotes, so the
+  cell splits into several cells or rows, and the quotes stay in the text. Transfer tables' cells
+  are names and numbers, so it's unlikely. Properly: read Excel's quoting (a quoted cell may hold
+  tabs, line breaks and doubled quotes) in `parsePastedTable`, with tests.
+- **A transfer table's per-tip note uses the mix limits** (2026-11-05, transfer tables): the wizard's
+  Review notes an amount bigger than one tip holds by comparing it with `MIX_VOLUME_LIMITS`
+  (`config/tip-types.js`), which are themselves stand-ins for the most a tip type mixes, since no
+  tip capacity is configured. Properly: a measured capacity per tip type in `config/`, with its
+  source, and what the Biomek does with a transfer bigger than it (`biomek.md`).
 - **A component named like a built-in property breaks concentrations** (found 2026-11-05, reviewing
   the osmolality build): `wellConcentrations` reads a well's share as `shares[name]`, so a
   component named `constructor` or `toString` gets JavaScript's built-in function instead of no

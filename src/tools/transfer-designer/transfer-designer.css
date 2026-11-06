@@ -1668,6 +1668,426 @@ button.entry-row {
   --dice-face: var(--panel-background);
 }
 
+/* --- Transfer tables in the Stages column (sections 7 and 15) --- */
+
+/* A transfer table's box: as a run randomization's (12px corners, a 1px light blue border, the
+   page's background inside); its heading is drawn as a randomization's heading is. */
+.transfer-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px;
+  border: 1px solid var(--blue-border);
+  border-radius: 12px;
+  background: var(--page-background);
+}
+
+/* A transfer table's heading row: the heading button, then its ✎. */
+.transfer-table-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.transfer-table-head .transfer-table-heading {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The ▸/▾ at the start of a transfer table's heading, like a folder's. */
+.folder-mark {
+  flex: none;
+  width: 12px;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.transfer-table.glowing {
+  --glow-end: var(--page-background);
+}
+
+.transfer-table-stages {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The places between a transfer table's stages: an 8px gap with no buttons, a drop place only
+   while one of its own stages is dragged. */
+.table-seam {
+  height: 8px;
+}
+
+/* The table icon: a rounded rectangle with two lines across and two down, in the text's color. */
+.table-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+/* The table button sits in a seam's fourth spot, just right of the right spot (section 7), like the
+   dice button. */
+.seam-button.add-transfer-table {
+  left: calc(50% + var(--seam-button-size) * 1.5 + var(--seam-button-gap) * 2);
+  background: var(--panel-background);
+  color: var(--blue);
+}
+
+.seam-button.add-transfer-table .table-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* --- The transfer table wizard (sections 7 and 15) --- */
+
+/* The backdrop dims the page; the message bar stays above it, so a refusal can be read. */
+.wizard-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 38;
+  background: rgba(28, 28, 26, 0.22);
+}
+
+.wizard-backdrop[hidden] {
+  display: none;
+}
+
+/* The dialog: white, 12px corners, the panels' border and a soft shadow, at most 920px wide (94% of
+   a narrower window) and 86% of the window's height, 6% from the top, centered. */
+.wizard {
+  position: absolute;
+  top: 6vh;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  width: min(920px, 94vw);
+  max-height: 86vh;
+  transform: translateX(-50%);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: var(--panel-background);
+  box-shadow: 0 12px 40px rgba(28, 28, 26, 0.18);
+  font-size: 14px;
+}
+
+.wizard-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.wizard-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.wizard-steps {
+  display: flex;
+  gap: 8px;
+}
+
+/* A step: a pill with its number in a small circle; the current one blue, earlier ones with their
+   number on pale green. */
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 12px 0 4px;
+  border-radius: 15px;
+  font-size: 13px;
+}
+
+.wizard-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--pill-gray);
+  font-size: 12px;
+}
+
+.wizard-step.current {
+  border-color: var(--blue);
+  background: var(--blue-tint);
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.wizard-step.current .wizard-step-number {
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.wizard-step.done .wizard-step-number {
+  background: var(--green-tint);
+  color: var(--green-text);
+}
+
+/* The body scrolls; the header and footer don't. */
+.wizard-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px 20px;
+  overflow: auto;
+}
+
+.wizard-body p {
+  margin: 0;
+}
+
+.wizard-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.wizard-footer .spacer {
+  flex: 1;
+}
+
+.wizard-help {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.wizard-note {
+  color: var(--muted-text);
+  font-size: 11px;
+}
+
+.wizard-error,
+.wizard-error-text {
+  color: var(--red);
+}
+
+/* The paste zone: a dashed light blue box, one line high, with a blue tint. */
+.paste-zone {
+  padding: 12px 16px;
+  border: 2px dashed var(--blue-border);
+  border-radius: 8px;
+  background: var(--blue-tint);
+  color: var(--blue);
+  cursor: text;
+}
+
+.paste-zone:focus-visible {
+  outline: 3px solid var(--blue-border);
+  outline-offset: 1px;
+}
+
+/* The grid, in a scrolling frame at most 46% of the window's height; its header row stays in view. */
+.wizard-grid-frame {
+  max-height: 46vh;
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+}
+
+.wizard-grid {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.wizard-cell {
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-background);
+  font-weight: 400;
+}
+
+.wizard-cell.header-cell {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-weight: 600;
+}
+
+.wizard-cell.header-cell,
+.wizard-cell.label-cell {
+  background: var(--sand-tint);
+}
+
+.wizard-cell-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+}
+
+.cell-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+/* A header naming no component has no swatch (the swatch's own display would otherwise show it). */
+.cell-swatch[hidden],
+.cell-well-count[hidden] {
+  display: none;
+}
+
+/* A cell's text box looks like plain text until pointed at (input border, white) or focused (blue
+   border). Selected as input.cell-box so it outweighs the general input rule. */
+input.cell-box {
+  width: 100%;
+  min-width: 70px;
+  min-height: 28px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  font-weight: inherit;
+}
+
+input.cell-box:hover {
+  border-color: var(--input-border);
+  background: var(--panel-background);
+}
+
+input.cell-box:focus {
+  border-color: var(--blue);
+  background: var(--panel-background);
+}
+
+.amount-cell input.cell-box {
+  text-align: right;
+}
+
+.wizard-cell.problem {
+  background: var(--red-tint);
+}
+
+.wizard-cell.problem input.cell-box {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.cell-well-count {
+  flex: none;
+  color: var(--muted-text);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* A label or header cell's ×: a 20px gray circle, shown while the cell is pointed at; red tint and
+   red on hover. */
+.cell-delete {
+  flex: none;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--pill-gray);
+  color: var(--muted-text);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.wizard-cell .cell-delete {
+  visibility: hidden;
+}
+
+.wizard-cell:hover .cell-delete {
+  visibility: visible;
+}
+
+.cell-delete:hover {
+  background: var(--red-tint);
+  color: var(--red);
+}
+
+.wizard-grid-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* The problems under the grid, or under the Sources table: a red-tinted box. */
+.wizard-problems {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--red-tint);
+  color: var(--red);
+}
+
+.wizard-problems + .wizard-help {
+  margin-top: 6px;
+}
+
+/* The Sources and Review tables. */
+.wizard-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.wizard-table th,
+.wizard-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--panel-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.wizard-table th {
+  color: var(--muted-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wizard-stage-cell {
+  white-space: nowrap;
+}
+
+.wizard-stage-cell .swatch {
+  margin: 0 4px;
+  vertical-align: -1px;
+}
+
+.source-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.source-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--pill-gray);
+  color: var(--muted-text);
+  font-size: 11px;
+}
+
+.tip-note {
+  display: block;
+}
+
 /* The open card, under its heading, inside its box: a white panel like an open stage's card. */
 .randomization-card {
   display: flex;

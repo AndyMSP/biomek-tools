@@ -144,6 +144,13 @@
 > `tipsUsed`). Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
 > Andy are listed in its pull request. It becomes Final once built and tested by Andy.
 
+> **Draft changes (2026-11-05, transfer tables, item 19 of v0.2.0; ADR 0019):** the seams' table
+> button, the transfer table wizard (Table, Sources, Review), a transfer table's box in the Stages
+> column, its stages' ✎ boxes with what's locked, the problem count and the Biomek files box
+> (sections 5, 6, 7, 10, 12, 15 and 16), from previews Andy shaped on 2026-11-05. Written in the
+> hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull
+> request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -274,6 +281,9 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
   file writer never reads randomizations, so the page checks), the first in the column's order is
   named instead, in red, with Write files disabled: `A randomization (at stage 1, “Drug”) is out of
   date: open it and press Update.` (its first stage, as messages name stages; Andy, 2026-11-02).
+  Transfer tables likewise (2026-11-05; `isTransferTableOutOfDate`): the first randomization or
+  transfer table out of date, in column order, is named: `A transfer table (at stage 3, “Media”) is
+  out of date: open it and press Update.`
 
 The time is fixed when the box opens, so the name it shows is the name Write files saves (Andy,
 2026-10-28: "tell you what file name it's actually generating").
@@ -334,8 +344,10 @@ when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the pro
 problems` in green, or `N problems` in red: each contents problem in the whole plan (a draw into
 the dead volume, an overdraw or an overfill, including a well that starts over its capacity;
 `contents-tracking.md`) counts as one, and so does each randomization that's out of date
-(`isRandomizationOutOfDate`; section 7), and each stage with a mix problem. Since that check
-reruns each randomization on a copy, the page works it out once per plan (after each edit, undo or
+(`isRandomizationOutOfDate`; section 7), each transfer table that's out of date
+(`isTransferTableOutOfDate`; 2026-11-05), and each stage with a mix problem. Since that check
+reruns each randomization on a copy (and reads each transfer table again), the page works it out
+once per plan (after each edit, undo or
 redo) and reuses it for the headings, the problem count, the card and the Biomek files box
 (`stagesWithMixProblem`).
 
@@ -763,7 +775,9 @@ bars, 2px thick and 12px long, crossing at the circle's center, so it's exactly 
 character sits wherever the font puts it; Andy, 2026-10-26) in the exact middle; and a **right
 spot** just right of the `+`, 6px from it. A seam with nothing in its right spot leaves it empty,
 so nothing moves from one seam to the next (Andy, 2026-10-30: buttons spread along the line looked
-scattered, and buttons that shift when one is missing jump around).
+scattered, and buttons that shift when one is missing jump around). Since 2026-11-05 every seam has
+a **fourth spot**, just right of the right spot, 6px from it: seams between tip groups hold the
+table button there (below, "Transfer tables"); seams inside a tip group box leave it empty.
 
 **Inside a tip group box.** The `+` adds a stage to this box, and the mix step button a mix step
 where the `+` would add a stage, with the same tips (`addMixStep`, with the same `beforeId` and
@@ -1019,6 +1033,185 @@ From the top:
   plan's stages. Add a stage outside it first.` (A `Turn into ordinary stages` button was tried and
   dropped for now; Andy, 2026-11-01.)
 
+**Transfer tables** (`transfer-designer.md`, "Transfer tables"; Andy, 2026-11-05; ADR 0019). A
+transfer table is an entry in the column between tip groups, like a randomization: a box of its
+own, with seams between tip groups above and below it as for any box.
+- **Its box**: as a run randomization's (12px corners, 1px `#9DB7DB` border, the page's
+  background inside): its heading, then its stages' tip group boxes (`columnBoxes`' `transferTable`
+  box; one stage each). It's **open** (showing its stages) or **closed** (its heading only), like
+  a folder (Andy, 2026-11-05, from testing the build): clicking its heading opens or closes it.
+  It also opens whenever one of its stages becomes the open entry (the timeline's `‹` and `›` step
+  into and through its stages as any others, Add opens its first stage, a move or paste opens a
+  stage of it), and stays open after that stage is left until its heading closes it. Whether each
+  transfer table's box is open is remembered while the page is open, by its ID: it isn't saved in
+  plan files or the browser copy, and opening or closing it isn't an undo step. A box closed while
+  one of its stages is open hides that stage; the stage stays open (the deck still shows it). A new
+  page, or a plan opened from a file, starts with every box closed, except one whose stage is open.
+- **Its heading**, a row the box's width: a button (most of the row) holding `▸` (closed) or `▾`
+  (open), the **table icon** (an SVG: a rounded rectangle 15 by 13 with two lines across and two
+  down, in the text's color), then `Transfer table`, semibold, then at the right, in gray,
+  `4 stages` (`1 stage`), or, when it's out of date (`isTransferTableOutOfDate`), `needs update` in
+  red, semibold; then, after the button, a **✎** (as a stage's, accessible name `Edit transfer
+  table`, tooltip `Change the table, its sources or remove it`). Clicking the button (or Enter or
+  Space on it) opens or closes the box and selects the transfer table (section 7, "Moving and
+  copying"); its `aria-expanded` says whether it's open; its tooltip: `Show its stages` / `Hide its
+  stages`, or, out of date, `The plan changed since this was made: press ✎, then Update.`
+  **The ✎** opens its **wizard** (below) at Review and selects the transfer table. The button is
+  also what the transfer table is dragged, copied and given the right-click menu by (a press on the
+  ✎ starts no drag), as a randomization's heading is.
+- **No seams with buttons inside it**, as for a randomization: no `+`, mix step, tip, dice or table
+  buttons. **While one of its own stages is dragged** (Andy, 2026-11-05), the places between its
+  stages (and above its first, below its last) are drop places, shown as a seam's line inside a tip
+  group box is during a drag; dropping there moves the stage within the table (`moveItems` with an
+  `inTransferTable` place), which also moves its column in the table, as one undoable edit
+  (message as any move's). They're never drop places for anything else.
+- **Its stages** look like any stage. **What can be changed on them** (Andy, 2026-11-05: pipetting
+  the normal way): a stage's ✎ opens its box (section 10), and each tip group's heading has its ✎
+  (section 10). **What can't**: their transfers (no `×`, volumes not buttons), their names, removing
+  them, seams inside. Each one's card says, in gray, `Part of a transfer table: its amounts change
+  in the table.` A click or drag on the deck while one is open adds nothing: message `This stage is
+  part of a transfer table: change its amounts in the table.` (a note).
+
+**The seam's table button.** Seams **between tip groups** gain a fourth spot, just right of the
+right spot (6px from it), holding the **table button**: a 26px circle, white with a blue border,
+the table icon in blue (16px), like the dice button. Tooltip `Add a transfer table here`;
+accessible name `Add a transfer table before stage 3, “Drugs”`, or `… at the end of the run`. It
+opens a new **wizard** for a transfer table there (`beforeId` as the seam's `+`); nothing is added
+until **Add**. On the seam **below a randomization that hasn't run**, Add works as that seam's `+`
+does: `addTransferTable` before the same stage, then `placeRandomization` onto the transfer table's
+first stage, in the same edit, so the transfer table lands below the randomization. Seams inside a tip group box have no table button, and their fourth spot is empty.
+Keyboard focus reaches it after the dice button. (Ctrl+V on the page doesn't start a transfer table:
+Andy, 2026-11-05, only the button.)
+
+**The wizard** (Andy, 2026-11-05: a dialog, for room to work with the grid) opens over the page: a
+white dialog (12px corners, the panels' border, a soft shadow), at most 920px wide (94% of the
+window on narrower ones) and 86% of the window's height, 6% from the top, centered, over a
+backdrop that dims the page (`rgba(28, 28, 26, 0.22)`). Its body scrolls; its header and footer
+don't. While it's open, the page's keys (section 12) don't act, and nothing behind it can be
+clicked. From the top:
+- **The header**: the table icon and `New transfer table` (from a seam) or `Transfer table` (one in
+  the plan), 17px semibold; under it, the **steps**: three pills in a row, `1 Table`, `2 Sources`,
+  `3 Review`, each a button with its number in a small circle. The current one is blue (tint
+  background, blue border, white number on blue); earlier ones show their number on pale green; a
+  step that can't be reached yet (a step before it isn't done) is disabled. Clicking a step that can
+  be reached goes to it. Table is done when the draft's table has no problems and makes a stage;
+  Sources when every column making a stage has a well.
+- **The body**, by step (below).
+- **The footer**, from the left: `Remove` (red outline; only for a transfer table in the plan), then
+  at the right `Cancel` (action), `Back` (action; not on Table), and the main button (solid blue):
+  `Next` on Table and Sources, disabled until that step is done; on Review, `Add` (new) or
+  `Update` (in the plan).
+
+**The draft.** The wizard edits a draft (`{ table, sources }`), never the plan, until Add or Update:
+- **Cancel**, **Escape** (anywhere in the wizard but a cell being edited, where it restores the
+  cell, below), or a press on the backdrop closes the wizard without changing anything, edits or not
+  (decided in the hands-off workflow: nothing in the wizard is lost that the Excel sheet doesn't
+  hold, and asking would slow the common case).
+- A transfer table in the plan opens with its stored table and sources; its wizard opens at
+  **Review**, or, if its draft now has problems, at the first step with a problem (the Table step
+  for a table problem, Sources for a source problem).
+
+**Table step, before a paste.** A paste zone across the body: a dashed blue box (2px `#9DB7DB`,
+8px corners, blue tint), one line high, saying `Click here and press Ctrl+V to paste a table from
+Excel`, focused when the step opens; under it, in gray: `The table's first row is a header: the
+first column is a well label, each other column a component's name. Each row after it gives the µL
+of each component to add to every well with that label. Blank or 0 adds nothing.` A paste into the
+zone takes the clipboard's plain text, read with `parsePastedTable` (`pasted-table.md`): rows whose
+cells are all blank are dropped (Excel's empty lines), and shorter rows are filled with empty cells
+to the widest row's length, so the grid is a rectangle. With fewer than two rows or two columns
+left, the zone stays and says, in red under it, `Paste a table with a header row, at least one
+row of well labels, and at least one component column.` Typing in the zone does nothing.
+
+**One paste per wizard** (Andy, 2026-11-05): once a table is in, the zone is gone, and the wizard
+never takes another paste as a table: a different table means Cancel (or Remove) and a new
+wizard.
+
+**Table step, with a table: the grid** (Andy, 2026-11-05: the table can be edited). A table in a
+scrolling frame (8px corners, the panels' border, at most 46% of the window's height), every cell
+a **text box** showing its text, which looks like plain text (no border, transparent) until
+pointed at (input border, white) or focused (blue border, white). The header row and the label
+column have the sand tint (`#F5F1E8`); the header row is semibold and stays in view while the
+frame scrolls; amounts are right-aligned, 13px.
+- **Matched cells**: a header naming a component shows that component's swatch (10px rounded
+  square) before its text; a label some wells have shows, after its text, `3 wells` (11px gray).
+- **Problem cells** (`readTransferTable`'s problems, by `row` and `column`) are red (red tint
+  background, red text, semibold), with the problem's message as their tooltip.
+- **Editing a cell**: a cell's box selects its text when focused. A change is read when the cell is
+  left (Tab, a click elsewhere) or on **Enter**, which also moves to the same column's cell in the
+  next row (staying put on the last row), as in Excel. **Tab** and **Shift+Tab** move along the
+  row, then on to the next. **Escape** puts the cell's text back as it was and stays in it. Each
+  change re-reads the table (problems, matches, the summary) and keeps focus where it went. A paste
+  into a cell is plain text, its tabs and line breaks made spaces.
+- **Header changes are renames** (Andy, 2026-11-05): when a header that named something is changed
+  to something else, the wizard remembers that the column was the old name's (following a column
+  renamed more than once back to its first name), and passes it as `renamedFrom` to
+  `updateTransferTable` and `transferTableStages`, so the column keeps its stage's settings and
+  tips. Deleting a column and adding a new one isn't a rename. Only the wizard keeps this, until
+  Add or Update.
+- **Rows and columns** (Andy, 2026-11-05): under the frame, `+ Row` and `+ Column` (small action
+  buttons). `+ Row` adds an empty row at the bottom and focuses its label cell; `+ Column` adds an
+  empty column at the right and focuses its header. Pointing at a label cell (rows after the
+  header) or a header cell (columns after the first) shows a small `×` at its right (20px circle,
+  gray; red tint and red on hover), which deletes that row or column; tooltip and accessible name
+  `Delete row 4` / `Delete column 3` (counting from 1). The `×`s are out of the Tab order, so Tab
+  goes from cell to cell. The header row and the label column can't be deleted. A table left with
+  only the header row, or only the label column, is shown as it is, with Next disabled (its problem
+  is that it adds nothing).
+- **Under it**: with no problems, `6 well labels (18 wells), 4 components.` in gray (`components`
+  counting columns that make a stage; `1 well label`, `1 well`, `1 component`); otherwise the
+  problems in a red-tinted box (8px corners), one per line, at most 6, then `…and 3 more.`, then
+  `Fix the red cells above: click one and type.` in gray.
+
+**Sources step** (Andy, 2026-11-05: chosen from a menu, since the dialog hides the deck). In gray:
+`Each stage draws from a well holding only its component at Start. Add more wells when one can't
+hold enough: they're used in order, each until the next transfer would reach into its dead volume.`
+Then a table, `Stage` and `Draws from`, one row per column that makes a stage, in column order:
+- **Stage**: `1. ` then the component's swatch and name, semibold.
+- **Draws from**: its wells, one line each, numbered in a small gray circle (`1`, `2` …), each a
+  menu of the component's stock wells (`stockWellsOf`) named `Res1 1 · Media stock` (the well, then
+  ` · ` and its label if it has one), offering the line's own well and the stock wells no other line
+  of this column has. With more than one line, each has a `×` (`Don't draw from this well`) taking
+  it out. Then `+ Another well` (small action button) while a stock well isn't on a line, adding the
+  first such. With more than one line, under them in 11px gray, how the transfers split
+  (`sourceSplit`): `Res1 1: 5 wells · Res1 2: 13 wells`.
+- **A new column's wells**: the first stock well, chosen for it when the column first makes a stage
+  (and kept in the draft's `sources`, so a column deleted and brought back keeps its wells); a well
+  that no longer holds only its component is dropped from its list (falling back to the first stock
+  well if none is left).
+- **No stock well**: in red, `No well holds only this at Start`, and under the table the problem
+  `No well holds only Media at Start. Cancel, fill one at Start, and start the transfer table
+  again.` (Cancel discards the paste, so it says so.) The page knows this case from
+  `stockWellsOf(plan, component)` being `[]`, and shows its own wording in place of the logic's;
+  every other problem on this step is shown as the logic gives it.
+
+**Review step** (Andy, 2026-11-05: kept, as the last check before the plan changes; read-only). In
+gray: `4 stages, each on new tips, before stage 3, “Drugs”.` (`at the end of the run`, or `where its
+stages are now` for one in the plan), then ` Change a stage's pipetting or tips afterwards with its ✎
+in the Stages column.` Then a table from `transferTableStages` (with `renamedFrom`): `Stage` (as on
+Sources), `From` (its wells, `Res1 1, then Res1 2`), `Into` (`9 wells`), `Total` (µL, its
+transfers' volumes added, `1710 µL`, as numbers are shown, section 13), `Aspirate · Dispense`
+(each end's mode name, `modeOf`, `(other)` if none, with ` ⟳` after an end that mixes: `Slow ⟳ ·
+Medium`) and `Tips` (`4 × BC230`: probes × tip type). When a stage's largest amount is more than its tip
+type's value in `MIX_VOLUME_LIMITS` (`config/tip-types.js`), its Tips cell adds, in 11px gray, `up
+to ` and that largest amount, ` µL per well` (as numbers are shown, section 13), with the tooltip
+`More than one BC230 tip holds in one trip.` (naming its tip type) (decided in
+the hands-off workflow: there's no other configured tip capacity, so the mix limits, themselves
+stand-ins, are used; roadmap, "Technical debt"). Under the table, columns making no stage, in gray:
+`No stage for DMSO: every amount is blank or 0.`
+
+**Add and Update.** **Add** adds it (`addTransferTable`, the seam's `beforeId`), closes the wizard
+and opens its first stage, as one undoable edit; message `Added a transfer table: 4 stages (Media,
+Drug A, Drug B, DMSO).` (ok). **Update** (`updateTransferTable`, with `renamedFrom`) likewise:
+`Updated the transfer table: 4 stages (Media, Drug A, Drug B, DMSO).`; when the update would
+change nothing (`updateTransferTable` gives back the same plan), nothing is recorded, the wizard
+closes, and the note `Nothing to update: the transfer table already matches.` shows. The new stages glow (section 7,
+"What changed glows"). If the logic refuses, its message is shown and the wizard stays open.
+
+**Remove** acts at once (`removeTransferTable`), as every Remove does: closes the wizard; message
+`Removed the transfer table and its 4 stages. Undo brings them back.` (ok); if one of its stages was
+open, the first stage in the stage order opens. Disabled when `canRemoveTransferTable` is `false`,
+with the tooltip `Its stages are all the plan's stages. Add a stage outside it first.`
+
 **What changed glows.** When a stage or a tip group box appears that wasn't there at the last
 drawing, it glows soft yellow (`#FFF1BF` background, a 4px `#F3D36B` ring) and fades over 1.2
 seconds. So does whatever a move, copy or paste placed (the logic's `placed`: its stages, and a
@@ -1032,8 +1225,16 @@ designer (`transfer-designer.md`, "Moving and copying"), as one undoable edit; t
 is the logic's, and its messages are shown as they come. The column's boxes are drawn in the order
 `columnBoxes` gives (the page doesn't work the order out itself).
 
-*Selecting.* The things that can be selected are stages, ordinary tip groups and randomizations
-(the logic's **items**, `docs/glossary.md`). The page keeps a **picked set**, or none:
+*Selecting.* The things that can be selected are stages, ordinary tip groups, randomizations and
+transfer tables (the logic's **items**, `docs/glossary.md`). **A transfer table** (2026-11-05) is
+selected, dragged, copied and pasted by its heading exactly as a randomization is, everywhere in
+this part ("Moving and copying"), its stages counting as its box; clicking its heading opens or
+closes its box and makes the picked set that transfer table alone (its ✎ opens its wizard). **Its stages** (Andy, 2026-11-05) can be
+dragged by their rows, and by their tip group's heading (each stage has its own tips, so it's the
+same as dragging the stage), only to a place **inside their own transfer table** (above); dropped
+anywhere else, the logic refuses with its message and nothing moves. Ctrl+C or Ctrl+drag (copying)
+one of its stages without the table copies it as an ordinary stage, as for a randomization's. Nothing else can be dropped inside its box. Messages name it `a transfer table`
+(`2 transfer tables`). The page keeps a **picked set**, or none:
 - With **no picked set**, what's selected is what's open: a stage, or a randomization whose card is
   open; with Start or End open, nothing.
 - **Click** a stage's row opens it, as before, and forgets the picked set (so it's selected alone).
@@ -1171,7 +1372,9 @@ Any other click on a control or heading in the column (a volume, a component chi
 heading, which would open its card) does nothing but say `Stages can't be changed while moving
 wells. Press Done first.` (note); a click on plain text or empty space does nothing and says
 nothing. An undo or redo that would open a randomization's card while moving wells opens instead
-the point it sits at (its first stage, or the stage it sits before, or End), so no card opens. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
+the point it sits at (its first stage, or the stage it sits before, or End), so no card opens. A
+transfer table's heading opens and closes its box as usual (it only shows or hides); its ✎ is
+hidden with the others. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
 are off.
 
 ## 8. Starting contents (Start open)
@@ -1396,6 +1599,11 @@ Contains rows fit; section 15), so its menus show their whole names, such as `No
   in the stage order opens. When it's the only stage, Remove is disabled, with the tooltip `Keep at
   least one stage.`
 
+- **A transfer table's stage** (2026-11-05): its box is the same, except that **Name** is disabled
+  (tooltip `Named after its component in the transfer table.`) and there's no **Remove**; in its
+  place, on a line above the buttons, in gray: `Part of a transfer table: to remove it, clear its
+  column in the table, or remove the whole table.` Save changes its settings only.
+
 **Save** renames it (if the name changed) and changes its settings as one edit (message `Saved stage
 2, “Drugs”.`). Settings the box doesn't offer, such as the stage's mixes, are kept as they are.
 
@@ -1413,7 +1621,9 @@ loads highlighted (picking 4 lights up 1 to 4; Andy, 2026-10-30: moved here from
 since every stage uses all its tips' probes); **Remove**, which removes it at once
 (`removeTipChange`; message `Removed the new tips: the stages after them keep the tips
 before.`). The first tip change has no Remove, and says `The run always starts by loading tips, so
-these can't be removed.` **Save** sets the tip type and probes as one edit (`setTipType`,
+these can't be removed.` A transfer table's tip change (2026-11-05) has no Remove either, and says
+`Every stage of a transfer table starts on new tips, so these can't be removed.` **Save** sets the
+tip type and probes as one edit (`setTipType`,
 `setTipProbes`; message `New tips: BC230 on 4 probes.`).
 
 **A component's box**: section 8.
@@ -1455,8 +1665,11 @@ and the deck shows its point again.
   Typed volumes (above) are ignored while a randomization's card is open.
 - **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac). Not while an editing
   box or a randomization's card is open, since their changes aren't in the plan yet.
-- **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups and randomizations (section 7, "Moving
-  and copying"); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
+- **While the transfer table wizard is open** (section 7), none of these keys act on the page: the
+  wizard's own keys apply (Enter, Tab and Escape in its cells; Escape elsewhere in it closes it, as
+  Cancel), and Ctrl+V pastes only into its paste zone or a cell.
+- **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups, randomizations and transfer tables
+  (section 7, "Moving and copying"); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
   right-click menu. While a drag is on, **Escape** cancels it, and **Ctrl** switches it between
   moving and copying. Escape, when nothing above uses it, forgets the selection.
 
@@ -1639,6 +1852,11 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   tabs' counts 11px in a gray pill (`#ECEAE3`), blue on the open tab's. A source row 30px tall, its
   swatch 12px. Its `Filler` button 26px tall, 12px text. The Sources list's boxes, seams, tip
   buttons and grip as section 7 gives them (2026-11-05).
+- **Transfer tables** (2026-11-05): the box and heading as a run randomization's, the table icon in
+  place of the dice; the table button as the dice button; the wizard as section 7 gives it, its
+  body 14px, its grid 13px, help text 13px gray, notes 11px gray; its colors only the page's own
+  (blue for the current step and focus, sand for the header row and label column, red for problems,
+  pale green for done steps).
 - **The name box:** 140px wide, at least 30px tall, the shadow `0 6px 20px` at 20% of the text
   color.
 - **⟳ badges** (section 6): a 14px circle centered on the well's top-right edge (at 45° from its
@@ -1837,8 +2055,35 @@ page's configuration (ADR 0009):
   by many tip groups with transfers), and three-digit transfers done, so End's count runs to
   `123 transfers done · 456 BC230 tips · 104 BC1070 tips`; the count wraps onto a second line,
   right-aligned, the first line ends with a `·`, and no part (`456 BC230 tips`) is split;
+- transfer tables (2026-11-05): the table button on every seam between tip groups (not inside a
+  box), after the dice in Tab order; on the seam below a randomization that hasn't run, Add puts
+  the transfer table below it (the randomization stays above, one undo);
+  dragging a table's stage (by its row, and by its tip heading) to another place in the table: the
+  stage and its column move, its settings and tips kept, not out of date, one undo; drop places
+  showing only for its own stages; dropped outside it, refused; Ctrl+C and Ctrl+V of it alone pasting an ordinary stage; the wizard from it: the paste zone, a paste from Excel (blank
+  lines dropped, ragged rows filled), a paste of one cell refused; the grid: matched headers'
+  swatches, labels' well counts, each problem cell red with its tooltip, Enter moving down, Tab
+  along, Escape restoring a cell, `+ Row` and `+ Column` focusing the new cell, the `×`s deleting
+  and out of the Tab order, the problem list's limit; Next disabled until clean; Sources: one well,
+  a second well with its split line, `×`, `+ Another well` disappearing when every stock well is
+  used, a component with no stock well; Review: from, into, totals, modes with ⟳, tips, the
+  per-tip note; Add (stages in column order, each on new tips, the stage below keeping its tips,
+  the message, the first stage opening, the glow); the box opening and closing on a click of its
+  heading (▸/▾, `aria-expanded`, Enter and Space on it), a closed box opening to show its stages and
+  one of them then dragged inside it, the box opening when `‹` and `›` step through its stages and
+  staying open after, its open state kept across edits, undo and redo but not across a reload; its
+  ✎ (`Edit transfer table`) opening the wizard, and a press on it starting no drag; a stage's ✎ (Name disabled, no Remove, its note; a mode changed and
+  saved) and a tip group's ✎ (no Remove, its note); no `×` on its transfers and the deck refusing
+  clicks with its note; reopening at Review from its ✎; a header renamed (the stage keeps its settings and
+  tips after Update); a column added (copying the column before), cleared (its stage gone) and
+  moved; out of date after relabeling a well (heading, problem count, the Biomek files box) and
+  Update clearing it; renaming a component renames its header and stage; removing one makes it
+  out of date; Cancel, Escape and the backdrop changing nothing; Remove and Undo; moving a
+  transfer table by its heading, copying and pasting it, and moving a stage of it alone out of it refused (copying one alone pastes an ordinary stage); saving
+  and opening a plan with one (version 11); moving a source well with Move wells;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels;
 - the version line: the built file's name and the line show the same version; a click selects the
   whole version, and it copies; a plan saved by the built file says the same version in `savedBy`;
   served unbuilt, the line ends `-unbuilt`.
+

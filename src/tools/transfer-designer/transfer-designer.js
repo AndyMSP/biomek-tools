@@ -3,7 +3,8 @@
 //
 // A plan holds the components (each with its constituents, ADR 0013, and osmolality, ADR 0016), the starting contents, the operation list, the stage list, the stage
 // order (a list of stage IDs; ADR 0011), the tip changes, the labware labels, the well labels, the
-// randomizations (each owning the stages it made; ADR 0012) and the experiment name. A stage is a
+// randomizations (each owning the stages it made; ADR 0012), the transfer tables (each a pasted
+// table of amounts owning one stage per component; ADR 0019) and the experiment name. A stage is a
 // transfer stage or a mix step, which only mixes its wells, each a transfer from the well into
 // itself. A plan is never changed after it's made: every edit returns a new plan that shares every
 // part the edit didn't change, so the plan history can keep many plans cheaply. The page shows a
@@ -100,7 +101,8 @@ const ENDS = ["source", "destination"];
 // --- Plans ---
 
 // A new plan, and the ID of its one stage: { plan, stageId }. The plan has no components, starting
-// contents, transfers, labels, well labels or randomizations, and no experiment name (""); its stage is called NEW_STAGE_NAME
+// contents, transfers, labels, well labels, randomizations or transfer tables, and no experiment
+// name (""); its stage is called NEW_STAGE_NAME
 // and has the default settings; and its first tips are the first tip type in config/tip-types.js,
 // on the first DEFAULT_PROBE_COUNT probes (Andy, 2026-10-30).
 export function emptyPlan() {
@@ -115,6 +117,7 @@ export function emptyPlan() {
     labwareLabels: {},
     wellLabels: {},
     randomizations: [],
+    transferTables: [],
     experimentName: "",
   });
   return { plan, stageId: id };
@@ -226,10 +229,16 @@ export function stageOrder(plan) {
 // a new stage copies the nearest stage of its own kind). With takeTips, a tip change before
 // `beforeId` moves onto the new stage, so the new stage is the first to use those tips; without it,
 // the new stage uses the tips before that tip change.
+// A transfer table's stages each keep tips of their own, so a new stage can't go inside one, take
+// its first stage's tips, or join its last stage's tips (section 3, "Transfer tables"); before a
+// transfer table that starts the plan, the new stage takes the START tips and the table's first
+// stage gets a tip change loading the tips it had.
 // e.g. addStage(plan, "2", { takeTips: true }).
 export function addStage(plan, beforeId, { takeTips = false } = {}) {
+  checkStageAddBesideTransferTables(plan, beforeId, takeTips);
   const { plan: added, id } = addStageOfKind(plan, beforeId, takeTips, TRANSFER_STAGE_KIND);
-  return { plan: withRandomizationsAfterAdd(added, beforeId, id), id };
+  const kept = withTransferTableFirstTipsKept(added, plan, beforeId);
+  return { plan: withRandomizationsAfterAdd(kept, beforeId, id), id };
 }
 
 // Returns { plan, id }: the plan with a new mix step (docs/glossary.md), called NEW_MIX_STEP_NAME,
@@ -238,8 +247,10 @@ export function addStage(plan, beforeId, { takeTips = false } = {}) {
 // default mix step settings if the plan has none (transfer-designer.md, "Mix steps").
 // e.g. addMixStep(plan, "3") puts a mix step just before stage 3.
 export function addMixStep(plan, beforeId, { takeTips = false } = {}) {
+  checkStageAddBesideTransferTables(plan, beforeId, takeTips);
   const { plan: added, id } = addStageOfKind(plan, beforeId, takeTips, MIX_STEP_KIND);
-  return { plan: withRandomizationsAfterAdd(added, beforeId, id), id };
+  const kept = withTransferTableFirstTipsKept(added, plan, beforeId);
+  return { plan: withRandomizationsAfterAdd(kept, beforeId, id), id };
 }
 
 // Returns { plan, id }: the plan with a new transfer stage just before stage `beforeId` (or last, for
@@ -248,6 +259,7 @@ export function addMixStep(plan, beforeId, { takeTips = false } = {}) {
 // e.g. addStageWithNewTips(plan, "3"): the new stage, just before stage 3, gets a tip change
 // loading the tips in use there, and so does stage 3 if it had none, keeping the tips it had.
 export function addStageWithNewTips(plan, beforeId) {
+  checkStageAddWithNewTipsBesideTransferTables(plan, beforeId);
   const { plan: added, id } = addStageOfKind(plan, beforeId, false, TRANSFER_STAGE_KIND);
   const withTips = withOwnTipGroup(added, id, beforeId);
   return { plan: withRandomizationsAfterAdd(withTips, beforeId, id), id };
@@ -256,6 +268,7 @@ export function addStageWithNewTips(plan, beforeId) {
 // Returns { plan, id }: the same as addStageWithNewTips, for a new mix step (as addMixStep makes it).
 // e.g. addMixStepWithNewTips(plan, null) puts a mix step last, on tips of its own.
 export function addMixStepWithNewTips(plan, beforeId) {
+  checkStageAddWithNewTipsBesideTransferTables(plan, beforeId);
   const { plan: added, id } = addStageOfKind(plan, beforeId, false, MIX_STEP_KIND);
   const withTips = withOwnTipGroup(added, id, beforeId);
   return { plan: withRandomizationsAfterAdd(withTips, beforeId, id), id };
@@ -317,8 +330,12 @@ export function unmixWell(plan, id, well) {
   return removeTransfer(plan, mixedWell.position);
 }
 
-// Returns the plan with stage `id` called `name`. The stage list checks both.
+// Returns the plan with stage `id` called `name`. The stage list checks both. A transfer table's
+// stage is named after its component, so it's refused (section 3, "Transfer tables").
 export function renameStage(plan, id, name) {
+  if (plan.stageList.has(id) && transferTableOf(plan, id) !== null) {
+    throw new Error(`${stageNamed(plan, id)}, is part of a transfer table: it's named after its component.`);
+  }
   return withParts(plan, { stageList: plan.stageList.rename(id, name) });
 }
 
@@ -382,12 +399,25 @@ export function canRemoveStage(plan, id) {
 }
 
 // Returns the plan without stage `id`, its transfers, or a tip change before it. It's taken out of
-// the stage order, which keeps the other stages in their order. Throws if canRemoveStage is false.
+// the stage order, which keeps the other stages in their order. Throws if canRemoveStage is false,
+// or the stage is a transfer table's, which changes only through its table.
 export function removeStage(plan, id) {
   if (!plan.stageList.has(id)) {
     // get() throws the stage list's own message for a stage that isn't there.
     plan.stageList.get(id);
   }
+  if (transferTableOf(plan, id) !== null) {
+    throw new Error(
+      `${stageNamed(plan, id)}, is part of a transfer table: clear its column in the table, ` +
+        "or remove the whole table.",
+    );
+  }
+  return removeStageOfAnyOwner(plan, id);
+}
+
+// removeStage without its refusal for a transfer table's stage, for a transfer table's own edits
+// (section 3, "Transfer tables": they keep every other rule of the edit they stand for).
+function removeStageOfAnyOwner(plan, id) {
   if (!canRemoveStage(plan, id)) {
     throw new Error("A plan needs at least one stage, so its only stage can't be removed.");
   }
@@ -400,9 +430,10 @@ export function removeStage(plan, id) {
 
   const order = plan.stageOrder;
   const nextId = order[order.indexOf(id) + 1] ?? null;
-  // Noted before removing: if it's the stage just after a randomization, the stage after it gets
-  // the tips it used, so the randomization's last stage never shares tips (section 3).
-  const keptTips = isJustAfterRandomization(plan, id) ? tipsInUseAt(plan, id) : null;
+  // Noted before removing: if it's the stage just after a randomization or a transfer table, the
+  // stage after it gets the tips it used, so their last stage never shares tips (section 3).
+  const keptTips =
+    isJustAfterRandomization(plan, id) || isJustAfterTransferTable(plan, id) ? tipsInUseAt(plan, id) : null;
 
   const removed = withParts(plan, {
     operationList,
@@ -453,7 +484,14 @@ export function stagesWithMixProblem(plan) {
 // (its form, then the stage rule), its source or destination well isn't on the deck, its stage
 // isn't in the plan, or its stage is a mix step and it isn't a mixed well (a transfer from a well
 // into itself of MIX_STEP_VOLUME; transfer-designer.md, "Mix steps").
+// A transfer table's stage is refused after the stage is found (section 3, "Transfer tables").
 export function addTransfer(plan, transfer) {
+  return addTransferChecked(plan, transfer, true);
+}
+
+// addTransfer, refusing a transfer table's stage only if `protect` is true: a transfer table's own
+// edits fill its stages with protect false.
+function addTransferChecked(plan, transfer, protect) {
   // add() runs the operation list's checks first, so a badly formed transfer never reaches the
   // later checks. Its result is the new list if the stage already has transfers.
   const addedAfterStage = plan.operationList.add(transfer);
@@ -463,6 +501,9 @@ export function addTransfer(plan, transfer) {
     throw new Error(
       `There's no stage ${describeValue(transfer.stage)} in the plan to add this transfer to.`,
     );
+  }
+  if (protect) {
+    checkNotTransferTableAmounts(plan, transfer.stage);
   }
   if (isMixStep(plan, transfer.stage) && !isMixedWell(transfer)) {
     throw new Error(
@@ -490,6 +531,9 @@ export function addTransfers(plan, transfers) {
 export function changeVolume(plan, position, volume) {
   const operation = plan.operationList.listOperations()[position];
   // A position that isn't one gives undefined here; replace() reports it below.
+  if (operation !== undefined) {
+    checkNotTransferTableAmounts(plan, operation.stage);
+  }
   if (operation !== undefined && isMixStep(plan, operation.stage)) {
     throw new Error(
       "A mix step's wells are mixed with its own settings, so their volume can't be changed.",
@@ -503,8 +547,13 @@ export function changeVolume(plan, position, volume) {
 }
 
 // Returns the plan without the transfer at `position` (counting from 0). The operation list checks
-// the position. The stage order doesn't change, even if it was its stage's last transfer.
+// the position. The stage order doesn't change, even if it was its stage's last transfer. Throws for
+// a transfer of a transfer table's stage, whose amounts change only in its table.
 export function removeTransfer(plan, position) {
+  const operation = plan.operationList.listOperations()[position];
+  if (operation !== undefined) {
+    checkNotTransferTableAmounts(plan, operation.stage);
+  }
   return withParts(plan, { operationList: plan.operationList.remove(position) });
 }
 
@@ -593,6 +642,7 @@ export function removeTipChange(plan, key) {
     );
   }
   checkTipChangeAt(plan, key);
+  checkNoTransferTableNeedsTips(plan, key);
   checkNoRandomizationNeedsTips(plan, key);
   return withParts(plan, { tipChanges: withoutKey(plan.tipChanges, key) });
 }
@@ -708,9 +758,10 @@ export function seedingDensitiesOf(plan, snapshot, end) {
 }
 
 // Returns the plan with component `oldName` called `newName` (spaces at its ends removed), in the
-// list and in every well, keeping each well's components in order. Renaming it to its own name
-// returns the plan unchanged. Throws if there's no such component, then as addComponent does for
-// the new name.
+// list, in every well, and in every transfer table (its header cells, sources and stages, and the
+// name of its stage; section 3, "Transfer tables"), keeping each well's components in order, as one
+// edit. Renaming it to its own name returns the plan unchanged. Throws if there's no such
+// component, then as addComponent does for the new name.
 export function renameComponent(plan, oldName, newName) {
   checkComponentExists(plan, oldName);
   const trimmedName = typeof newName === "string" ? newName.trim() : newName;
@@ -726,12 +777,13 @@ export function renameComponent(plan, oldName, newName) {
         volume,
       ]),
     );
-  return withParts(plan, {
+  const renamedPlan = withParts(plan, {
     components: plan.components.map((component) =>
       component.name === oldName ? { ...component, name: trimmedName } : component,
     ),
     startingContents: changeEntriesHolding(plan, oldName, renamed),
   });
+  return withTransferTablesRenamed(renamedPlan, oldName, trimmedName);
 }
 
 // Returns the plan with component `name` drawn in `color`. Throws if there's no such component,
@@ -746,8 +798,10 @@ export function setComponentColor(plan, name, color) {
   });
 }
 
-// Returns the plan without component `name`, in the list or in any well. A well left with nothing
-// is no longer listed in the starting contents. Throws if there's no such component.
+// Returns the plan without component `name`, in the list or in any well, or in any transfer table's
+// sources (its header stays, so the table reads as out of date; section 3, "Transfer tables"). A
+// well left with nothing is no longer listed in the starting contents. Throws if there's no such
+// component.
 export function removeComponent(plan, name) {
   checkComponentExists(plan, name);
   const withoutComponent = (components) => withoutKey(components, name);
@@ -757,6 +811,7 @@ export function removeComponent(plan, name) {
   return withParts(plan, {
     components: plan.components.filter((component) => component.name !== name),
     startingContents,
+    transferTables: transferTablesWithoutSource(plan, name),
   });
 }
 
@@ -1316,25 +1371,1118 @@ export function tipSetsToMake(plan, id) {
   return randomizationAt(trial, id).stages.filter((owned) => isFirstOfTipGroup(trial, owned.stage)).length;
 }
 
+// --- Transfer tables ---
+
+// Every property of a transfer table, as setTransferTables takes them (section 3, "Transfer
+// tables"); a draft's; and an entry of a transfer table's stages.
+const TRANSFER_TABLE_PROPERTIES = ["id", "table", "sources", "stages"];
+const DRAFT_PROPERTIES = ["table", "sources"];
+const TABLE_STAGE_PROPERTIES = ["component", "stage"];
+
+// What a refusal says when an edit would put something inside a transfer table, or take its first
+// stage's tips (section 5).
+const TRANSFER_TABLE_STAYS_TOGETHER =
+  "A transfer table's stages stay together, each on its own tips: add before its first stage or after its last.";
+
+// A table's amount: digits with at most one decimal point, no sign and no exponent, once commas
+// (thousands separators) are removed, e.g. "190", "2.5", ".5" and "190." (section 3, "Reading").
+const AMOUNT_PATTERN = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
+
+// The table read against the plan (section 3, "Reading the table"): { columns, problems }, each
+// column { column, component, amounts } for a header naming a component (amounts above 0 only, each
+// { row, label, wells, volume }, wells in deck order), and each problem { row, column, message }, in
+// reading order. Throws if `table` isn't in its form, e.g. readTransferTable(plan, [["Dest Well
+// Label", "Media"], ["Control", "190"]]) → { columns: [{ column: 1, component: "Media", amounts:
+// [{ row: 1, label: "Control", wells: […], volume: 190 }] }], problems: [] }.
+export function readTransferTable(plan, table) {
+  checkTableForm(table);
+  return readCheckedTable(plan, table);
+}
+
+// The wells holding only `component` at Start (their starting contents name no other), in deck
+// order, each { labware, well }, e.g. [{ labware: "Res1", well: "1" }]; [] if none. A column draws
+// only from these (Andy, 2026-11-05: a well holding a mix is never mistaken for a stock). Throws if
+// there's no such component.
+export function stockWellsOf(plan, component) {
+  checkComponentExists(plan, component);
+  return plan.startingContents
+    .filter((entry) => {
+      const names = Object.keys(entry.components);
+      return names.length === 1 && names[0] === component;
+    })
+    .map(endOf)
+    .sort((first, second) => deckOrderIndex(first) - deckOrderIndex(second));
+}
+
+// The draft's problems (section 3, "A draft"), each { row, column, message } (row and column null
+// for the problems found after reading), in order; [] if it can be added or updated before stage
+// `at` (or at the end, for null). Throws if the draft isn't in its form, or `at` isn't a stage or
+// null, e.g. transferTableProblems(plan, { table, sources: {} }, null) → [{ row: null, column:
+// null, message: "Choose a well for Media to draw from." }].
+export function transferTableProblems(plan, draft, at) {
+  const checked = checkedDraft(plan, draft);
+  checkAt(plan, at);
+  return draftProblems(plan, checked);
+}
+
+// How the transfers of `component`'s column split among its source wells (section 3, "A column's
+// transfers"), [{ well, count }] in its sources' order, from what each holds just before stage `at`
+// (null: after every stage), e.g. [{ well: Res1 1, count: 5 }, { well: Res1 2, count: 7 }]. Other
+// problems in the draft don't stop it, and its wells needn't be stock wells. Throws if the draft or
+// `at` isn't in its form, then if the column has no amount, then if it has no wells.
+export function sourceSplit(plan, draft, component, at) {
+  const checked = checkedDraft(plan, draft);
+  checkAt(plan, at);
+  const column = readCheckedTable(plan, checked.table).columns.find(
+    (candidate) => candidate.component === component,
+  );
+  if (column === undefined || column.amounts.length === 0) {
+    throw new Error(`${component} has no column with an amount in this table.`);
+  }
+  if (!Object.hasOwn(checked.sources, component)) {
+    throw new Error(`Choose a well for ${component} to draw from.`);
+  }
+  const wells = checked.sources[component];
+  const drawsFrom = sourceIndexes(columnTransfers(column), wells, contentsBeforeStage(plan, at));
+  return wells.map((well, index) => ({
+    well: endOf(well),
+    count: drawsFrom.filter((drawn) => drawn === index).length,
+  }));
+}
+
+// The stages adding or updating the draft would give (section 3, "What the stages will be"), one per
+// column with an amount, in column order: { component, stage, transfers, settings, tips }, `stage`
+// the ID of the stage it keeps or null for a new one. With `id` (a transfer table in the plan),
+// `at` is ignored and is that table's first stage; `renamedFrom` maps new component names to old
+// ones, so a renamed column keeps its stage (section 3, "Settings and tips"). Throws if there's no
+// transfer table `id`, the draft isn't in its form, `at` isn't a stage or null, or the draft has
+// problems (the first one's message).
+// e.g. transferTableStages(plan, draft, null) → [{ component: "Media", stage: null, … }].
+export function transferTableStages(plan, draft, at, { id = null, renamedFrom = {} } = {}) {
+  const transferTable = id === null ? null : checkTransferTableExists(plan, id);
+  const checked = checkedDraft(plan, draft);
+  checkRenamedFrom(renamedFrom);
+  if (transferTable === null) {
+    checkAt(plan, at);
+  }
+  const place = transferTable === null ? at : transferTable.stages[0].stage;
+  return stagesForDraft(plan, checked, place, transferTable, renamedFrom);
+}
+
+// Returns { plan, id }: the plan with a new transfer table made from `draft`, its stages just before
+// stage `beforeId` (or last, for null), each on new tips, as one edit (section 3, "Adding"); `id` is
+// "t" and one more than the largest number in use. Throws, in section 5's order, if the draft isn't
+// in its form, `beforeId` isn't a stage or null, is inside a transfer table, isn't a place a
+// transfer table can sit, or the draft has problems (the first one's message).
+// e.g. addTransferTable(plan, { table, sources: { Media: [{ labware: "Res1", well: "1" }] } }, null).
+export function addTransferTable(plan, draft, beforeId) {
+  const checked = checkedDraft(plan, draft);
+  checkTransferTablePlace(plan, beforeId);
+  const entries = stagesForDraft(plan, checked, beforeId, null, {});
+  let adding = plan;
+  const stages = [];
+  for (const entry of entries) {
+    const added = addStageWithNewTips(adding, beforeId);
+    adding = withNewTableStageSet(added.plan, added.id, entry);
+    stages.push({ component: entry.component, stage: added.id });
+  }
+  const id = nextTransferTableId(plan.transferTables);
+  const transferTable = { id, table: checked.table, sources: checked.sources, stages };
+  return { plan: withParts(adding, { transferTables: [...adding.transferTables, transferTable] }), id };
+}
+
+// Returns the plan with transfer table `id` remade from `draft`, as one edit (section 3,
+// "Updating"): new columns' stages added, cleared columns' stages removed, kept stages given their
+// column's transfers (and renamed, if kept through `renamedFrom`), its stages put in column order,
+// each on its own tips, and its table and sources set. Gives back the same plan if nothing would
+// change. Throws if there's no such transfer table, the draft isn't in its form, or it has problems.
+// e.g. updateTransferTable(plan, "t1", draft, { renamedFrom: { DMEM: "Media" } }).
+export function updateTransferTable(plan, id, draft, { renamedFrom = {} } = {}) {
+  const transferTable = checkTransferTableExists(plan, id);
+  const checked = checkedDraft(plan, draft);
+  checkRenamedFrom(renamedFrom);
+  const first = transferTable.stages[0].stage;
+  const entries = stagesForDraft(plan, checked, first, transferTable, renamedFrom);
+  const order = plan.stageOrder;
+  const place = order[order.indexOf(transferTable.stages.at(-1).stage) + 1] ?? null;
+  const sittingAbove = new Set(
+    plan.randomizations
+      .filter((randomization) => randomization.stages.length === 0 && randomization.beforeId === first)
+      .map((randomization) => randomization.id),
+  );
+  let updating = plan;
+  const stageIds = entries.map((entry) => entry.stage);
+  entries.forEach((entry, index) => {
+    if (entry.stage === null) {
+      const added = addStageWithNewTips(updating, place);
+      updating = withNewTableStageSet(added.plan, added.id, entry);
+      stageIds[index] = added.id;
+    }
+  });
+  for (const owned of transferTable.stages) {
+    if (!stageIds.includes(owned.stage)) {
+      updating = removeStageOfAnyOwner(updating, owned.stage);
+    }
+  }
+  entries.forEach((entry) => {
+    if (entry.stage !== null) {
+      updating = withKeptTableStageSet(updating, entry);
+    }
+  });
+  updating = withStagesReordered(updating, stageIds);
+  entries.forEach((entry, index) => {
+    updating = withOwnTipsAt(updating, stageIds[index], entry.tips);
+  });
+  updating = withRandomizationsAboveTable(updating, sittingAbove, stageIds);
+  const updated = {
+    ...transferTable,
+    table: checked.table,
+    sources: checked.sources,
+    stages: entries.map((entry, index) => ({ component: entry.component, stage: stageIds[index] })),
+  };
+  updating = withParts(updating, {
+    transferTables: updating.transferTables.map((candidate) => (candidate.id === id ? updated : candidate)),
+  });
+  return samePlanContents(plan, updating) ? plan : updating;
+}
+
+// The transfer table with ID `id`, e.g. { id: "t1", table: […], sources: {…}, stages: […] }, or null.
+export function transferTableAt(plan, id) {
+  return plan.transferTables.find((transferTable) => transferTable.id === id) ?? null;
+}
+
+// The ID of the transfer table that owns stage `stageId`, e.g. "t1", or null if none does.
+export function transferTableOf(plan, stageId) {
+  const owner = transferTableOwning(plan, stageId);
+  return owner === null ? null : owner.id;
+}
+
+// True if transfer table `id`'s draft (its table and sources) has problems now, or would give
+// different stages now: a different number, or, for any stage in order, a different component or
+// different transfers (each one's source, destination and volume), compared ignoring their order,
+// since the Biomek orders a stage's transfers itself. Settings and tips aren't compared: they're
+// the user's (section 3, "Out of date"). Throws if there's no such transfer table.
+export function isTransferTableOutOfDate(plan, id) {
+  const transferTable = checkTransferTableExists(plan, id);
+  const draft = { table: transferTable.table, sources: transferTable.sources };
+  if (draftProblems(plan, draft).length > 0) {
+    return true;
+  }
+  const entries = stagesForDraft(plan, draft, transferTable.stages[0].stage, transferTable, {});
+  const wouldMake = entries.map((entry) => ({
+    component: entry.component,
+    transfers: transfersAsMultiset(entry.transfers),
+  }));
+  const made = transferTable.stages.map((owned) => ({
+    component: owned.component,
+    transfers: transfersAsMultiset(transfersIn(plan, owned.stage)),
+  }));
+  return JSON.stringify(wouldMake) !== JSON.stringify(made);
+}
+
+// Returns the plan without transfer table `id` and every stage it owns, as one edit. Tip changes on
+// the stage after it stay; a randomization without stages sitting before its first stage then sits
+// before the stage just after it, as removeStage moves it. Throws if there's no such transfer table,
+// or its stages are all the plan's stages.
+export function removeTransferTable(plan, id) {
+  const transferTable = checkTransferTableExists(plan, id);
+  if (!canRemoveTransferTable(plan, id)) {
+    throw new Error(
+      "This transfer table's stages are all the plan's stages, and a plan needs at least one. " +
+        "Add a stage outside it first.",
+    );
+  }
+  let removed = withParts(plan, {
+    transferTables: plan.transferTables.filter((candidate) => candidate.id !== id),
+  });
+  for (const owned of transferTable.stages) {
+    removed = removeStageOfAnyOwner(removed, owned.stage);
+  }
+  return removed;
+}
+
+// True unless transfer table `id`'s stages are all the plan's stages; false if there's no such
+// transfer table.
+export function canRemoveTransferTable(plan, id) {
+  const transferTable = transferTableAt(plan, id);
+  return transferTable !== null && transferTable.stages.length < plan.stageOrder.length;
+}
+
+// Returns the plan with its transfer tables replaced by `transferTables`, each in the form of
+// section 3, for a list already in the plan's own form, such as one read from a plan file. Strict:
+// nothing is tidied. Throws, in section 5's order of checks, prefixed "Transfer table N: " where the
+// message is about one transfer table's values.
+export function setTransferTables(plan, transferTables) {
+  if (!Array.isArray(transferTables)) {
+    throw new Error(`The transfer tables must be a list, but got ${describeValue(transferTables)}.`);
+  }
+  const copied = transferTables.map((transferTable, index) =>
+    checkedStoredTransferTable(plan, transferTable, index + 1),
+  );
+  checkTransferTableIdsUnique(copied);
+  checkTableStagesOwnedOnce(plan, copied);
+  checkNoRandomizationInsideTable(plan, copied);
+  return withParts(plan, { transferTables: copied });
+}
+
+// --- Transfer tables: helpers ---
+
+// Throws unless `table` is a non-empty list of rows, each a non-empty list of the same number of
+// cells, each text, naming the value, or the first row or cell that's wrong (section 5), e.g.
+// 'A transfer table must be a list of rows, each a list of the same number of cells, each text, but
+// row 3 has 4 cells and row 1 has 5.'
+function checkTableForm(table) {
+  const start =
+    "A transfer table must be a list of rows, each a list of the same number of cells, each text, but ";
+  // [] is shown as itself, since describeValue calls any list "a list".
+  const shown = (value) => (Array.isArray(value) && value.length === 0 ? "[]" : describeValue(value));
+  if (!Array.isArray(table) || table.length === 0) {
+    throw new Error(`${start}got ${shown(table)}.`);
+  }
+  table.forEach((row, index) => {
+    if (!Array.isArray(row) || row.length === 0) {
+      throw new Error(`${start}row ${index + 1} is ${shown(row)}.`);
+    }
+    const width = table[0].length;
+    if (row.length !== width) {
+      throw new Error(
+        `${start}row ${index + 1} has ${row.length} ${row.length === 1 ? "cell" : "cells"} and row 1 has ${width}.`,
+      );
+    }
+    // findIndex, not find: a hole in the list would read as "none found".
+    const badCell = row.findIndex((cell) => typeof cell !== "string");
+    if (badCell !== -1) {
+      throw new Error(`${start}row ${index + 1}, cell ${badCell + 1} is ${describeValue(row[badCell])}.`);
+    }
+  });
+}
+
+// readTransferTable for a table already in its form.
+function readCheckedTable(plan, table) {
+  const problems = [];
+  const columns = componentColumnsOf(plan, table, problems);
+  const wellsByLabel = wellsByLabelOf(plan);
+  const labelsAbove = new Set();
+  for (let row = 1; row < table.length; row += 1) {
+    const cells = table[row];
+    // A fully blank row fills nothing and is no problem (stray empty lines are harmless).
+    if (cells.every((cell) => cell.trim() === "")) {
+      continue;
+    }
+    const label = cells[0].trim();
+    const labelProblem = rowLabelProblem(label, row, labelsAbove, wellsByLabel);
+    if (label !== "") {
+      labelsAbove.add(label);
+    }
+    if (labelProblem !== null) {
+      problems.push({ row, column: 0, message: labelProblem });
+      continue;
+    }
+    for (const entry of columns) {
+      const text = cells[entry.column].trim();
+      const volume = amountOf(text);
+      if (volume === null) {
+        problems.push({
+          row,
+          column: entry.column,
+          message: `${label}, ${entry.component}: “${text}” isn't an amount in µL.`,
+        });
+      } else if (volume > 0) {
+        entry.amounts.push({ row, label, wells: wellsByLabel.get(label).map(endOf), volume });
+      }
+    }
+  }
+  return { columns, problems };
+}
+
+// The component columns of `table`'s header, left to right, each { column, component, amounts: [] }
+// for a header naming a component not named by a column to its left; the header's problems are
+// pushed onto `problems`, in order.
+function componentColumnsOf(plan, table, problems) {
+  const names = new Set(plan.components.map((component) => component.name));
+  const columns = [];
+  const header = table[0];
+  for (let column = 1; column < header.length; column += 1) {
+    const name = header[column].trim();
+    let message = null;
+    if (name === "") {
+      const hasAmount = table.slice(1).some((row) => row[column].trim() !== "");
+      message = hasAmount ? `Column ${column + 1} has amounts but no component.` : null;
+    } else if (!names.has(name)) {
+      message = `“${name}” isn't a component in the plan.`;
+    } else if (columns.some((entry) => entry.component === name)) {
+      message = `“${name}” is in more than one column. Each component gets one column.`;
+    } else {
+      columns.push({ column, component: name, amounts: [] });
+    }
+    if (message !== null) {
+      problems.push({ row: 0, column, message });
+    }
+  }
+  return columns;
+}
+
+// The problem with row `row`'s label (trimmed), or null: blank, a row above's (`labelsAbove`), or a
+// label no well has (`wellsByLabel`, from wellsByLabelOf).
+function rowLabelProblem(label, row, labelsAbove, wellsByLabel) {
+  if (label === "") {
+    return `Row ${row + 1} has no well label.`;
+  }
+  if (labelsAbove.has(label)) {
+    return `“${label}” is in more than one row.`;
+  }
+  if (!wellsByLabel.has(label)) {
+    return `No well is labeled “${label}”.`;
+  }
+  return null;
+}
+
+// The µL a cell's trimmed `text` adds: 0 for blank, the number for an amount (commas removed
+// first), or null if it isn't one, e.g. "1,500" → 1500, "" → 0, "5 µL" → null.
+function amountOf(text) {
+  const digits = text.replaceAll(",", "");
+  if (digits === "") {
+    return 0;
+  }
+  return AMOUNT_PATTERN.test(digits) ? Number(digits) : null;
+}
+
+// Each well label in the plan, mapped to its wells in deck order, e.g. Map { "Control" → [Plate1 A1,
+// Plate1 A2] }.
+function wellsByLabelOf(plan) {
+  const byLabel = new Map();
+  for (const [labware, wells] of Object.entries(plan.wellLabels)) {
+    for (const [well, label] of Object.entries(wells)) {
+      const labeled = byLabel.get(label) ?? [];
+      labeled.push({ labware, well });
+      byLabel.set(label, labeled);
+    }
+  }
+  for (const wells of byLabel.values()) {
+    wells.sort((first, second) => deckOrderIndex(first) - deckOrderIndex(second));
+  }
+  return byLabel;
+}
+
+// A copy of `draft`, checked (section 5's order): an object with exactly table and sources, then the
+// table's form, then the sources' form (checkedTableSources).
+function checkedDraft(plan, draft) {
+  if (!hasExactly(draft, DRAFT_PROPERTIES)) {
+    throw new Error(
+      `A transfer table's draft must be an object with exactly "table" and "sources", but got ${describeValue(draft)}.`,
+    );
+  }
+  checkTableForm(draft.table);
+  return {
+    table: draft.table.map((row) => [...row]),
+    sources: checkedTableSources(plan, draft.sources),
+  };
+}
+
+// A copy of a transfer table's `sources`, checked: an object; then each key in order: a component
+// of the plan, its list, its wells each on the deck, none twice. Each well is copied as
+// { labware, well }.
+function checkedTableSources(plan, sources) {
+  // The form message, naming the value that's wrong.
+  const formError = (value) =>
+    new Error(
+      "A transfer table's sources must be an object of component names, each with a list of wells, " +
+        `like { Media: [{ labware: "Res1", well: "1" }] }, but got ${describeValue(value)}.`,
+    );
+  if (!isObject(sources)) {
+    throw formError(sources);
+  }
+  const copied = {};
+  for (const [component, wells] of Object.entries(sources)) {
+    if (!plan.components.some((entry) => entry.name === component)) {
+      throw new Error(
+        `A transfer table draws ${component} from wells, but there's no component called ` +
+          `${describeValue(component)} in this plan.`,
+      );
+    }
+    if (!Array.isArray(wells)) {
+      throw formError(wells);
+    }
+    if (wells.length === 0) {
+      throw new Error(`${component}'s source wells are empty. List at least one, or leave ${component} out.`);
+    }
+    wells.forEach((end, index) => withPrefix(`${component}'s source well ${index + 1}: `, () => checkWell(end)));
+    checkNoWellTwice(wells, (where) => `${where} is one of ${component}'s source wells twice. List each once.`);
+    copied[component] = wells.map(endOf);
+  }
+  return copied;
+}
+
+// Throws unless `at` is a stage of the plan or null: 'There's no stage "9" in the plan.'
+function checkAt(plan, at) {
+  if (at !== null && !plan.stageList.has(at)) {
+    throw new Error(`There's no stage ${describeValue(at)} in the plan.`);
+  }
+}
+
+// Throws unless `renamedFrom` is an object (of new component names and old ones). Not in section 5:
+// a caller builds it, as it builds a draft's sources.
+function checkRenamedFrom(renamedFrom) {
+  if (!isObject(renamedFrom)) {
+    throw new Error(
+      "renamedFrom must be an object of new component names and old ones, like { DMEM: \"Media\" }, " +
+        `but got ${describeValue(renamedFrom)}.`,
+    );
+  }
+}
+
+// The problems of a checked draft (transferTableProblems, after its form and `at`).
+function draftProblems(plan, draft) {
+  const { columns, problems } = readCheckedTable(plan, draft.table);
+  if (problems.length > 0) {
+    return problems;
+  }
+  const making = columns.filter((column) => column.amounts.length > 0);
+  if (making.length === 0) {
+    return [draftProblem("The table adds nothing: every amount is blank or 0.")];
+  }
+  const filled = new Set(making.flatMap((column) => column.amounts.flatMap((amount) => amount.wells.map(wellKey))));
+  return making
+    .map((column) => columnSourceProblem(plan, draft, column.component, filled))
+    .filter((message) => message !== null)
+    .map(draftProblem);
+}
+
+// A draft's problem found after reading the table: { row: null, column: null, message }.
+function draftProblem(message) {
+  return { row: null, column: null, message };
+}
+
+// The first problem with `component`'s column's sources in `draft`, or null: no stock well, no
+// wells chosen, a well that isn't a stock well, or a well the table fills (`filled`, wellKeys), the
+// last two naming the first such well in its list.
+function columnSourceProblem(plan, draft, component, filled) {
+  const stock = new Set(stockWellsOf(plan, component).map(wellKey));
+  if (stock.size === 0) {
+    return `No well holds only ${component} at Start. Fill one with ${component} at Start first.`;
+  }
+  if (!Object.hasOwn(draft.sources, component)) {
+    return `Choose a well for ${component} to draw from.`;
+  }
+  const wells = draft.sources[component];
+  const notStock = wells.find((end) => !stock.has(wellKey(end)));
+  if (notStock !== undefined) {
+    return `${wellText(notStock)} doesn't hold only ${component} at Start, so ${component} can't draw from it.`;
+  }
+  const alsoFilled = wells.find((end) => filled.has(wellKey(end)));
+  if (alsoFilled !== undefined) {
+    return `${wellText(alsoFilled)} is both a source of ${component} and a well the table fills. Choose another well.`;
+  }
+  return null;
+}
+
+// A column's transfers, without their sources: one per amount and well, rows in table order and
+// each row's wells in deck order, e.g. [{ destination: Plate1 A1, volume: 190 }, …].
+function columnTransfers(column) {
+  return column.amounts.flatMap((amount) =>
+    amount.wells.map((destination) => ({ destination, volume: amount.volume })),
+  );
+}
+
+// For each of `transfers` in order, the index in `wells` of the well it draws from (section 3, "A
+// column's transfers"): each well gives whole transfers until the next would draw more than it has
+// left above its dead volume (from `contents`, a ContentsSnapshot), then the next takes over, never
+// going back; the last takes the rest. NEGLIGIBLE_MICROLITERS allows for arithmetic leftovers.
+function sourceIndexes(transfers, wells, contents) {
+  const left = wells.map((end) => contents.usableVolumeOf(end.labware, end.well));
+  let current = 0;
+  return transfers.map((transfer) => {
+    while (current < wells.length - 1 && transfer.volume > left[current] + NEGLIGIBLE_MICROLITERS) {
+      current += 1;
+    }
+    left[current] -= transfer.volume;
+    return current;
+  });
+}
+
+// The stages a checked draft gives, its stages going before stage `at` (transferTableStages), for
+// `transferTable` (null for a new one). Throws the first problem's message if it has any.
+function stagesForDraft(plan, draft, at, transferTable, renamedFrom) {
+  const problems = draftProblems(plan, draft);
+  if (problems.length > 0) {
+    throw new Error(problems[0].message);
+  }
+  const making = readCheckedTable(plan, draft.table).columns.filter((column) => column.amounts.length > 0);
+  const contents = contentsBeforeStage(plan, at);
+  const kept = keptTableStages(making, transferTable === null ? [] : transferTable.stages, renamedFrom);
+  const entries = [];
+  making.forEach((column, index) => {
+    const stage = kept[index];
+    const wells = draft.sources[column.component];
+    const destinations = columnTransfers(column);
+    const drawsFrom = sourceIndexes(destinations, wells, contents);
+    const transfers = destinations.map((transfer, place) => ({
+      source: endOf(wells[drawsFrom[place]]),
+      destination: endOf(transfer.destination),
+      volume: transfer.volume,
+    }));
+    const { settings, tips } = settingsAndTipsFor(plan, stage, entries.at(-1), at);
+    entries.push({ component: column.component, stage, transfers, settings: { ...settings }, tips: copiedTips(tips) });
+  });
+  return entries;
+}
+
+// The stage each of `making` (columns with an amount) keeps from `owned` (a transfer table's
+// stages), or null: its component's stage; else, through `renamedFrom`, the stage of the component
+// it was renamed from, if no other column keeps it (section 3, "Settings and tips").
+function keptTableStages(making, owned, renamedFrom) {
+  const byComponent = new Map(owned.map((entry) => [entry.component, entry.stage]));
+  const used = new Set();
+  const kept = making.map((column) => {
+    const stage = byComponent.get(column.component) ?? null;
+    if (stage !== null) {
+      used.add(stage);
+    }
+    return stage;
+  });
+  making.forEach((column, index) => {
+    if (kept[index] !== null || !Object.hasOwn(renamedFrom, column.component)) {
+      return;
+    }
+    const stage = byComponent.get(renamedFrom[column.component]);
+    if (stage !== undefined && !used.has(stage)) {
+      kept[index] = stage;
+      used.add(stage);
+    }
+  });
+  return kept;
+}
+
+// The settings and tips a column's stage gets: a kept `stage`'s own; else the column before's
+// (`previous`, an entry of stagesForDraft); else those of the nearest transfer stage before `at` and
+// its tip group's tips; else the default settings and the START tips.
+function settingsAndTipsFor(plan, stage, previous, at) {
+  if (stage !== null) {
+    return { settings: plan.stageList.get(stage).settings, tips: tipsInUseAt(plan, stage) };
+  }
+  if (previous !== undefined) {
+    return previous;
+  }
+  const order = plan.stageOrder;
+  const placeIndex = at === null ? order.length : order.indexOf(at);
+  const before = order.slice(0, placeIndex).findLast((id) => !isMixStep(plan, id));
+  if (before === undefined) {
+    return { settings: defaultSettings(), tips: plan.tipChanges[START] };
+  }
+  return { settings: plan.stageList.get(before).settings, tips: tipsInUseAt(plan, before) };
+}
+
+// A copy of `tips`, { tipType, probes }, sharing nothing with it.
+function copiedTips(tips) {
+  return { tipType: tips.tipType, probes: [...tips.probes] };
+}
+
+// Transfers as a multiset of (source, destination, volume), for comparing two stages' transfers
+// whatever their order: each as text, sorted, e.g. ['[{"labware":"Res1",…},…,190]', …].
+function transfersAsMultiset(transfers) {
+  return transfers
+    .map(({ source, destination, volume }) => JSON.stringify([endOf(source), endOf(destination), volume]))
+    .sort();
+}
+
+// Returns the plan with new stage `id`, just added on tips of its own, set as `entry` (an entry of
+// stagesForDraft) says: named after its component, given its settings, its tip change loading its
+// tips (the START one if it's the plan's first stage), and its transfers.
+function withNewTableStageSet(plan, id, entry) {
+  let setting = withParts(plan, { stageList: plan.stageList.rename(id, entry.component) });
+  setting = changeStageSettings(setting, id, entry.settings);
+  setting = withOwnTipsAt(setting, id, entry.tips);
+  return withStageTransfers(setting, id, entry.transfers);
+}
+
+// Returns the plan with a transfer table's kept stage (`entry.stage`) given `entry`'s transfers,
+// unless it holds the same transfers in another order (they're kept, so an update that changes
+// nothing gives the same plan), and renamed after `entry`'s component if it was kept through
+// renamedFrom. Its settings and tips stay.
+function withKeptTableStageSet(plan, entry) {
+  let setting = plan;
+  if (plan.stageList.get(entry.stage).name !== entry.component) {
+    setting = withParts(setting, { stageList: setting.stageList.rename(entry.stage, entry.component) });
+  }
+  const held = transfersAsMultiset(transfersIn(setting, entry.stage));
+  if (JSON.stringify(held) === JSON.stringify(transfersAsMultiset(entry.transfers))) {
+    return setting;
+  }
+  return withStageTransfers(setting, entry.stage, entry.transfers);
+}
+
+// Returns the plan with stage `id`'s transfers replaced by `transfers` (each { source, destination,
+// volume }), in order, checked as addTransfer checks them but without its refusal for a transfer
+// table's stage.
+function withStageTransfers(plan, id, transfers) {
+  let operationList = plan.operationList;
+  for (const position of positionsInStage(plan, id).reverse()) {
+    operationList = operationList.remove(position);
+  }
+  let filling = withParts(plan, { operationList });
+  for (const { source, destination, volume } of transfers) {
+    filling = addTransferChecked(
+      filling,
+      { type: "transfer", source: endOf(source), destination: endOf(destination), volume, stage: id },
+      false,
+    );
+  }
+  return filling;
+}
+
+// Returns the plan with stage `id` starting a tip group of its own loading `tips`: the START tips
+// if it's the plan's first stage (and no tip change keyed by it), otherwise its own tip change. The
+// same plan if that's how it is already.
+function withOwnTipsAt(plan, id, tips) {
+  const loaded = copiedTips(tips);
+  const tipChanges =
+    plan.stageOrder[0] === id
+      ? withKey(withoutKey(plan.tipChanges, id), START, loaded)
+      : withKey(plan.tipChanges, id, loaded);
+  return withParts(plan, { tipChanges: sameOrNew(plan.tipChanges, tipChanges) });
+}
+
+// Returns the plan with `ids`, stages that are consecutive in the stage order in some order, put in
+// the order given, starting where the first of them now is; every other stage keeps its place. A
+// randomization whose beforeId was their old first (one without stages sitting above them, or one
+// that has run just above them) now has the new first (section 3, "Where randomizations sit
+// afterwards"). The operation list follows the new stage order. The same plan if they're in that
+// order already.
+function withStagesReordered(plan, ids) {
+  const order = plan.stageOrder;
+  const wanted = new Set(ids);
+  const current = order.filter((stage) => wanted.has(stage));
+  if (JSON.stringify(current) === JSON.stringify(ids)) {
+    return plan;
+  }
+  const start = order.indexOf(current[0]);
+  const stageOrder = [...order.slice(0, start), ...ids, ...order.slice(start + current.length)];
+  const randomizations = plan.randomizations.map((candidate) =>
+    candidate.beforeId === current[0] ? { ...candidate, beforeId: ids[0] } : candidate,
+  );
+  return withOperationsInStageOrder(withParts(plan, { stageOrder, randomizations: sameOrNew(plan.randomizations, randomizations) }));
+}
+
+// Returns the plan with each randomization without stages that sat before the transfer table's
+// first stage before an update (`sittingAbove`, their IDs), or now sits before one of its stages
+// (`stageIds`, in order), sitting before its first stage (section 3, "Updating", step 7).
+function withRandomizationsAboveTable(plan, sittingAbove, stageIds) {
+  const randomizations = plan.randomizations.map((randomization) =>
+    randomization.stages.length === 0 &&
+    (sittingAbove.has(randomization.id) || stageIds.includes(randomization.beforeId)) &&
+    randomization.beforeId !== stageIds[0]
+      ? { ...randomization, beforeId: stageIds[0] }
+      : randomization,
+  );
+  return withParts(plan, { randomizations: sameOrNew(plan.randomizations, randomizations) });
+}
+
+// True if `updated` holds the same stage order, tip changes, transfers, stages, randomizations and
+// transfer tables as `plan` (compared as plain data), so an edit changed nothing.
+function samePlanContents(plan, updated) {
+  // A plan's changeable parts as text; tip changes by key in sorted order.
+  const contents = (candidate) =>
+    JSON.stringify([
+      candidate.stageOrder,
+      Object.keys(candidate.tipChanges).sort().map((key) => [key, candidate.tipChanges[key]]),
+      candidate.operationList.listOperations(),
+      candidate.stageList.listStages(),
+      candidate.randomizations,
+      candidate.transferTables,
+    ]);
+  return contents(plan) === contents(updated);
+}
+
+// The next transfer table's ID among `transferTables`: "t" and one more than the largest number in
+// use, e.g. with "t1" and "t3" → "t4"; "t1" with none.
+function nextTransferTableId(transferTables) {
+  const numbers = transferTables.map((transferTable) => Number(transferTable.id.slice(1)));
+  return `t${Math.max(0, ...numbers) + 1}`;
+}
+
+// Returns transfer table `id`, or throws 'There's no transfer table "t9" in the plan.'
+function checkTransferTableExists(plan, id) {
+  const transferTable = transferTableAt(plan, id);
+  if (transferTable === null) {
+    throw new Error(`There's no transfer table ${describeValue(id)} in the plan.`);
+  }
+  return transferTable;
+}
+
+// The transfer table owning stage `stageId`, or null.
+function transferTableOwning(plan, stageId) {
+  return (
+    plan.transferTables.find((transferTable) =>
+      transferTable.stages.some((owned) => owned.stage === stageId),
+    ) ?? null
+  );
+}
+
+// True if stage `id` is just after a transfer table's last stage in the stage order.
+function isJustAfterTransferTable(plan, id) {
+  const order = plan.stageOrder;
+  return plan.transferTables.some(
+    (transferTable) => order[order.indexOf(transferTable.stages.at(-1).stage) + 1] === id,
+  );
+}
+
+// Throws if stage `stageId` is a transfer table's: its transfers change only through its table.
+function checkNotTransferTableAmounts(plan, stageId) {
+  if (transferTableOf(plan, stageId) !== null) {
+    throw new Error(
+      `${stageNamed(plan, stageId)}, is part of a transfer table: change its amounts in the table.`,
+    );
+  }
+}
+
+// Throws if `beforeId` is one of a transfer table's stages other than its first: something added
+// there would go inside it.
+function checkNotInsideTransferTable(plan, beforeId) {
+  const owner = beforeId === null ? null : transferTableOwning(plan, beforeId);
+  if (owner !== null && owner.stages[0].stage !== beforeId) {
+    throw new Error(TRANSFER_TABLE_STAYS_TOGETHER);
+  }
+}
+
+// Throws, in section 5's order, if addStage or addMixStep can't add a stage before `beforeId` (with
+// or without `takeTips`) beside a transfer table: `beforeId` isn't a stage or null; it's inside a
+// transfer table; with takeTips, it's a transfer table's first stage (the new stage would take its
+// tips); or the new stage would join a transfer table's last tip group: without takeTips before the
+// stage just after it, or at the end (null) when its last stage is the plan's last, which takes no
+// tips either way.
+function checkStageAddBesideTransferTables(plan, beforeId, takeTips) {
+  checkStageAddWithNewTipsBesideTransferTables(plan, beforeId);
+  if (takeTips && beforeId !== null && transferTableOf(plan, beforeId) !== null) {
+    throw new Error(TRANSFER_TABLE_STAYS_TOGETHER);
+  }
+  const joinsTableTips =
+    beforeId === null
+      ? plan.stageOrder.length > 0 && transferTableOf(plan, plan.stageOrder.at(-1)) !== null
+      : !takeTips && isJustAfterTransferTable(plan, beforeId);
+  if (joinsTableTips) {
+    throw new Error(
+      "A stage added here would share the transfer table's tips. Add it with new tips, from the " +
+        "seam between tip groups.",
+    );
+  }
+}
+
+// Throws if `beforeId` isn't a stage or null, then if it's inside a transfer table (for the edits
+// that add a stage on new tips, which may go just before or after one).
+function checkStageAddWithNewTipsBesideTransferTables(plan, beforeId) {
+  checkStageToAddBefore(plan, beforeId);
+  checkNotInsideTransferTable(plan, beforeId);
+}
+
+// Throws unless `beforeId` is a stage or null, as every edit adding a stage checks it: 'There's no
+// stage "9" to add a stage before.'
+function checkStageToAddBefore(plan, beforeId) {
+  if (beforeId !== null && !plan.stageList.has(beforeId)) {
+    throw new Error(`There's no stage ${describeValue(beforeId)} to add a stage before.`);
+  }
+}
+
+// Returns `added` (`plan` with a stage added without takeTips before `beforeId`) with a tip change
+// on `beforeId` loading the START tips of `plan`, if `beforeId` was the plan's first stage and a
+// transfer table's: the new stage takes the START tips, and the table's first stage keeps its own.
+function withTransferTableFirstTipsKept(added, plan, beforeId) {
+  const wasFirstOfTable =
+    beforeId !== null && plan.stageOrder[0] === beforeId && transferTableOf(plan, beforeId) !== null;
+  if (!wasFirstOfTable || added.stageOrder[0] === beforeId || Object.hasOwn(added.tipChanges, beforeId)) {
+    return added;
+  }
+  return withParts(added, { tipChanges: withKey(added.tipChanges, beforeId, copiedTips(plan.tipChanges[START])) });
+}
+
+// Throws if the tip change at `key` belongs to a transfer table (one of its stages'), or keeps the
+// stage just after one off its tips (section 5).
+function checkNoTransferTableNeedsTips(plan, key) {
+  if (transferTableOf(plan, key) !== null) {
+    throw new Error("Every stage of a transfer table starts on new tips, so these can't be removed.");
+  }
+  if (isJustAfterTransferTable(plan, key)) {
+    throw new Error(
+      `This tip change keeps ${stageNamedInText(plan, key)}, off the transfer table's tips. ` +
+        "A transfer table never shares tips with other stages.",
+    );
+  }
+}
+
+// Throws, in section 5's order, unless a transfer table can be added before `beforeId`: a stage or
+// null; not inside a transfer table; then the first stage of a tip group that isn't inside a
+// randomization (a randomization's or transfer table's first stage is allowed: the new one goes
+// above it).
+function checkTransferTablePlace(plan, beforeId) {
+  if (beforeId === null) {
+    return;
+  }
+  if (!plan.stageList.has(beforeId)) {
+    throw new Error(`There's no stage ${describeValue(beforeId)} to add a transfer table before.`);
+  }
+  checkNotInsideTransferTable(plan, beforeId);
+  const randomization = plan.randomizations.find((candidate) =>
+    candidate.stages.some((owned) => owned.stage === beforeId),
+  );
+  const insideRandomization = randomization !== undefined && randomization.stages[0].stage !== beforeId;
+  if (!isFirstOfTipGroup(plan, beforeId) || insideRandomization) {
+    throw new Error(
+      `A transfer table sits between tip groups, so it can't go before ${stageNamedInText(plan, beforeId)}.`,
+    );
+  }
+}
+
+// Returns the plan with component `oldName` renamed `newName` in every transfer table: each header
+// cell whose trimmed text is the old name, its sources' key (in its place), its stages' entry, and
+// that stage's name (section 3, "Transfer tables", "Components"). The same plan if no transfer table
+// names it.
+function withTransferTablesRenamed(plan, oldName, newName) {
+  let stageList = plan.stageList;
+  let changed = false;
+  const transferTables = plan.transferTables.map((transferTable) => {
+    const named =
+      columnOfComponent(transferTable.table, oldName) !== -1 ||
+      Object.hasOwn(transferTable.sources, oldName) ||
+      transferTable.stages.some((owned) => owned.component === oldName);
+    if (!named) {
+      return transferTable;
+    }
+    changed = true;
+    const [header, ...rows] = transferTable.table;
+    const renamedHeader = header.map((cell, column) => (headerNames(cell, column, oldName) ? newName : cell));
+    const sources = Object.fromEntries(
+      Object.entries(transferTable.sources).map(([component, wells]) => [
+        component === oldName ? newName : component,
+        wells,
+      ]),
+    );
+    const stages = transferTable.stages.map((owned) => {
+      if (owned.component !== oldName) {
+        return owned;
+      }
+      stageList = stageList.rename(owned.stage, newName);
+      return { ...owned, component: newName };
+    });
+    return { ...transferTable, table: [renamedHeader, ...rows], sources, stages };
+  });
+  return changed ? withParts(plan, { stageList, transferTables }) : plan;
+}
+
+// The plan's transfer tables with component `name`'s key taken out of their sources; a transfer
+// table without it is the very same object, and the list is the same list if none has it.
+function transferTablesWithoutSource(plan, name) {
+  let changed = false;
+  const transferTables = plan.transferTables.map((transferTable) => {
+    if (!Object.hasOwn(transferTable.sources, name)) {
+      return transferTable;
+    }
+    changed = true;
+    return { ...transferTable, sources: withoutKey(transferTable.sources, name) };
+  });
+  return changed ? transferTables : plan.transferTables;
+}
+
+// True if header cell `cell`, in column `column` of a transfer table, names `component`: a
+// component column (not the label column) whose text, trimmed, is the name, e.g.
+// headerNames(" Media ", 1, "Media") → true.
+function headerNames(cell, column, component) {
+  return column > 0 && cell.trim() === component;
+}
+
+// The index of the first column of `table` whose header names `component` (headerNames), or -1,
+// e.g. columnOfComponent([["Label", "Media"], …], "Media") → 1.
+function columnOfComponent(table, component) {
+  return table[0].findIndex((cell, column) => headerNames(cell, column, component));
+}
+
+// A copy of `transferTable` as a plan stores it, checked strictly (setTransferTables' order),
+// `number` being its place in the list from 1.
+function checkedStoredTransferTable(plan, transferTable, number) {
+  if (!hasExactly(transferTable, TRANSFER_TABLE_PROPERTIES)) {
+    throw new Error(
+      `Transfer table ${number} must be an object with exactly ${listNamesWithAnd(TRANSFER_TABLE_PROPERTIES)}.`,
+    );
+  }
+  const { id } = transferTable;
+  if (typeof id !== "string" || !/^t[1-9][0-9]*$/.test(id)) {
+    throw new Error(
+      `Transfer table ${number}'s ID must be "t" and a whole number, like "t1", but got ${describeValue(id)}.`,
+    );
+  }
+  return withPrefix(`Transfer table ${number}: `, () => {
+    checkTableForm(transferTable.table);
+    const table = transferTable.table.map((row) => [...row]);
+    const sources = checkedTableSources(plan, transferTable.sources);
+    const stages = checkedTableStages(plan, table, transferTable.stages, true);
+    return { id, table, sources, stages };
+  });
+}
+
+// A copy of a transfer table's `stages`, checked against its `table` (section 5's order): their
+// form; with `inPlace`, each stage in the plan and none twice; each component a column's header,
+// none twice; each stage named after its component; in its columns' order; with `inPlace`,
+// consecutive in stage order and each the only stage of its tip group; none a mix step. A paste
+// checks its stages without `inPlace`, before they're placed.
+function checkedTableStages(plan, table, stages, inPlace) {
+  // True if `owned` is an entry of a transfer table's stages: exactly { component, stage }.
+  const isEntry = (owned) => hasExactly(owned, TABLE_STAGE_PROPERTIES);
+  if (!Array.isArray(stages) || stages.length === 0 || !stages.every(isEntry)) {
+    throw new Error(
+      `its stages must be a non-empty list of objects with exactly ${listNamesWithAnd(TABLE_STAGE_PROPERTIES)}.`,
+    );
+  }
+  if (inPlace) {
+    checkTableStagesInPlan(plan, stages);
+  }
+  // The index of the column whose header names `component`, or -1.
+  const columnOf = (component) => columnOfComponent(table, component);
+  const components = new Set();
+  for (const { component } of stages) {
+    if (columnOf(component) === -1) {
+      throw new Error(`its stage for ${component} has no column in its table.`);
+    }
+    if (components.has(component)) {
+      throw new Error(`${component} has two stages.`);
+    }
+    components.add(component);
+  }
+  for (const { component, stage } of stages) {
+    if (plan.stageList.get(stage).name !== component) {
+      throw new Error(`stage ${describeValue(stage)} must be named “${component}”, after its component.`);
+    }
+  }
+  const columns = stages.map((owned) => columnOf(owned.component));
+  if (columns.some((column, index) => index > 0 && column < columns[index - 1])) {
+    throw new Error("its stages must be in the order of its columns.");
+  }
+  if (inPlace) {
+    checkTableStagesPlaced(plan, stages);
+  }
+  const mixStep = stages.find((owned) => isMixStep(plan, owned.stage));
+  if (mixStep !== undefined) {
+    throw new Error(`stage ${describeValue(mixStep.stage)} is a mix step.`);
+  }
+  return stages.map(({ component, stage }) => ({ component, stage }));
+}
+
+// Throws if a stored transfer table's stage isn't in the plan, or is listed twice.
+function checkTableStagesInPlan(plan, stages) {
+  const seen = new Set();
+  for (const { stage } of stages) {
+    if (!plan.stageList.has(stage)) {
+      throw new Error(`its stage ${describeValue(stage)} isn't in the plan.`);
+    }
+    if (seen.has(stage)) {
+      throw new Error(`stage ${describeValue(stage)} is listed twice.`);
+    }
+    seen.add(stage);
+  }
+}
+
+// Throws unless a stored transfer table's stages are consecutive in stage order, and each is the
+// only stage of its tip group: each starts one (its first, then each after it), and so does the
+// stage just after its last (otherwise its last shares tips).
+function checkTableStagesPlaced(plan, stages) {
+  const order = plan.stageOrder;
+  const places = stages.map((owned) => order.indexOf(owned.stage));
+  if (places.some((place, index) => index > 0 && place !== places[index - 1] + 1)) {
+    throw new Error("its stages must come one after another, in stage order.");
+  }
+  const after = order[places.at(-1) + 1];
+  const sharing =
+    stages.find((owned) => !isFirstOfTipGroup(plan, owned.stage)) ??
+    (after !== undefined && !isFirstOfTipGroup(plan, after) ? stages.at(-1) : undefined);
+  if (sharing !== undefined) {
+    throw new Error(
+      `stage ${describeValue(sharing.stage)} shares tips with another stage. ` +
+        "Every stage of a transfer table starts on new tips.",
+    );
+  }
+}
+
+// Throws if two transfer tables share an ID: 'Transfer tables 1 and 3 both have the ID "t2".'
+function checkTransferTableIdsUnique(transferTables) {
+  const firstById = new Map();
+  transferTables.forEach(({ id }, index) => {
+    if (firstById.has(id)) {
+      throw new Error(
+        `Transfer tables ${firstById.get(id) + 1} and ${index + 1} both have the ID ${describeValue(id)}.`,
+      );
+    }
+    firstById.set(id, index);
+  });
+}
+
+// Throws if a stage is owned by two transfer tables, then if one is owned by a transfer table and
+// one of the plan's randomizations, e.g. 'Stage "5" belongs to transfer table 2 and randomization 1.'
+function checkTableStagesOwnedOnce(plan, transferTables) {
+  const ownerByStage = new Map();
+  transferTables.forEach((transferTable, index) => {
+    for (const { stage } of transferTable.stages) {
+      if (ownerByStage.has(stage)) {
+        throw new Error(
+          `Stage ${describeValue(stage)} belongs to two transfer tables, ${ownerByStage.get(stage) + 1} and ${index + 1}.`,
+        );
+      }
+      ownerByStage.set(stage, index);
+    }
+  });
+  plan.randomizations.forEach((randomization, index) => {
+    for (const { stage } of randomization.stages) {
+      if (ownerByStage.has(stage)) {
+        throw new Error(
+          `Stage ${describeValue(stage)} belongs to transfer table ${ownerByStage.get(stage) + 1} and randomization ${index + 1}.`,
+        );
+      }
+    }
+  });
+}
+
+// Throws if a randomization without stages sits before one of a transfer table's stages other than
+// its first, e.g. 'Randomization 2 sits before stage "5", inside transfer table 1. …'
+function checkNoRandomizationInsideTable(plan, transferTables) {
+  plan.randomizations.forEach((randomization, index) => {
+    if (randomization.stages.length > 0 || randomization.beforeId === null) {
+      return;
+    }
+    const tableIndex = transferTables.findIndex((transferTable) =>
+      transferTable.stages.slice(1).some((owned) => owned.stage === randomization.beforeId),
+    );
+    if (tableIndex !== -1) {
+      throw new Error(
+        `Randomization ${index + 1} sits before stage ${describeValue(randomization.beforeId)}, inside ` +
+          `transfer table ${tableIndex + 1}. A randomization sits between tip groups.`,
+      );
+    }
+  });
+}
+
+// What every well holds just before stage `at` (null: after every stage), as a ContentsSnapshot.
+function contentsBeforeStage(plan, at) {
+  return contentsBeforePlace(plan, at === null ? plan.stageOrder.length : plan.stageOrder.indexOf(at));
+}
+
 // --- Moving and copying ---
 
 // What copied items say they are, and the version of their form this module writes and reads
 // (transfer-designer.md, "Moving and copying"). Exported, so a tool can recognize copied items on
 // the system clipboard by the same text.
 export const COPIED_ITEMS_FORMAT = "biomek-tools copied items";
-export const COPIED_ITEMS_VERSION = 3;
+export const COPIED_ITEMS_VERSION = 4;
 
 // The versions of copied items this module reads: version 1 (before several filler wells), version
-// 2 (before sources sharing tips; section 3, "Copied items version 2") and the one it writes
-// ("Copied items version 3").
-const COPIED_ITEMS_VERSIONS_READ = [1, 2, COPIED_ITEMS_VERSION];
+// 2 (before sources sharing tips; section 3, "Copied items version 2"), version 3 (before transfer
+// tables, "Copied items version 3") and the one it writes ("Copied items version 4").
+const COPIED_ITEMS_VERSIONS_READ = [1, 2, 3, COPIED_ITEMS_VERSION];
+
+// The first version of copied items that may hold transfer tables.
+const FIRST_COPIED_VERSION_WITH_TRANSFER_TABLES = 4;
 
 // The first version of copied items whose randomizations' sources hold sharesTips, and whose owned
 // stages' tips may be null (sharing the tips of the stage before).
 const FIRST_COPIED_VERSION_SHARING_TIPS = 3;
 
 // The kinds of item (docs/glossary.md, "Item"), as items name them.
-const ITEM_KINDS = ["stage", "tipGroup", "randomization"];
+const ITEM_KINDS = ["stage", "tipGroup", "randomization", "transferTable"];
 
 // The properties of each part of copied items, exactly (section 3, "Moving and copying").
 const COPIED_ITEMS_PROPERTIES = ["format", "version", "items"];
@@ -1345,11 +2493,15 @@ const COPIED_STAGE_PROPERTIES = ["name", "settings", "transfers"];
 const COPIED_TRANSFER_PROPERTIES = ["source", "destination", "volume"];
 const COPIED_TIPS_PROPERTIES = ["tipType", "probes"];
 const COPIED_OWNED_STAGE_PROPERTIES = ["labware", "well", "stage", "tips"];
+const COPIED_TRANSFER_TABLE_PROPERTIES = ["kind", "transferTable", "stages"];
+const COPIED_TABLE_STAGE_PROPERTIES = ["component", "stage", "tips"];
 
 // The column's boxes, in order, between Start and End (section 3, "Moving and copying"): each an
-// ordinary tip group, { kind: "tipGroup", key, tipType, probes, stages }, or a randomization,
+// ordinary tip group, { kind: "tipGroup", key, tipType, probes, stages }, a randomization,
 // { kind: "randomization", id, tipGroups }, with its stages' tip groups (in stage order, each holding
-// one or more of its stages, as its sources share tips; [] while it has none). A randomization without stages sits just before the box whose first
+// one or more of its stages, as its sources share tips; [] while it has none), or a transfer table,
+// { kind: "transferTable", id, tipGroups }, each of its tip groups holding one of its stages. A
+// randomization without stages sits just before the box whose first
 // stage is its beforeId (last for null), several at one place in the order of `randomizations`.
 // e.g. [{ kind: "tipGroup", key: "start", tipType: "BC230", probes: [1, 2, 3, 4], stages: ["1", "2"] },
 // { kind: "randomization", id: "r1", tipGroups: [{ key: "5", … }] }].
@@ -1365,23 +2517,36 @@ export function columnBoxes(plan) {
   while (index < groups.length) {
     const first = groups[index].stages[0];
     boxes.push(...notRunAt(first));
-    const owner = randomizationOf(plan, first);
+    const owner = ownerOf(plan, first);
     if (owner === null) {
       const { key, tipType, probes, stages } = groups[index];
       boxes.push({ kind: "tipGroup", key, tipType, probes, stages });
       index += 1;
       continue;
     }
-    const owned = new Set(randomizationAt(plan, owner).stages.map((entry) => entry.stage));
+    const owned = new Set(owner.stages.map((entry) => entry.stage));
     const its = [];
     while (index < groups.length && owned.has(groups[index].stages[0])) {
       its.push(groups[index]);
       index += 1;
     }
-    boxes.push({ kind: "randomization", id: owner, tipGroups: its });
+    boxes.push({ kind: owner.kind, id: owner.id, tipGroups: its });
   }
   boxes.push(...notRunAt(null));
   return boxes;
+}
+
+// What owns stage `stageId`: { kind: "randomization" or "transferTable", id, stages } (its owned
+// stages' entries), or null for an ordinary stage.
+function ownerOf(plan, stageId) {
+  const randomization = randomizationOf(plan, stageId);
+  if (randomization !== null) {
+    return { kind: "randomization", id: randomization, stages: randomizationAt(plan, randomization).stages };
+  }
+  const transferTable = transferTableOwning(plan, stageId);
+  return transferTable === null
+    ? null
+    : { kind: "transferTable", id: transferTable.id, stages: transferTable.stages };
 }
 
 // Returns { plan, placed }: the plan with `items` (each { kind, id }) moved to `place`, as one edit,
@@ -1393,8 +2558,13 @@ export function columnBoxes(plan) {
 export function moveItems(plan, items, place) {
   const boxes = columnBoxes(plan);
   const entries = checkedItems(plan, items, "move", boxes);
-  checkPlace(boxes, place, entries.some(isContainerEntry));
-  checkNoOwnedStageAlone(plan, entries);
+  checkPlace(boxes, place, entries.some(isContainerEntry), (id) =>
+    entries.every((entry) => entry.kind === "stage" && transferTableOf(plan, entry.id) === id),
+  );
+  checkNoOwnedStageAlone(plan, entries, place);
+  if (place.kind === "inTransferTable") {
+    return moveInsideTransferTable(plan, entries, boxes[place.index], place.position);
+  }
   const layout = layoutOf(plan, boxes);
   const movedStages = new Set(entries.filter((entry) => entry.kind === "stage").map((entry) => entry.id));
   const movedBoxes = new Set(entries.filter(isContainerEntry).map((entry) => entry.boxIndex));
@@ -1405,7 +2575,12 @@ export function moveItems(plan, items, place) {
   );
   const anchor = anchorOf(layout, place, movedStages, movedBoxes);
   const remaining = layoutWithout(layout, movedStages, movedBoxes, place);
-  const moved = planFromLayout(plan, withPiecesPlaced(remaining, pieces, place, anchor), plan.randomizations);
+  const moved = planFromLayout(
+    plan,
+    withPiecesPlaced(remaining, pieces, place, anchor),
+    plan.randomizations,
+    plan.transferTables,
+  );
   const placed = entries.map(({ kind, id }) => ({ kind, id }));
   if (sameArrangement(plan, moved)) {
     return { plan, placed };
@@ -1457,24 +2632,40 @@ export function pasteItems(plan, copied, place) {
   let working = plan;
   const pieces = [];
   const created = [];
+  const createdTables = [];
   copiedItems.forEach((item, index) => {
     checkCopiedItemForm(item, index + 1, copied.version);
     const result = withPrefix(`Can't paste: item ${index + 1}: `, () =>
-      pastedPiece(working, itemAsVersion3(item, copied.version), [...plan.randomizations, ...created]),
+      pastedPiece(
+        working,
+        itemAsVersion3(item, copied.version),
+        [...plan.randomizations, ...created],
+        [...plan.transferTables, ...createdTables],
+      ),
     );
     working = result.plan;
     pieces.push(result.piece);
     if (result.randomization !== undefined) {
       created.push(result.randomization);
     }
+    if (result.transferTable !== undefined) {
+      createdTables.push(result.transferTable);
+    }
   });
   const boxes = columnBoxes(plan);
-  checkPlace(boxes, place, pieces.some((piece) => piece.kind === "box"));
+  // Nothing pasted is a stage of a transfer table already in the plan, so a place inside one is
+  // refused.
+  checkPlace(boxes, place, pieces.some((piece) => piece.kind === "box"), () => false);
   const layout = layoutOf(plan, boxes);
   const anchor = anchorOf(layout, place, new Set(), new Set());
   const everyBox = layout.map((box, boxIndex) => ({ boxIndex, box }));
   const arranged = withPiecesPlaced(everyBox, pieces, place, anchor);
-  const pasted = planFromLayout(working, arranged, [...plan.randomizations, ...created]);
+  const pasted = planFromLayout(
+    working,
+    arranged,
+    [...plan.randomizations, ...created],
+    [...plan.transferTables, ...createdTables],
+  );
   return { plan: withOperationsInStageOrder(pasted), placed: pieces.map(placedItemOf) };
 }
 
@@ -1489,7 +2680,7 @@ function checkedItems(plan, items, verb, boxes) {
   if (!Array.isArray(items) || items.length === 0) {
     const got = Array.isArray(items) ? "an empty list" : describeValue(items);
     throw new Error(
-      `The things to ${verb} must be a list of stages, tip groups or randomizations, but got ${got}.`,
+      `The things to ${verb} must be a list of stages, tip groups, randomizations or transfer tables, but got ${got}.`,
     );
   }
   const where = columnPlaces(boxes);
@@ -1507,26 +2698,28 @@ function checkedItems(plan, items, verb, boxes) {
   return kept.sort((first, second) => first.boxIndex - second.boxIndex || first.order - second.order);
 }
 
-// Where everything is in the column's `boxes`: { stages, groupStarts, randomizations }, Maps from a
-// stage's ID to { boxIndex, order } (its place in its box), from an ordinary tip group's first
-// stage to its box's index, and from a randomization's ID to its box's index.
+// Where everything is in the column's `boxes`: { stages, groupStarts, randomizations,
+// transferTables }, Maps from a stage's ID to { boxIndex, order } (its place in its box), from an
+// ordinary tip group's first stage to its box's index, and from a randomization's or transfer
+// table's ID to its box's index.
 function columnPlaces(boxes) {
   const stages = new Map();
   const groupStarts = new Map();
   const randomizations = new Map();
+  const transferTables = new Map();
   boxes.forEach((box, boxIndex) => {
     if (box.kind === "tipGroup") {
       groupStarts.set(box.stages[0], boxIndex);
       box.stages.forEach((id, place) => stages.set(id, { boxIndex, order: place + 1 }));
     } else {
-      randomizations.set(box.id, boxIndex);
+      (box.kind === "randomization" ? randomizations : transferTables).set(box.id, boxIndex);
       // Its tip groups may hold several stages each (sources sharing tips), so every stage is noted.
       box.tipGroups
         .flatMap((group) => group.stages)
         .forEach((id, place) => stages.set(id, { boxIndex, order: place + 1 }));
     }
   });
-  return { stages, groupStarts, randomizations };
+  return { stages, groupStarts, randomizations, transferTables };
 }
 
 // Item number `number` of a list, checked and located in the column (`where`, from columnPlaces):
@@ -1536,7 +2729,7 @@ function columnPlaces(boxes) {
 function locatedItem(plan, item, number, where) {
   if (!isObject(item) || !ITEM_KINDS.includes(item.kind)) {
     throw new Error(
-      `Item ${number} must be { kind, id }, with kind "stage", "tipGroup" or "randomization", ` +
+      `Item ${number} must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", ` +
         `but got ${describeValue(isObject(item) ? item.kind : item)}.`,
     );
   }
@@ -1544,6 +2737,10 @@ function locatedItem(plan, item, number, where) {
   if (kind === "randomization") {
     checkRandomizationExists(plan, id);
     return { kind, id, boxIndex: where.randomizations.get(id), order: 0 };
+  }
+  if (kind === "transferTable") {
+    checkTransferTableExists(plan, id);
+    return { kind, id, boxIndex: where.transferTables.get(id), order: 0 };
   }
   if (!plan.stageList.has(id)) {
     throw new Error(`There's no stage ${describeValue(id)} in the plan.`);
@@ -1557,18 +2754,22 @@ function locatedItem(plan, item, number, where) {
   return { kind, id, boxIndex: where.groupStarts.get(id), order: 0 };
 }
 
-// True if a located item (or an entry of one) is a container: a tip group or a randomization.
+// True if a located item (or an entry of one) is a container: a tip group, a randomization or a
+// transfer table.
 function isContainerEntry(entry) {
   return entry.kind !== "stage";
 }
 
 // Throws unless `place` is a place in the column of `boxes`, checked in section 5's order: its form
-// and range, then that a place inside names a tip group's box, then its position, then the container
-// rule (`holdsContainer`: what goes there holds a tip group or randomization, which goes only
-// between boxes). The place is { kind: "between", index } or { kind: "inTipGroup", index, position }.
-function checkPlace(boxes, place, holdsContainer) {
+// and range, then that a place inside names a tip group's box (or, for inTransferTable, a transfer
+// table's), then its position, then the container rule (`holdsContainer`: what goes there holds a
+// tip group, randomization or transfer table, which goes only between boxes; inside a transfer
+// table, `onlyStagesOf(id)` must say what goes there is only that transfer table's stages). The place
+// is { kind: "between", index }, { kind: "inTipGroup", index, position } or { kind:
+// "inTransferTable", index, position }.
+function checkPlace(boxes, place, holdsContainer, onlyStagesOf) {
   const formError = new Error(
-    `The place must be between boxes (index 0 to ${boxes.length}) or inside a tip group, ` +
+    `The place must be between boxes (index 0 to ${boxes.length}), inside a tip group or inside a transfer table, ` +
       `but got ${JSON.stringify(place) ?? String(place)}.`,
   );
   if (!isObject(place) || !Number.isInteger(place.index) || place.index < 0) {
@@ -1580,19 +2781,28 @@ function checkPlace(boxes, place, holdsContainer) {
     }
     return;
   }
-  if (place.kind !== "inTipGroup" || place.index >= boxes.length) {
+  if ((place.kind !== "inTipGroup" && place.kind !== "inTransferTable") || place.index >= boxes.length) {
     throw formError;
   }
   const box = boxes[place.index];
+  const ownStagesOnly = `Box ${place.index} is a transfer table: only its own stages can be moved inside it.`;
+  if (place.kind === "inTransferTable") {
+    if (box.kind !== "transferTable") {
+      throw new Error(`Box ${place.index} isn't a transfer table.`);
+    }
+    checkPosition(place, box.tipGroups.length);
+    if (!onlyStagesOf(box.id)) {
+      throw new Error(ownStagesOnly);
+    }
+    return;
+  }
   if (box.kind === "randomization") {
     throw new Error(`Box ${place.index} is a randomization: nothing can be put inside it.`);
   }
-  const { position } = place;
-  if (!Number.isInteger(position) || position < 0 || position > box.stages.length) {
-    throw new Error(
-      `Box ${place.index} has positions 0 to ${box.stages.length}, but got ${describeValue(position)}.`,
-    );
+  if (box.kind === "transferTable") {
+    throw new Error(ownStagesOnly);
   }
+  checkPosition(place, box.stages.length);
   if (holdsContainer) {
     throw new Error(
       "A tip group or randomization can't go inside another tip group: put it between tip groups.",
@@ -1600,10 +2810,21 @@ function checkPlace(boxes, place, holdsContainer) {
   }
 }
 
+// Throws unless a place inside a box has a position from 0 to `count` (its stages), e.g. 'Box 2 has
+// positions 0 to 3, but got 7.'
+function checkPosition(place, count) {
+  const { position } = place;
+  if (!Number.isInteger(position) || position < 0 || position > count) {
+    throw new Error(`Box ${place.index} has positions 0 to ${count}, but got ${describeValue(position)}.`);
+  }
+}
+
 // Throws if `entries` (checked items) hold a stage a randomization owns without that randomization:
-// a randomization's stages move only with it (ADR 0014). The randomization's own stages are left
-// out of `entries` already when it's listed.
-function checkNoOwnedStageAlone(plan, entries) {
+// a randomization's stages move only with it (ADR 0014); then a transfer table's stage without its
+// transfer table, unless `place` is inside its own transfer table (checkPlace has made sure every
+// stage moved there is that table's). Owned stages are left out of `entries` already when their
+// owner is listed.
+function checkNoOwnedStageAlone(plan, entries, place) {
   const owned = entries.find((entry) => entry.kind === "stage" && randomizationOf(plan, entry.id) !== null);
   if (owned !== undefined) {
     throw new Error(
@@ -1611,22 +2832,88 @@ function checkNoOwnedStageAlone(plan, entries) {
         "move the whole randomization, or copy the stage.",
     );
   }
+  const tableStage = entries.find((entry) => entry.kind === "stage" && transferTableOf(plan, entry.id) !== null);
+  if (tableStage !== undefined && place.kind !== "inTransferTable") {
+    throw new Error(
+      `${stageNamed(plan, tableStage.id)}, belongs to a transfer table, which moves its stages with it: ` +
+        "move it within the table, move the whole transfer table, or copy the stage.",
+    );
+  }
+}
+
+// Returns { plan, placed }: the plan with `entries`, stages of the transfer table that is `box`,
+// moved inside it to `position` (section 3, "Moving inside a transfer table"): in their column order,
+// just before its stage at `position` that isn't moved (or at its bottom), each keeping its own tips
+// (the plan's first takes the START tips set to its own), and the table's columns moved to match.
+// The same plan, with `placed` the items, if the order doesn't change.
+function moveInsideTransferTable(plan, entries, box, position) {
+  const transferTable = transferTableAt(plan, box.id);
+  const current = transferTable.stages.map((owned) => owned.stage);
+  const movedIds = new Set(entries.map((entry) => entry.id));
+  const moved = current.filter((id) => movedIds.has(id));
+  const remaining = current.filter((id) => !movedIds.has(id));
+  const anchor = current.slice(position).find((id) => !movedIds.has(id)) ?? null;
+  const at = anchor === null ? remaining.length : remaining.indexOf(anchor);
+  const newOrder = [...remaining.slice(0, at), ...moved, ...remaining.slice(at)];
+  const placed = entries.map(({ kind, id }) => ({ kind, id }));
+  if (JSON.stringify(newOrder) === JSON.stringify(current)) {
+    return { plan, placed };
+  }
+  const tips = new Map(current.map((id) => [id, tipsInUseAt(plan, id)]));
+  let moving = withStagesReordered(plan, newOrder);
+  for (const id of newOrder) {
+    moving = withOwnTipsAt(moving, id, tips.get(id));
+  }
+  const componentOf = new Map(transferTable.stages.map((owned) => [owned.stage, owned.component]));
+  const lastKept = anchor === null ? remaining.at(-1) : null;
+  const table = tableWithColumnsMoved(
+    transferTable.table,
+    moved.map((id) => componentOf.get(id)),
+    anchor === null ? null : componentOf.get(anchor),
+    lastKept === null ? null : componentOf.get(lastKept),
+  );
+  const updated = {
+    ...transferTable,
+    table,
+    stages: newOrder.map((id) => transferTable.stages.find((owned) => owned.stage === id)),
+  };
+  moving = withParts(moving, {
+    transferTables: moving.transferTables.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
+  });
+  return { plan: moving, placed };
+}
+
+// `table` with the columns of `movedComponents` (their headers' trimmed text), in that order, taken
+// out and put back just before the column of `beforeComponent`, or, for null, just after the column
+// of `afterComponent`; every other column, the label column included, keeps its order among the
+// rest, e.g. columns L, A, B, C with C moved before A → L, C, A, B.
+function tableWithColumnsMoved(table, movedComponents, beforeComponent, afterComponent) {
+  // The index of the column whose header names `component`.
+  const columnOf = (component) => columnOfComponent(table, component);
+  const movedColumns = movedComponents.map(columnOf);
+  const rest = table[0].map((_, column) => column).filter((column) => !movedColumns.includes(column));
+  const insertAt =
+    beforeComponent !== null
+      ? rest.indexOf(columnOf(beforeComponent))
+      : rest.indexOf(columnOf(afterComponent)) + 1;
+  const columns = [...rest.slice(0, insertAt), ...movedColumns, ...rest.slice(insertAt)];
+  return table.map((row) => columns.map((column) => row[column]));
 }
 
 // The column as boxes that can be rearranged, one per box of `boxes`, in order: an ordinary tip
 // group as { kind: "tipGroup", tips, stages }, a randomization as { kind: "randomization",
-// randomization, groups }, each of `groups` { tips, stages }, one of its tip groups. `tips` is
-// { tipType, probes }.
+// randomization, groups }, a transfer table as { kind: "transferTable", transferTable, groups }, each
+// of `groups` { tips, stages }, one of its tip groups. `tips` is { tipType, probes }.
 function layoutOf(plan, boxes) {
-  return boxes.map((box) =>
-    box.kind === "tipGroup"
-      ? { kind: "tipGroup", tips: tipsOf(box), stages: box.stages }
-      : {
-          kind: "randomization",
-          randomization: randomizationAt(plan, box.id),
-          groups: box.tipGroups.map((group) => ({ tips: tipsOf(group), stages: group.stages })),
-        },
-  );
+  return boxes.map((box) => {
+    if (box.kind === "tipGroup") {
+      return { kind: "tipGroup", tips: tipsOf(box), stages: box.stages };
+    }
+    const groups = box.tipGroups.map((group) => ({ tips: tipsOf(group), stages: group.stages }));
+    return box.kind === "randomization"
+      ? { kind: "randomization", randomization: randomizationAt(plan, box.id), groups }
+      : { kind: "transferTable", transferTable: transferTableAt(plan, box.id), groups };
+  });
 }
 
 // A tip group's tips, { tipType, probes }, e.g. { tipType: "BC230", probes: [1, 2, 3, 4] }.
@@ -1649,7 +2936,7 @@ function anchorOf(layout, place, movedStages, movedBoxes) {
   }
   for (let boxIndex = place.index; boxIndex < layout.length; boxIndex += 1) {
     const box = layout[boxIndex];
-    const keepsStage = box.kind === "randomization" || box.stages.some((id) => !movedStages.has(id));
+    const keepsStage = box.kind !== "tipGroup" || box.stages.some((id) => !movedStages.has(id));
     if (!movedBoxes.has(boxIndex) && keepsStage) {
       return { boxIndex };
     }
@@ -1667,7 +2954,7 @@ function layoutWithout(layout, movedStages, movedBoxes, place) {
     if (movedBoxes.has(boxIndex)) {
       return;
     }
-    if (box.kind === "randomization") {
+    if (box.kind !== "tipGroup") {
       kept.push({ boxIndex, box });
       return;
     }
@@ -1725,11 +3012,12 @@ function boxesFromPieces(pieces) {
 }
 
 // The plan arranged as `layout` says, from `plan`'s stages: its stage order, its tip changes (one per
-// tip group, the first the START one), and its randomizations (from `randomizations`, those in the
+// tip group, the first the START one), its randomizations (from `randomizations`, those in the
 // layout), in column order, each sitting before the first stage of the next box below it that has
-// one, or null (section 3, "Where randomizations sit afterwards"). The operation list isn't put in
-// the new order here (withOperationsInStageOrder).
-function planFromLayout(plan, layout, randomizations) {
+// one, or null (section 3, "Where randomizations sit afterwards"), and its transfer tables (from
+// `transferTables`), in column order. The operation list isn't put in the new order here
+// (withOperationsInStageOrder).
+function planFromLayout(plan, layout, randomizations, transferTables) {
   const stageOrder = [];
   const tipChanges = {};
   const groups = layout.flatMap((box) => (box.kind === "tipGroup" ? [box] : box.groups));
@@ -1747,10 +3035,14 @@ function planFromLayout(plan, layout, randomizations) {
     const randomization = randomizations.find((candidate) => candidate.id === box.randomization.id);
     placed.push(randomization.beforeId === beforeId ? randomization : { ...randomization, beforeId });
   });
+  const tablesPlaced = layout
+    .filter((box) => box.kind === "transferTable")
+    .map((box) => transferTables.find((candidate) => candidate.id === box.transferTable.id));
   return withParts(plan, {
     stageOrder: sameOrNew(plan.stageOrder, stageOrder),
     tipChanges: sameOrNew(plan.tipChanges, tipChanges),
     randomizations: sameOrNew(plan.randomizations, placed),
+    transferTables: sameOrNew(plan.transferTables, tablesPlaced),
   });
 }
 
@@ -1771,22 +3063,27 @@ function firstStageBelow(layout, index) {
   return null;
 }
 
-// True if `arranged` has the same stage order, tip changes (tip types and probes by key) and
-// randomizations as `plan`: a move that changes nothing. `plan`'s randomizations are compared in
-// column order, since a move puts the list in column order: a list that was in another order isn't
-// a different column.
+// True if `arranged` has the same stage order, tip changes (tip types and probes by key),
+// randomizations and transfer tables as `plan`: a move that changes nothing. `plan`'s randomizations
+// and transfer tables are compared in column order, since a move puts the lists in column order: a
+// list that was in another order isn't a different column.
 function sameArrangement(plan, arranged) {
   // The tip changes as text, by key in sorted order, so two tables with the same entries in a
   // different order compare equal.
   const tipsByKey = (tipChanges) =>
     JSON.stringify(Object.keys(tipChanges).sort().map((key) => [key, tipChanges[key]]));
-  const inColumnOrder = columnBoxes(plan)
+  const boxes = columnBoxes(plan);
+  const inColumnOrder = boxes
     .filter((box) => box.kind === "randomization")
     .map((box) => randomizationAt(plan, box.id));
+  const tablesInColumnOrder = boxes
+    .filter((box) => box.kind === "transferTable")
+    .map((box) => transferTableAt(plan, box.id));
   return (
     JSON.stringify(plan.stageOrder) === JSON.stringify(arranged.stageOrder) &&
     tipsByKey(plan.tipChanges) === tipsByKey(arranged.tipChanges) &&
-    JSON.stringify(inColumnOrder) === JSON.stringify(arranged.randomizations)
+    JSON.stringify(inColumnOrder) === JSON.stringify(arranged.randomizations) &&
+    JSON.stringify(tablesInColumnOrder) === JSON.stringify(arranged.transferTables)
   );
 }
 
@@ -1816,7 +3113,8 @@ function tipGroupKeyOf(plan, id) {
 }
 
 // One copied item for a checked item `entry` (section 3, "Copied items"): a stage with the tips of
-// its tip group, a tip group with its tips and stages, or a randomization with its values and its
+// its tip group, a tip group with its tips and stages, a transfer table with its table, sources and
+// stages, each with its component and tips, or a randomization with its values and its
 // stages, each with its source's well and the tips of the tip group it starts, or null for one that
 // shares the tips of the stage before it.
 function copiedItem(plan, boxes, entry) {
@@ -1826,6 +3124,18 @@ function copiedItem(plan, boxes, entry) {
   if (entry.kind === "tipGroup") {
     const box = boxes[entry.boxIndex];
     return { kind: "tipGroup", tips: tipsOf(box), stages: box.stages.map((id) => copiedStage(plan, id)) };
+  }
+  if (entry.kind === "transferTable") {
+    const transferTable = transferTableAt(plan, entry.id);
+    return {
+      kind: "transferTable",
+      transferTable: { table: transferTable.table, sources: transferTable.sources },
+      stages: transferTable.stages.map(({ component, stage }) => ({
+        component,
+        stage: copiedStage(plan, stage),
+        tips: tipsInUseAt(plan, stage),
+      })),
+    };
   }
   const randomization = randomizationAt(plan, entry.id);
   const values = Object.fromEntries(RANDOMIZATION_CHANGES.map((property) => [property, randomization[property]]));
@@ -1855,7 +3165,7 @@ function copiedStage(plan, id) {
 // (COPIED_ITEMS_VERSIONS_READ), or a message saying a newer version copied them.
 function checkCopiedForm(copied) {
   const notCopiedItems = new Error(
-    "Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.",
+    "Can't paste: this isn't stages, tip groups, randomizations or transfer tables copied from the transfer designer.",
   );
   if (!hasExactly(copied, COPIED_ITEMS_PROPERTIES) || copied.format !== COPIED_ITEMS_FORMAT) {
     throw notCopiedItems;
@@ -1876,8 +3186,8 @@ function checkCopiedForm(copied) {
 }
 
 // Throws unless copied item number `number`, of copied items `version`, is in its form (section 3,
-// "Copied items"): a stage, a tip group (at least one stage) or a randomization, each part with
-// exactly its properties. In versions 1 and 2, a randomization's sources that are objects have no
+// "Copied items"): a stage, a tip group (at least one stage), a randomization, or, from version 4, a
+// transfer table, each part with exactly its properties. In versions 1 and 2, a randomization's sources that are objects have no
 // sharesTips, and every owned stage has tips; from version 3, an owned stage's tips may be null,
 // except the first's. Values (and sources that aren't objects) are checked later, by the edits that
 // would make them.
@@ -1922,6 +3232,15 @@ function checkCopiedItemForm(item, number, version) {
       item.stages.every(
         (owned, index) => hasExactly(owned, COPIED_OWNED_STAGE_PROPERTIES) && isStage(owned.stage) && hasTips(owned, index),
       );
+  } else if (isObject(item) && item.kind === "transferTable") {
+    inForm =
+      version >= FIRST_COPIED_VERSION_WITH_TRANSFER_TABLES &&
+      hasExactly(item, COPIED_TRANSFER_TABLE_PROPERTIES) &&
+      hasExactly(item.transferTable, DRAFT_PROPERTIES) &&
+      Array.isArray(item.stages) &&
+      item.stages.every(
+        (owned) => hasExactly(owned, COPIED_TABLE_STAGE_PROPERTIES) && isStage(owned.stage) && isTips(owned.tips),
+      );
   }
   if (!inForm) {
     throw new Error(
@@ -1946,10 +3265,11 @@ function itemAsVersion3(item, version) {
 }
 
 // Pastes one copied `item` (in its form) into `plan`, its stages added as new stages, last in the
-// stage order for now: { plan, piece, randomization }, `piece` being what goes at the place (as
-// withPiecesPlaced takes it) and `randomization` a new randomization, if it is one. Its values are
-// checked in the order its edits check them; `existing` is the randomizations so far, for a new ID.
-function pastedPiece(plan, item, existing) {
+// stage order for now: { plan, piece, randomization, transferTable }, `piece` being what goes at the
+// place (as withPiecesPlaced takes it) and `randomization` or `transferTable` a new one, if it is
+// one. Its values are checked in the order its edits check them; `existing` and `existingTables` are
+// the randomizations and transfer tables so far, for a new ID.
+function pastedPiece(plan, item, existing, existingTables) {
   if (item.kind === "stage") {
     const added = withCopiedStage(plan, item.stage);
     const tips = checkedTips(item.tips);
@@ -1967,7 +3287,48 @@ function pastedPiece(plan, item, existing) {
     const tips = checkedTips(item.tips);
     return { plan: pasting, piece: { kind: "box", box: { kind: "tipGroup", tips, stages } } };
   }
+  if (item.kind === "transferTable") {
+    return pastedTransferTable(plan, item, existingTables);
+  }
   return pastedRandomization(plan, item, existing);
+}
+
+// Pastes a copied transfer table (pastedPiece): its table's form, then its sources' form, with keys
+// naming no component in this plan dropped (as removeComponent drops them); its stages as new stages,
+// each a tip group of its own loading its copied tips; then its stages checked as setTransferTables
+// checks a plan file's, but for their places, which the paste sets. It gets the next free ID among
+// `existing`. Whether its stages match what it would make isn't checked: it may be out of date.
+function pastedTransferTable(plan, item, existing) {
+  const { table, sources } = item.transferTable;
+  checkTableForm(table);
+  const known = isObject(sources)
+    ? Object.fromEntries(
+        Object.entries(sources).filter(([component]) => plan.components.some((entry) => entry.name === component)),
+      )
+    : sources;
+  const checkedSources = checkedTableSources(plan, known);
+  let pasting = plan;
+  const groups = [];
+  const stages = [];
+  for (const entry of item.stages) {
+    const added = withCopiedStage(pasting, entry.stage);
+    pasting = added.plan;
+    groups.push({ tips: checkedTips(entry.tips), stages: [added.id] });
+    stages.push({ component: entry.component, stage: added.id });
+  }
+  const copiedTable = table.map((row) => [...row]);
+  const checkedStages = checkedTableStages(pasting, copiedTable, stages, false);
+  const transferTable = {
+    id: nextTransferTableId(existing),
+    table: copiedTable,
+    sources: checkedSources,
+    stages: checkedStages,
+  };
+  return {
+    plan: pasting,
+    piece: { kind: "box", box: { kind: "transferTable", transferTable, groups } },
+    transferTable,
+  };
 }
 
 // Pastes a copied randomization (pastedPiece): its stages as new stages, in the tip groups the copy
@@ -2054,16 +3415,20 @@ function placedItemOf(piece) {
     return { kind: "stage", id: piece.id };
   }
   const { box } = piece;
-  return box.kind === "tipGroup"
-    ? { kind: "tipGroup", id: box.stages[0] }
-    : { kind: "randomization", id: box.randomization.id };
+  if (box.kind === "tipGroup") {
+    return { kind: "tipGroup", id: box.stages[0] };
+  }
+  return box.kind === "randomization"
+    ? { kind: "randomization", id: box.randomization.id }
+    : { kind: "transferTable", id: box.transferTable.id };
 }
 
 // --- Moving wells ---
 
 // True if the plan uses `well` ({ labware, well }) anywhere: in its starting contents, as a
-// transfer's source or destination (a mix step's mixed wells included), in its well labels, or in
-// a randomization (a source, a well to fill, or the well of one of its stages), e.g.
+// transfer's source or destination (a mix step's mixed wells included), in its well labels, in
+// a randomization (a source, a well to fill, or the well of one of its stages), or as a transfer
+// table's source well, e.g.
 // isWellUsed(emptyPlan().plan, { labware: "Res1", well: "3" }) → false (section 3, "Moving wells").
 // Throws if `well` isn't a well on the deck (deck.checkWell's message).
 export function isWellUsed(plan, well) {
@@ -2081,6 +3446,9 @@ export function isWellUsed(plan, well) {
         randomization.sources.some(isIt) ||
         randomization.fill.some(isIt) ||
         randomization.stages.some(isIt),
+    ) ||
+    plan.transferTables.some((transferTable) =>
+      Object.values(transferTable.sources).some((wells) => wells.some(isIt)),
     )
   );
 }
@@ -2097,7 +3465,8 @@ export function isWellToFill(plan, well) {
 
 // Returns the plan with well `from` replaced by well `to` (each { labware, well }) wherever the
 // plan names it, as one edit (section 3, "Moving wells"): its starting contents entry, every
-// transfer from or into it, its well label, and a randomization's sources and stage entries. Parts
+// transfer from or into it, its well label, a randomization's sources and stage entries, and a
+// transfer table's source wells. Parts
 // the move doesn't touch are shared with `plan`.
 // e.g. moveWell(plan, { labware: "Res1", well: "3" }, { labware: "Res1", well: "7" }).
 // Throws, in this order (section 5): `from` or `to` isn't on the deck, `to` is `from`, `from` isn't
@@ -2126,6 +3495,7 @@ export function moveWell(plan, from, to) {
     operationList: operationListMoved(plan, from, to),
     wellLabels: wellLabelsMoved(plan, from, to),
     randomizations: randomizationsMoved(plan, from, to),
+    transferTables: transferTablesMoved(plan, from, to),
   };
   // Only the parts the move changed are passed on, so the others stay the very same objects.
   const changed = Object.fromEntries(
@@ -2349,6 +3719,31 @@ function randomizationsMoved(plan, from, to) {
   return changed ? randomizations : plan.randomizations;
 }
 
+// The plan's transfer tables with each source well at `from` moved to `to`, keeping its place in its
+// list; a transfer table that doesn't use `from` is the very same object, and the list is the same
+// list if none does. Its table doesn't change: its destinations are found by well label, which
+// moves with the well.
+function transferTablesMoved(plan, from, to) {
+  let changed = false;
+  const transferTables = plan.transferTables.map((transferTable) => {
+    const uses = Object.values(transferTable.sources).some((wells) =>
+      wells.some((end) => wellKey(end) === wellKey(from)),
+    );
+    if (!uses) {
+      return transferTable;
+    }
+    changed = true;
+    const sources = Object.fromEntries(
+      Object.entries(transferTable.sources).map(([component, wells]) => [
+        component,
+        wells.map((end) => movedEnd(end, from, to)),
+      ]),
+    );
+    return { ...transferTable, sources };
+  });
+  return changed ? transferTables : plan.transferTables;
+}
+
 // --- Helpers used only inside this module ---
 
 // --- Randomizations: helpers ---
@@ -2384,6 +3779,7 @@ function checkRandomizationPlace(plan, beforeId, ownId) {
   if (!plan.stageList.has(beforeId)) {
     throw new Error(`There's no stage ${describeValue(beforeId)} to add a randomization before.`);
   }
+  checkNotInsideTransferTable(plan, beforeId);
   const owner = plan.randomizations.find(
     (randomization) =>
       randomization.id !== ownId &&
@@ -2751,7 +4147,12 @@ function randomizationPlaceIndex(plan, randomization) {
 // What every well holds just before a randomization: the starting contents with the transfers of
 // the stages before its place replayed (contents-tracking), as a ContentsSnapshot.
 function contentsBefore(plan, randomization) {
-  const placeIndex = randomizationPlaceIndex(plan, randomization);
+  return contentsBeforePlace(plan, randomizationPlaceIndex(plan, randomization));
+}
+
+// What every well holds just before place `placeIndex` in the stage order: the starting contents
+// with the transfers of the stages before it replayed (contents-tracking), as a ContentsSnapshot.
+function contentsBeforePlace(plan, placeIndex) {
   const before = new Set(plan.stageOrder.slice(0, placeIndex));
   // The operation list's blocks follow the stage order, so the stages before the place are its
   // first blocks.
@@ -2969,21 +4370,10 @@ function sourceIndexByStage(randomization) {
 // The operation list follows the new stage order. The same plan if they're in that order already.
 function withStagesInSourceOrder(plan, id) {
   const randomization = randomizationAt(plan, id);
-  const order = plan.stageOrder;
   const indexOf = sourceIndexByStage(randomization);
-  const current = order.filter((stage) => indexOf.has(stage));
+  const current = plan.stageOrder.filter((stage) => indexOf.has(stage));
   const sorted = [...current].sort((first, second) => indexOf.get(first) - indexOf.get(second));
-  if (JSON.stringify(sorted) === JSON.stringify(current)) {
-    return plan;
-  }
-  const start = order.indexOf(current[0]);
-  const stageOrder = [...order.slice(0, start), ...sorted, ...order.slice(start + current.length)];
-  const randomizations = plan.randomizations.map((candidate) =>
-    candidate.stages.length === 0 && candidate.beforeId === current[0]
-      ? { ...candidate, beforeId: sorted[0] }
-      : candidate,
-  );
-  return withOperationsInStageOrder(withParts(plan, { stageOrder, randomizations }));
+  return withStagesReordered(plan, sorted);
 }
 
 // Returns the plan with randomization `id`'s tips set by source group (section 3, "Running", step
@@ -3331,9 +4721,7 @@ function checkWellLabelAsStored(where, label) {
 // settings are of this kind; and a function giving the settings when no stage of this kind is
 // there to copy. Throws if `beforeId` isn't a stage or null.
 function addStageOfKind(plan, beforeId, takeTips, kind) {
-  if (beforeId !== null && !plan.stageList.has(beforeId)) {
-    throw new Error(`There's no stage ${describeValue(beforeId)} to add a stage before.`);
-  }
+  checkStageToAddBefore(plan, beforeId);
   const order = plan.stageOrder;
   const newPlace = beforeId === null ? order.length : order.indexOf(beforeId);
   const copiedFrom = nearestOfKind(plan, newPlace, kind.isOfKind);

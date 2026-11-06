@@ -5,8 +5,8 @@
 // goes through transfer-designer.js, undo and redo through plan-history.js, saving and opening
 // through plan-file.js, the labware through deck.js, what each well holds through
 // contents-tracking.js, how much each mixed well is mixed through mix-volumes.js, a randomization's
-// seed and spare wells through random-pool.js, and the Biomek files through file-writer.js and
-// zip.js. When one of them
+// seed and spare wells through random-pool.js, a pasted table's text through pasted-table.js, and
+// the Biomek files through file-writer.js and zip.js. When one of them
 // refuses an edit, the page shows its message and changes nothing. What this file decides is only
 // how things look and how the user does them: how typing a volume works, how numbers are shown,
 // where boxes float, and what each message says.
@@ -16,7 +16,7 @@ import packageJson from "../../../package.json" with { type: "json" };
 import { COMPONENT_COLORS } from "../../../config/component-colors.js";
 import { DEFAULT_TRANSFER_VOLUME, DEFAULT_FILL_VOLUME } from "../../../config/default-volumes.js";
 import { SOURCES_SHOWN } from "../../../config/randomizations.js";
-import { TIP_TYPES } from "../../../config/tip-types.js";
+import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
 import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
@@ -31,6 +31,7 @@ import {
 } from "../../shared/deck/deck.js";
 import { writeRunFiles, checkExperimentName } from "../../shared/file-writer/file-writer.js";
 import { zipFiles } from "../../shared/zip/zip.js";
+import { parsePastedTable } from "../../shared/pasted-table/pasted-table.js";
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
 import {
@@ -109,6 +110,18 @@ import {
   pasteItems,
   COPIED_ITEMS_FORMAT,
   moveWell,
+  readTransferTable,
+  stockWellsOf,
+  transferTableProblems,
+  sourceSplit,
+  transferTableStages,
+  addTransferTable,
+  updateTransferTable,
+  removeTransferTable,
+  canRemoveTransferTable,
+  transferTableAt,
+  transferTableOf,
+  isTransferTableOutOfDate,
 } from "./transfer-designer.js";
 import {
   CONCENTRATION_UNITS,
@@ -341,6 +354,21 @@ let movingWellCache = null;
 // so a plan's answer never goes stale; a WeakMap lets a plan no longer held be forgotten.
 const outOfDateByPlan = new WeakMap();
 
+// The transfer tables found out of date (section 6), worked out once per plan as for
+// randomizations, since each check reads its table again.
+const tablesOutOfDateByPlan = new WeakMap();
+
+// The transfer table wizard while it's open (section 7, "The wizard"), or null: see openNewWizard.
+let wizard = null;
+
+// The IDs of the transfer tables whose box is open, showing its stages (section 7, "Its box"):
+// remembered while the page is open, not saved in plan files and not an undo step.
+const openTables = new Set();
+
+// The open entry when refresh last looked, so a transfer table's box opens once when one of its
+// stages becomes the open entry, and can then be closed by its heading.
+let openEntrySeen = null;
+
 // The page's elements that transfer-designer.html gives an id, looked up once.
 const elements = {
   experimentHeading: byId("experiment-heading"),
@@ -384,6 +412,8 @@ const elements = {
   cursorLabel: byId("cursor-label"),
   contentsCard: byId("contents-card"),
   pageVersion: byId("page-version"),
+  wizardBackdrop: byId("wizard-backdrop"),
+  wizard: byId("wizard"),
 };
 
 setUpPage();
@@ -405,6 +435,7 @@ function setUpPage() {
   connectEditingBoxGuard();
   connectInlineBoxGuard();
   connectHeaderBoxGuard();
+  connectWizard();
   window.addEventListener("scroll", fitStagesColumn);
   window.addEventListener("resize", () => {
     fitStagesColumn();
@@ -616,6 +647,7 @@ function refresh() {
     history = history.replacePresent({ plan, open: place });
   }
   syncCard(plan, currentOpen());
+  openTableOfNewlyOpenStage(plan);
   // Undo or redo can take the picked component away (e.g. undoing a rename): then, as when a picked
   // component is removed, the first component is picked, or the eraser if there's none.
   if (brush.pick.kind === "component" && !hasComponent(plan, brush.pick.name)) {
@@ -638,6 +670,20 @@ function refresh() {
   keepVolumeBoxTransferHighlighted();
   updateCursorLabel();
   requestAnimationFrame(fitStagesColumn);
+}
+
+// Opens the box of the transfer table whose stage has just become the open entry (section 7, "Its
+// box"), once: after that, its heading can close it while the stage stays open.
+function openTableOfNewlyOpenStage(plan) {
+  const open = currentOpen();
+  if (open === openEntrySeen) {
+    return;
+  }
+  openEntrySeen = open;
+  const owner = isStage(plan, open) ? transferTableOf(plan, open) : null;
+  if (owner !== null) {
+    openTables.add(owner);
+  }
 }
 
 // Keeps the card in step with what's open: a randomization open (after redo, say) has its card,
@@ -772,6 +818,8 @@ function showReplacedPlan(plan, open) {
   addingComponent = null;
   bringOutUsedLabware(plan);
   pickFirstComponent(plan);
+  // Another plan's transfer tables may reuse the IDs, so every box starts closed (section 7).
+  openTables.clear();
   recordEdit(plan, open);
 }
 
@@ -960,7 +1008,8 @@ let biomekRun = null;
 // Reset's question, and works out the run's files at once with writeRunFiles, the moment the box
 // opens as their timestamp, so the zip's name it shows is the one Write files saves. If the writer
 // refuses the plan, its message is shown instead, unchanged, with Write files disabled. Before
-// that, a randomization that's out of date is named instead, as the writer never reads them.
+// that, a randomization or transfer table that's out of date is named instead, as the writer never
+// reads them.
 function toggleBiomekBox() {
   if (!elements.biomekBox.hidden) {
     closeBiomekBox();
@@ -994,15 +1043,15 @@ function toggleBiomekBox() {
   (biomekRun === null ? elements.biomekCancel : elements.writeFiles).focus();
 }
 
-// Throws if a randomization of the plan is out of date (section 5), naming the first in the
-// column's order by its first stage: 'A randomization (at stage 1, “Drug”) is out of date: open it
-// and press Update.'
+// Throws if a randomization or transfer table of the plan is out of date (section 5), naming the
+// first in the column's order by its first stage: 'A randomization (at stage 1, “Drug”) is out of
+// date: open it and press Update.' or 'A transfer table (at stage 3, “Media”) is out of date: …'.
 function checkNoRandomizationOutOfDate(plan) {
-  const randomization = firstOutOfDateRandomization(plan);
-  if (randomization !== null) {
+  const box = firstOutOfDateBox(plan);
+  if (box !== null) {
+    const what = box.kind === "randomization" ? "A randomization" : "A transfer table";
     throw new Error(
-      `A randomization (at ${stageLabel(plan, randomization.stages[0].stage)}) is out of date: ` +
-        "open it and press Update.",
+      `${what} (at ${stageLabel(plan, box.tipGroups[0].stages[0])}) is out of date: open it and press Update.`,
     );
   }
 }
@@ -1269,8 +1318,8 @@ function timelineCaption(plan, open) {
 
 // Shows "No problems" in green or "N problems" in red (section 6): each contents problem in the
 // whole plan (a draw into the dead volume, an overdraw or an overfill, including a well that starts
-// over its capacity) counts as one, and so does each randomization that's out of date and each
-// stage with a mix problem.
+// over its capacity) counts as one, and so does each randomization or transfer table that's out of
+// date and each stage with a mix problem.
 function refreshProblemCount(plan) {
   const count = problemCount(plan);
   elements.problemCount.textContent = count === 0 ? "No problems" : countOf(count, "problem");
@@ -1279,14 +1328,42 @@ function refreshProblemCount(plan) {
 }
 
 // The number of problems in the whole plan, as the problem count shows it (section 6, "First bar"):
-// each contents problem, each randomization that's out of date, and each stage with a mix problem,
-// e.g. 2.
+// each contents problem, each randomization or transfer table that's out of date, and each stage
+// with a mix problem, e.g. 2.
 function problemCount(plan) {
   return (
     replay(plan.startingContents, plan.operationList).listProblems().length +
     outOfDateRandomizations(plan).size +
+    outOfDateTransferTables(plan).size +
     stagesWithMixProblem(plan).size
   );
+}
+
+// The IDs of the plan's transfer tables that are out of date (isTransferTableOutOfDate), as a Set,
+// e.g. new Set(["t1"]), worked out once per plan (tablesOutOfDateByPlan; section 6).
+function outOfDateTransferTables(plan) {
+  if (!tablesOutOfDateByPlan.has(plan)) {
+    const ids = new Set(
+      plan.transferTables
+        .filter((transferTable) => isTransferTableOutOfDate(plan, transferTable.id))
+        .map((transferTable) => transferTable.id),
+    );
+    tablesOutOfDateByPlan.set(plan, ids);
+  }
+  return tablesOutOfDateByPlan.get(plan);
+}
+
+// The first box in the column's order that's a run randomization or a transfer table out of date
+// (columnBoxes' box), or null (section 5).
+function firstOutOfDateBox(plan) {
+  const randomizations = outOfDateRandomizations(plan);
+  const tables = outOfDateTransferTables(plan);
+  const box = columnBoxes(plan).find(
+    (candidate) =>
+      (candidate.kind === "randomization" && randomizations.has(candidate.id)) ||
+      (candidate.kind === "transferTable" && tables.has(candidate.id)),
+  );
+  return box ?? null;
 }
 
 // The IDs of the plan's randomizations that are out of date (isRandomizationOutOfDate), as a Set,
@@ -1301,13 +1378,6 @@ function outOfDateRandomizations(plan) {
     outOfDateByPlan.set(plan, ids);
   }
   return outOfDateByPlan.get(plan);
-}
-
-// The first randomization in the column's order that's out of date, or null (section 5).
-function firstOutOfDateRandomization(plan) {
-  const outOfDate = outOfDateRandomizations(plan);
-  const box = columnBoxes(plan).find((candidate) => candidate.kind === "randomization" && outOfDate.has(candidate.id));
-  return box === undefined ? null : randomizationAt(plan, box.id);
 }
 
 // Draws the labware tray (section 6): a chip per labware, in the groups Used labware and Unused
@@ -1848,9 +1918,9 @@ function createArrow(from, to, color, { insetEnd, dashed }) {
 
 // --- The Stages column (section 7) ---
 
-// Redraws the Stages column from the plan: Start, the tip group boxes with their stages and each
-// randomization's box where it sits (columnBlocks), End, a seam between tip groups above each box
-// and above End, and the open editing box.
+// Redraws the Stages column from the plan: Start, the tip group boxes with their stages, each
+// randomization's and transfer table's box where it sits (columnBlocks), End, a seam between tip
+// groups above each box and above End, and the open editing box.
 function refreshStages() {
   const plan = currentPlan();
   const open = currentOpen();
@@ -1865,8 +1935,11 @@ function refreshStages() {
     if (block.kind === "group") {
       items.push(createTipGroupBox(plan, block, groupIndex, open, problems, drawnKeys, false, index));
       groupIndex += 1;
-    } else {
+    } else if (block.kind === "randomization") {
       items.push(createRandomizationBox(plan, block, groupIndex, open, problems, drawnKeys));
+      groupIndex += block.groups.length;
+    } else {
+      items.push(createTransferTableBox(plan, block, groupIndex, open, problems, drawnKeys, index));
       groupIndex += block.groups.length;
     }
   });
@@ -1933,7 +2006,8 @@ function createEntry(plan, key, open, problems) {
     row.append(mark);
   }
   // An open stage's ✎ sits just after its name, so its editing box floats under the heading
-  // (section 10); the count stays at the right. A randomization's stage has none (section 7).
+  // (section 10); the count stays at the right. A randomization's stage has none (section 7); a
+  // transfer table's has one, for its pipetting.
   if (isOpen && isStage(plan, key) && randomizationOf(plan, key) === null) {
     row.classList.add("with-pencil");
     row.append(createPencil("stage", key, `Edit stage ${stageOrder(plan).indexOf(key) + 1}`));
@@ -2034,6 +2108,13 @@ function createEntryBody(plan, key) {
     body.append(
       createSettingsLine(plan, key),
       createElement("p", "Part of a randomization: change it in its card.", "note"),
+      ...createTransferSection(plan, key),
+    );
+  } else if (transferTableOf(plan, key) !== null) {
+    // A transfer table's stage: its pipetting through its ✎, its amounts only in the table.
+    body.append(
+      createSettingsLine(plan, key),
+      createElement("p", "Part of a transfer table: its amounts change in the table.", "note"),
       ...createTransferSection(plan, key),
     );
   } else {
@@ -2158,10 +2239,11 @@ function mixedShareText(mixed) {
   return mixed.share === null ? "–" : `${mixedPercent(mixed.share)}% of well`;
 }
 
-// The open stage's transfer list: one row per transfer; read-only for a randomization's stage.
+// The open stage's transfer list: one row per transfer; read-only for a randomization's or a
+// transfer table's stage.
 function createTransferList(plan, id, transfers) {
   const problems = transferProblems(plan);
-  const owned = randomizationOf(plan, id) !== null;
+  const owned = isOwnedStage(plan, id);
   const list = createElement("ul", "", "transfer-list");
   list.append(
     ...transfers.map((transfer) => createTransferRow(plan, id, transfer, problems.get(transfer.position), owned)),
@@ -2336,9 +2418,10 @@ function highlightTransfer(position) {
 
 // The column's blocks between Start and End, in the order the logic's columnBoxes gives (section
 // 7: the page doesn't work the order out itself): each ordinary tip group, as { kind: "group",
-// group, nextGroup }, and each randomization, as { kind: "randomization", randomization, groups },
-// `groups` being its stages' tip groups in that form (none until it has run). `nextGroup` is the
-// tip group just after, in stage order, if any.
+// group, nextGroup }, each randomization, as { kind: "randomization", randomization, groups }, and
+// each transfer table, as { kind: "transferTable", transferTable, groups }, `groups` being its
+// stages' tip groups in that form (none until a randomization has run). `nextGroup` is the tip
+// group just after, in stage order, if any.
 function columnBlocks(plan) {
   const groups = tipGroups(plan);
   // A tip group's block, from its place in `groups`, found by its key.
@@ -2346,15 +2429,15 @@ function columnBlocks(plan) {
     const index = groups.findIndex((group) => group.key === key);
     return { kind: "group", group: groups[index], nextGroup: groups[index + 1] };
   };
-  return columnBoxes(plan).map((box) =>
-    box.kind === "tipGroup"
-      ? groupBlock(box.key)
-      : {
-          kind: "randomization",
-          randomization: randomizationAt(plan, box.id),
-          groups: box.tipGroups.map((group) => groupBlock(group.key)),
-        },
-  );
+  return columnBoxes(plan).map((box) => {
+    if (box.kind === "tipGroup") {
+      return groupBlock(box.key);
+    }
+    const groups = box.tipGroups.map((group) => groupBlock(group.key));
+    return box.kind === "randomization"
+      ? { kind: "randomization", randomization: randomizationAt(plan, box.id), groups }
+      : { kind: "transferTable", transferTable: transferTableAt(plan, box.id), groups };
+  });
 }
 
 // Where the seam between tip groups above `blocks[index]` (above End, past the last) adds
@@ -2369,6 +2452,7 @@ function seamPlace(blocks, index) {
   if (below !== undefined && below.kind === "group") {
     beforeId = below.group.stages[0];
   } else if (below !== undefined) {
+    // A transfer table always has stages; a randomization that hasn't run sits before beforeId.
     beforeId = below.groups.length > 0 ? below.groups[0].group.stages[0] : below.randomization.beforeId;
   }
   const toPlace = [];
@@ -2386,16 +2470,17 @@ function seamPlace(blocks, index) {
 
 // A tip group's box: its heading (the tip change) and its stages, each between two seams. Boxes
 // alternate light blue and light sand. `block` is { group, nextGroup }, `nextGroup` being the box
-// after it, if any. A randomization's own tip group (`owned`) has no seams inside it and no ✎ on
-// its heading, since its stages change only through the randomization's card (section 7).
+// after it, if any. A randomization's or transfer table's own tip group (`owned`: "randomization"
+// or "transferTable", otherwise false) has no seams inside it; a randomization's has no ✎ on its
+// heading either, since its stages change only through the randomization's card (section 7).
 // `boxIndex` is its box's index in the column (columnBoxes), for an ordinary tip group: its seams
 // are the places inside it where moved or pasted stages can go.
 function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, drawnKeys, owned, boxIndex) {
   const box = createElement("div", "", "tip-group");
   box.classList.toggle("sand", index % 2 === 1);
-  box.classList.toggle("owned", owned);
+  box.classList.toggle("owned", owned !== false);
   box.dataset.group = group.key;
-  const heading = createTipGroupHeading(plan, group, owned);
+  const heading = createTipGroupHeading(plan, group, owned === "randomization");
   // An ordinary tip group is an item, selected and dragged by its heading; a randomization's own
   // tip group's heading counts as its first stage's row, since that tip group may hold several
   // stages when sources share tips (section 7, "Moving and copying").
@@ -2556,16 +2641,20 @@ function createSeamBetweenGroups(plan, { beforeId, toPlace }) {
         "Added a mix step with new tips. Click or drag across wells on the deck to mix them.",
       ),
     rightButton: createSeamDiceButton(`Add a randomization ${where}`, () => addRandomizationAt(beforeId)),
+    fourthButton: createSeamTableButton(`Add a transfer table ${where}`, () =>
+      openNewWizard(beforeId, toPlace),
+    ),
   });
 }
 
-// A seam's line and its three fixed spots (section 7), shown while pointed at or focused: the mix
-// step button, the + in the middle, and the right spot, holding `rightButton` or left empty, in
+// A seam's line and its four fixed spots (section 7), shown while pointed at or focused: the mix
+// step button, the + in the middle, the right spot, holding `rightButton` or left empty, and the
+// fourth spot, holding `fourthButton` (seams between tip groups: the table button) or left empty, in
 // that order, so keyboard focus moves through them left to right. `className` is the seam's
 // classes; `tooltips` the +'s and the mix step button's ({ stage, mixStep }); `accessibleName` the
 // +'s, which says "a stage" (the mix step button's says "a mix step" instead); `addStageHere` and
 // `addMixStepHere` what the two buttons do.
-function createSeam({ className, tooltips, accessibleName, addStageHere, addMixStepHere, rightButton }) {
+function createSeam({ className, tooltips, accessibleName, addStageHere, addMixStepHere, rightButton, fourthButton = null }) {
   const seam = createElement("div", "", className);
   seam.append(createElement("span", "", "seam-line"));
   const mix = createElement("button", "⟳", "seam-button add-mix-step");
@@ -2583,6 +2672,9 @@ function createSeam({ className, tooltips, accessibleName, addStageHere, addMixS
   seam.append(add);
   if (rightButton !== null) {
     seam.append(rightButton);
+  }
+  if (fourthButton !== null) {
+    seam.append(fourthButton);
   }
   return seam;
 }
@@ -2609,6 +2701,18 @@ function createSeamDiceButton(accessibleName, onClick) {
   dice.append(createDiceIcon());
   dice.addEventListener("click", () => afterClosingCard(onClick));
   return dice;
+}
+
+// A seam's table button (section 7): a circle with the table icon, in the fourth spot just right of
+// the right spot, with the tooltip "Add a transfer table here", `accessibleName` and `onClick`.
+function createSeamTableButton(accessibleName, onClick) {
+  const button = createElement("button", "", "seam-button add-transfer-table");
+  button.type = "button";
+  button.title = "Add a transfer table here";
+  button.setAttribute("aria-label", accessibleName);
+  button.append(createTableIcon());
+  button.addEventListener("click", () => afterClosingCard(onClick));
+  return button;
 }
 
 // Adds a stage before `beforeId` (or last, for null) and opens it (section 7).
@@ -2685,7 +2789,7 @@ function createRandomizationBox(plan, block, groupIndex, open, problems, drawnKe
   const expanded = cardOpen || groups.some(({ group }) => group.stages.includes(open));
   groups.forEach((groupBlock, place) => {
     if (expanded) {
-      box.append(createTipGroupBox(plan, groupBlock, groupIndex + place, open, problems, drawnKeys, true));
+      box.append(createTipGroupBox(plan, groupBlock, groupIndex + place, open, problems, drawnKeys, "randomization"));
     } else {
       noteDrawnWithoutGlow(groupBlock.group, drawnKeys);
     }
@@ -3746,9 +3850,1022 @@ function pickFillBox(wells, firstWell) {
   draftChangedOnDeck();
 }
 
-// The note for a click or drag on the deck while a randomization's stage is open (section 7).
-function showOwnedStageNote() {
+// The note for a click or drag on the deck while a randomization's or transfer table's stage `id`
+// is open (section 7).
+function showOwnedStageNote(plan, id) {
+  if (transferTableOf(plan, id) !== null) {
+    showMessage("This stage is part of a transfer table: change its amounts in the table.", "note");
+    return;
+  }
   showMessage("This stage is part of a randomization: change it in its card.", "note");
+}
+
+// True if stage `id` belongs to a randomization or a transfer table, so its transfers change only
+// through them (section 7).
+function isOwnedStage(plan, id) {
+  return randomizationOf(plan, id) !== null || transferTableOf(plan, id) !== null;
+}
+
+// --- Transfer tables (section 7, "Transfer tables") ---
+
+// The most problems the Table step lists before "…and N more." (section 7).
+const TABLE_PROBLEMS_LISTED = 6;
+
+// A transfer table's box in the Stages column (section 7): its heading and ✎, then, while the box
+// is open (openTables), its stages' tip group boxes (one stage each). Between its tip group boxes (and above the first, below the last) are the places where its
+// own stages can be dropped while one is dragged, never shown otherwise. `block` is from
+// columnBlocks; `groupIndex` the place of its first tip group among all of them, for their colors;
+// `boxIndex` its box's index in the column.
+function createTransferTableBox(plan, block, groupIndex, open, problems, drawnKeys, boxIndex) {
+  const { transferTable, groups } = block;
+  const box = createElement("div", "", "transfer-table");
+  box.dataset.item = itemKey({ kind: "transferTable", id: transferTable.id });
+  applyGlow(box, box.dataset.item, drawnKeys, { whenNew: false });
+  const expanded = openTables.has(transferTable.id);
+  const heading = createTransferTableHeading(transferTable, outOfDateTransferTables(plan).has(transferTable.id), expanded);
+  heading.dataset.itemHandle = box.dataset.item;
+  const head = createElement("div", "", "transfer-table-head");
+  head.append(heading, createTablePencil(transferTable.id));
+  box.append(head);
+  if (!expanded) {
+    groups.forEach(({ group }) => noteDrawnWithoutGlow(group, drawnKeys));
+    return box;
+  }
+  const stages = createElement("div", "", "transfer-table-stages");
+  stages.append(createTableDropPlace(transferTable.id, boxIndex, 0));
+  groups.forEach((groupBlock, place) => {
+    stages.append(
+      createTipGroupBox(plan, groupBlock, groupIndex + place, open, problems, drawnKeys, "transferTable"),
+      createTableDropPlace(transferTable.id, boxIndex, place + 1),
+    );
+  });
+  box.append(stages);
+  return box;
+}
+
+// A place inside transfer table `id` (box `boxIndex`) just before its stage at `position`, where
+// its own stages can be dropped (moveItems with an inTransferTable place). It has no buttons, and
+// only a drag of that table's own stages finds it (seamNearestPointer).
+function createTableDropPlace(id, boxIndex, position) {
+  const place = createElement("div", "", "table-seam");
+  place.dataset.table = id;
+  return withDropPlace(place, { kind: "inTransferTable", index: boxIndex, position });
+}
+
+// A transfer table's heading (section 7): a button with ▸ (closed) or ▾ (open, `expanded`), the
+// table icon, "Transfer table", and, at the right, "4 stages", or, when `outOfDate`, "needs update"
+// in red. Clicking it opens or closes the box (clickItem, as for any item's handle).
+function createTransferTableHeading(transferTable, outOfDate, expanded) {
+  const heading = createElement("button", "", "randomization-heading transfer-table-heading");
+  heading.type = "button";
+  heading.setAttribute("aria-expanded", String(expanded));
+  heading.title = outOfDate
+    ? "The plan changed since this was made: press ✎, then Update."
+    : expanded
+      ? "Hide its stages"
+      : "Show its stages";
+  const status = createElement(
+    "span",
+    outOfDate ? "needs update" : countOf(transferTable.stages.length, "stage"),
+    "randomization-status",
+  );
+  status.classList.toggle("needs-update", outOfDate);
+  heading.append(
+    createElement("span", expanded ? "▾" : "▸", "folder-mark"),
+    createTableIcon(),
+    createElement("span", "Transfer table", "randomization-title"),
+    status,
+  );
+  return heading;
+}
+
+// The ✎ on a transfer table's heading (section 7): opens its wizard at Review and selects it.
+function createTablePencil(id) {
+  const pencil = createElement("button", "✎", "edit-button table-edit");
+  pencil.type = "button";
+  pencil.title = "Change the table, its sources or remove it";
+  pencil.setAttribute("aria-label", "Edit transfer table");
+  pencil.addEventListener("click", () => {
+    if (closeRandomizationCard()) {
+      pickedSet = [{ kind: "transferTable", id }];
+      markSelection(selectedItems());
+      openWizardFor(id);
+    }
+  });
+  return pencil;
+}
+
+// Opens transfer table `id`'s box if it's closed, or closes it (section 7, "Its box"); it only
+// shows or hides, so it's no edit.
+function toggleTableBox(id) {
+  if (openTables.has(id)) {
+    openTables.delete(id);
+  } else {
+    openTables.add(id);
+  }
+  const key = itemKey({ kind: "transferTable", id });
+  const hadFocus = document.activeElement?.dataset?.itemHandle === key;
+  refreshStages();
+  // The column is drawn afresh, so a heading toggled from the keyboard gets its focus back.
+  if (hadFocus) {
+    elements.stagesList.querySelector(`.transfer-table-heading[data-item-handle="${cssEscape(key)}"]`)?.focus();
+  }
+}
+
+// The table icon (section 7): a rounded rectangle 15 by 13 with two lines across and two down,
+// drawn in the text's color.
+function createTableIcon() {
+  const svg = "http://www.w3.org/2000/svg";
+  const icon = document.createElementNS(svg, "svg");
+  icon.setAttribute("viewBox", "0 0 18 16");
+  icon.setAttribute("class", "table-icon");
+  icon.setAttribute("aria-hidden", "true");
+  // One SVG element called `name` with `attributes`, e.g. shape("line", { x1: 0, … }).
+  const shape = (name, attributes) => {
+    const element = document.createElementNS(svg, name);
+    for (const [attribute, value] of Object.entries(attributes)) {
+      element.setAttribute(attribute, String(value));
+    }
+    return element;
+  };
+  icon.append(
+    shape("rect", { x: 1.5, y: 1.5, width: 15, height: 13, rx: 2 }),
+    shape("line", { x1: 1.5, y1: 5.8, x2: 16.5, y2: 5.8 }),
+    shape("line", { x1: 1.5, y1: 10.2, x2: 16.5, y2: 10.2 }),
+    shape("line", { x1: 6.5, y1: 1.5, x2: 6.5, y2: 14.5 }),
+    shape("line", { x1: 11.5, y1: 1.5, x2: 11.5, y2: 14.5 }),
+  );
+  return icon;
+}
+
+// --- The transfer table wizard (section 7, "The wizard") ---
+
+// Connects the wizard's dialog: a press on the backdrop closes it, and Escape anywhere in it but a
+// cell being edited closes it too, changing nothing.
+function connectWizard() {
+  elements.wizardBackdrop.addEventListener("pointerdown", (event) => {
+    if (event.target === elements.wizardBackdrop) {
+      closeWizard();
+    }
+  });
+  elements.wizard.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      // Stopped here, so the page's own Escape (forgetting the selection) doesn't act on it too.
+      event.stopPropagation();
+      closeWizard();
+    }
+  });
+}
+
+// Opens a new wizard for a transfer table before stage `beforeId` (or at the end, for null), from a
+// seam between tip groups; `toPlace` are the randomizations that haven't run just above the seam,
+// which Add keeps above the transfer table (section 7, "The seam's table button"). Nothing is added
+// until Add.
+function openNewWizard(beforeId, toPlace) {
+  closeEditingBox();
+  source = null;
+  wizard = {
+    id: null,
+    beforeId,
+    toPlace,
+    step: "table",
+    draft: { table: null, sources: {} },
+    origins: [],
+    pasteRefused: false,
+  };
+  showWizard();
+  focusWizardElement("paste-zone");
+}
+
+// Opens the wizard for transfer table `id`, with its stored table and sources, at Review, or at the
+// first step with a problem (section 7, "The draft").
+function openWizardFor(id) {
+  closeEditingBox();
+  source = null;
+  const transferTable = transferTableAt(currentPlan(), id);
+  wizard = {
+    id,
+    beforeId: null,
+    toPlace: [],
+    step: "review",
+    draft: {
+      table: transferTable.table.map((row) => [...row]),
+      sources: Object.fromEntries(
+        Object.entries(transferTable.sources).map(([component, wells]) => [component, wells.map((end) => ({ ...end }))]),
+      ),
+    },
+    origins: transferTable.table[0].map(() => undefined),
+    pasteRefused: false,
+  };
+  keepDraftSourcesUsable(currentPlan());
+  if (!isTableStepDone(currentPlan())) {
+    wizard.step = "table";
+  } else if (!isSourcesStepDone(currentPlan())) {
+    wizard.step = "sources";
+  }
+  showWizard();
+  focusWizardElement("main");
+}
+
+// Shows the wizard's dialog over the page, drawn from `wizard`, and makes everything behind it
+// unreachable (inert), except the message bar.
+function showWizard() {
+  for (const child of document.body.children) {
+    if (child !== elements.wizardBackdrop && child !== elements.messageBar) {
+      child.inert = true;
+    }
+  }
+  elements.wizardBackdrop.hidden = false;
+  drawWizard();
+}
+
+// Closes the wizard without changing anything, and makes the page reachable again.
+function closeWizard() {
+  if (wizard === null) {
+    return;
+  }
+  wizard = null;
+  elements.wizardBackdrop.hidden = true;
+  elements.wizard.replaceChildren();
+  for (const child of document.body.children) {
+    child.inert = false;
+  }
+}
+
+// Draws the wizard's dialog: its header, the current step's body and its footer. The focus, if it
+// was on one of the dialog's controls, goes back to the same control.
+function drawWizard() {
+  const focused = document.activeElement?.closest?.("[data-wizard-focus]")?.dataset.wizardFocus;
+  const plan = currentPlan();
+  const body = createElement("div", "", "wizard-body");
+  if (wizard.step === "table") {
+    body.append(...createTableStep(plan));
+  } else if (wizard.step === "sources") {
+    body.append(...createSourcesStep(plan));
+  } else {
+    body.append(...createReviewStep(plan));
+  }
+  elements.wizard.replaceChildren(createWizardHeader(plan), body, createWizardFooter(plan));
+  if (focused !== undefined) {
+    focusWizardElement(focused);
+  }
+}
+
+// Focuses the wizard's control whose focus key (data-wizard-focus) is `key`, e.g. "main" or
+// "cell:2:1", selecting a text box's text; nothing if there's none.
+function focusWizardElement(key) {
+  const element = elements.wizard.querySelector(`[data-wizard-focus="${cssEscape(key)}"]`);
+  if (element === null) {
+    return;
+  }
+  element.focus();
+  if (element instanceof HTMLInputElement) {
+    element.select();
+  }
+}
+
+// `element` with focus key `key`, so drawing the wizard again can give it back the focus.
+function withFocusKey(element, key) {
+  element.dataset.wizardFocus = key;
+  return element;
+}
+
+// Where the draft's stages go, for the logic: a new transfer table's stage it's added before (null
+// for the end), or a transfer table's first stage.
+function wizardAt(plan) {
+  return wizard.id === null ? wizard.beforeId : transferTableAt(plan, wizard.id).stages[0].stage;
+}
+
+// The draft's table read against the plan (readTransferTable), or null before a paste.
+function wizardReading(plan) {
+  return wizard.draft.table === null ? null : readTransferTable(plan, wizard.draft.table);
+}
+
+// The draft's columns that make a stage (a component and an amount), in column order.
+function makingColumns(plan) {
+  const reading = wizardReading(plan);
+  return reading === null ? [] : reading.columns.filter((column) => column.amounts.length > 0);
+}
+
+// The Table step's problems, as messages: the table's (readTransferTable's), or, with none, that it
+// adds nothing if no column makes a stage; [] before a paste.
+function tableStepProblems(plan) {
+  const reading = wizardReading(plan);
+  if (reading === null) {
+    return [];
+  }
+  if (reading.problems.length > 0) {
+    return reading.problems.map((problem) => problem.message);
+  }
+  return makingColumns(plan).length === 0 ? ["The table adds nothing: every amount is blank or 0."] : [];
+}
+
+// True if the Table step is done: a table is in, with no problems, and makes a stage.
+function isTableStepDone(plan) {
+  return wizard.draft.table !== null && tableStepProblems(plan).length === 0;
+}
+
+// True if the Sources step is done: the Table step is, and every column making a stage has wells
+// the logic accepts (transferTableProblems finds nothing).
+function isSourcesStepDone(plan) {
+  return isTableStepDone(plan) && transferTableProblems(plan, wizard.draft, wizardAt(plan)).length === 0;
+}
+
+// The renames the wizard remembers (section 7, "Header changes are renames"), as renamedFrom: each
+// column whose header was changed from a component's name, now naming something else, e.g.
+// { DMEM: "Media" }.
+function wizardRenamedFrom() {
+  const renamedFrom = {};
+  if (wizard.draft.table === null) {
+    return renamedFrom;
+  }
+  wizard.draft.table[0].forEach((cell, column) => {
+    const origin = wizard.origins[column];
+    const name = cell.trim();
+    if (origin !== undefined && name !== "" && name !== origin) {
+      renamedFrom[name] = origin;
+    }
+  });
+  return renamedFrom;
+}
+
+// Keeps the draft's sources usable (section 7, "A new column's wells"): each column making a stage
+// draws from its stock wells only, a well that no longer holds only its component being dropped,
+// and gets the first stock well when it has none left (or none yet). Other columns' wells are kept,
+// so a column deleted and brought back keeps them.
+function keepDraftSourcesUsable(plan) {
+  const { sources } = wizard.draft;
+  for (const { component } of makingColumns(plan)) {
+    const stock = stockWellsOf(plan, component);
+    const stockKeys = new Set(stock.map(wellKey));
+    const kept = (sources[component] ?? []).filter((end) => stockKeys.has(wellKey(end)));
+    if (kept.length > 0) {
+      sources[component] = kept;
+    } else if (stock.length > 0) {
+      sources[component] = [{ ...stock[0] }];
+    } else {
+      delete sources[component];
+    }
+  }
+}
+
+// The wizard's header: the table icon and its title, then the three steps as pills.
+function createWizardHeader(plan) {
+  const header = createElement("div", "", "wizard-header");
+  const title = createElement("h2", wizard.id === null ? "New transfer table" : "Transfer table", "wizard-title");
+  title.id = "wizard-title";
+  title.prepend(createTableIcon());
+  const steps = createElement("div", "", "wizard-steps");
+  const order = ["table", "sources", "review"];
+  const names = { table: "Table", sources: "Sources", review: "Review" };
+  const reachable = { table: true, sources: isTableStepDone(plan), review: isSourcesStepDone(plan) };
+  order.forEach((step, index) => {
+    const pill = withFocusKey(createElement("button", "", "wizard-step"), `step:${step}`);
+    pill.type = "button";
+    pill.append(createElement("span", String(index + 1), "wizard-step-number"), names[step]);
+    pill.classList.toggle("current", step === wizard.step);
+    pill.classList.toggle("done", index < order.indexOf(wizard.step));
+    if (step === wizard.step) {
+      pill.setAttribute("aria-current", "step");
+    }
+    pill.disabled = !reachable[step];
+    pill.addEventListener("click", () => goToWizardStep(step));
+    steps.append(pill);
+  });
+  header.append(title, steps);
+  return header;
+}
+
+// Goes to `step` of the wizard, if it can be reached.
+function goToWizardStep(step) {
+  wizard.step = step;
+  drawWizard();
+  focusWizardElement("main");
+}
+
+// The wizard's footer: Remove (a transfer table in the plan only), then Cancel, Back (not on Table)
+// and the main button: Next on Table and Sources, disabled until the step is done; Add or Update on
+// Review.
+function createWizardFooter(plan) {
+  const footer = createElement("div", "", "wizard-footer");
+  if (wizard.id !== null) {
+    const remove = withFocusKey(createElement("button", "Remove", "danger-outline"), "remove");
+    remove.type = "button";
+    if (!canRemoveTransferTable(plan, wizard.id)) {
+      remove.disabled = true;
+      remove.title = "Its stages are all the plan's stages. Add a stage outside it first.";
+    }
+    remove.addEventListener("click", removeFromWizard);
+    footer.append(remove);
+  }
+  footer.append(createElement("span", "", "spacer"));
+  const cancel = withFocusKey(createElement("button", "Cancel", "action"), "cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", closeWizard);
+  footer.append(cancel);
+  if (wizard.step !== "table") {
+    const back = withFocusKey(createElement("button", "Back", "action"), "back");
+    back.type = "button";
+    back.addEventListener("click", () => goToWizardStep(wizard.step === "review" ? "sources" : "table"));
+    footer.append(back);
+  }
+  const mainLabel = wizard.step !== "review" ? "Next" : wizard.id === null ? "Add" : "Update";
+  const main = withFocusKey(createElement("button", mainLabel, "primary wizard-main"), "main");
+  main.type = "button";
+  if (wizard.step === "table") {
+    main.disabled = !isTableStepDone(plan);
+    main.addEventListener("click", () => goToWizardStep("sources"));
+  } else if (wizard.step === "sources") {
+    main.disabled = !isSourcesStepDone(plan);
+    main.addEventListener("click", () => goToWizardStep("review"));
+  } else {
+    main.addEventListener("click", wizard.id === null ? addFromWizard : updateFromWizard);
+  }
+  footer.append(main);
+  return footer;
+}
+
+// --- The wizard's Table step ---
+
+// The Table step's contents: the paste zone before a paste, then the grid.
+function createTableStep(plan) {
+  if (wizard.draft.table === null) {
+    return createPasteZone();
+  }
+  return [createTableGrid(plan), createGridButtons(), createTableSummary(plan)];
+}
+
+// The paste zone (section 7, "Table step, before a paste"): a dashed box taking a paste from Excel,
+// help text under it, and, after a paste it couldn't use, why in red.
+function createPasteZone() {
+  const zone = withFocusKey(
+    createElement("div", "Click here and press Ctrl+V to paste a table from Excel", "paste-zone"),
+    "paste-zone",
+  );
+  zone.tabIndex = 0;
+  zone.setAttribute("role", "textbox");
+  zone.setAttribute("aria-label", "Paste a table from Excel here");
+  zone.addEventListener("paste", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    takePastedTable(event.clipboardData?.getData("text/plain") ?? "");
+  });
+  const parts = [
+    zone,
+    createElement(
+      "p",
+      "The table's first row is a header: the first column is a well label, each other column a " +
+        "component's name. Each row after it gives the µL of each component to add to every well " +
+        "with that label. Blank or 0 adds nothing.",
+      "wizard-help",
+    ),
+  ];
+  if (wizard.pasteRefused) {
+    parts.push(
+      createElement(
+        "p",
+        "Paste a table with a header row, at least one row of well labels, and at least one component column.",
+        "wizard-error",
+      ),
+    );
+  }
+  return parts;
+}
+
+// Takes pasted `text` as the draft's table (section 7): read with parsePastedTable, rows whose cells
+// are all blank dropped, shorter rows filled with empty cells to the widest's length. With fewer
+// than two rows or two columns left, the paste zone stays and says why.
+function takePastedTable(text) {
+  const rows = text === "" ? [] : parsePastedTable(text).filter((row) => row.some((cell) => cell.trim() !== ""));
+  const width = Math.max(0, ...rows.map((row) => row.length));
+  if (rows.length < 2 || width < 2) {
+    wizard.pasteRefused = true;
+    drawWizard();
+    focusWizardElement("paste-zone");
+    return;
+  }
+  wizard.draft.table = rows.map((row) => [...row, ...Array(width - row.length).fill("")]);
+  wizard.origins = Array(width).fill(undefined);
+  wizard.pasteRefused = false;
+  keepDraftSourcesUsable(currentPlan());
+  drawWizard();
+  focusWizardElement(isTableStepDone(currentPlan()) ? "main" : "cell:0:0");
+}
+
+// The grid (section 7, "Table step, with a table"): every cell a text box, in a scrolling frame,
+// the header row and label column tinted, matched headers with their component's swatch, matched
+// labels with their well count, problem cells red with their message as tooltip.
+function createTableGrid(plan) {
+  const frame = createElement("div", "", "wizard-grid-frame");
+  const grid = createElement("table", "", "wizard-grid");
+  const { table } = wizard.draft;
+  table.forEach((row, rowIndex) => {
+    const tr = createElement("tr");
+    row.forEach((_, column) => tr.append(createGridCell(rowIndex, column)));
+    grid.append(tr);
+  });
+  frame.append(grid);
+  wizard.gridElement = grid;
+  decorateGrid(plan);
+  return frame;
+}
+
+// One cell of the grid at `row` and `column`: a text box, with a swatch before it (header cells),
+// a well count after it (label cells), and a × deleting its row or column (label cells after the
+// header, header cells after the first).
+function createGridCell(row, column) {
+  const cell = createElement(row === 0 ? "th" : "td", "", "wizard-cell");
+  cell.classList.toggle("header-cell", row === 0);
+  cell.classList.toggle("label-cell", column === 0);
+  cell.classList.toggle("amount-cell", row > 0 && column > 0);
+  cell.dataset.row = String(row);
+  cell.dataset.column = String(column);
+  const inner = createElement("div", "", "wizard-cell-inner");
+  if (row === 0 && column > 0) {
+    const swatch = createElement("span", "", "swatch cell-swatch");
+    swatch.hidden = true;
+    inner.append(swatch);
+  }
+  const box = withFocusKey(document.createElement("input"), `cell:${row}:${column}`);
+  box.type = "text";
+  box.className = "cell-box";
+  box.value = wizard.draft.table[row][column];
+  box.setAttribute("aria-label", cellName(row, column));
+  connectGridCell(box, row, column);
+  inner.append(box);
+  if (row > 0 && column === 0) {
+    const count = createElement("span", "", "cell-well-count");
+    count.hidden = true;
+    inner.append(count);
+  }
+  if ((row > 0 && column === 0) || (row === 0 && column > 0)) {
+    inner.append(createDeleteButton(row, column));
+  }
+  cell.append(inner);
+  return cell;
+}
+
+// A cell's accessible name, e.g. "Row 3, column 2", counting from 1.
+function cellName(row, column) {
+  return `Row ${row + 1}, column ${column + 1}`;
+}
+
+// A cell's ×, deleting its row (a label cell) or its column (a header cell): out of the Tab order.
+function createDeleteButton(row, column) {
+  const isRow = column === 0;
+  const name = isRow ? `Delete row ${row + 1}` : `Delete column ${column + 1}`;
+  const button = createElement("button", "×", "cell-delete");
+  button.type = "button";
+  button.tabIndex = -1;
+  button.title = name;
+  button.setAttribute("aria-label", name);
+  button.addEventListener("click", () => (isRow ? deleteTableRow(row) : deleteTableColumn(column)));
+  return button;
+}
+
+// Connects a cell's text box (section 7, "Editing a cell"): its text selected when focused; a
+// change read when it's left or on Enter, which also moves down a row; Escape puts the text back;
+// a paste is plain text, its tabs and line breaks made spaces.
+function connectGridCell(box, row, column) {
+  box.addEventListener("focus", () => box.select());
+  box.addEventListener("blur", () => commitCell(row, column, box.value));
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitCell(row, column, box.value);
+      const below = Math.min(row + 1, wizard.draft.table.length - 1);
+      focusWizardElement(`cell:${below}:${column}`);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      box.value = wizard.draft.table[row][column];
+      box.select();
+    }
+  });
+  box.addEventListener("paste", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const text = (event.clipboardData?.getData("text/plain") ?? "").replace(/\r\n|[\t\r\n]/g, " ");
+    const start = box.selectionStart ?? box.value.length;
+    const end = box.selectionEnd ?? box.value.length;
+    box.value = box.value.slice(0, start) + text + box.value.slice(end);
+    box.setSelectionRange(start + text.length, start + text.length);
+  });
+}
+
+// Reads a cell's new text into the draft, if it changed, and re-reads the table (its problems,
+// matches and summary) without drawing the grid again, so the focus stays where it went. A header
+// that named a component, changed, is remembered as a rename (section 7).
+function commitCell(row, column, text) {
+  if (wizard === null || wizard.draft.table === null || wizard.draft.table[row]?.[column] === undefined) {
+    return;
+  }
+  const old = wizard.draft.table[row][column];
+  if (text === old) {
+    return;
+  }
+  const plan = currentPlan();
+  if (row === 0 && wizard.origins[column] === undefined && hasComponent(plan, old.trim()) && old.trim() !== text.trim()) {
+    wizard.origins[column] = old.trim();
+  }
+  wizard.draft.table[row][column] = text;
+  keepDraftSourcesUsable(plan);
+  decorateGrid(plan);
+  refreshWizardChrome(plan);
+}
+
+// Marks the grid's cells from the draft read against the plan: problem cells red with their
+// message as tooltip, matched headers' swatches, and matched labels' well counts.
+function decorateGrid(plan) {
+  const reading = wizardReading(plan);
+  const problems = new Map();
+  for (const problem of reading.problems) {
+    const key = `${problem.row}:${problem.column}`;
+    problems.set(key, problems.has(key) ? `${problems.get(key)} ${problem.message}` : problem.message);
+  }
+  for (const cell of wizard.gridElement.querySelectorAll(".wizard-cell")) {
+    const row = Number(cell.dataset.row);
+    const column = Number(cell.dataset.column);
+    const message = problems.get(`${row}:${column}`);
+    cell.classList.toggle("problem", message !== undefined);
+    cell.querySelector(".cell-box").title = message ?? "";
+    const text = wizard.draft.table[row][column].trim();
+    const swatch = cell.querySelector(".cell-swatch");
+    if (swatch !== null) {
+      swatch.hidden = !hasComponent(plan, text);
+      swatch.style.setProperty("--swatch-color", componentColor(plan, text));
+    }
+    const count = cell.querySelector(".cell-well-count");
+    if (count !== null) {
+      const wells = wellsLabeled(plan, text);
+      count.hidden = text === "" || wells === 0;
+      count.textContent = countOf(wells, "well");
+    }
+  }
+}
+
+// How many wells carry the well label `label`, e.g. 3.
+function wellsLabeled(plan, label) {
+  return Object.values(plan.wellLabels).reduce(
+    (total, wells) => total + Object.values(wells).filter((candidate) => candidate === label).length,
+    0,
+  );
+}
+
+// Brings the wizard's steps, main button and the Table step's summary up to date after a cell
+// changed, without drawing the grid again. The steps and the main button are changed in place, not
+// drawn again, so a press on one that left a cell (and so changed it) still clicks it.
+function refreshWizardChrome(plan) {
+  const dialog = elements.wizard;
+  const reachable = { sources: isTableStepDone(plan), review: isSourcesStepDone(plan) };
+  for (const [step, canReach] of Object.entries(reachable)) {
+    const pill = dialog.querySelector(`[data-wizard-focus="step:${step}"]`);
+    if (pill !== null) {
+      pill.disabled = !canReach;
+    }
+  }
+  const main = dialog.querySelector('[data-wizard-focus="main"]');
+  if (main !== null && wizard.step === "table") {
+    main.disabled = !reachable.sources;
+  }
+  dialog.querySelector(".table-summary")?.replaceWith(createTableSummary(plan));
+}
+
+// `+ Row` and `+ Column`, under the grid.
+function createGridButtons() {
+  const holder = createElement("div", "", "wizard-grid-buttons");
+  const addRow = withFocusKey(createElement("button", "+ Row", "action small-button"), "add-row");
+  addRow.type = "button";
+  addRow.addEventListener("click", addTableRow);
+  const addColumn = withFocusKey(createElement("button", "+ Column", "action small-button"), "add-column");
+  addColumn.type = "button";
+  addColumn.addEventListener("click", addTableColumn);
+  holder.append(addRow, addColumn);
+  return holder;
+}
+
+// Adds an empty row at the bottom of the grid and focuses its label cell.
+function addTableRow() {
+  const { table } = wizard.draft;
+  table.push(Array(table[0].length).fill(""));
+  afterGridShapeChange(`cell:${table.length - 1}:0`);
+}
+
+// Adds an empty column at the right of the grid and focuses its header.
+function addTableColumn() {
+  const { table } = wizard.draft;
+  for (const row of table) {
+    row.push("");
+  }
+  wizard.origins.push(undefined);
+  afterGridShapeChange(`cell:0:${table[0].length - 1}`);
+}
+
+// Deletes row `row` (not the header row).
+function deleteTableRow(row) {
+  wizard.draft.table.splice(row, 1);
+  afterGridShapeChange(null);
+}
+
+// Deletes column `column` (not the label column), forgetting whether it was renamed.
+function deleteTableColumn(column) {
+  for (const row of wizard.draft.table) {
+    row.splice(column, 1);
+  }
+  wizard.origins.splice(column, 1);
+  afterGridShapeChange(null);
+}
+
+// Draws the wizard again after a row or column was added or deleted, focusing `focusKey`'s control
+// if given.
+function afterGridShapeChange(focusKey) {
+  keepDraftSourcesUsable(currentPlan());
+  drawWizard();
+  if (focusKey !== null) {
+    focusWizardElement(focusKey);
+  }
+}
+
+// Under the grid: with no problems, "6 well labels (18 wells), 4 components." in gray; otherwise
+// the problems in a red-tinted box, at most TABLE_PROBLEMS_LISTED, then "…and N more.", then how to
+// fix them.
+function createTableSummary(plan) {
+  const problems = tableStepProblems(plan);
+  if (problems.length === 0) {
+    const labels = new Set(
+      wizard.draft.table
+        .slice(1)
+        .map((row) => row[0].trim())
+        .filter((label) => label !== ""),
+    );
+    const wells = [...labels].reduce((total, label) => total + wellsLabeled(plan, label), 0);
+    const text =
+      `${countOf(labels.size, "well label")} (${countOf(wells, "well")}), ` +
+      `${countOf(makingColumns(plan).length, "component")}.`;
+    return createElement("p", text, "wizard-help table-summary");
+  }
+  const box = createElement("div", "", "wizard-problems");
+  for (const message of problems.slice(0, TABLE_PROBLEMS_LISTED)) {
+    box.append(createElement("p", message));
+  }
+  if (problems.length > TABLE_PROBLEMS_LISTED) {
+    box.append(createElement("p", `…and ${problems.length - TABLE_PROBLEMS_LISTED} more.`));
+  }
+  const holder = createElement("div", "", "table-summary");
+  holder.append(box, createElement("p", "Fix the red cells above: click one and type.", "wizard-help"));
+  return holder;
+}
+
+// --- The wizard's Sources step ---
+
+// The Sources step's contents (section 7, "Sources step"): help text, then a row per column making
+// a stage with the wells it draws from, then the step's problems.
+function createSourcesStep(plan) {
+  const help = createElement(
+    "p",
+    "Each stage draws from a well holding only its component at Start. Add more wells when one can't " +
+      "hold enough: they're used in order, each until the next transfer would reach into its dead volume.",
+    "wizard-help",
+  );
+  const table = createElement("table", "", "wizard-table");
+  const head = createElement("tr");
+  head.append(createElement("th", "Stage"), createElement("th", "Draws from"));
+  table.append(head);
+  makingColumns(plan).forEach((column, index) => {
+    const row = createElement("tr");
+    const drawsFrom = createElement("td");
+    drawsFrom.append(...createDrawsFrom(plan, column.component));
+    row.append(createStageCell(plan, column.component, index), drawsFrom);
+    table.append(row);
+  });
+  return [help, table, ...createSourcesProblems(plan)];
+}
+
+// A Stage cell: "1. " then the component's swatch and name, semibold.
+function createStageCell(plan, component, index) {
+  const cell = createElement("td", "", "wizard-stage-cell");
+  cell.append(`${index + 1}. `, createSwatch(componentColor(plan, component)), createElement("strong", component));
+  return cell;
+}
+
+// A column's Draws from cell: its wells, one line each, numbered, each a menu of its stock wells
+// (its own and those no other line has), with × when there's more than one; then "+ Another well"
+// while a stock well isn't on a line; then, with more than one line, how the transfers split. With
+// no stock well, says so in red.
+function createDrawsFrom(plan, component) {
+  const stock = stockWellsOf(plan, component);
+  if (stock.length === 0) {
+    return [createElement("span", "No well holds only this at Start", "wizard-error-text")];
+  }
+  const wells = wizard.draft.sources[component] ?? [];
+  const parts = wells.map((end, line) => createSourceLine(plan, component, stock, wells, line));
+  const unused = stock.filter((candidate) => !wells.some((end) => wellKey(end) === wellKey(candidate)));
+  if (unused.length > 0) {
+    const another = withFocusKey(createElement("button", "+ Another well", "action small-button"), `another:${component}`);
+    another.type = "button";
+    another.addEventListener("click", () => {
+      wizard.draft.sources[component] = [...wells, { ...unused[0] }];
+      drawWizard();
+    });
+    parts.push(another);
+  }
+  if (wells.length > 1) {
+    const split = tryLogic(() => sourceSplit(plan, wizard.draft, component, wizardAt(plan)));
+    if (split !== false) {
+      const text = split.map(({ well, count }) => `${wellName(plan, well)}: ${countOf(count, "well")}`).join(" · ");
+      parts.push(createElement("p", text, "wizard-note"));
+    }
+  }
+  return parts;
+}
+
+// One line of a column's wells: its number, its menu, and × with more than one line.
+function createSourceLine(plan, component, stock, wells, line) {
+  const holder = createElement("div", "", "source-line");
+  const offered = stock.filter(
+    (candidate) => !wells.some((end, other) => other !== line && wellKey(end) === wellKey(candidate)),
+  );
+  const menu = withFocusKey(document.createElement("select"), `source:${component}:${line}`);
+  menu.setAttribute("aria-label", `${component}'s well ${line + 1}`);
+  for (const candidate of offered) {
+    const label = wellLabelOf(plan, candidate);
+    const option = createElement("option", `${wellName(plan, candidate)}${label === null ? "" : ` · ${label}`}`);
+    option.value = wellKey(candidate);
+    option.selected = wellKey(candidate) === wellKey(wells[line]);
+    menu.append(option);
+  }
+  menu.addEventListener("change", () => {
+    const chosen = offered.find((candidate) => wellKey(candidate) === menu.value);
+    wizard.draft.sources[component] = wells.map((end, other) => (other === line ? { ...chosen } : end));
+    drawWizard();
+  });
+  holder.append(createElement("span", String(line + 1), "source-number"), menu);
+  if (wells.length > 1) {
+    const remove = createElement("button", "×", "cell-delete source-remove");
+    remove.type = "button";
+    remove.title = "Don't draw from this well";
+    remove.setAttribute("aria-label", "Don't draw from this well");
+    remove.addEventListener("click", () => {
+      wizard.draft.sources[component] = wells.filter((_, other) => other !== line);
+      drawWizard();
+    });
+    holder.append(remove);
+  }
+  return holder;
+}
+
+// The Sources step's problems under its table, as the logic gives them, except that a column with
+// no stock well gets the page's own words, saying Cancel discards the paste.
+function createSourcesProblems(plan) {
+  if (!isTableStepDone(plan)) {
+    return [];
+  }
+  const noStock = new Map(
+    makingColumns(plan)
+      .filter(({ component }) => stockWellsOf(plan, component).length === 0)
+      .map(({ component }) => [
+        `No well holds only ${component} at Start. Fill one with ${component} at Start first.`,
+        `No well holds only ${component} at Start. Cancel, fill one at Start, and start the transfer table again.`,
+      ]),
+  );
+  const problems = transferTableProblems(plan, wizard.draft, wizardAt(plan));
+  if (problems.length === 0) {
+    return [];
+  }
+  const box = createElement("div", "", "wizard-problems");
+  for (const { message } of problems) {
+    box.append(createElement("p", noStock.get(message) ?? message));
+  }
+  return [box];
+}
+
+// --- The wizard's Review step ---
+
+// The Review step's contents (section 7, "Review step"): what Add or Update will make, read-only.
+function createReviewStep(plan) {
+  const entries = tryLogic(() =>
+    transferTableStages(plan, wizard.draft, wizardAt(plan), { id: wizard.id, renamedFrom: wizardRenamedFrom() }),
+  );
+  if (entries === false) {
+    return [createElement("p", "Go back and fix the problems first.", "wizard-error")];
+  }
+  let where = "where its stages are now";
+  if (wizard.id === null) {
+    where = wizard.beforeId === null ? "at the end of the run" : `before ${stageLabel(plan, wizard.beforeId)}`;
+  }
+  const intro = createElement(
+    "p",
+    `${countOf(entries.length, "stage")}, each on new tips, ${where}. Change a stage's pipetting or tips ` +
+      "afterwards with its ✎ in the Stages column.",
+    "wizard-help",
+  );
+  const table = createElement("table", "", "wizard-table review-table");
+  const head = createElement("tr");
+  for (const title of ["Stage", "From", "Into", "Total", "Aspirate · Dispense", "Tips"]) {
+    head.append(createElement("th", title));
+  }
+  table.append(head);
+  entries.forEach((entry, index) => table.append(createReviewRow(plan, entry, index)));
+  const unused = wizardReading(plan)
+    .columns.filter((column) => column.amounts.length === 0)
+    .map((column) => createElement("p", `No stage for ${column.component}: every amount is blank or 0.`, "wizard-help"));
+  return [intro, table, ...unused];
+}
+
+// One stage's row on Review: its sources, wells, total, modes and tips, and, when its largest
+// amount is more than one tip of its type holds (MIX_VOLUME_LIMITS, stand-ins; roadmap, "Technical
+// debt"), a note saying so.
+function createReviewRow(plan, entry, index) {
+  const row = createElement("tr");
+  const wells = wizard.draft.sources[entry.component].map((end) => wellName(plan, end)).join(", then ");
+  const total = entry.transfers.reduce((sum, transfer) => sum + transfer.volume, 0);
+  const tips = createElement("td", `${entry.tips.probes.length} × ${entry.tips.tipType}`);
+  const largest = Math.max(...entry.transfers.map((transfer) => transfer.volume));
+  if (largest > MIX_VOLUME_LIMITS[entry.tips.tipType]) {
+    const note = createElement("span", `up to ${formatVolume(largest)} µL per well`, "wizard-note tip-note");
+    note.title = `More than one ${entry.tips.tipType} tip holds in one trip.`;
+    tips.append(note);
+  }
+  row.append(
+    createStageCell(plan, entry.component, index),
+    createElement("td", wells),
+    createElement("td", countOf(entry.transfers.length, "well")),
+    createElement("td", `${formatVolume(total)} µL`),
+    createElement("td", `${reviewModeText(entry.settings, "source")} · ${reviewModeText(entry.settings, "destination")}`),
+    tips,
+  );
+  return row;
+}
+
+// One end's mode as Review shows it: its name (modeOf), "(other)" if it isn't one of the modes,
+// with " ⟳" after it if the end mixes, e.g. "Slow ⟳".
+function reviewModeText(settings, end) {
+  const mode = modeOf(end, settings) ?? "(other)";
+  return settings[`${end}Mix`] !== null ? `${mode} ⟳` : mode;
+}
+
+// --- The wizard's Add, Update and Remove ---
+
+// "4 stages (Media, Drug A, Drug B, DMSO)": transfer table `id`'s stages and their components.
+function tableStagesText(plan, id) {
+  const { stages } = transferTableAt(plan, id);
+  return `${countOf(stages.length, "stage")} (${stages.map((owned) => owned.component).join(", ")})`;
+}
+
+// Add (section 7, "Add and Update"): adds the transfer table at the seam's place, keeping the
+// randomizations above the seam above it, as one undoable edit; closes the wizard and opens its
+// first stage. If the logic refuses, its message is shown and the wizard stays open.
+function addFromWizard() {
+  const plan = currentPlan();
+  const result = tryLogic(() => {
+    const added = addTransferTable(plan, wizard.draft, wizard.beforeId);
+    const first = transferTableAt(added.plan, added.id).stages[0].stage;
+    const placed = wizard.toPlace.reduce((planSoFar, id) => placeRandomization(planSoFar, id, first), added.plan);
+    return { plan: placed, id: added.id, first };
+  });
+  if (result === false) {
+    return;
+  }
+  closeWizard();
+  recordEdit(result.plan, result.first);
+  showMessage(`Added a transfer table: ${tableStagesText(result.plan, result.id)}.`, "ok");
+  scrollIntoColumnView(elements.stagesList.querySelector(`[data-item="${cssEscape(itemKey({ kind: "transferTable", id: result.id }))}"]`));
+}
+
+// Update: remakes the transfer table from the draft, with the renames the wizard remembers, as one
+// undoable edit; closes the wizard and opens its first stage. When nothing would change, nothing is
+// recorded, and a note says so (section 7, "Add and Update").
+function updateFromWizard() {
+  const plan = currentPlan();
+  const { id } = wizard;
+  const updated = tryLogic(() => updateTransferTable(plan, id, wizard.draft, { renamedFrom: wizardRenamedFrom() }));
+  if (updated === false) {
+    return;
+  }
+  closeWizard();
+  if (updated === plan) {
+    showMessage("Nothing to update: the transfer table already matches.", "note");
+    return;
+  }
+  recordEdit(updated, transferTableAt(updated, id).stages[0].stage);
+  showMessage(`Updated the transfer table: ${tableStagesText(updated, id)}.`, "ok");
+}
+
+// Remove: takes out the transfer table and its stages at once, as every Remove does; if one of its
+// stages was open, the first stage in the stage order opens.
+function removeFromWizard() {
+  const plan = currentPlan();
+  const { id } = wizard;
+  const owned = transferTableAt(plan, id).stages.map((entry) => entry.stage);
+  const removed = tryLogic(() => removeTransferTable(plan, id));
+  if (removed === false) {
+    return;
+  }
+  closeWizard();
+  const open = owned.includes(currentOpen()) ? stageOrder(removed)[0] : currentOpen();
+  recordEdit(removed, open);
+  showMessage(`Removed the transfer table and its ${countOf(owned.length, "stage")}. Undo brings them back.`, "ok");
 }
 
 // --- The glow (section 7) ---
@@ -3810,7 +4927,8 @@ function connectMovingAndCopying() {
 }
 
 // One text key for an item, as the column's elements carry it in data-item, e.g. "stage:5",
-// "tipGroup:3" or "randomization:r1". A stage's and a randomization's are also their glow keys.
+// "tipGroup:3", "randomization:r1" or "transferTable:t1". A stage's, a randomization's and a
+// transfer table's are also their glow keys.
 function itemKey(item) {
   return `${item.kind}:${item.id}`;
 }
@@ -3836,8 +4954,8 @@ function betweenBoxes(index) {
 // --- Moving and copying: where items are ---
 
 // Where `item` is in the column (columnBoxes of `plan`): { boxIndex, position, owned }, `position`
-// being a stage's place in its tip group (null for a box, or for a randomization's stage, `owned`),
-// or null if the item isn't in the plan.
+// being a stage's place in its tip group (null for a box, or for a randomization's or transfer
+// table's stage, `owned`), or null if the item isn't in the plan.
 function locateItem(plan, item) {
   const boxes = columnBoxes(plan);
   for (const [boxIndex, box] of boxes.entries()) {
@@ -3848,7 +4966,7 @@ function locateItem(plan, item) {
       if (item.kind === "stage" && box.stages.includes(item.id)) {
         return { boxIndex, position: box.stages.indexOf(item.id), owned: false };
       }
-    } else if (item.kind === "randomization" && box.id === item.id) {
+    } else if (item.kind === box.kind && box.id === item.id) {
       return { boxIndex, position: null, owned: false };
     } else if (item.kind === "stage" && box.tipGroups.some((group) => group.stages.includes(item.id))) {
       return { boxIndex, position: null, owned: true };
@@ -3967,7 +5085,7 @@ function runBetween(plan, anchor, item) {
   }
   const [first, last] = [from.boxIndex, to.boxIndex].sort((a, b) => a - b);
   return boxes.slice(first, last + 1).map((box) =>
-    box.kind === "tipGroup" ? { kind: "tipGroup", id: box.stages[0] } : { kind: "randomization", id: box.id },
+    box.kind === "tipGroup" ? { kind: "tipGroup", id: box.stages[0] } : { kind: box.kind, id: box.id },
   );
 }
 
@@ -3988,6 +5106,12 @@ function clickItem(item, keys) {
     forgetPickedSet();
   } else if (item.kind === "tipGroup") {
     pickedSet = [item];
+  } else if (item.kind === "transferTable") {
+    // Its heading opens or closes its box, and selects it alone (section 7); its ✎ opens the wizard.
+    if (closeRandomizationCard()) {
+      pickedSet = [item];
+      toggleTableBox(item.id);
+    }
   } else if (card !== null && card.id === item.id) {
     if (closeRandomizationCard()) {
       pickedSet = [item];
@@ -4128,7 +5252,8 @@ function dragIsRefused() {
 function updateColumnDrag() {
   const refused = dragIsRefused();
   columnDrag.refused = refused;
-  const seam = refused ? null : seamNearestPointer(columnDrag.pointer, holdsContainerItem(columnDrag.items));
+  const ownTable = columnDrag.copying ? null : draggedTable(currentPlan(), columnDrag.items);
+  const seam = refused ? null : seamNearestPointer(columnDrag.pointer, holdsContainerItem(columnDrag.items), ownTable);
   columnDrag.place = seam === null ? null : JSON.parse(seam.dataset.dropPlace);
   showDropLine(seam);
   const label = elements.dragLabel;
@@ -4141,15 +5266,25 @@ function updateColumnDrag() {
   label.hidden = false;
 }
 
-// True if `items` hold a tip group or a randomization, which go only between tip groups.
+// True if `items` hold a tip group, a randomization or a transfer table, which go only between tip
+// groups.
 function holdsContainerItem(items) {
   return items.some((item) => item.kind !== "stage");
 }
 
+// The ID of the transfer table whose stages `items` all are, or null: only they can be dropped
+// inside it (section 7, "Transfer tables").
+function draggedTable(plan, items) {
+  const tables = new Set(items.map((item) => (item.kind === "stage" ? transferTableOf(plan, item.id) : null)));
+  const [only] = tables;
+  return tables.size === 1 && only !== null ? only : null;
+}
+
 // The seam nearest the pointer, up and down, while the pointer is over the column or within
-// COLUMN_DROP_MARGIN of its sides; only seams between tip groups when `betweenOnly`; null if the
+// COLUMN_DROP_MARGIN of its sides; only seams between tip groups when `betweenOnly`; the places
+// inside a transfer table only for its own stages (`ownTable`, its ID, or null); null if the
 // pointer is away from the column.
-function seamNearestPointer(pointer, betweenOnly) {
+function seamNearestPointer(pointer, betweenOnly, ownTable = null) {
   const column = elements.stagesColumn.getBoundingClientRect();
   const nearColumn =
     pointer.x >= column.left - COLUMN_DROP_MARGIN &&
@@ -4159,10 +5294,11 @@ function seamNearestPointer(pointer, betweenOnly) {
   if (!nearColumn) {
     return null;
   }
-  const selector = betweenOnly ? ".group-seam[data-drop-place]" : "[data-drop-place]";
+  const selector = betweenOnly ? ".group-seam[data-drop-place]" : "[data-drop-place]:not(.table-seam)";
+  const ownSeams = ownTable === null ? "" : `, .table-seam[data-table="${cssEscape(ownTable)}"]`;
   let nearest = null;
   let nearestDistance = Infinity;
-  for (const seam of elements.stagesList.querySelectorAll(selector)) {
+  for (const seam of elements.stagesList.querySelectorAll(selector + ownSeams)) {
     const rect = seam.getBoundingClientRect();
     const distance = Math.abs(rect.top + rect.height / 2 - pointer.y);
     if (distance < nearestDistance) {
@@ -4314,7 +5450,8 @@ function placeItems(place, verb) {
     showMessage("Dropped where it already was, so nothing moved.", "note");
     return;
   }
-  const firstStage = result.placed.find((item) => item.kind !== "randomization");
+  // A stage's or tip group's ID is a stage's; a randomization or transfer table opens nothing.
+  const firstStage = result.placed.find((item) => item.kind === "stage" || item.kind === "tipGroup");
   const open = firstStage === undefined ? validOpen(result.plan, currentOpen()) : firstStage.id;
   for (const key of glowKeysOf(result.plan, result.placed)) {
     glowsToStart.add(key);
@@ -4329,7 +5466,7 @@ function placeItems(place, verb) {
 }
 
 // The glow keys of what was placed: each stage's, every stage of a tip group, and a randomization's
-// box.
+// or transfer table's box.
 function glowKeysOf(plan, placed) {
   const boxes = columnBoxes(plan);
   return placed.flatMap((item) => {
@@ -4342,7 +5479,7 @@ function glowKeysOf(plan, placed) {
 }
 
 // The items described for the drag's label and the messages (section 7), e.g. “Drugs”, "2 stages",
-// "a tip group", "2 tip groups", "a randomization", or "3 items" for a mix.
+// "a tip group", "2 tip groups", "a randomization", "a transfer table", or "3 items" for a mix.
 function describeItems(plan, items) {
   const taken = itemsInColumnOrder(plan, items);
   const kinds = new Set(taken.map((item) => item.kind));
@@ -4353,7 +5490,7 @@ function describeItems(plan, items) {
   if (kind === "stage") {
     return taken.length === 1 ? `“${plan.stageList.get(taken[0].id).name}”` : countOf(taken.length, "stage");
   }
-  const noun = kind === "tipGroup" ? "tip group" : "randomization";
+  const noun = { tipGroup: "tip group", randomization: "randomization", transferTable: "transfer table" }[kind];
   return taken.length === 1 ? `a ${noun}` : countOf(taken.length, noun);
 }
 
@@ -4363,8 +5500,8 @@ function describeItems(plan, items) {
 // system clipboard as text (the event's own clipboard data) and as the page's copy. A text box or
 // menu, or text selected on the page, keeps the browser's copy.
 function copyFromClipboardEvent(event) {
-  // Ctrl+C is ignored while moving wells (section 12).
-  if (movingWells || keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
+  // Ctrl+C is ignored while moving wells (section 12), and while the wizard is open.
+  if (movingWells || wizard !== null || keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
     return;
   }
   const copied = copySelection();
@@ -4436,17 +5573,20 @@ function copiedItemsIn(text) {
   }
 }
 
-// True if copied items (perhaps damaged) hold a tip group or a randomization.
+// True if copied items (perhaps damaged) hold a tip group, a randomization or a transfer table.
 function copiedHoldsContainer(copied) {
-  return Array.isArray(copied?.items) && copied.items.some((item) => item?.kind === "tipGroup" || item?.kind === "randomization");
+  const containers = ["tipGroup", "randomization", "transferTable"];
+  return Array.isArray(copied?.items) && copied.items.some((item) => containers.includes(item?.kind));
 }
 
 // Ctrl+V (Cmd+V) on the page (section 7, "Copying and pasting"): pastes the system clipboard's
 // copied items, or else the page's copy, just below the selection. A text box or menu keeps the
 // browser's paste.
 function pasteFromClipboardEvent(event) {
-  // Ctrl+V is ignored while moving wells (section 12).
-  if (movingWells || keepsOwnClipboard(event.target)) {
+  // Ctrl+V is ignored while moving wells (section 12); while the wizard is open, it pastes only
+  // into its paste zone or a cell, which handle it themselves (Andy, 2026-11-05: Ctrl+V on the page
+  // never starts a transfer table).
+  if (movingWells || wizard !== null || keepsOwnClipboard(event.target)) {
     return;
   }
   event.preventDefault();
@@ -4507,7 +5647,8 @@ function openColumnMenuFrom(event) {
   }
   const fromKeyboard = event.button !== 2 && event.detail === 0 && event.clientX === 0 && event.clientY === 0;
   const handle = itemHandleOf(event.target);
-  const seam = event.target instanceof Element ? event.target.closest("[data-drop-place]") : null;
+  // The places inside a transfer table are only for dragging its own stages, never for pasting.
+  const seam = event.target instanceof Element ? event.target.closest("[data-drop-place]:not(.table-seam)") : null;
   const onSeamButton = event.target instanceof Element && event.target.closest(".seam-button") !== null;
   if (handle === null && (seam === null || onSeamButton)) {
     return;
@@ -4939,8 +6080,8 @@ function clickWell(end) {
     pickWell(end);
     return;
   }
-  if (isStage(currentPlan(), open) && randomizationOf(currentPlan(), open) !== null) {
-    showOwnedStageNote();
+  if (isStage(currentPlan(), open) && isOwnedStage(currentPlan(), open)) {
+    showOwnedStageNote(currentPlan(), open);
     return;
   }
   if (open === START) {
@@ -5217,7 +6358,7 @@ function beginDrag() {
     kind = "pick";
   } else if (open === START) {
     kind = "fill";
-  } else if (randomizationOf(plan, open) !== null) {
+  } else if (isStage(plan, open) && isOwnedStage(plan, open)) {
     kind = "owned";
   } else if (isMixStep(plan, open)) {
     kind = "mix";
@@ -5268,7 +6409,7 @@ function finishDrag({ kind, from, over, onLabware }) {
     return;
   }
   if (kind === "owned") {
-    showOwnedStageNote();
+    showOwnedStageNote(currentPlan(), currentOpen());
     return;
   }
   if (kind === "pick") {
@@ -5688,6 +6829,14 @@ function clickInColumnWhileMoving(event) {
     return;
   }
   if (target.closest("button.entry-row, .toggle-list") !== null) {
+    return;
+  }
+  // A transfer table's heading only shows or hides its stages, so it works while moving wells.
+  const tableHeading = target.closest(".transfer-table-heading");
+  if (tableHeading !== null) {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleTableBox(itemFromKey(tableHeading.dataset.itemHandle).id);
     return;
   }
   if (target.closest("button, input, select, textarea, label, [data-item-handle]") === null) {
@@ -6522,6 +7671,12 @@ function colorsOffered(plan, ownName, ownColor, showAll) {
 function stageBoxFields(plan) {
   const { draft, original, key } = editingBox;
   const nameField = createNameField(draft.name, "Name");
+  // A transfer table's stage is named after its component (section 10).
+  if (transferTableOf(plan, key) !== null) {
+    const box = nameField.querySelector("input");
+    box.disabled = true;
+    box.title = "Named after its component in the transfer table.";
+  }
   const grid = createSettingsGrid({
     draft,
     original,
@@ -6768,11 +7923,20 @@ function createBoxButtons(plan) {
 // disabled, reason } or { kind: "none", reason }.
 function removalFor(plan) {
   const { kind, key } = editingBox;
+  if (kind === "stage" && transferTableOf(plan, key) !== null) {
+    return {
+      kind: "none",
+      reason: "Part of a transfer table: to remove it, clear its column in the table, or remove the whole table.",
+    };
+  }
   if (kind === "stage" && !canRemoveStage(plan, key)) {
     return { kind: "button", disabled: true, reason: "Keep at least one stage." };
   }
   if (kind === "tip" && key === START) {
     return { kind: "none", reason: "The run always starts by loading tips, so these can't be removed." };
+  }
+  if (kind === "tip" && transferTableOf(plan, key) !== null) {
+    return { kind: "none", reason: "Every stage of a transfer table starts on new tips, so these can't be removed." };
   }
   return { kind: "button", disabled: false };
 }
@@ -7061,8 +8225,12 @@ function connectKeys() {
   document.addEventListener("keydown", handleKey);
 }
 
-// Acts on one key press (section 12).
+// Acts on one key press (section 12). While the transfer table wizard is open, none act on the
+// page: the wizard handles its own keys.
 function handleKey(event) {
+  if (wizard !== null) {
+    return;
+  }
   // While a drag is on in the Stages column, Escape cancels it and Ctrl (Cmd) switches it to
   // copying (section 12).
   if (columnDrag !== null || columnPress !== null) {

@@ -33,8 +33,8 @@ well's components, of each component's share of the well times what it carries (
 that fits the value best (476 µM, not 0.476 mM), on the contents card.
 
 **Container rule**
-How moving and copying treat tips (Andy, 2026-11-01; ADR 0014). Containers are ordinary tip groups
-and randomizations. A container moved or copied brings its tips and stages with it, and goes only
+How moving and copying treat tips (Andy, 2026-11-01; ADR 0014). Containers are ordinary tip groups,
+randomizations and transfer tables. A container moved or copied brings its tips and stages with it, and goes only
 between tip groups. A stage put inside a tip group takes that group's tips; one put between tip
 groups keeps the tips it had, as a tip group of its own. A tip group a stage leaves keeps its tips.
 The same rule orders a randomization's sources in its card (Andy, 2026-11-05; ADR 0018): there the
@@ -50,7 +50,7 @@ it keeps one family of units (g/L and mg/L, say; not g/L in one component and mM
 Constituents are part of the plan and saved in plan files.
 
 **Copied items**
-Stages, tip groups or randomizations copied from a plan, as plain data, so they can be pasted into
+Stages, tip groups, randomizations or transfer tables copied from a plan, as plain data, so they can be pasted into
 the same plan or another one, through the system clipboard or the designer's own copy
 (`transfer-designer.md`, "Moving and copying"). Pasting checks them as opening a plan file does.
 
@@ -74,7 +74,8 @@ what gives it a seeding density.
 
 **Item**
 Something in the Stages column that can be selected, moved or copied: a stage (a mix step
-included), an ordinary tip group (one not belonging to a randomization) or a randomization.
+included), an ordinary tip group (one not belonging to a randomization or transfer table), a
+randomization or a transfer table.
 
 **Labware label**
 The name the user gives one labware on the deck, such as "Drug plate", shown wherever the page
@@ -194,6 +195,15 @@ requires it (B56358AF, 22-13). Each labware's type comes from the deck descripti
 transfers use one labware type at each end is a single substage. The user never sees substages: the
 file writer forms them.
 
+**Transfer table**
+Part of a plan: a table, usually pasted from a spreadsheet, saying how many µL of each component go
+into each labeled well (a header row of components, then one row per well label), with the wells
+each component draws from (ADR 0019; Andy, 2026-11-05). It owns one stage per component, in column
+order, each on new tips; its stages' pipetting and tips are edited on the stages, everything else
+through it. A row fills every well with its label. It's **out of date** when its stages differ from
+what it would make now. Not to be confused with the Biomek's Transfer From File files, which list
+one transfer per row.
+
 **Tip change**
 Unloading all tips and loading new ones, all of one tip type, between two stages. A tip change is
 its own entry in a plan, not a stage setting, and the stages after it use its tips until the next
@@ -207,8 +217,8 @@ stages 4 and 5 another. Every stage in the group uses all the probes its tip cha
 
 **Well in use**
 A well the plan names anywhere: in its starting contents, as a transfer's source or destination (a
-mix step's mixed wells included), in its well labels, or in a randomization (a source, a well to
-fill, or the well of one of its stages). Moving wells moves a well in use onto a well that isn't
+mix step's mixed wells included), in its well labels, in a randomization (a source, a well to
+fill, or the well of one of its stages), or as a transfer table's source well. Moving wells moves a well in use onto a well that isn't
 (`transfer-designer.md`, "Moving wells").
 
 **Well label**
