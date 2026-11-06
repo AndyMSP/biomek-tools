@@ -399,7 +399,14 @@ Last updated: 2026-11-05
   and checked in headless Chrome. Still to check by Andy.
 - **Decided: transfer tables** (Andy, 2026-11-05; item 19, below): a table pasted from Excel, of how
   much of each component goes into each labeled well, kept in the plan as one unit that makes one
-  stage per component, created and edited through a wizard. Next, the wizard's steps, then a preview.
+  stage per component, created and edited through a wizard, shaped in previews (2026-11-05).
+  **Specified** (Draft, 2026-11-05, in the hands-off workflow; ADR 0019, Proposed): the transfer
+  tables in the plan and every edit of them (`transfer-designer.md`, "Transfer tables": reading,
+  problems, stock wells, the split among wells, adding, updating with `renamedFrom`, out of date,
+  their stages protected in the logic, renaming components, moving wells, moving and copying with
+  copied items version 4), plan files version 11 (`plan-file.md`), the page's table button, wizard
+  and box (`transfer-designer-page.md`), glossary "Transfer table". It changes no Biomek files'
+  format; its stages are ordinary stages to the file writer.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -841,7 +848,7 @@ added on 2026-10-28 (Andy).
     - **Sources are chosen from a menu in the dialog** (Andy, 2026-11-05), since the dialog hides
       the deck: each column lists the wells holding only its component at Start; with none, the
       step says to fill one at Start first.
-    Then a preview of the unit. From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
+    **Specified** (Draft, 2026-11-05): see "Where things stand". From the first preview (2026-11-05): Ctrl+V with a table on the clipboard
     opens a box listing each column's stage, source, wells and total, and the problems found;
     blank and 0 cells add nothing; a column draws only from a well holding nothing but that
     component at Start; a label in two rows is refused.
@@ -946,6 +953,11 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **A transfer table's per-tip note uses the mix limits** (2026-11-05, transfer tables): the wizard's
+  Review notes an amount bigger than one tip holds by comparing it with `MIX_VOLUME_LIMITS`
+  (`config/tip-types.js`), which are themselves stand-ins for the most a tip type mixes, since no
+  tip capacity is configured. Properly: a measured capacity per tip type in `config/`, with its
+  source, and what the Biomek does with a transfer bigger than it (`biomek.md`).
 - **A component named like a built-in property breaks concentrations** (found 2026-11-05, reviewing
   the osmolality build): `wellConcentrations` reads a well's share as `shares[name]`, so a
   component named `constructor` or `toString` gets JavaScript's built-in function instead of no
