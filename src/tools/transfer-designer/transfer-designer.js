@@ -1205,6 +1205,331 @@ function unitFactorOf(unit) {
   return CONCENTRATION_UNITS.find((entry) => entry.unit === unit).factor;
 }
 
+// --- Copied decks ---
+
+// The `format` a copied deck carries, so a caller can recognize one (section 3, "Copied decks").
+export const COPIED_DECK_FORMAT = "biomek-tools copied deck";
+
+// The latest `version` of a copied deck, the one copyDeck writes and the newest pasteDeck reads.
+export const COPIED_DECK_VERSION = 1;
+
+// A copied deck's properties, in the order pasteDeck checks its parts.
+const COPIED_DECK_PROPERTIES = [
+  "format",
+  "version",
+  "point",
+  "components",
+  "wells",
+  "wellLabels",
+  "labwareLabels",
+];
+const COPIED_DECK_COMPONENT_PROPERTIES = ["name", "color", "constituents", "osmolality"];
+const COPIED_DECK_WELL_PROPERTIES = ["labware", "well", "components"];
+
+// The contents problems a deck can't be copied after: draws that took less than asked, so what the
+// wells hold isn't what the Biomek would leave. An overfill is copied as tracked.
+const DRAW_PROBLEM_KINDS = ["dead-volume", "overdraw"];
+
+// The copied deck at the point `snapshot` (a ContentsSnapshot of this plan) shows, as plain data:
+// { format, version, point, components, wells, wellLabels, labwareLabels } (section 3, "Copied
+// decks"). `point` is the caller's text naming the point, e.g. "At the end, after all stages".
+// Every well holding something, with its components as the snapshot gives them; the plan's
+// components any of them holds, in the plan's order; and all the plan's labels. Throws, in this
+// order, if `point` isn't non-blank text, then if the snapshot has a draw problem.
+export function copyDeck(plan, snapshot, point) {
+  if (typeof point !== "string" || point.trim() === "") {
+    throw new Error(
+      `The point a deck is copied at must be non-blank text, like "At the end, after all stages", but got ${describeValue(point)}.`,
+    );
+  }
+  checkNoDrawProblem(snapshot);
+  const wells = snapshot
+    .listContents()
+    .filter((entry) => Object.keys(entry.components).length > 0);
+  const held = new Set(wells.flatMap((entry) => Object.keys(entry.components)));
+  const components = plan.components
+    .filter((component) => held.has(component.name))
+    .map(({ name, color, constituents, osmolality }) => ({
+      name,
+      color,
+      constituents: constituents.map((constituent) => ({ ...constituent })),
+      osmolality,
+    }));
+  return {
+    format: COPIED_DECK_FORMAT,
+    version: COPIED_DECK_VERSION,
+    point,
+    components,
+    wells,
+    // Copies, so the plain data shares nothing with the (frozen) plan.
+    wellLabels: Object.fromEntries(
+      Object.entries(plan.wellLabels).map(([labware, labels]) => [labware, { ...labels }]),
+    ),
+    labwareLabels: { ...plan.labwareLabels },
+  };
+}
+
+// The plan with the copied deck `copied` as its starting contents, and its components and labels
+// added, as one new plan (section 3, "Copied decks"). `colors` is the list a new component's color
+// is taken from, in order, when its copied color is taken. Throws, pasting none, at the first
+// problem: the copy's form, then `colors`, then a start that isn't empty, then the components, the
+// wells, the well labels and the labware labels, in the copy's order, e.g.
+// pasteDeck(emptyPlan().plan, copyDeck(plan, snapshot, "At Start"), COMPONENT_COLORS).
+export function pasteDeck(plan, copied, colors) {
+  checkCopiedDeckForm(copied);
+  checkColors(colors);
+  checkStartEmpty(plan);
+  let pasted = withCopiedComponents(plan, copied.components, colors);
+  pasted = withCopiedWells(pasted, copied.wells);
+  pasted = withCopiedWellLabels(pasted, copied.wellLabels);
+  return withCopiedLabwareLabels(pasted, copied.labwareLabels);
+}
+
+// --- Copied decks: helpers ---
+
+// Throws unless `snapshot` has no draw problem (DRAW_PROBLEM_KINDS): an overfill alone is fine.
+function checkNoDrawProblem(snapshot) {
+  const hasDrawProblem = snapshot
+    .listProblems()
+    .some((problem) => DRAW_PROBLEM_KINDS.includes(problem.kind));
+  if (hasDrawProblem) {
+    throw new Error(
+      "The deck can't be copied at this point: a transfer before it draws more than a well can give. Fix the overdraws first, or copy from an earlier point.",
+    );
+  }
+}
+
+// Throws unless `copied` is a copied deck in its form (section 3, "Copied decks", step 1): its
+// format, then a newer version, then exactly its properties and a whole-number version from 1,
+// then each part's shape in property order. Values are left to the edits that paste them.
+function checkCopiedDeckForm(copied) {
+  const notCopiedDeck = new Error("This isn't a deck copied from the transfer designer.");
+  if (!isObject(copied) || copied.format !== COPIED_DECK_FORMAT) {
+    throw notCopiedDeck;
+  }
+  // Checked before the properties, so a newer copy with new properties gets this message.
+  if (Number.isInteger(copied.version) && copied.version > COPIED_DECK_VERSION) {
+    throw new Error(
+      `This deck was copied by a newer version of the transfer designer (copied deck version ${copied.version}; this one reads up to ${COPIED_DECK_VERSION}). Use the newer version.`,
+    );
+  }
+  if (
+    !hasExactly(copied, COPIED_DECK_PROPERTIES) ||
+    !Number.isInteger(copied.version) ||
+    copied.version < 1
+  ) {
+    throw notCopiedDeck;
+  }
+  checkCopiedPoint(copied.point);
+  checkCopiedComponents(copied.components);
+  checkCopiedWells(copied.wells, copied.components);
+  checkCopiedWellLabels(copied.wellLabels);
+  checkCopiedLabwareLabels(copied.labwareLabels);
+}
+
+// A damaged copied deck's error, e.g. damagedDeck("its point must be …") → Error("This copied deck
+// is damaged: its point must be …").
+function damagedDeck(problem) {
+  return new Error(`This copied deck is damaged: ${problem}`);
+}
+
+// Throws unless a copied deck's `point` is non-blank text.
+function checkCopiedPoint(point) {
+  if (typeof point !== "string" || point.trim() === "") {
+    throw damagedDeck(`its point must be non-blank text, but got ${describeValue(point)}.`);
+  }
+}
+
+// Throws unless a copied deck's `components` is a list of { name, color, constituents, osmolality }
+// with no name twice; a bad entry is described itself.
+function checkCopiedComponents(components) {
+  // The message for a components part, or an entry of it, described as `value`.
+  const notComponents = (value) =>
+    damagedDeck(
+      `its components must be a list of { name, color, constituents, osmolality }, but got ${describeValue(value)}.`,
+    );
+  if (!Array.isArray(components)) {
+    throw notComponents(components);
+  }
+  const names = new Set();
+  for (const component of components) {
+    if (!hasExactly(component, COPIED_DECK_COMPONENT_PROPERTIES)) {
+      throw notComponents(component);
+    }
+    if (names.has(component.name)) {
+      throw damagedDeck(`its components list “${component.name}” twice.`);
+    }
+    names.add(component.name);
+  }
+}
+
+// Throws unless a copied deck's `wells` is a list of { labware, well, components } (components an
+// object), then, well by well, no well is listed twice and every component a well holds is among
+// the copy's `components`; a bad entry is described itself.
+function checkCopiedWells(wells, components) {
+  // The message for a wells part, or an entry of it, described as `value`.
+  const notWells = (value) =>
+    damagedDeck(
+      `its wells must be a list of { labware, well, components }, but got ${describeValue(value)}.`,
+    );
+  if (!Array.isArray(wells)) {
+    throw notWells(wells);
+  }
+  for (const entry of wells) {
+    if (!hasExactly(entry, COPIED_DECK_WELL_PROPERTIES) || !isObject(entry.components)) {
+      throw notWells(entry);
+    }
+  }
+  const componentNames = new Set(components.map((component) => component.name));
+  const listed = new Set();
+  for (const entry of wells) {
+    const key = wellKey(entry);
+    if (listed.has(key)) {
+      throw damagedDeck(`it lists ${entry.labware} ${entry.well} twice.`);
+    }
+    listed.add(key);
+    const missing = Object.keys(entry.components).find((name) => !componentNames.has(name));
+    if (missing !== undefined) {
+      throw damagedDeck(
+        `${entry.labware} ${entry.well} holds “${missing}”, which isn't among its components.`,
+      );
+    }
+  }
+}
+
+// Throws unless a copied deck's `wellLabels` is an object (not a list) whose values are objects of
+// text. The message describes the whole part.
+function checkCopiedWellLabels(wellLabels) {
+  const isObjectOfText = (value) =>
+    isObject(value) && Object.values(value).every((label) => typeof label === "string");
+  if (!isObject(wellLabels) || !Object.values(wellLabels).every(isObjectOfText)) {
+    throw damagedDeck(
+      `its well labels must be an object like { Plate1: { A1: "Cond 1" } }, but got ${describeValue(wellLabels)}.`,
+    );
+  }
+}
+
+// Throws unless a copied deck's `labwareLabels` is an object (not a list) whose values are text.
+// The message describes the whole part.
+function checkCopiedLabwareLabels(labwareLabels) {
+  if (
+    !isObject(labwareLabels) ||
+    !Object.values(labwareLabels).every((label) => typeof label === "string")
+  ) {
+    throw damagedDeck(
+      `its labware labels must be an object like { Plate1: "Assay plate" }, but got ${describeValue(labwareLabels)}.`,
+    );
+  }
+}
+
+// Throws unless no well holds anything at the plan's start, so a deck is never pasted on top.
+// e.g. '… but 3 wells hold something at the start. …', '… but 1 well holds …'.
+function checkStartEmpty(plan) {
+  const count = plan.startingContents.length;
+  if (count > 0) {
+    const wells = count === 1 ? "1 well holds" : `${count} wells hold`;
+    throw new Error(
+      `A deck can be pasted only into an empty start, but ${wells} something at the start. Empty them first.`,
+    );
+  }
+}
+
+// The plan with the copied `components` added in order: one already in the plan must match it
+// (same constituents and osmolality) and keeps the plan's color; a new one is added with its copied
+// color if no component has it, else the first of `colors` that no component has and no copied
+// component carries. Throws on a mismatch, or when no color is left.
+function withCopiedComponents(plan, components, colors) {
+  const copiedColors = new Set(components.map((component) => component.color));
+  let pasted = plan;
+  for (const component of components) {
+    const existing = pasted.components.find((entry) => entry.name === component.name);
+    if (existing !== undefined) {
+      checkSameComponent(existing, component);
+      continue;
+    }
+    const taken = new Set(pasted.components.map((entry) => entry.color));
+    const color = taken.has(component.color)
+      ? colors.find((entry) => !taken.has(entry) && !copiedColors.has(entry))
+      : component.color;
+    if (color === undefined) {
+      throw new Error(
+        `There's no free color for ${component.name}: every color is taken. Remove a component first.`,
+      );
+    }
+    pasted = addComponent(pasted, component.name, color);
+    pasted = setConstituents(pasted, component.name, component.constituents);
+    pasted = setOsmolality(pasted, component.name, component.osmolality);
+  }
+  return pasted;
+}
+
+// Throws unless the copied `component` carries the same constituents (as checkConstituents gives
+// them, compared as JSON, in order) and osmolality as the plan's `existing` one of its name.
+function checkSameComponent(existing, component) {
+  const sameConstituents =
+    JSON.stringify(checkConstituents(component.constituents)) ===
+    JSON.stringify(existing.constituents);
+  if (!sameConstituents || component.osmolality !== existing.osmolality) {
+    throw new Error(
+      `${component.name} is already in this plan with different contents or osmolality. Rename one of them, or make them match, then paste again.`,
+    );
+  }
+}
+
+// The plan with each copied well's components added to its empty start, in the copy's order, by
+// addToWells, so its checks apply.
+function withCopiedWells(plan, wells) {
+  let pasted = plan;
+  for (const entry of wells) {
+    const end = { labware: entry.labware, well: entry.well };
+    for (const [name, volume] of Object.entries(entry.components)) {
+      pasted = addToWells(pasted, [end], name, volume);
+    }
+  }
+  return pasted;
+}
+
+// The plan with the copied well labels given to wells without a label of their own (setWellLabel,
+// so its checks apply), labware by labware and well by well. A well whose own label is the copy's
+// is left alone; one with a different label throws, naming the labware by its label.
+function withCopiedWellLabels(plan, wellLabels) {
+  let pasted = plan;
+  for (const [labware, labels] of Object.entries(wellLabels)) {
+    for (const [well, label] of Object.entries(labels)) {
+      const end = { labware, well };
+      const own = wellLabelOf(pasted, end);
+      if (own === null) {
+        pasted = setWellLabel(pasted, end, label);
+      } else if (own !== label) {
+        throw new Error(
+          `${labelOf(pasted, labware)} ${well} is already named ${describeValue(own)} here, but ${describeValue(label)} in the copy. Rename one of them, then paste again.`,
+        );
+      }
+    }
+  }
+  return pasted;
+}
+
+// The plan with the copied labware labels given to labware without a label of its own (setLabel, so
+// its checks apply), in the copy's order. A labware whose own label is the copy's is left alone;
+// one with a different label throws.
+function withCopiedLabwareLabels(plan, labwareLabels) {
+  let pasted = plan;
+  for (const [labware, label] of Object.entries(labwareLabels)) {
+    if (!Object.hasOwn(pasted.labwareLabels, labware)) {
+      pasted = setLabel(pasted, labware, label);
+      continue;
+    }
+    const own = pasted.labwareLabels[labware];
+    if (own !== label) {
+      throw new Error(
+        `${labware} is labeled ${describeValue(own)} here, but ${describeValue(label)} in the copy. Rename one of them, then paste again.`,
+      );
+    }
+  }
+  return pasted;
+}
+
 // --- Labware ---
 
 // The names of the labware the plan uses, in its starting contents, in any transfer, or with a

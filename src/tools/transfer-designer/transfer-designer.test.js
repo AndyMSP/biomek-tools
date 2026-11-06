@@ -128,6 +128,10 @@ import {
   readStockTable,
   addStocks,
   stockTable,
+  copyDeck,
+  pasteDeck,
+  COPIED_DECK_FORMAT,
+  COPIED_DECK_VERSION,
 } from "./transfer-designer.js";
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
@@ -8364,5 +8368,427 @@ describe("transfer-designer", () => {
       assert.ok(CONFIGURED_UNITS.includes(unit), `${spelling} → ${unit}`);
       assert.ok(!CONFIGURED_UNITS.includes(spelling), spelling);
     }
+  });
+
+  // --- Copied decks (2026-11-06; transfer-designer.md, section 6, "Copied decks") ---
+  // Labware is found in DECK by type (PLATE, DEEP, RESERVOIR, OTHER_PLATE), and every volume is
+  // worked out from config/labware-types.js through capacityOf and deadVolumeOf.
+
+  // What the test plan's stage draws: half a plate well of Media and a tenth of one of Drug A.
+  const DECK_MEDIA_DRAW = capacityOf(PLATE) / 2;
+  const DECK_DRUG_DRAW = capacityOf(PLATE) / 10;
+  // The starting volumes: the labware's dead volume, plus what the stage draws, plus as much again
+  // to spare.
+  const DECK_TROUGH_START = deadVolumeOf(RESERVOIR) + DECK_MEDIA_DRAW * 2;
+  const DECK_DEEP_START = deadVolumeOf(DEEP) + DECK_DRUG_DRAW * 2;
+  // The test plan's wells: the trough holding Media, the deep well holding Drug A, and the plate
+  // well the stage fills.
+  const DECK_TROUGH = trough("1");
+  const DECK_DEEP_WELL = { labware: DEEP, well: "A1" };
+  const DECK_PLATE_WELL = plateWell("B2");
+  const AT_END = "At the end, after all stages";
+
+  // The copied-deck message for a damaged part, e.g. damagedDeckMessage("its point …").
+  function damagedDeckMessage(problem) {
+    return `This copied deck is damaged: ${problem}`;
+  }
+  const NOT_A_COPIED_DECK = "This isn't a deck copied from the transfer designer.";
+  const CANT_COPY_DECK =
+    "The deck can't be copied at this point: a transfer before it draws more than a well can give. Fix the overdraws first, or copy from an earlier point.";
+
+  // Media's and Drug A's details as the test plan has them. New objects each time.
+  function deckMedia() {
+    return { name: "Media", color: COMPONENT_COLORS[0], constituents: [], osmolality: 300 };
+  }
+  function deckDrug() {
+    return {
+      name: "Drug A",
+      color: COMPONENT_COLORS[1],
+      constituents: [constituentOf("Drug A", 10, MOLAR_UNIT)],
+      osmolality: null,
+    };
+  }
+
+  // The plan with `component` ({ name, color, constituents, osmolality }) added with its details.
+  function withDeckComponent(plan, component) {
+    let added = addComponent(plan, component.name, component.color);
+    added = setConstituents(added, component.name, component.constituents);
+    return setOsmolality(added, component.name, component.osmolality);
+  }
+
+  // The test plan: Media and Drug A at Start in a trough and a deep well, one stage moving some of
+  // each into one plate well, labeled "Cond 1", its plate labeled "Assay plate".
+  function deckPlan() {
+    const { plan: empty, stageId } = emptyPlan();
+    let plan = withDeckComponent(withDeckComponent(empty, deckMedia()), deckDrug());
+    plan = addToWells(plan, [DECK_TROUGH], "Media", DECK_TROUGH_START);
+    plan = addToWells(plan, [DECK_DEEP_WELL], "Drug A", DECK_DEEP_START);
+    plan = addTransfers(plan, [
+      { type: "transfer", source: DECK_TROUGH, destination: DECK_PLATE_WELL, volume: DECK_MEDIA_DRAW, stage: stageId },
+      { type: "transfer", source: DECK_DEEP_WELL, destination: DECK_PLATE_WELL, volume: DECK_DRUG_DRAW, stage: stageId },
+    ]);
+    plan = setWellLabel(plan, DECK_PLATE_WELL, "Cond 1");
+    return setLabel(plan, PLATE, "Assay plate");
+  }
+
+  // The plan's snapshot at Start and at the end.
+  function atStart(plan) {
+    return replay(plan.startingContents, plan.operationList, 0);
+  }
+  function atEnd(plan) {
+    return replay(plan.startingContents, plan.operationList);
+  }
+
+  // The test plan copied at the end.
+  function deckCopy() {
+    const plan = deckPlan();
+    return copyDeck(plan, atEnd(plan), AT_END);
+  }
+
+  // The test plan with a second stage, last, with one transfer of `volume` µL from the trough into
+  // `destination`.
+  function deckPlanWithDraw(volume, destination) {
+    let { plan, id } = addStage(deckPlan(), null);
+    return addTransfer(plan, { type: "transfer", source: DECK_TROUGH, destination, volume, stage: id });
+  }
+
+  // The kinds of a snapshot's problems, e.g. ["overdraw"].
+  function problemKinds(snapshot) {
+    return snapshot.listProblems().map((problem) => problem.kind);
+  }
+
+  // The test plan with nothing at the start: its components, labels and stage stay.
+  function deckPlanEmptied() {
+    const plan = deckPlan();
+    return emptyWells(plan, plan.startingContents);
+  }
+
+  test("copied decks: COPIED_DECK_FORMAT and COPIED_DECK_VERSION", () => {
+    assert.equal(COPIED_DECK_FORMAT, "biomek-tools copied deck");
+    assert.equal(COPIED_DECK_VERSION, 1);
+  });
+
+  test("copied decks: copying at the end gives every well, the components and the labels", () => {
+    const copy = deckCopy();
+    assert.deepEqual(copy, {
+      format: COPIED_DECK_FORMAT,
+      version: COPIED_DECK_VERSION,
+      point: AT_END,
+      components: [deckMedia(), deckDrug()],
+      wells: [
+        { ...DECK_TROUGH, components: { Media: DECK_TROUGH_START - DECK_MEDIA_DRAW } },
+        { ...DECK_DEEP_WELL, components: { "Drug A": DECK_DEEP_START - DECK_DRUG_DRAW } },
+        { ...DECK_PLATE_WELL, components: { Media: DECK_MEDIA_DRAW, "Drug A": DECK_DRUG_DRAW } },
+      ],
+      wellLabels: { [PLATE]: { B2: "Cond 1" } },
+      labwareLabels: { [PLATE]: "Assay plate" },
+    });
+  });
+
+  test("copied decks: copying at Start gives the starting contents", () => {
+    const plan = deckPlan();
+    const copy = copyDeck(plan, atStart(plan), "At Start");
+    assert.equal(copy.point, "At Start");
+    assert.deepEqual(copy.wells, [
+      { ...DECK_TROUGH, components: { Media: DECK_TROUGH_START } },
+      { ...DECK_DEEP_WELL, components: { "Drug A": DECK_DEEP_START } },
+    ]);
+  });
+
+  test("copied decks: a component no well holds isn't copied", () => {
+    const plan = addComponent(deckPlan(), "Water", COMPONENT_COLORS[2]);
+    const copy = copyDeck(plan, atEnd(plan), AT_END);
+    assert.deepEqual(
+      copy.components.map((component) => component.name),
+      ["Media", "Drug A"],
+    );
+  });
+
+  test("copied decks: a well's small real amount is copied as the snapshot gives it", () => {
+    let plan = deckPlan();
+    const tail = { labware: OTHER_PLATE, well: "H12" };
+    plan = addToWells(plan, [tail], "Media", DECK_DRUG_DRAW);
+    plan = addToWells(plan, [tail], "Drug A", 1e-7);
+    const snapshot = atStart(plan);
+    const copy = copyDeck(plan, snapshot, "At Start");
+    const copiedTail = copy.wells.find((entry) => entry.labware === OTHER_PLATE);
+    assert.deepEqual(copiedTail.components, snapshot.componentsOf(OTHER_PLATE, "H12"));
+    assert.equal(copiedTail.components["Drug A"], 1e-7);
+  });
+
+  test("copied decks: a point with nothing in any well gives no wells and no components", () => {
+    const plan = addComponent(emptyPlan().plan, "Media", COMPONENT_COLORS[0]);
+    const copy = copyDeck(plan, atEnd(plan), AT_END);
+    assert.deepEqual(copy.wells, []);
+    assert.deepEqual(copy.components, []);
+  });
+
+  test("copied decks: the copy shares nothing with the plan", () => {
+    const plan = deckPlan();
+    const copy = copyDeck(plan, atEnd(plan), AT_END);
+    copy.wellLabels[PLATE].B2 = "Changed";
+    copy.labwareLabels[PLATE] = "Changed";
+    copy.components[1].constituents[0].amount = 99;
+    assert.equal(wellLabelOf(plan, DECK_PLATE_WELL), "Cond 1");
+    assert.equal(labelOf(plan, PLATE), "Assay plate");
+    assert.equal(plan.components[1].constituents[0].amount, 10);
+  });
+
+  test("copied decks: copying after an overdraw or a draw into the dead volume is refused", () => {
+    // More than the trough holds after the first stage.
+    const overdrawn = deckPlanWithDraw(DECK_TROUGH_START, { labware: DEEP, well: "B1" });
+    assert.ok(problemKinds(atEnd(overdrawn)).includes("overdraw"));
+    assert.throws(() => copyDeck(overdrawn, atEnd(overdrawn), AT_END), { message: CANT_COPY_DECK });
+    // More than the trough's usable volume, less than it holds.
+    const usable = DECK_TROUGH_START - DECK_MEDIA_DRAW - deadVolumeOf(RESERVOIR);
+    const intoDead = deckPlanWithDraw(usable + deadVolumeOf(RESERVOIR) / 2, {
+      labware: DEEP,
+      well: "B1",
+    });
+    assert.deepEqual(problemKinds(atEnd(intoDead)), ["dead-volume"]);
+    assert.throws(() => copyDeck(intoDead, atEnd(intoDead), AT_END), { message: CANT_COPY_DECK });
+    // Copying before the problem works.
+    assert.equal(copyDeck(overdrawn, atStart(overdrawn), "At Start").wells.length, 2);
+  });
+
+  test("copied decks: an overfill alone is copied, with the overfilled volume", () => {
+    const overfilled = deckPlanWithDraw(DECK_MEDIA_DRAW, DECK_PLATE_WELL);
+    assert.deepEqual(problemKinds(atEnd(overfilled)), ["overfill"]);
+    const copy = copyDeck(overfilled, atEnd(overfilled), AT_END);
+    const plateEntry = copy.wells.find((entry) => entry.labware === PLATE);
+    assert.deepEqual(plateEntry.components, { Media: DECK_MEDIA_DRAW * 2, "Drug A": DECK_DRUG_DRAW });
+  });
+
+  test("copied decks: a point that isn't non-blank text is refused before any other check", () => {
+    const overdrawn = deckPlanWithDraw(DECK_TROUGH_START, { labware: DEEP, well: "B1" });
+    for (const [point, shown] of [
+      [5, "5"],
+      ["  ", '"  "'],
+    ]) {
+      assert.throws(() => copyDeck(overdrawn, atEnd(overdrawn), point), {
+        message: `The point a deck is copied at must be non-blank text, like "At the end, after all stages", but got ${shown}.`,
+      });
+    }
+  });
+
+  test("copied decks: pasting into an empty plan gives back the copy at Start", () => {
+    const copy = deckCopy();
+    const { plan } = emptyPlan();
+    const before = snapshot(plan);
+    const pasted = pasteDeck(plan, copy, COMPONENT_COLORS);
+    assert.equal(snapshot(plan), before);
+    assert.deepEqual(copyDeck(pasted, atStart(pasted), "At Start"), { ...copy, point: "At Start" });
+    assert.equal(wellLabelOf(pasted, DECK_PLATE_WELL), "Cond 1");
+    assert.equal(labelOf(pasted, PLATE), "Assay plate");
+    assert.deepEqual(pasted.components, [deckMedia(), deckDrug()]);
+  });
+
+  test("copied decks: a deck is pasted only into an empty start", () => {
+    const copy = deckCopy();
+    const oneWell = addToWells(
+      addComponent(emptyPlan().plan, "Water", COMPONENT_COLORS[5]),
+      [plateWell("A1")],
+      "Water",
+      DECK_DRUG_DRAW,
+    );
+    assert.throws(() => pasteDeck(oneWell, copy, COMPONENT_COLORS), {
+      message: "A deck can be pasted only into an empty start, but 1 well holds something at the start. Empty them first.",
+    });
+    const pastedOnce = pasteDeck(emptyPlan().plan, copy, COMPONENT_COLORS);
+    assert.throws(() => pasteDeck(pastedOnce, copy, COMPONENT_COLORS), {
+      message: "A deck can be pasted only into an empty start, but 3 wells hold something at the start. Empty them first.",
+    });
+  });
+
+  test("copied decks: a plan with components and stages but nothing at the start pastes", () => {
+    const plan = deckPlanEmptied();
+    assert.deepEqual(plan.startingContents, []);
+    const copy = deckCopy();
+    const pasted = pasteDeck(plan, copy, COMPONENT_COLORS);
+    assert.deepEqual(copyDeck(pasted, atStart(pasted), AT_END).wells, copy.wells);
+    assert.deepEqual(pasted.stageOrder, plan.stageOrder);
+    assert.equal(pasted.operationList.listOperations().length, 2);
+  });
+
+  test("copied decks: a component already in the plan with the same details keeps its color", () => {
+    const plan = withDeckComponent(emptyPlan().plan, { ...deckMedia(), color: COMPONENT_COLORS[5] });
+    const pasted = pasteDeck(plan, deckCopy(), COMPONENT_COLORS);
+    assert.deepEqual(pasted.components, [{ ...deckMedia(), color: COMPONENT_COLORS[5] }, deckDrug()]);
+  });
+
+  test("copied decks: a component already in the plan with other details is refused", () => {
+    const mismatch =
+      "Media is already in this plan with different contents or osmolality. Rename one of them, or make them match, then paste again.";
+    const otherOsmolality = withDeckComponent(emptyPlan().plan, { ...deckMedia(), osmolality: 290 });
+    const withConstituent = withDeckComponent(emptyPlan().plan, {
+      ...deckMedia(),
+      constituents: [constituentOf("Hy-Soy", 4, MASS_UNIT)],
+    });
+    for (const plan of [otherOsmolality, withConstituent]) {
+      const before = snapshot(plan);
+      assert.throws(() => pasteDeck(plan, deckCopy(), COMPONENT_COLORS), { message: mismatch });
+      assert.equal(snapshot(plan), before);
+    }
+  });
+
+  test("copied decks: a new component whose color is taken gets a free one no copied component carries", () => {
+    // Water takes Media's copied color; the first free color is Drug A's own, so Media skips it.
+    const plan = addComponent(emptyPlan().plan, "Water", COMPONENT_COLORS[0]);
+    const pasted = pasteDeck(plan, deckCopy(), COMPONENT_COLORS);
+    assert.deepEqual(
+      pasted.components.map((component) => [component.name, component.color]),
+      [
+        ["Water", COMPONENT_COLORS[0]],
+        ["Media", COMPONENT_COLORS[2]],
+        ["Drug A", COMPONENT_COLORS[1]],
+      ],
+    );
+  });
+
+  test("copied decks: with every color taken, the no-free-color message", () => {
+    const plan = addComponent(emptyPlan().plan, "Water", COMPONENT_COLORS[0]);
+    assert.throws(() => pasteDeck(plan, deckCopy(), [COMPONENT_COLORS[0], COMPONENT_COLORS[1]]), {
+      message: "There's no free color for Media: every color is taken. Remove a component first.",
+    });
+  });
+
+  test("copied decks: colors that aren't a list of text are refused", () => {
+    assert.throws(() => pasteDeck(emptyPlan().plan, deckCopy(), 5), {
+      message: 'The colors must be a list of color texts, like ["#4e79a7"], but got 5.',
+    });
+  });
+
+  test("copied decks: well labels that agree paste, and a different one is refused", () => {
+    const labeled = setLabel(setWellLabel(emptyPlan().plan, DECK_PLATE_WELL, "Cond 1"), PLATE, "Assay plate");
+    const pasted = pasteDeck(labeled, deckCopy(), COMPONENT_COLORS);
+    assert.equal(wellLabelOf(pasted, DECK_PLATE_WELL), "Cond 1");
+    const other = setLabel(setWellLabel(emptyPlan().plan, DECK_PLATE_WELL, "Cond 2"), PLATE, "Assay plate");
+    assert.throws(() => pasteDeck(other, deckCopy(), COMPONENT_COLORS), {
+      message: 'Assay plate B2 is already named "Cond 2" here, but "Cond 1" in the copy. Rename one of them, then paste again.',
+    });
+  });
+
+  test("copied decks: labware labels that agree paste, and a different one is refused", () => {
+    const same = setLabel(emptyPlan().plan, PLATE, "Assay plate");
+    assert.equal(labelOf(pasteDeck(same, deckCopy(), COMPONENT_COLORS), PLATE), "Assay plate");
+    const other = setLabel(emptyPlan().plan, PLATE, "Plate A");
+    assert.throws(() => pasteDeck(other, deckCopy(), COMPONENT_COLORS), {
+      message: `${PLATE} is labeled "Plate A" here, but "Assay plate" in the copy. Rename one of them, then paste again.`,
+    });
+    const taken = setLabel(emptyPlan().plan, OTHER_PLATE, "Assay plate");
+    assert.throws(() => pasteDeck(taken, deckCopy(), COMPONENT_COLORS), {
+      message: `${OTHER_PLATE} already has the label "Assay plate". Choose a different one.`,
+    });
+  });
+
+  test("copied decks: what isn't a copied deck is refused", () => {
+    const copy = deckCopy();
+    const cases = [
+      5,
+      null,
+      {},
+      [copy],
+      { format: COPIED_ITEMS_FORMAT, version: COPIED_ITEMS_VERSION, items: [] },
+      { ...copy, extra: 1 },
+      { ...copy, version: 0 },
+      { ...copy, version: 1.5 },
+      { ...copy, version: "1" },
+    ];
+    for (const copied of cases) {
+      assert.throws(() => pasteDeck(emptyPlan().plan, copied, COMPONENT_COLORS), {
+        message: NOT_A_COPIED_DECK,
+      });
+    }
+  });
+
+  test("copied decks: a copy from a newer version is refused, before the properties are checked", () => {
+    const newer = COPIED_DECK_VERSION + 1;
+    const message = `This deck was copied by a newer version of the transfer designer (copied deck version ${newer}; this one reads up to ${COPIED_DECK_VERSION}). Use the newer version.`;
+    for (const copied of [
+      { ...deckCopy(), version: newer },
+      { ...deckCopy(), version: newer, extra: 1 },
+    ]) {
+      assert.throws(() => pasteDeck(emptyPlan().plan, copied, COMPONENT_COLORS), { message });
+    }
+  });
+
+  test("copied decks: each damaged part gives its message, in property order", () => {
+    const copy = deckCopy();
+    const componentsMessage = (got) =>
+      damagedDeckMessage(
+        `its components must be a list of { name, color, constituents, osmolality }, but got ${got}.`,
+      );
+    const wellsMessage = (got) =>
+      damagedDeckMessage(`its wells must be a list of { labware, well, components }, but got ${got}.`);
+    const cases = [
+      [{ point: 5 }, damagedDeckMessage("its point must be non-blank text, but got 5.")],
+      [{ point: " " }, damagedDeckMessage('its point must be non-blank text, but got " ".')],
+      [{ point: 5, wells: 5 }, damagedDeckMessage("its point must be non-blank text, but got 5.")],
+      [{ components: 5 }, componentsMessage("5")],
+      [{ components: [5] }, componentsMessage("5")],
+      [{ components: [{ name: "Media" }] }, componentsMessage("an object")],
+      [{ components: [deckMedia(), deckDrug(), deckMedia()] }, damagedDeckMessage("its components list “Media” twice.")],
+      [{ wells: 5 }, wellsMessage("5")],
+      [{ wells: [{ ...DECK_TROUGH }] }, wellsMessage("an object")],
+      [{ wells: [{ ...DECK_TROUGH, components: 5 }] }, wellsMessage("an object")],
+      [
+        { wells: [copy.wells[0], copy.wells[0]] },
+        damagedDeckMessage(`it lists ${RESERVOIR} 1 twice.`),
+      ],
+      [
+        { wells: [{ ...DECK_TROUGH, components: { "Drug B": 5 } }] },
+        damagedDeckMessage(`${RESERVOIR} 1 holds “Drug B”, which isn't among its components.`),
+      ],
+      [
+        { wellLabels: [] },
+        damagedDeckMessage('its well labels must be an object like { Plate1: { A1: "Cond 1" } }, but got a list.'),
+      ],
+      [
+        { wellLabels: { [PLATE]: "Cond 1" } },
+        damagedDeckMessage('its well labels must be an object like { Plate1: { A1: "Cond 1" } }, but got an object.'),
+      ],
+      [
+        { labwareLabels: [] },
+        damagedDeckMessage('its labware labels must be an object like { Plate1: "Assay plate" }, but got a list.'),
+      ],
+      [
+        { labwareLabels: { [PLATE]: 5 } },
+        damagedDeckMessage('its labware labels must be an object like { Plate1: "Assay plate" }, but got an object.'),
+      ],
+    ];
+    for (const [changes, message] of cases) {
+      assert.throws(() => pasteDeck(emptyPlan().plan, { ...copy, ...changes }, COMPONENT_COLORS), {
+        message,
+      });
+    }
+  });
+
+  test("copied decks: a value the plan's own edits refuse gives their message", () => {
+    const copy = deckCopy();
+    const offDeck = { ...copy, wells: [{ labware: PLATE, well: "Z99", components: { Media: 1 } }] };
+    assert.throws(() => pasteDeck(emptyPlan().plan, offDeck, COMPONENT_COLORS), {
+      message: /"Z99" isn't a well on/,
+    });
+    const noVolume = { ...copy, wells: [{ ...DECK_TROUGH, components: { Media: 0 } }] };
+    assert.throws(() => pasteDeck(emptyPlan().plan, noVolume, COMPONENT_COLORS), {
+      message: "The volume to add must be a number of microliters above 0, like 100, but got 0.",
+    });
+  });
+
+  test("copied decks: a copy through text pastes the same as the object", () => {
+    const copy = deckCopy();
+    const throughText = JSON.parse(JSON.stringify(copy));
+    assert.equal(
+      snapshot(pasteDeck(emptyPlan().plan, throughText, COMPONENT_COLORS)),
+      snapshot(pasteDeck(emptyPlan().plan, copy, COMPONENT_COLORS)),
+    );
+  });
+
+  test("copied decks: a pasted start reaches the Biomek files as the same start made by hand", () => {
+    const byHand = setExperimentName(deckPlan(), "Exp36");
+    const copy = copyDeck(byHand, atStart(byHand), "At Start");
+    const pasted = pasteDeck(emptyWells(byHand, byHand.startingContents), copy, COMPONENT_COLORS);
+    const timestamp = new Date(2026, 10, 6, 9, 7, 2);
+    assert.deepEqual(writeRunFiles(pasted, timestamp), writeRunFiles(byHand, timestamp));
   });
 });
