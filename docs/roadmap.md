@@ -930,6 +930,11 @@ added on 2026-10-28 (Andy).
       (`uM` and `μM` for µM, `x` and `X` for ×, `g/l`, `mg/l`, `cells/ml`). Considered and
       declined: ignoring capitals for mass and cell units, reading equivalent units such as
       `mg/mL` as g/L, and accepting `% v/v` or `% w/v` as %.
+    - **A `Copy table` button copies every stock** (Andy, 2026-11-05), beside `Paste table`: all
+      the plan's components, with their constituents and osmolality, as a table in the same shape,
+      so it pastes into another plan's `Paste table`, or into Excel as a stock sheet. Only the
+      stocks: chosen over also copying the wells they fill at Start, and over the whole plan
+      (which plan files already move).
     - Draft details, Claude's, to try in the preview (2026-11-05): new components get the next free
       colors, as `+ New` gives them; the whole paste is one edit, so one Undo takes it all out;
       the plan's other rules apply as when typed (e.g. one unit family per constituent name across
