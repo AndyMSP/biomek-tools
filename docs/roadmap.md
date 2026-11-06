@@ -1011,7 +1011,7 @@ added on 2026-10-28 (Andy).
     Shaped in a preview (2026-11-06). **Specified** (Draft, 2026-11-06) and **Built (#142,
     2026-11-06)**: see "Where things stand".
 
-22. **A transfer table column can draw from wells named by their label** (Andy, 2026-11-06), so a
+24. **A transfer table column can draw from wells named by their label** (Andy, 2026-11-06), so a
     premix or dilution can be a source, not only a well holding nothing but one component.
     Decided (Andy, 2026-11-06):
     - **A header can be a well label**, matching it exactly: the column draws from the wells with
