@@ -1563,6 +1563,8 @@ given; "returns the plan with …" means a new plan.
 | `NEW_STAGE_NAME` | (a constant) `"New stage"`. |
 | `NEW_MIX_STEP_NAME` | (a constant) `"New mix step"`. |
 | `stageOrder(plan)` | the stage IDs in stage order (the plan's `stageOrder`). |
+| `stageNamed(plan, id)` | a stage as the messages name it, its place in the stage order and its name, e.g. `Stage 5, “Drug A”` (2026-11-05, item 20: so a tool naming a stage uses the same words). |
+| `FIRST_RUN_PROPERTIES` | (a constant) `["settings", "tipType", "probes"]`: a randomization's values for its first run, `null` once it has stages (section 3, "Randomizations"; 2026-11-05, item 20). |
 | `addStage(plan, beforeId, { takeTips })` | `{ plan, id }`: the plan with a new transfer stage before stage `beforeId` (or last, for `null`), and its ID; its settings copied from the nearest transfer stage (section 3, "Stages"). `takeTips` defaults to `false`. Throws if `beforeId` isn't a stage or `null`. |
 | `addMixStep(plan, beforeId, { takeTips })` | the same for a new mix step called `NEW_MIX_STEP_NAME`, its settings copied from the nearest mix step, or the default mix step settings (section 3, "Mix steps"). |
 | `addStageWithNewTips(plan, beforeId)` | `{ plan, id }`: the plan with a new transfer stage before stage `beforeId` (or last, for `null`) in a tip group of its own, and its ID, as one edit (section 3, "Tip changes and tip groups"). Throws as `addStage` does. |
