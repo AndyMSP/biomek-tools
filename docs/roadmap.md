@@ -456,6 +456,9 @@ Last updated: 2026-11-05
   `sourceWellsOf`, the draft's problems, `renameComponent`, `removeComponent`, well labels,
   pasting), the wizard's Table and Sources steps (`transfer-designer-page.md`, section 7), ADR 0019
   amended, glossary "Transfer table". It changes no plan files and no Biomek file format.
+  **Built (#143, 2026-11-06)**: logic, tests and REPL (`sourceWellsOf`, `hasComponentNamed`), and
+  the wizard's Table, Sources and Review steps; the specifications and the build each reviewed by
+  a separate agent, and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1039,7 +1042,8 @@ added on 2026-10-28 (Andy).
       adds that well as a choice (corrected after the specification review, 2026-11-06). A label that's also a row label is a source and a destination, refused as now.
     - **Hands-off workflow** (Andy, 2026-11-06). No plan-file format change: `sources` and `stages`
       are keyed by the column's name, a component's or a label, as before.
-    **Specified** (Draft, 2026-11-06, in the hands-off workflow): see "Where things stand".
+    **Specified** (Draft, 2026-11-06, in the hands-off workflow) and **Built (#143, 2026-11-06)**:
+    see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
