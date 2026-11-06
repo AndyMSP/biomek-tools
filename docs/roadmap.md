@@ -777,7 +777,25 @@ added on 2026-10-28 (Andy).
       changes its ✎, as ordinary stages and tips do. The wizard drops its Settings step (Table,
       Sources, Review). What stays locked: a stage's name (its component's), its transfers, its
       seams, and removing a stage or tip change on its own. Update keeps each stage's settings
-      and tips; a new column's stage starts with the settings of the column before it.
+      and tips; a new column's stage starts with the settings of the column before it. Settings
+      live only on the stages; the transfer table holds its grid and sources, never a copy of
+      them (Andy's concern, 2026-11-05: no second source of truth).
+    - **Settings follow a renamed column** (Andy, 2026-11-05, by voice): stages are matched to
+      columns by component name, so settings stay with the liquid when columns move; when a
+      column's header is changed in the wizard, the wizard remembers which column it was, and on
+      Update the renamed column's stage starts from the old stage's settings and tips. Only the
+      wizard keeps that link, until Add or Update; nothing extra is stored in the plan. Deleting a
+      column and adding a new one isn't a rename: the new column copies the column before it.
+    - **One column per component** (Andy, 2026-11-05, by voice): a component in two columns is a
+      problem on the Table step (`“Drug A” is in more than one column.`), since each column is one
+      stage; a component needed at two points in the run means two transfer tables.
+    - **A column can draw from several wells, like a randomization's filler** (Andy, 2026-11-05,
+      by voice), for when one well can't hold enough (e.g. Media for every destination): its wells
+      are used in the order chosen, each giving **whole transfers** until the next would reach
+      into its dead volume, then the next well takes over; all in the column's one stage, on one
+      set of tips. If they don't hold enough together, the last one draws into its dead volume or
+      is overdrawn, shown and refused like any contents problem. What each well holds is taken
+      just before the transfer table, so an earlier edit can make it out of date.
     - **Out of date is flagged, not rebuilt** (Andy, 2026-11-05), as for a randomization: when the
       plan changes so its stages no longer match its table (a well relabeled, a stock moved or
       emptied), it reads `needs update`, counts as a problem, and the Biomek files wait for Update.
