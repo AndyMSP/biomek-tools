@@ -1520,7 +1520,8 @@ stocks`. Nothing is added until Add.
   change. A cell with a problem is marked as the wizard marks one (red tint, red bold text); a
   whole-row problem marks its name cell. Under the grid, every problem's message, in order, in the
   wizard's red problems box. Then one line: with problems, `Fix the problems above (red), or take
-  those rows out, to add the 3 stocks.` (`the stock` for one); without, `Add puts 3 new components
+  those rows out, to add the 3 stocks.` (`the stock` for one; the count is always
+  `readStockTable`'s `stocks.length`, here and on the Add button, rows with problems included); without, `Add puts 3 new components
   in the Start card, each with what it contains and its osmolality. One Undo takes them all out.`
   (`component` for one).
 - **The footer:** once a table is in, `Paste a different table` at the left (back to the paste zone,

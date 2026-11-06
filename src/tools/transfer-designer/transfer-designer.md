@@ -516,9 +516,10 @@ texts, every row the same length, at least one row and one cell. Row 0 is the **
 holds the **names**.
 
 **Reading it** (`readStockTable(plan, table, colors)`). Each cell's text is trimmed before it's read.
-A **fully blank column** (its header and every cell blank) and a **fully blank row** after the header
+A **fully blank column** after column 0 (its header and every cell blank) and a **fully blank row** after the header
 (every cell blank) are ignored: no problem, nothing read, but still counted by their place.
-- **Column 0** is the names; its header isn't read (`Name`, `Stock`, anything, or blank).
+- **Column 0** is always the names, even when it's fully blank (then every row with text has a
+  blank name); its header isn't read (`Name`, `Stock`, anything, or blank).
 - **An osmolality column**: a header that reads `Osmolality`, in any capitals, alone or followed by
   `(mOsm/kg)` (spaces allowed inside and before the brackets; `mOsm/kg` exactly, as written here),
   e.g. `Osmolality`, `osmolality (mOsm/kg)`. Optional. A second one is a problem.
@@ -534,28 +535,33 @@ A **fully blank column** (its header and every cell blank) and a **fully blank r
   paste never changes an existing component); a name a row above already has.
 - **Each cell** under a constituent column is the **amount** that stock carries, in the column's
   unit; under the osmolality column, its osmolality in mOsm/kg. Commas are removed first
-  (thousands separators, `1,500,000`, as transfer tables read amounts); what's left must be a
-  **number**: digits with at most one decimal point (at least one digit), optionally followed by
-  `e` or `E`, an optional `+` or `-`, and digits (`4`, `0.5`, `.5`, `1.5e6`, `1e-7`); no sign before
-  it. Blank means the stock doesn't carry that constituent, or has no osmolality (`null`). An
+  (thousands separators, `1,500,000`, as transfer tables read amounts); what's left must match
+  `/^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/` (digits with at most one decimal point, `4.` included as
+  transfer tables accept `190.`, optionally an exponent: `4`, `0.5`, `.5`, `4.`, `1.5e6`, `1e-7`; no
+  sign before it), and `Number` of it must be finite (`1e400` is a problem at its cell). Blank means the stock doesn't carry that constituent, or has no osmolality (`null`). An
   amount of 0 also means it doesn't carry it (as a blank). An osmolality of 0 is a value (water).
   Anything else is a problem. A cell under an ignored, blank-header or problem header isn't read.
-- **Then the plan's rules**, row by row, top to bottom: each row with a name and no problem so far
-  (in its name cell, its own cells, or the header) is **tried**: `addComponent` with its color (below),
+  Cells in a row whose name has a problem are still read (unlike a transfer table's rows), so all
+  of a row's problems show at once.
+- **Then the plan's rules**, row by row, top to bottom. A row is **tried** when its name cell and its
+  own cells have no problem; problems in the header don't stop it (the columns under them just
+  aren't read), so the caller can still show which color each row would take. Trying a row is: `addComponent` with its color (below),
   then `setConstituents` with its constituents (in column order), then `setOsmolality`, on the plan
   with every earlier tried row already added. A throw is a problem of the whole row, with that
   message (e.g. a constituent in a unit family that clashes with another component's,
   section 3, "Constituents").
-- **Colors**: each tried row takes the first color of `colors` (a list of color texts, in order;
-  the page gives `COMPONENT_COLORS`) that no component in the plan and no earlier tried row has.
-  With none left, that row and each later one that would be tried has a whole-row problem instead.
+- **Colors**: each tried row takes the first color of `colors` (a list of color texts, in order,
+  given by the caller) that no component in the plan and no earlier **added** row has. A row whose
+  try fails isn't added and takes no color, so the next tried row may take the same one. With none
+  left, the row isn't tried and has a whole-row problem instead (as does each later row that would
+  be tried).
 
 It gives `{ stocks, problems }`:
 - `stocks`: one per row after the header that isn't fully blank, in row order: `{ row, name, color,
   constituents, osmolality }`, `row` its index, `name` its trimmed first cell (possibly `""`),
   `constituents` a list of `{ name, amount, unit }` in column order (only the amounts above 0 that
   were read), `osmolality` a number or `null`, and `color` the color it takes, or `null` for a row
-  that wasn't tried or failed its try (so a caller can show which rows will be added).
+  that wasn't added (not tried, or its try failed) (so a caller can show which rows will be added).
 - `problems`: `{ row, column, message }` each, `column` `null` for a whole-row problem, in reading
   order (the header row left to right, then each row: its name, then its cells left to right, then
   its whole-row problem); a row has at most one whole-row problem.
@@ -1856,10 +1862,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | Stock table: a header with a blank name | `“(mM)” needs a constituent's name before its unit, like “Drug A (mM)”.` |
 | Stock table: a unit the tool doesn't know | `“g” in “NaCl (g)” isn't a unit the tool knows. Use one of M, mM, µM, nM, g/L, mg/L, %, ×, cells/mL.` (the units of `CONCENTRATION_UNITS`, in order, joined by `, `) |
 | Stock table: a constituent name in two columns | `“Drug A” has two columns. Give each constituent one column.` |
-| Stock table: a row with a blank name (row index `r`, shown as `r`, since row 1 is the first under the header) | `Row 4 has no name. Give the stock a name, or take the row out.` |
+| Stock table: a row with a blank name (row index `r`, shown as `r + 1`: the header is row 1, as in the spreadsheet and in transfer tables' messages) | `Row 5 has no name. Give the stock a name, or take the row out.` |
 | Stock table: a name already in the plan | `“Media” is already in the plan. Rename the row, or take it out.` |
 | Stock table: a name in an earlier row | `“Feed” is in the table twice. Each stock needs its own name.` |
-| Stock table: an amount that isn't a number | `Buffer B's KCl must be a number, like 4, but is “two”.` (the row's name, or `Row 4` if blank; the column's constituent name; the cell's trimmed text) |
+| Stock table: an amount that isn't a number | `Buffer B's KCl must be a number, like 4, but is “two”.` (the row's name, or `Row 5` if blank, numbered as above; the column's constituent name; the cell's trimmed text) |
 | Stock table: an osmolality that isn't a number | `Buffer B's osmolality must be a number, like 300, but is “high”.` |
 | Stock table: a row's try throws | The thrown message, prefixed with the row's name and a colon: `Drug A stock: Hy-Soy is in g/L in Feeding media. Give it a unit of that kind (g/L, mg/L), or a different name.` |
 | Stock table: no color left for a row | `There's no free color for Feed. Two components can't share one, and all 30 are taken. Take some rows out, or remove a component.` (30 is `colors.length`) |
@@ -2415,9 +2421,12 @@ otherwise, and work out expected colors from it (CLAUDE.md, "Tests follow `confi
   `addStocks` gives a plan whose components are Media then those three, each as read.
 - **Headers:** `osmolality`, `OSMOLALITY (mOsm/kg)` and `Osmolality(mOsm/kg)` are osmolality
   columns; `Osmolality (mosm/kg)` isn't (it's read as a constituent named Osmolality in an
-  unknown unit: a problem). `Drug B (uM)`, `(μM)`, `(x)`, `(X)`, `(g/l)`, `(mg/l)` and `(cells/ml)`
-  give µM, µM, ×, ×, g/L, mg/L and cells/mL; `(UM)`, `(G/L)`, `(mm)`, `(mg/mL)` and `(% v/v)` are
-  unknown units; `( mM )` is mM; `Salt (A) (mM)` is the constituent `Salt (A)` in mM. Each header
+  unknown unit: a problem). Every `unit` of `CONCENTRATION_UNITS` in brackets is read as itself,
+  and every key of `UNIT_SPELLINGS` as its value (the expectations built from the two lists, not
+  written out); `(UM)`, `(G/L)`, `(mm)`, `(mg/mL)` and `(% v/v)` are unknown units when they're
+  neither a unit nor a spelling (checked against the configuration, so a test of one that becomes
+  configured is skipped rather than wrong); `( mM )` is mM; `Salt (A) (mM)` is the constituent
+  `Salt (A)` in mM. The unknown-unit message lists `CONCENTRATION_UNITS`' units in order. Each header
   problem in section 5 is reported at its cell, and the cells under it aren't read (a bad amount
   under it gives no second problem).
 - **Ignored:** a fully blank column between two others, and a fully blank row, give no problem and
@@ -2426,13 +2435,20 @@ otherwise, and work out expected colors from it (CLAUDE.md, "Tests follow `confi
   spaces); a name repeated in a later row (the later row is the problem): each at its name cell, in
   section 5's words. The rows with a name problem aren't tried, so they take no color and the next
   row takes the color they would have taken.
-- **Amounts:** `4`, `0.5`, `.5`, `1,500,000` (1500000), `1.5e6` and `1e-7` are read; blank, `0` and
-  `0.0` add nothing; `-4`, `+4`, `4 g`, `two`, `1.2.3`, `e5` and `0x10` are problems at their cell.
+- **Amounts:** `4`, `0.5`, `.5`, `4.`, `1,500,000` (1500000), `1.5e6` and `1e-7` are read; blank,
+  `0` and `0.0` add nothing; `-4`, `+4`, `4 g`, `two`, `1.2.3`, `e5`, `0x10` and `1e400` are problems
+  at their cell. Cells in a row whose name is a problem are still read (a bad amount there is a
+  second problem, its message naming the row by name, or `Row N` for a blank one, N the row index
+  plus 1).
   The same for osmolality, except `0` is the value 0 (and `-5` a problem).
-- **Trying rows:** a stock carrying Hy-Soy in mM, on a plan where Feeding media carries Hy-Soy in g/L,
-  has a whole-row problem with `setConstituents`'s message prefixed `Name: `; a stock in a row below
-  it carrying Hy-Soy in mM, where the row above (in g/L) was tried, has the same kind of problem
-  naming the row above's stock; problems come in section 3's reading order.
+- **Trying rows:** on a plan where Feeding media carries Hy-Soy in g/L, a table with a `Hy-Soy (mM)`
+  column gives a whole-row problem to every row with an amount in it, each with `setConstituents`'s
+  message (naming Feeding media) prefixed with its own row's name and `: `; rows without an amount
+  there are added. Problems come in section 3's reading order.
+- **What's tried:** a table with one bad header (`KCl`) and two good rows tries and colors both rows
+  (their `color` not `null`), reading only the good columns. A row whose try fails takes no color:
+  in a table of three rows where the second fails its try, the third row gets the color the second
+  would have had.
 - **Colors:** with `colors` of two colors, one taken by the plan, a table of three rows gives the free
   one to the first row and a whole-row problem to the second and third; `color` is `null` for rows
   with a problem.
@@ -2441,15 +2457,17 @@ otherwise, and work out expected colors from it (CLAUDE.md, "Tests follow `confi
   (undone as one edit by `plan-history`).
 - **Writing out:** `stockTable` of an empty plan is `[["Name"]]`; of a plan with no osmolalities has
   no Osmolality column; with Drug B in µM in one component and mM in another (first met in µM), the
-  mM one's 0.5 mM is `500` under `Drug B (µM)`; a 0.0003 mM amount in a µM column is `0.3`, not
-  `0.30000000000000004`; an osmolality of `1e-7` is `1e-7`; constituent columns follow first-met
+  mM one's 0.5 mM is written under `Drug B (µM)` as 0.5 × the mM factor ÷ the µM factor, worked out
+  from `CONCENTRATION_UNITS` (`500` with today's factors); a 0.0003 mM amount in a µM column is
+  written without floating-point noise (`0.3` with today's factors, not `0.30000000000000004`); an osmolality of `1e-7` is `1e-7`; constituent columns follow first-met
   order; components follow the plan's order.
 - **Round trip:** for a plan of several components (with osmolality, without, one carrying cells
   at 1500000 cells/mL, one carrying nothing), `addStocks(emptyPlan(), stockTable(plan),
   COMPONENT_COLORS)` gives the same names, osmolalities and constituents (amounts compared after
   converting to the base unit, within 1e-9 relative), with no problems.
-- **Configuration:** every value of `UNIT_SPELLINGS` is a `unit` of `CONCENTRATION_UNITS`, and no key
-  is one.
+- **Configuration:** in `transfer-designer.test.js` only (ADR 0009: the module that uses it), not in
+  `concentrations.test.js`: every value of `UNIT_SPELLINGS` is a `unit` of `CONCENTRATION_UNITS`, and
+  no key is one.
 
 **The REPL** (`scripts/repl.js`): `readStockTable`, `addStocks` and `stockTable` in the transfer
 designer's topic, with an example of each (CLAUDE.md, "Keep the REPL complete").

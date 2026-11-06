@@ -917,7 +917,8 @@ added on 2026-10-28 (Andy).
     see "Where things stand".
 21. **Pasting a table of stocks** (Andy, 2026-11-05): a table copied from a spreadsheet adds many
     components at once, each with its constituents (its `Contains`) and its osmolality, so a lab's
-    stock list doesn't have to be typed in one component at a time. Standard workflow. Decided so
+    stock list doesn't have to be typed in one component at a time. Shaped in the standard
+    workflow, then specified and built in the hands-off workflow (Andy, 2026-11-05). Decided so
     far (Andy, 2026-11-05):
     - **One row per stock**: a header row, then one row per component. The first column is the
       component's name; a column headed `Osmolality` holds its measured osmolality (mOsm/kg); every

@@ -48,10 +48,13 @@ cell.
 Rules for `tableToText`:
 - `rows` is a non-empty list of rows, each a non-empty list of cells, each text; rows may have
   different numbers of cells. Anything else throws `A table to copy must be a list of rows, each a
-  list of cells, each text, but got 5.` (or `… but row 2 is [].` / `… but row 2, cell 3 is null.`,
-  rows and cells counted from 1; `describeValue`).
+  list of cells, each text, but got 5.` (the value by `describeValue`, except that an empty list is
+  written `[]`: `… but got [].`), or, for a row or cell, `… but row 2 is [].` (an empty row is
+  written `[]`; another non-list row by `describeValue`, e.g. `… but row 2 is 5.`) / `… but row 2,
+  cell 3 is null.` (`describeValue`), rows and cells counted from 1.
 - A cell holding a tab or a line break (`\t`, `\n` or `\r`) throws `Row 2, cell 1 holds a tab or a
-  line break, which a copied table can't carry: "Feed\tA".` (`describeValue`), since version 1
+  line break, which a copied table can't carry: "Feed\tA".`, the cell written with
+  `JSON.stringify`, so a tab shows as the two characters `\t` (not a real tab), since version 1
   writes no quotes (section 3) and `parsePastedTable` would split it.
 - Cells are written exactly, spaces included; nothing is quoted.
 - `parsePastedTable(tableToText(rows))` gives `rows` back for any rows it accepts.
