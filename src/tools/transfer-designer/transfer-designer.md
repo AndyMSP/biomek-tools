@@ -992,8 +992,10 @@ has no problems (`at` = its first stage):
    `addStageWithNewTips` before the place, named, set and filled as in adding.
 3. **Then stages no column keeps** are removed (`removeStage`), so the plan is never left without a
    stage.
-4. **Each kept stage**: its transfers replaced by the column's (in the column's order), and, if it
-   was kept through `renamedFrom`, renamed to its new component. Its settings and tips don't change.
+4. **Each kept stage**: its transfers replaced by the column's (in the column's order), unless they
+   are the same transfers in another order (the same multiset, as "Out of date" compares them):
+   then they're kept as they are, so an update that changes nothing gives back the same plan; and,
+   if it was kept through `renamedFrom`, renamed to its new component. Its settings and tips don't change.
 5. **Stages in column order**: the transfer table's stages are put in the order of its columns,
    consecutive, starting where its first stage now is, as a randomization's run orders its stages
    (section 3, "Randomizations", step 6): only its own stages move; each keeps its ID, name,
@@ -1021,9 +1023,13 @@ stages (`canRemoveTransferTable` is `false`), as for a randomization: a plan nee
 **Out of date** (`isTransferTableOutOfDate(plan, id)`; Andy, 2026-11-05). A transfer table's stages
 are what it last made; other edits never update it. It's **out of date** when its draft (`table`
 and `sources`) now has problems (checked first), or `transferTableStages` now gives different
-stages: a different number, or, for any of its stages in order, a different component, or a
-different list of transfers (each one's source, destination and volume, in order). Settings and
-tips aren't compared: they're the user's, edited on the stages. So relabeling a well, emptying or
+stages: a different number, or, for any of its stages in order, a different component, or
+different transfers: each stage's transfers are compared **ignoring their order**, as a multiset of
+(source, destination, volume) (from the build's review, 2026-11-05: the Biomek orders a stage's
+transfers itself, B56358AF 22-25, and the tool's own transfer order only follows deck order, so a
+well moved past another with the same label changes only the order). The order of its stages
+(column order) and their components still count. Settings and tips aren't compared: they're the
+user's, edited on the stages. So relabeling a well, emptying or
 refilling a stock at Start, editing a stage before it that draws from its source wells (changing
 the split), or removing a component named by a header, makes it out of date; nothing updates it but
 `updateTransferTable` (Andy: as for a randomization, a checked plate never changes by itself).
@@ -1079,7 +1085,10 @@ randomizations, whose protection is the page's only: roadmap, "Technical debt"):
 **Moving wells** (section 3, "Moving wells"): a transfer table's source wells are **wells in use**,
 and `moveWell` puts `to` in place of `from` in every `sources` list (keeping its place). Its
 destinations are found by well label, and the label moves with the well, so its table needs no
-change. A moved well keeps the transfer table up to date.
+change. A moved well keeps the transfer table up to date, unless the move changes how a column's
+transfers split among several source wells (the split follows the transfers' deck order): moving a
+destination well past another with the same label can change which of them draws from the next
+source well, and then it's out of date, as any other change of what it would make.
 
 ### Moving and copying
 (Andy, 2026-11-01; ADR 0014.) Stages, tip groups, randomizations and transfer tables (since
@@ -2501,6 +2510,11 @@ between boxes are refused with section 5's messages; a pasted table whose stage 
   in its table.`; a copy whose `sources` name a component this plan lacks (and whose header names
   it) pastes, without that key, and is out of date; copies of its stages copied alone are ordinary
   stages, owned by nothing.
+- **Moving wells, transfer order:** with `Control` on Plate1 A1 to A3, moving A1 to H9 (past A2
+  and A3, so its transfers come in another order) leaves the transfer table up to date, and an
+  update then gives back the same plan; with Media drawing from Res1 1 then Res1 2 (Res1 1 giving
+  all but the last transfer), moving `A low`'s B1 to H9 makes H9 the last transfer, drawing from
+  Res1 2 instead of B3: out of date.
 - **Moving wells:** `isWellUsed` is `true` for a source well with no starting contents and no
   transfers (one emptied at Start after adding); Res1 1 is in use (a source); moving it to Res1 5 puts Res1 5 in Res1 1's place in
   `sources` and in the transfers, and the table stays up to date; moving a labeled destination moves

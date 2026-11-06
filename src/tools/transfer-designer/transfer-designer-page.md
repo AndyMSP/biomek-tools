@@ -2060,7 +2060,7 @@ page's configuration (ADR 0009):
   moved; out of date after relabeling a well (heading, problem count, the Biomek files box) and
   Update clearing it; renaming a component renames its header and stage; removing one makes it
   out of date; Cancel, Escape and the backdrop changing nothing; Remove and Undo; moving a
-  transfer table by its heading, copying and pasting it, and a stage of it refused alone; saving
+  transfer table by its heading, copying and pasting it, and moving a stage of it alone out of it refused (copying one alone pastes an ordinary stage); saving
   and opening a plan with one (version 11); moving a source well with Move wells;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels;
