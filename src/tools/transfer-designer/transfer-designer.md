@@ -153,6 +153,14 @@
 > the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its
 > pull request. Still to review: every new message. It becomes Final once built and tested by Andy.
 
+> **Draft change (2026-11-06, label-named sources, item 24 of v0.2.0):** a transfer table's column
+> can be named by a **well label** as well as by a component (Andy, 2026-11-06), and then draws from
+> the wells with that label, whatever they hold: section 3, "Transfer tables" (its column's name,
+> `sourceWellsOf`, the draft's problems, `removeComponent` and pasting), with sections 4 to 6.
+> Nothing new is stored, so plan files and the Biomek files don't change. Written in the hands-off
+> workflow (CLAUDE.md, "Workflows"); the choices made for Andy are listed in its pull request.
+> Still to review: every new message. It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
 and every edit that can be made to one, each checked so that a plan is always valid. A tool shows a
@@ -1156,28 +1164,34 @@ plan, so it's undone and saved like any edit. Each is:
 - **`table`**: the grid as text, a list of rows, each a list of cell texts, kept exactly as given
   (spaces included), so the caller can show it as the user left it. At least two rows, every row
   the same length, at least two cells. Row 0 is the **header**; column 0 holds the **well labels**.
-- **`sources`**: for each component, the wells its column draws from, **in order**: a non-empty list
-  of wells on the deck, each once. Its keys are components in the plan (in any order); a key whose
-  column isn't in the table is kept and unused (so a column deleted and brought back keeps its
-  wells).
-- **`stages`**: the stages it owns, one per component whose column has an amount, **in column
-  order**, each with its component. Only adding, updating and removing change it (and
+- **`sources`**: for each column's **name** (below), the wells its column draws from, **in order**:
+  a non-empty list of wells on the deck, each once. Its keys are names: any text that isn't blank,
+  in any order (since 2026-11-06, item 24: a name is a component's or a well label, so a key isn't
+  checked against the plan's components); a key whose column isn't in the table is kept and unused
+  (so a column deleted and brought back keeps its wells).
+- **`stages`**: the stages it owns, one per column with an amount, **in column order**, each with
+  its column's name in `component` (the property keeps its name from when a name was always a
+  component; item 24, 2026-11-06). Only adding, updating and removing change it (and
   `renameComponent`, below).
 - **No pipetting settings or tips** are stored here (Andy, 2026-11-05: one source of truth). They
   live only on its stages and their tip changes, and are edited there as any stage's are (below,
   "What can be edited").
 
 **Reading the table** (`readTransferTable(plan, table)`). Each cell's text is trimmed before it's
-read (the stored text keeps its spaces). Each column after the first is a **component column**:
-- **Its header** names a component in the plan, exactly (after trimming). A blank header makes no
-  column; that's a problem only if the column has any amount (below). A header naming no component,
-  or the same component as a column to its left, is a problem.
+read (the stored text keeps its spaces). Each column after the first is an **amount column** (a
+"component column" before 2026-11-06):
+- **Its header** is the column's **name**, after trimming, and must be, exactly (Andy, 2026-11-06,
+  item 24), **a component** in the plan, **a well label** some well in the plan has
+  (`wellLabels`), or both. A blank header makes no column; that's a problem only if the column has
+  any amount (below). A header that is neither, or the same name as a column to its left, is a
+  problem.
 - **Each row after the header** is one **well label**: its first cell, which must be a label some
   well in the plan has (`wellLabels`), and not the label of a row above it. A row fills **every
   well with that label** (labels may repeat: replicate wells; Andy, 2026-11-05), in deck order
   (the deck's labware order, then each grid's `wellNames()` order).
-- **Each cell** of a row and a component column is an **amount**, µL of that component to add to
-  each of the row's wells: blank or a number. Commas are removed first (thousands separators,
+- **Each cell** of a row and an amount column is an **amount**, µL to add to each of the row's
+  wells, drawn from the column's source wells (of its component, or of whatever its labeled wells
+  hold): blank or a number. Commas are removed first (thousands separators,
   `1,500`); what's left must be digits with at most one decimal point (`190`, `2.5`, `.5`; no sign,
   no exponent). Blank, `0`, `0.0` and the like **add nothing**.
 - A cell under a blank header or a problem header, or in a problem row, isn't read as an amount.
@@ -1187,27 +1201,41 @@ read (the stored text keeps its spaces). Each column after the first is a **comp
   amounts, so its draft's problem is that it adds nothing (below).
 
 It gives `{ columns, problems }`:
-- `columns`: one per component column with a valid header, left to right, `{ column, component,
-  amounts }`, `column` its index in the rows, `amounts` one per row with a valid label and an amount
-  above 0, in row order: `{ row, label, wells, volume }`, `wells` the label's wells in deck order.
-  A column with no amounts is still listed (it makes no stage).
+- `columns`: one per amount column with a valid header, left to right, `{ column, component,
+  isComponent, labelWells, amounts }`, `column` its index in the rows, `component` its name (the
+  trimmed header; the property keeps its name, as in `stages`), `isComponent` `true` if the name is
+  a component in the plan, `labelWells` the wells labeled with the name, in deck order (`[]` if
+  none), `amounts` one per row with a valid label and an amount above 0, in row order: `{ row,
+  label, wells, volume }`, `wells` the label's wells in deck order. A column with no amounts is
+  still listed (it makes no stage).
 - `problems`: `{ row, column, message }` each, `row` and `column` the cell's indexes, in reading
   order (the header row left to right, then each row: its label, then its amounts left to right),
   with these messages:
 
 | Problem | `row`, `column` | Message |
 |---|---|---|
-| a header names no component | `0`, the column | `“Drug C” isn't a component in the plan.` |
-| a header names a component a column to its left names | `0`, the column | `“Drug A” is in more than one column. Each component gets one column.` |
-| a blank header whose column has an amount (any cell not blank) | `0`, the column | `Column 5 has amounts but no component.` (counting from 1) |
+| a header is neither a component nor a well label | `0`, the column | `“Drug C” isn't a component or a well label in the plan.` |
+| a header is the same name as a column to its left | `0`, the column | `“Drug A” is in more than one column. Each component or label gets one column.` |
+| a blank header whose column has an amount (any cell not blank) | `0`, the column | `Column 5 has amounts but no component or label.` (counting from 1) |
 | a row's label is blank | the row, `0` | `Row 4 has no well label.` (counting from 1, the header being row 1) |
 | a label is a row above's | the row, `0` | `“Control” is in more than one row.` |
 | no well has the label | the row, `0` | `No well is labeled “Cond 9”.` |
 | an amount isn't blank or a number | the row, the column | `Control, Media: “lots” isn't an amount in µL.` |
 
 **Stock wells** (`stockWellsOf(plan, component)`): the wells that hold **only** that component at
-Start (their starting contents name no other), in deck order. A column draws only from these
-(Andy, 2026-11-05: a well holding a mix is never mistaken for a stock).
+Start (their starting contents name no other), in deck order (Andy, 2026-11-05: a well holding a
+mix is never mistaken for a stock).
+
+**A column's source wells** (`sourceWellsOf(plan, name)`; Andy, 2026-11-06, item 24), the wells it
+may draw from: the **stock wells** of its name, if the name is a component, in deck order; then
+the **wells labeled** with its name, in deck order, leaving out any already listed (a labeled stock
+well is listed once, among the stock wells). So a name that's a component only offers its stock
+wells, as before; a name that's a label only offers its labeled wells; a name that's both offers
+both. A labeled well may hold **anything**, a mix or a well filled earlier in the run, and what it
+holds is never checked (Andy: its transfers are ordinary transfers, and an empty or overdrawn well
+shows as a contents problem, as any other): what it holds matters only to how a column's transfers
+split among several wells (below). `[]` for a name that's neither. E.g. Media in Res1 1 and Res1 2
+at Start, and Deep1 B1 labeled "Media": `[Res1 1, Res1 2, Deep1 B1]`.
 
 **A draft** is `{ table, sources }`, a transfer table's values before they're in the plan, as a caller
 edits them. **Its problems** (`transferTableProblems(plan, draft, at)`), `at` being where its stages
@@ -1216,18 +1244,18 @@ go (below): `readTransferTable`'s problems, then, if there are none:
 | Problem | Message |
 |---|---|
 | no column has an amount | `The table adds nothing: every amount is blank or 0.` |
-| for each column with an amount, in column order: no stock well exists | `No well holds only Media at Start. Fill one with Media at Start first.` |
+| for each column with an amount, in column order: it has no source wells (`sourceWellsOf` is `[]`: a component with no stock well and no well with its label) | `No well holds only Media at Start. Fill one with Media at Start first, or label the well to draw from “Media”.` |
 | its `sources` entry is missing | `Choose a well for Media to draw from.` |
-| one of its wells isn't a stock well of it | `Res1 1 doesn't hold only Media at Start, so Media can't draw from it.` (the first such) |
-| one of its wells is a destination of any column of the table (a stock well carrying a label a row uses, or a well another column fills) | `Res1 1 is both a source of Media and a well the table fills. Choose another well.` (the first such) |
+| one of its wells isn't one of its source wells (the first such) | a component only: `Res1 1 doesn't hold only Media at Start, so Media can't draw from it.`; a label only: `Res1 1 isn't labeled “Drug A 1:10”, so “Drug A 1:10” can't draw from it.`; both: `Res1 1 doesn't hold only Media at Start and isn't labeled “Media”, so Media can't draw from it.` |
+| one of its wells is a destination of any column of the table (a source well carrying a label a row uses, or a well another column fills) | `Res1 1 is both a source of Media and a well the table fills. Choose another well.` (the first such) |
 
 (The last one keeps the operation list's stage rule from refusing the table's stages with a message
 about operations: a well can't be both drawn from and filled in one table, so it's caught here, in
 the table's terms.)
 
 These are `{ row: null, column: null, message }`, so all of a draft's problems have one form.
-`sources` itself must be in its form (an object of component names and lists of wells on the deck,
-each once); a draft that isn't is refused with a thrown message (section 5), not a problem, since a
+`sources` itself must be in its form (an object of names, each not blank, and lists of wells on the
+deck, each once); a draft that isn't is refused with a thrown message (section 5), not a problem, since a
 caller builds it.
 
 **`at`**: the stage the transfer table's stages go just before: for a transfer table in the plan,
@@ -1261,8 +1289,9 @@ keeps (below; `null` for a new one), `transfers` the column's transfers (each `{
 destination, volume }`), `settings` the stage settings it will have and `tips` `{ tipType, probes
 }` the tips its tip change will load. Throws the first problem's message if the draft has any.
 
-**Settings and tips** (Andy, 2026-11-05: settings follow the liquid, by component):
-- A column whose component already has a stage in the transfer table **keeps that stage**: its ID,
+**Settings and tips** (Andy, 2026-11-05: settings follow the liquid, by component; since
+2026-11-06, item 24, by the column's name, a component or a label):
+- A column whose name already has a stage in the transfer table **keeps that stage**: its ID,
   name, settings and tip change's tip type and probes. Only its transfers are replaced.
 - **`renamedFrom`**, an object of new component names and old ones, e.g. `{ "DMEM": "Media" }`,
   given by a caller that knows a column's header was changed (Andy, 2026-11-05): a column for a
@@ -1388,15 +1417,27 @@ randomizations since 2026-11-05, item 20, "It owns its stages"):
 - **`renameComponent`** renames it in every transfer table too, as part of the same edit: each
   header cell whose trimmed text is the old name becomes the new name (exactly, no spaces), the
   `sources` key, each `stages` entry's `component`, and the name of that stage (`renameStage`'s
-  rule set aside for this). So a transfer table stays up to date through a rename.
-- **`removeComponent`** leaves the header as it is and takes the component's key out of `sources`;
-  the table then reads the header as naming no component, so it's out of date until the column is
-  deleted or its header changed. Its stage stays, owned, until an update.
+  rule set aside for this). So a transfer table stays up to date through a rename. This holds for a
+  header that's also a well label (item 24): it follows the component, and its wells with the old
+  label are no longer its source wells, so if any are in its `sources` the table is out of date (a
+  problem, below) until its sources are chosen again. A header that's only a label isn't touched.
+- **`removeComponent`** leaves the header and `sources` as they are (since 2026-11-06, item 24: a
+  key is a name, which may still be a label; before, it took the key out). A header naming the
+  removed component then names no component: if it's no well label either it's a problem, and if
+  it is a label its stock wells are no longer source wells; either way the table is out of date
+  until the column is deleted, its header changed or its sources chosen again. Its stage stays,
+  owned, until an update.
+- **Well labels** (item 24): a well's label changing (`setWellLabel`: set, changed, cleared) changes
+  which wells a label-named column may draw from, as it changes which wells a row fills; a table
+  whose `sources` then holds a well that's no longer a source well of its column has a problem, so
+  it's out of date (above), until its sources are chosen again or the label is put back. Nothing
+  else changes: labels are never renamed across wells by an edit.
 
 **Moving wells** (section 3, "Moving wells"): a transfer table's source wells are **wells in use**,
 and `moveWell` puts `to` in place of `from` in every `sources` list (keeping its place). Its
 destinations are found by well label, and the label moves with the well, so its table needs no
-change. A moved well keeps the transfer table up to date, unless the move changes how a column's
+change; a labeled source well stays one of its column's source wells, its label moving with it
+(item 24). A moved well keeps the transfer table up to date, unless the move changes how a column's
 transfers split among several source wells (the split follows the transfers' deck order): moving a
 destination well past another with the same label can change which of them draws from the next
 source well, and then it's out of date, as any other change of what it would make.
@@ -1579,9 +1620,10 @@ randomization as the transfer designer copies them.`; kept as it is in every ver
 copies and tests keep their wording). A pasted transfer table is checked as `setTransferTables`
 checks a plan file's (its `table`'s and `sources`' form, each stage's component one of its table's
 headers, trimmed, none twice: the same rule a plan file's gets), with the messages prefixed `Can't
-paste: item 2: `, except that **`sources` keys naming no component in this plan aren't refused**:
-they're dropped, as `removeComponent` drops them, and the column's header then names no component,
-so the pasted transfer table is out of date (copied from a plan with a component this one lacks).
+paste: item 2: `. Since 2026-11-06 (item 24) its `sources` keys are names, so none is refused or
+dropped for naming no component in this plan; a column whose name is neither a component nor a
+label in this plan has a problem, so the pasted transfer table is out of date (copied from a plan
+with a component or label this one lacks). (Until 2026-11-06 such keys were dropped.)
 Whether its stages match what it would make isn't checked: a copy pasted where its sources hold
 something else is out of date, as a plan file can be.
 
@@ -1868,8 +1910,9 @@ randomization.
 |---|---|
 | `readTransferTable(plan, table)` | `{ columns, problems }`: the table read against the plan (section 3, "Reading the table"). Throws if `table` isn't in its form (section 5). |
 | `stockWellsOf(plan, component)` | the wells holding only `component` at Start, in deck order, each `{ labware, well }`; `[]` if none. Throws if there's no such component. |
+| `sourceWellsOf(plan, name)` | the wells a transfer table column named `name` (trimmed) may draw from: `name`'s stock wells if it's a component, then the wells labeled `name` not already listed, each in deck order, each `{ labware, well }`; `[]` if `name` is neither a component nor a label (section 3, "A column's source wells"; item 24, 2026-11-06). Throws if `name` isn't text or is blank. |
 | `transferTableProblems(plan, draft, at)` | the draft's problems, `{ row, column, message }` each, in order; `[]` if it can be added or updated. `at` is a stage ID or `null`. Throws if the draft isn't in its form, or `at` isn't a stage or `null`. |
-| `sourceSplit(plan, draft, component, at)` | how a column's transfers split among its wells, `[{ well, count }]` in its `sources` order (section 3), from the column as `readTransferTable` reads it (other problems in the draft don't stop it, and its wells needn't be stock wells), for a caller showing the split while the draft is being edited. Throws if the draft or `at` isn't in its form (as `transferTableProblems`), then if the component's column has no amount, or no wells in `sources`. |
+| `sourceSplit(plan, draft, name, at)` | how a column's transfers split among its wells, `[{ well, count }]` in its `sources` order (section 3), from the column named `name` as `readTransferTable` reads it (other problems in the draft don't stop it, and its wells needn't be source wells), for a caller showing the split while the draft is being edited. Throws if the draft or `at` isn't in its form (as `transferTableProblems`), then if the name's column has no amount, or no wells in `sources`. |
 | `transferTableStages(plan, draft, at, { id, renamedFrom })` | the stages adding or updating would give, `[{ component, stage, transfers, settings, tips }]` in column order. `id` defaults to `null`, `renamedFrom` to `{}`. Throws the first problem's message if the draft has any. |
 | `addTransferTable(plan, draft, beforeId)` | `{ plan, id }`: the plan with a new transfer table and its stages before stage `beforeId` (or last, for `null`), as one edit. Throws if `beforeId` isn't a place it can sit, or the draft has problems (the first one's message). |
 | `updateTransferTable(plan, id, draft, { renamedFrom })` | the plan with the transfer table remade from `draft`, as one edit (section 3, "Updating"); the same plan if nothing would change. Throws if there's no such transfer table, or the draft has problems. |
@@ -2064,11 +2107,11 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | A transfer table's `id` isn't one of the plan's | `There's no transfer table "t9" in the plan.` |
 | `readTransferTable`, and every function taking a draft: `table` isn't a non-empty list of rows, each a non-empty list of the same number of cells, each text | `A transfer table must be a list of rows, each a list of the same number of cells, each text, but got 5.` (naming the value, or the first row or cell that's wrong: `… but row 3 has 4 cells and row 1 has 5.` / `… but row 2, cell 3 is null.` / `… but got [].`). One row, or one column, is accepted (it adds nothing). |
 | a draft isn't an object with exactly `table` and `sources` | `A transfer table's draft must be an object with exactly "table" and "sources", but got 5.` |
-| `sources` isn't an object of lists | `A transfer table's sources must be an object of component names, each with a list of wells, like { Media: [{ labware: "Res1", well: "1" }] }, but got 5.` |
-| a `sources` key isn't a component | `A transfer table draws Dye from wells, but there's no component called "Dye" in this plan.` |
+| `sources` isn't an object of lists, or a key is blank | `A transfer table's sources must be an object of names (a component or a well label), each with a list of wells, like { Media: [{ labware: "Res1", well: "1" }] }, but got 5.` |
 | a source list is empty, a well isn't on the deck, or a well is listed twice | `Media's source wells are empty. List at least one, or leave Media out.` / `Media's source well 2: ` and `deck.checkWell`'s message / `Res1 1 is one of Media's source wells twice. List each once.` |
 | `stockWellsOf`: no such component | as for components: `There's no component called "Dye" in this plan. Add it to the plan's components first.` |
-| `sourceSplit`: the component's column isn't in the draft, or makes no stage; or it has no wells | `Media has no column with an amount in this table.` / `Choose a well for Media to draw from.` |
+| `sourceWellsOf`: `name` isn't text, or is blank after trimming | `A column's name must be a component or a well label, but got 5.` (naming the value) |
+| `sourceSplit`: the name's column isn't in the draft, or makes no stage; or it has no wells | `Media has no column with an amount in this table.` / `Choose a well for Media to draw from.` |
 | `addTransferTable`, `updateTransferTable`, `transferTableStages`: the draft has problems | the first problem's message |
 | `addTransferTable`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a transfer table before.` |
 | `addTransferTable`: `beforeId` is inside a tip group | `A transfer table sits between tip groups, so it can't go before stage 3, “Drugs”.` (Inside a transfer table or a randomization: each one's "stay together" message.) |
@@ -3032,7 +3075,8 @@ from Res1 1 (changing the split); `false` again after updating (for the removed 
 - **Renaming a component:** Media renamed DMEM renames the header cell (also one written ` Media `,
   which becomes `DMEM`), the `sources` key, the `stages` entry and the stage's name, in one edit; the
   table stays up to date; undo brings all of it back.
-- **Removing a component:** Drug A removed: its `sources` key goes, its header stays, the table is
+- **Removing a component:** Drug A removed: its `sources` key stays (since 2026-11-06, item 24; it went
+  before), its header stays, the table is
   out of date, its stage is still owned.
 - **Protection:** each refusal of section 5 for a transfer table's stage: adding, removing and
   changing a transfer's volume, renaming, removing the stage, removing its tip change, removing the
@@ -3074,7 +3118,7 @@ ordinary stage moved into one, a tip group or randomization put there, and a tab
 between boxes are refused with section 5's messages; a pasted table whose stage names a
   component without a column is refused with `Can't paste: item 1: its stage for Dye has no column
   in its table.`; a copy whose `sources` name a component this plan lacks (and whose header names
-  it) pastes, without that key, and is out of date; copies of its stages copied alone are ordinary
+  it) pastes, keeping that key (since 2026-11-06, item 24), and is out of date; copies of its stages copied alone are ordinary
   stages, owned by nothing.
 - **Moving wells, transfer order:** with `Control` on Plate1 A1 to A3, moving A1 to H9 (past A2
   and A3, so its transfers come in another order) leaves the transfer table up to date, and an
@@ -3087,6 +3131,52 @@ between boxes are refused with section 5's messages; a pasted table whose stage 
   its label and transfers, and it stays up to date.
 - **Immutability:** every function above leaves the plan and the draft given unchanged; a plan's
   `table` and `sources` are frozen.
+- **Label-named columns** (2026-11-06, item 24). On the same test plan, with Deep1 A4 (the Media and
+  DMSO mix) labeled `Premix`, and Deep1 B1 (holding DMSO) and Deep1 B2 (empty) labeled `Media`:
+  - **Reading:** a `Premix` header reads as a column with `isComponent` `false` and `labelWells`
+    `[Deep1 A4]`; a `Media` header with `isComponent` `true` and `labelWells` `[Deep1 B1, Deep1
+    B2]`; a `Drug C` header (neither) gives `“Drug C” isn't a component or a well label in the
+    plan.`; `Premix` twice gives the "more than one column" message with `component or label`; a
+    blank header with an amount gives `Column 3 has amounts but no component or label.`
+  - **`sourceWellsOf`:** `Media` gives Res1 1, Res1 2 (its stock wells), then Deep1 B1, Deep1 B2 (its
+    labeled wells); `Premix` gives Deep1 A4; `Drug A` gives Deep1 A1; a stock well that's also
+    labeled with its component's name is listed once, among the stock wells; a name that's neither
+    gives `[]`; `5` and `"  "` throw section 5's message. Labels are matched exactly after trimming
+    the header (`Premix ` matches `Premix`; `premix` doesn't).
+  - **A draft's problems:** a `Premix` column drawing from Deep1 A4 has none, though Deep1 A4 holds a
+    mix, and an empty labeled well (Deep1 B2 chosen for `Media`) has none either (what a labeled
+    well holds is never checked); a `Premix` column drawing from Res1 1 gives `Res1 1 isn't labeled
+    “Premix”, so “Premix” can't draw from it.`; a `Media` column drawing from Deep1 A1 gives `Deep1
+    A1 doesn't hold only Media at Start and isn't labeled “Media”, so Media can't draw from it.`; a
+    `DMSO` column with Deep1 A3 emptied gives `No well holds only DMSO at Start. Fill one with DMSO
+    at Start first, or label the well to draw from “DMSO”.`; a `Control` column (a label a row also
+    uses) drawing from Plate1 A1 gives the "both a source of Control and a well the table fills"
+    message.
+  - **Adding:** a table with a `Premix` column adds a stage named `Premix`, its transfers drawing
+    from Deep1 A4, and `stages` entry `{ component: "Premix", stage }`; the plan's contents show
+    Deep1 A4 losing its mix in proportion (contents tracking, unchanged).
+  - **Splitting:** two `Media`-labeled wells, Deep1 B1 holding less than the column needs and Deep1
+    B2 refilled at Start, split as section 3 says, from what each holds just before the table;
+    with Deep1 B1 empty just before the table (emptied by an earlier stage), all transfers draw
+    from Deep1 B2.
+  - **Out of date:** after `setWellLabel` clears Deep1 A4's `Premix` label, a table drawing from it is
+    out of date (the header names nothing); after the label moves to Deep1 A5 (cleared on A4, set
+    on A5), it's out of date (Deep1 A4 isn't a source well any more); after an earlier stage adds
+    more DMSO to Deep1 A4, it's **not** out of date (one source well: its transfers don't change);
+    after `moveWell` of Deep1 A4 to Deep1 A6, it's not out of date (the label moves with it, and
+    `sources` follows).
+  - **Components:** `renameComponent` Media → DMEM renames a `Media` header that's also a label (to
+    `DMEM`), its key and stage; a table whose `Media` sources included Deep1 B1 (labeled `Media`)
+    is then out of date; a `Premix` header isn't touched by any rename. `removeComponent` of DMSO
+    keeps `sources` (the key stays) and a `DMSO` header that's no label reads as a problem (out of
+    date).
+  - **Pasting:** a copied transfer table with a `Premix` column pasted into a plan with no `Premix`
+    label keeps its `sources` key, and is out of date; pasted into a plan where a well has that
+    label, it's up to date only if its sources are that plan's labeled wells.
+  - **The form:** a draft whose `sources` has the key `"Premix"` (no component of that name) is
+    accepted; a key `""` or `"  "` throws the sources form message.
+  - **Settings by name:** updating a table whose `Premix` stage was set to aspirate Slow keeps it;
+    `renamedFrom` `{ "Premix 2": "Premix" }` keeps it on a column renamed in the table.
 
 **The REPL** (`scripts/repl.js`): `readTransferTable`, `addTransferTable`, `updateTransferTable` and
 `isTransferTableOutOfDate` in the transfer designer's topic, with an example building a two-column
