@@ -2370,6 +2370,12 @@ button.source-tip-button {
   padding: 0 4px;
 }
 
+/* The note under a randomization's Tips (section 7): what its values do, and what Mixed means. */
+.card-tips-note {
+  font-size: 12px;
+  margin: 2px 0 0;
+}
+
 input.seed-box {
   width: 120px;
 }
