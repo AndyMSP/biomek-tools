@@ -128,7 +128,9 @@
 > stage's settings and each source group's tips, a new stage starting from its neighbor's; a run may
 > set every stage's mode, mixing, tip type or probes at once (`runRandomization`'s `forAll`); a
 > randomization's stages and tip changes take `changeStageSettings`, `setStageMix`, `setTipType`
-> and `setTipProbes`. `addRandomization` starts its first-run settings from the stage before it.
+> and `setTipProbes`, and every other edit of them is now refused in the logic;
+> `randomizationStageValues` gives the values its stages share. `addRandomization` starts its
+> first-run settings from the nearest transfer stage, as `addStage` does.
 > Copied items go to version 5. Sections 3 to 6. Plan files go to format version 12
 > (`plan-file.md`). Shaped in a preview with Andy on 2026-11-05 and written in the hands-off
 > workflow, so the choices made for Andy are listed in its pull request. Still to review: every new
@@ -610,11 +612,33 @@ through it, so they always match what it last ran with. `randomizationOf(plan, s
 randomization owns a stage. **Their pipetting settings and tips are theirs to edit** (Andy,
 2026-11-05, item 20): `changeStageSettings` and `setStageMix` on an owned stage, and `setTipType`
 and `setTipProbes` on an owned stage's tip change (or `START`'s, when its first stage is the plan's
-first), work as on any stage; a run keeps what they set (below, "Running"). The caller offers no
-other edit of an owned stage, its transfers or its tip change: no renaming, adding or removing
-transfers, removing it, or adding or removing tip changes among its stages (whether its stages
-share tips is its sources' `sharesTips`) (the other edits here don't refuse them; roadmap,
-"Technical debt"). Two rules keep its stages off the tips of
+first), work as on any stage; a run keeps what they set (below, "Running"). **Every other edit of
+them is refused, in the logic** (2026-11-05, item 20, as for transfer tables: until then only the
+page kept them, and a plan that lost a run randomization's stages couldn't be saved and opened
+again, since its settings are `null`):
+- `addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer` on an owned stage;
+- `renameStage` of an owned stage (it's named after its source);
+- `removeStage` of an owned stage;
+- `removeTipChange` of an owned stage's tip change (whether its stages share tips is its sources'
+  `sharesTips`), and, as before, of the stage just after its last stage;
+- `addTipChange` before an owned stage (splitting one of its source groups);
+- `addStage`, `addMixStep` (with or without `takeTips`), `addStageWithNewTips`,
+  `addMixStepWithNewTips`, `addRandomization`, `placeRandomization` and `addTransferTable` with a
+  `beforeId` that is an owned stage other than its first, and `addStage` and `addMixStep` with
+  `takeTips` before its first stage (the new stage would take its first group's tips);
+- `addStage` and `addMixStep` without `takeTips` whose new stage would land just after its last
+  stage, joining its last tip group (a `beforeId` that's the stage just after its last stage, or
+  `null` when its last stage is the plan's last); `addStageWithNewTips` and
+  `addMixStepWithNewTips` there are allowed;
+- `moveItems` as before (section 3, "Moving and copying").
+
+`addStage` and `addMixStep` without `takeTips` before its first stage when that's the plan's first
+stage are allowed: the new stage becomes the first, on the `START` tips, and the randomization's
+first stage gets a tip change of its own loading the tips it had, as `addStageWithNewTips` gives.
+**The refusals are for calls from outside**: a randomization's own edits (`runRandomization`,
+`removeRandomization`, `moveItems`, `pasteItems`, `moveWell`) change its stages through internal
+helpers that skip them but keep every other rule of the edit they stand for (the stage rule, the
+tip rules, and `removeStage`'s rules for randomizations). Two rules keep its stages off the tips of
 stages outside it whatever else is edited:
 - `removeTipChange` refuses the tip change of the stage just after a randomization's last stage:
   `This tip change keeps stage 7, “Media”, off the randomization's tips. A randomization never
@@ -707,8 +731,17 @@ item 20; until then one `tipType` and `probes` for the whole randomization). The
     2 already shares gives a new list whose first source holds `false`.
   - Adding a source is the caller's: it appends `{ …, sharesTips: false }` (new tips of its own).
 
+**Where a new randomization's settings come from** (2026-11-05, item 20): `addRandomization`
+gives it, for its first run, the settings of the **nearest transfer stage** to its place, as
+`addStage` copies them (section 3, "Stages": the nearest before it in the stage order, else the
+nearest after it, else `defaultSettings()`), and the tips **in use just before its place** (the tip
+type and probes of the tip group of the stage just before `beforeId` in the stage order, or of the
+plan's last stage for `null`, or `START`'s when `beforeId` is the first stage). So a mix step just
+before the place is passed over, as `addStage` passes it over.
+
 **Running** (`runRandomization(plan, id, forAll)`), when it has no problems (below), as one edit.
-Whether it's a **first run** (no `stages` before it) is noted first.
+Whether it's a **first run** (no `stages` before it) is noted first, with, for a later run, its
+stages before the run, their settings and the tips each one's tip group loaded.
 1. **The pool** (`random-pool.md`): an item per source, keyed `"source 1"`, `"source 2"` … by its
    place in `sources`, with its replicates, except that the filler wells are one item, keyed by the
    **first filler well**'s place, the others left out; the filler's key (the first filler well's),
@@ -734,13 +767,18 @@ Whether it's a **first run** (no `stages` before it) is noted first.
    order, **named** as its source is (below). So every new stage has new tips for now (step 7 takes
    away those its source group shares), and the stage after keeps the tips it had. **A new stage's
    settings** (Andy, 2026-11-05, item 20), as `changeStageSettings`: on a first run, the
-   randomization's `settings`; on a later run, those of the **nearest stage the randomization
-   already had** (one kept by this run) whose source comes before the new stage's source in
-   `sources` (the filler's stage at its first filler well's place), else the nearest whose source
-   comes after it; if the run keeps none of its stages (every source new), those of the stage just
-   before the place (step 2) in the stage order, if it's a transfer stage, else `defaultSettings()`.
-   (`addStageWithNewTips` copies the nearest transfer stage, which may be outside the
-   randomization; this replaces it, so a new source starts like its neighbors in the card.)
+   randomization's `settings`. On a later run, the first of these that applies:
+   - **the filler's new stage**, when this run removes stages (step 4): the settings of the last of
+     the stages it removes, in stage order before the run (normally the old filler stage, as the
+     filler wells are usually the last sources);
+   - the settings of the **nearest stage the randomization keeps** (one it had before the run and
+     this run doesn't remove) whose source comes before the new stage's source in `sources` (the
+     filler's stage at its first filler well's place), else the nearest whose source comes after it;
+   - when it keeps none of its stages (every source replaced): the settings of its **old first
+     stage** (the first of its stages before the run).
+   So a new stage takes its settings from the randomization's own stages, never from a stage
+   outside it. (`addStageWithNewTips` copies the nearest transfer stage, which may be outside the
+   randomization; this replaces it.)
 4. **Then old stages go**: each stage in `stages` whose source is no longer in `sources`, or now
    gets no wells (for the filler's stage: the filler as a whole gets none), and each other entry
    naming a filler well (step 3), is removed (`removeStage`). (New stages come first, so a run never
@@ -771,13 +809,17 @@ Whether it's a **first run** (no `stages` before it) is noted first.
    out, since none is ever keyed by the first stage), and every other stage of the group has **no
    tip change** (one it had is taken out), so it shares those tips. **Which tips** (Andy,
    2026-11-05, item 20), taking the groups in `sources`' order: on a first run, the randomization's
-   `tipType` and `probes`; on a later run, the tips that **started a tip group at that first stage
-   before the run** (its own tip change, or `START`'s if it was the plan's first stage), if it
-   was a stage the randomization had and started a tip group then; otherwise the tips of the
-   source group before it in `sources` (as just worked out), else of the nearest group after it
-   that keeps its tips this way, else the tips in use just before the place (step 2: the tip group
-   of the stage just before it in the stage order, or `START`'s tips if none). So a group keeps the
-   tips set on it, and a new group, or one whose first stage changed, starts like its neighbor. The stage just
+   `tipType` and `probes`. On a later run, the first of these that applies:
+   - **a group with a stage the randomization keeps**: the tips the tip group of its first such
+     stage (in stage order before the run) loaded before the run, whether or not that stage
+     started its tip group; so a group whose first source was taken out (A1 and A2 sharing, A1
+     removed) keeps the tips it had;
+   - **a group with only new stages**, whose first stage took its settings from a stage this run
+     removes (step 3: the filler's new stage, or every source replaced): the tips that removed
+     stage's tip group loaded;
+   - otherwise the tips of the source group before it in `sources` (as just worked out), else of
+     the nearest group after it that has a stage the randomization keeps.
+   So a group keeps the tips set on it, and a new group starts like its neighbor. The stage just
    after the randomization's last stage, if any, keeps its own tip change (step 3 gives it one when
    a new stage goes before it, and a run never takes it away). So no stage outside the
    randomization shares its tips, and nothing about tip changes outside it changes.
@@ -787,16 +829,33 @@ Whether it's a **first run** (no `stages` before it) is noted first.
    `destinationMode`, `destinationMixes` (a pipetting mode's name for that end, `modesFor`; whether
    that end mixes, `true` or `false`), `tipType` (in `TIP_TYPES`) and `probes` (as `setTipProbes`
    takes them). Each one given is applied to **every** stage the randomization now owns (the four
-   settings) or **every** tip change starting one of its source groups (`tipType`, `probes`); each
-   one left out leaves every stage or tip change as it is. For an end, on each stage: the mode is
-   `forAll`'s if given, else the stage's own; whether it mixes is `forAll`'s if given, else the
-   stage's own, except that a mode that can't mix turns that end's mixing off (as a stage's box
+   settings) or **every** tip change starting one of its source groups (`tipType`, `probes`; for a
+   group whose first stage is the plan's first, `START`'s tip change); each one left out leaves
+   every stage or tip change as it is. For an end, on each stage: the mode is `forAll`'s if given,
+   else the stage's own; whether it mixes is `forAll`'s if given, else the stage's own, except that
+   a mode given that can't mix, with no mixing given, turns that end's mixing off (as a stage's box
    does); then the end's settings are the mode's (`modeSettings`, with its mixing technique when it
    mixes) and its mix the stage's own if it already mixed, else `DEFAULT_MIX`, or `null` when it
-   doesn't mix. A stage whose end isn't one of the modes (`modeOf` gives `null`) and whose mode
-   isn't given keeps that end as it is. (A caller showing "the value they share, or that they
-   differ" passes only the values the user chose.)
+   doesn't mix. A stage whose end isn't one of the modes (`modeOf` gives `null`) and for which
+   neither that end's mode nor its mixing is given keeps that end as it is. **Refused, changing
+   nothing** (the whole run): a mixing value given without a mode for that end, when any stage's
+   end isn't one of the modes; mixing turned on (`true`) without a mode, when any stage's mode at
+   that end can't mix; a mode given that can't mix with mixing turned on (`modeSettings`' message).
+   Stages are checked in stage order; the first is reported (section 5). (A caller showing "the
+   value they share, or that they differ" passes only the values the user chose.)
 10. `settings`, `tipType` and `probes` are set to `null` (above: the stages hold them now).
+
+**Its stages' shared values** (`randomizationStageValues(plan, id)`; 2026-11-05, item 20, for a
+caller showing its settings): `{ sourceMode, sourceMixes, destinationMode, destinationMixes,
+tipType, probeCount }`. Once it has stages, each is the value **every one** of its stages (for the
+modes and mixing: `modeOf` and whether the end's mix isn't `null`) or every tip change starting one
+of its source groups (for `tipType` and `probeCount`, the number of probes; `START`'s for a group
+whose first stage is the plan's first) shares, or `null` when they differ; a mode is also `null`
+when any stage's end isn't one of the modes. With no stages, they're its own `settings`',
+`tipType` and number of `probes` (a mode `null` if its settings' end isn't one of the modes). E.g.
+three stages aspirating Medium, Medium and Slow, each dispensing Fast without mixing, on BC230 4
+probes: `{ sourceMode: null, sourceMixes: false, destinationMode: "Fast", destinationMixes: false,
+tipType: "BC230", probeCount: 4 }`. Throws if there's no randomization `id`.
 
 So a run with every source starting new tips (`sharesTips` `false` everywhere, as every
 randomization had before 2026-11-05) gives exactly what it gave before: each stage the only stage
@@ -1581,7 +1640,7 @@ throw first if there's no component with that name.
 **Randomizations**
 | Function | Returns |
 |---|---|
-| `addRandomization(plan, beforeId, { seed, volume })` | `{ plan, id }`: the plan with a new randomization last in `randomizations`, sitting before stage `beforeId` (or last, for `null`), with no sources, wells to fill or stages, the `seed` and `volume` given (each may be `null`), and, for its first run (section 3; since 2026-11-05, item 20), the `settings` of the transfer stage just before its place in the stage order (else `defaultSettings()`) and the tip type and probes of that stage's tip group (else the `START` tips); and its ID. Throws if `beforeId` isn't a place a randomization can sit (section 3), or `seed` or `volume` isn't valid. |
+| `addRandomization(plan, beforeId, { seed, volume })` | `{ plan, id }`: the plan with a new randomization last in `randomizations`, sitting before stage `beforeId` (or last, for `null`), with no sources, wells to fill or stages, the `seed` and `volume` given (each may be `null`), and, for its first run, the settings of the nearest transfer stage and the tips in use just before its place (section 3, "Where a new randomization's settings come from"; since 2026-11-05, item 20); and its ID. Throws if `beforeId` isn't a place a randomization can sit (section 3), or `seed` or `volume` isn't valid. |
 | `randomizationAt(plan, id)` | the randomization with ID `id`, or `null`. |
 | `randomizationOf(plan, stageId)` | the ID of the randomization that owns stage `stageId`, or `null`. |
 | `setRandomization(plan, id, changes)` | the plan with the randomization's `sources`, `fill`, `seed`, `volume`, `settings`, `tipType` and `probes` replaced by those in `changes` (any of them; the others kept), checked as section 3 says, `fill` put in deck order and `probes` smallest first. `settings`, `tipType` and `probes` can be given only while it has no stages (its first run's; section 3). Its `stages` and `beforeId` don't change. Gives back the same plan if nothing changes. Throws if there's no such randomization, or anything is invalid (section 5). |
@@ -1595,6 +1654,7 @@ throw first if there's no component with that name.
 | `isRandomizationOutOfDate(plan, id)` | `true` if the randomization has run and has problems now, or a run now would give different stages (section 3, "Out of date"). |
 | `tipSetsToMake(plan, id)` | how many sets of new tips a run now would load for the randomization: the tip groups among the stages a trial run gives it (section 3, "Sets of new tips a run makes"); `null` while it has problems. |
 | `sourceName(plan, id, source)` | a source's name (section 3), e.g. `"Cond 1"`, `"Drug A +2"` or `"Deep A1"`. |
+| `randomizationStageValues(plan, id)` | its stages' shared values, each `null` where they differ (section 3). Throws if there's no randomization `id`. |
 | `runRandomization(plan, id, forAll = {})` | the plan with the randomization run (section 3, "Running"), then `forAll`'s values (any of `sourceMode`, `sourceMixes`, `destinationMode`, `destinationMixes`, `tipType`, `probes`) set on every stage it owns or every tip change starting one of its source groups (step 9), as one edit; its `settings`, `tipType` and `probes` then `null`. Throws `forAll`'s first wrong value's message (section 5), then its first problem's message if it has any, changing nothing. |
 | `removeRandomization(plan, id)` | the plan without the randomization and its stages. Throws if there's no such randomization, or its stages are all the plan's stages. |
 | `canRemoveRandomization(plan, id)` | `true` unless its stages are all the plan's stages. |
@@ -1740,6 +1800,13 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `runRandomization`: a mode in `forAll` isn't one for its end, or `…Mixes` isn't `true` or `false` | `modeSettings`' message for that end (e.g. `"Fastest" isn't a pipetting mode for the source. …`) / `Whether the source mixes must be true or false, but got "yes".` |
 | `runRandomization`: `forAll` turns mixing on at an end whose mode (given, or a stage's own) can't mix | `modeSettings`' message: `Non-Contact can't mix, so it can't be used at the destination while the destination mixes. Turn the destination's mixing off first.` (checked before anything changes, for every stage it owns or would make) |
 | `runRandomization`: `forAll`'s `tipType` or `probes` | `setTipType`'s or `setTipProbes`' message |
+| `runRandomization`: `forAll` gives an end's mixing without its mode, and a stage's end isn't one of the modes, or (mixing on) its mode can't mix | `Stage 5, “Drug A”, uses Non-Contact at the destination, which can't mix. Choose a mode for every stage, or change that stage first.` / `Stage 5, “Drug A”, doesn't use one of the modes at the source. Choose a mode for every stage, or change that stage first.` (`source` or `destination`; the first stage in stage order) |
+| an edit of an owned stage's transfers (`addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer`) | `Stage 5, “Drug A”, is part of a randomization: change its sources and wells in the randomization.` |
+| `renameStage` of an owned stage | `Stage 5, “Drug A”, is part of a randomization: it's named after its source.` |
+| `removeStage` of an owned stage | `Stage 5, “Drug A”, is part of a randomization: take its source out of the randomization, or remove the whole randomization.` |
+| `removeTipChange` of an owned stage's tip change, or `addTipChange` before an owned stage | `Stage 5, “Drug A”, is part of a randomization: which of its stages share tips is set by its sources.` |
+| `addStage`, `addMixStep` without `takeTips` just after its last stage | `A stage added here would share the randomization's tips. Add it with new tips, from the seam between tip groups.` |
+| adding a stage, mix step, randomization or transfer table inside it (a `beforeId` that's an owned stage but its first), or a stage or mix step with `takeTips` before its first stage | `A randomization's stages stay together: add before its first stage or after its last.` |
 | `setRandomizations`: an ID isn't `"r"` and a whole number of at least 1, or is repeated | `Randomization 2's ID must be "r" and a whole number, like "r1", but got "x".` / `Randomizations 1 and 3 both have the ID "r2".` |
 | `setRandomizations`: `fill` not in deck order, or `probes` not smallest first | `Randomization 2: its wells to fill must be in deck order, but Plate1 B3 comes before Plate1 B2.` / `Randomization 2: its probes must be listed smallest first.` |
 | `setRandomizations`: `stages` isn't a list of `{ labware, well, stage }`, names a stage not in the plan, names one stage twice, or gives one well two stages | `Randomization 2: its stages must be a list of objects with exactly "labware", "well" and "stage".` / `Randomization 2: its stage "9" isn't in the plan.` / `Stage "5" belongs to two randomizations, 1 and 2.` (or, in one, `Randomization 2: stage "5" is listed twice.`) / `Randomization 2: Deep A4 has two stages.` (A stage whose well is no longer a source is accepted: `setRandomization` leaves it until the next run, so a plan between those edits saves and opens.) |
@@ -1843,7 +1910,9 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   the mixing rule, then not a mix step's), `tipType`, `probes`.
 - `runRandomization`: the randomization, then `forAll`'s form, then its values in the order
   `sourceMode`, `sourceMixes`, `destinationMode`, `destinationMixes`, `tipType`, `probes`, then
-  the problems (`randomizationProblems`), then mixing a mode can't do (step 9), first stage first.
+  the problems (`randomizationProblems`), then step 9's refusals (a mode can't mix with mixing
+  on, then a stage whose end isn't one of the modes or can't mix), first stage first, checked on the
+  run's result before it's given back.
 - `addRandomization`, `placeRandomization`: the randomization (for `placeRandomization`), whether
   it has stages, `beforeId` a stage, then a place it can sit; then `seed`, then `volume`.
 - `setRandomizations`: the list; then each randomization in turn: its form (exactly its
@@ -2320,8 +2389,8 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
 - **Settings on its stages** (2026-11-05, item 20):
   - `addRandomization` before a stage whose settings are Slow at the source and whose tip group is
     BC1070 on 8 probes: its `settings` are that stage's, `tipType` `"BC1070"`, `probes` all eight;
-    at the start of a plan whose first stage is a mix step: `defaultSettings()` and the `START`
-    tips; with no transfer stage before it, `defaultSettings()`.
+    at the start of a plan: the first transfer stage's settings and the `START` tips; in a plan with
+    only mix steps, `defaultSettings()`.
   - A first run gives every stage `settings` and every group's tips `tipType` and `probes`; after
     it, `settings`, `tipType` and `probes` are `null`.
   - After a run, `changeStageSettings` on one stage (aspirate Slow) and `setTipType` on another
@@ -2330,8 +2399,7 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
   - `setStageMix` and `setTipProbes` on an owned stage work as on any stage.
   - A source added after a run, between A1 (aspirate Slow, BC1070) and A2 (Medium, BC230): its new
     stage gets A1's settings and, on new tips, A1's group's tips; added first: A1's settings (the
-    nearest after) and A1's tips. Every source replaced: the new stages take the settings of the
-    stage just before the randomization's place, and the tips in use there.
+    nearest after) and A1's tips.
   - A source whose `sharesTips` turns `false` (splitting a group): the new group's first stage, which
     didn't start a group before, gets the tips of the group before it; turning it back `true`: it
     loses its tip change and shares again.
@@ -2351,6 +2419,29 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
     with the form message; version 6 is refused as newer.
   - **Regression fixture** (`tests/fixtures/shared-tips/`): opening `randomized-plan-v9.json` and
     running `r1` with no `forAll` still gives exactly the fixture's files.
+  - **Protection** (each with its message, changing nothing): `addTransfer`, `changeVolume`,
+    `removeTransfer`, `renameStage`, `removeStage` on an owned stage; `removeTipChange` of a
+    group's tip change; `addTipChange` before a stage sharing tips; `addStage` before its second
+    stage, with `takeTips` before its first, and without `takeTips` just after its last; allowed:
+    `addStageWithNewTips` just after its last, and `addStage` without `takeTips` before its first
+    when it's the plan's first (its first stage getting its own tip change with the tips it had).
+    A run, `removeRandomization`, `moveItems` and `moveWell` still change its stages.
+  - **Starting settings:** `addRandomization` with a mix step just before its place takes the
+    transfer stage before the mix step; with only mix steps before it, the nearest transfer stage
+    after it.
+  - **Tips kept on a later run:** A1 and A2 sharing tips set to BC1070, A1 taken out and run: A2's
+    group keeps BC1070; a source turned to share tips with the group above joins its tips.
+  - **Nothing kept, or a new filler stage:** every source replaced, the old first stage Slow on
+    BC1070: every new stage Slow and every group BC1070; the filler wells replaced (the old filler
+    stage aspirating Fast on BC1070 on 8 probes, the others on BC230): the new filler stage Fast on BC1070, 8 probes, while
+    the other stages keep theirs.
+  - **`forAll` refused:** `destinationMixes` `true` with a stage dispensing Non-Contact, and
+    `sourceMixes` `false` with a stage whose source end isn't one of the modes, each throwing its
+    message naming that stage, the plan unchanged; `forAll` `tipType` when the randomization's
+    first stage is the plan's first: `START`'s tip change gets it.
+  - **`randomizationStageValues`:** the example of section 3; all stages alike gives every value;
+    a stage whose end isn't one of the modes gives that mode `null`; before a run, its own values;
+    after a group's tips change with its ✎ (`setTipType`), `tipType` `null`; an unknown ID throws.
 - After `setRandomization` takes A2 out of `sources`, its stage is still in `stages`
   (`randomizationOf` still `r1`); the next run removes it. After adding A4: a new stage after the
   last, on new tips. Replacing the only source of a randomization whose stage is the plan's only
