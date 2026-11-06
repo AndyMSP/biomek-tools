@@ -1682,14 +1682,14 @@ button.entry-row {
   background: var(--page-background);
 }
 
-/* A transfer table's heading row: the heading button, then its ✎. */
-.transfer-table-head {
+/* A transfer table's or randomization's heading row: the heading button, then its ✎. */
+.box-head {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.transfer-table-head .transfer-table-heading {
+.box-head .randomization-heading {
   flex: 1;
   min-width: 0;
 }
@@ -3011,7 +3011,7 @@ body.column-dragging * {
 }
 
 .tip-group.selected > .tip-group-heading,
-.randomization.selected > .randomization-heading {
+.randomization.selected > .box-head > .randomization-heading {
   color: var(--blue);
   font-weight: 600;
 }

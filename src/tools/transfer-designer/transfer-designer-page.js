@@ -366,12 +366,14 @@ const tablesOutOfDateByPlan = new WeakMap();
 // The transfer table wizard while it's open (section 7, "The wizard"), or null: see openNewWizard.
 let wizard = null;
 
-// The IDs of the transfer tables whose box is open, showing its stages (section 7, "Its box"):
-// remembered while the page is open, not saved in plan files and not an undo step.
-const openTables = new Set();
+// The IDs of the transfer tables and randomizations whose box is open, showing its stages (section
+// 7, "Its box"): remembered while the page is open, not saved in plan files and not an undo step.
+// Their IDs never clash ("t1", "r1").
+const openBoxes = new Set();
 
-// The open entry when refresh last looked, so a transfer table's box opens once when one of its
-// stages becomes the open entry, and can then be closed by its heading.
+// The open entry when refresh last looked, so a transfer table's or randomization's box opens once
+// when one of its stages (or a randomization's card) becomes the open entry, and can then be closed
+// by its heading.
 let openEntrySeen = null;
 
 // The page's elements that transfer-designer.html gives an id, looked up once.
@@ -652,7 +654,7 @@ function refresh() {
     history = history.replacePresent({ plan, open: place });
   }
   syncCard(plan, currentOpen());
-  openTableOfNewlyOpenStage(plan);
+  openBoxOfNewlyOpenEntry(plan);
   // Undo or redo can take the picked component away (e.g. undoing a rename): then, as when a picked
   // component is removed, the first component is picked, or the eraser if there's none.
   if (brush.pick.kind === "component" && !hasComponent(plan, brush.pick.name)) {
@@ -677,17 +679,23 @@ function refresh() {
   requestAnimationFrame(fitStagesColumn);
 }
 
-// Opens the box of the transfer table whose stage has just become the open entry (section 7, "Its
-// box"), once: after that, its heading can close it while the stage stays open.
-function openTableOfNewlyOpenStage(plan) {
+// Opens the box of the transfer table or randomization whose stage, or the randomization whose
+// card, has just become the open entry (section 7, "Its box"), once: after that, its heading can
+// close it while the stage stays open.
+function openBoxOfNewlyOpenEntry(plan) {
   const open = currentOpen();
   if (open === openEntrySeen) {
     return;
   }
   openEntrySeen = open;
-  const owner = isStage(plan, open) ? transferTableOf(plan, open) : null;
+  let owner = null;
+  if (isStage(plan, open)) {
+    owner = transferTableOf(plan, open) ?? randomizationOf(plan, open);
+  } else if (isRandomization(plan, open)) {
+    owner = open;
+  }
   if (owner !== null) {
-    openTables.add(owner);
+    openBoxes.add(owner);
   }
 }
 
@@ -824,7 +832,7 @@ function showReplacedPlan(plan, open) {
   bringOutUsedLabware(plan);
   pickFirstComponent(plan);
   // Another plan's transfer tables may reuse the IDs, so every box starts closed (section 7).
-  openTables.clear();
+  openBoxes.clear();
   recordEdit(plan, open);
 }
 
@@ -2782,14 +2790,14 @@ function createRandomizationBox(plan, block, groupIndex, open, problems, drawnKe
   box.dataset.item = itemKey({ kind: "randomization", id: randomization.id });
   applyGlow(box, `randomization:${randomization.id}`, drawnKeys, { whenNew: false });
   const outOfDate = outOfDateRandomizations(plan).has(randomization.id);
-  const heading = createRandomizationHeading(randomization, cardOpen, outOfDate);
+  const expanded = cardOpen || openBoxes.has(randomization.id);
+  const heading = createRandomizationHeading(randomization, hasRun ? expanded : null, outOfDate);
   heading.dataset.itemHandle = box.dataset.item;
-  box.append(heading);
+  box.append(createBoxHead(heading, createRandomizationPencil(randomization.id, cardOpen)));
   if (cardOpen) {
     card.element = createRandomizationCard(plan, randomization);
     box.append(card.element);
   }
-  const expanded = cardOpen || groups.some(({ group }) => group.stages.includes(open));
   groups.forEach((groupBlock, place) => {
     if (expanded) {
       box.append(createTipGroupBox(plan, groupBlock, groupIndex + place, open, problems, drawnKeys, "randomization"));
@@ -2810,39 +2818,48 @@ function noteDrawnWithoutGlow(group, drawnKeys) {
   }
 }
 
-// A randomization's heading (section 7): a button the box's width, with the dice icon, "Randomize"
-// (not set up yet) or "Randomized" (run), and, at the right, "not set up yet", "68 stages · seed
-// 360310", or, when `outOfDate`, "needs update" in red. Clicking it opens its card, or closes it if
-// open.
-function createRandomizationHeading(randomization, cardOpen, outOfDate) {
+// A randomization's heading (section 7), as a transfer table's (createBoxHeading): ▸ or ▾ once it
+// has run (`expanded`; null for one not set up yet, which has nothing to show), the dice icon,
+// "Randomize" (not set up yet) or "Randomized" (run), and, at the right, "not set up yet", "68
+// stages · seed 360310", or, when `outOfDate`, "needs update" in red. Clicking it opens or closes
+// its box, or, not set up yet, its card (clickItem).
+function createRandomizationHeading(randomization, expanded, outOfDate) {
   const hasRun = randomization.stages.length > 0;
-  const heading = createElement("button", "", "randomization-heading");
-  heading.type = "button";
-  heading.setAttribute("aria-expanded", String(cardOpen));
-  let title = hasRun ? "Open to change it" : "Not set up yet: open it to finish setting it up.";
-  let status = hasRun
-    ? `${countOf(randomization.stages.length, "stage")} · seed ${randomization.seed}`
-    : "not set up yet";
-  if (outOfDate) {
-    title = "The plan changed since this last ran: open it and press Update.";
-    status = "needs update";
-  }
-  heading.title = title;
-  const statusElement = createElement("span", status, "randomization-status");
-  statusElement.classList.toggle("needs-update", outOfDate);
-  heading.append(
-    createDiceIcon(),
-    createElement("span", hasRun ? "Randomized" : "Randomize", "randomization-title"),
-    statusElement,
-  );
-  heading.addEventListener("click", () => {
-    if (cardOpen) {
-      closeRandomizationCard();
-    } else {
-      openEntry(randomization.id);
-    }
+  return createBoxHeading({
+    className: "randomization-own-heading",
+    expanded,
+    icon: createDiceIcon(),
+    title: hasRun ? "Randomized" : "Randomize",
+    status: hasRun ? `${countOf(randomization.stages.length, "stage")} · seed ${randomization.seed}` : "not set up yet",
+    outOfDate,
+    outOfDateTooltip: "The plan changed since this last ran: press ✎, then Update.",
+    tooltip: hasRun ? null : "Not set up yet: open it to finish setting it up.",
   });
-  return heading;
+}
+
+// The ✎ on a randomization's heading (section 7): opens its card, or closes it if open (`cardOpen`)
+// as Close does, and selects the randomization alone.
+function createRandomizationPencil(id, cardOpen) {
+  return createBoxPencil({
+    tooltip: "Change its sources, wells and settings, or remove it",
+    accessibleName: "Edit randomization",
+    pressed: cardOpen,
+    onClick: () => {
+      const item = { kind: "randomization", id };
+      if (cardOpen) {
+        if (closeRandomizationCard()) {
+          pickedSet = [item];
+        }
+      } else {
+        openEntry(id);
+        if (card !== null && card.id === id) {
+          pickedSet = [item];
+        }
+      }
+      selectionAnchor = item;
+      markSelection(selectedItems());
+    },
+  });
 }
 
 // The dice icon (section 7): two dice, one tilted behind showing three, one in front showing five,
@@ -3969,7 +3986,7 @@ function isOwnedStage(plan, id) {
 const TABLE_PROBLEMS_LISTED = 6;
 
 // A transfer table's box in the Stages column (section 7): its heading and ✎, then, while the box
-// is open (openTables), its stages' tip group boxes (one stage each). Between its tip group boxes (and above the first, below the last) are the places where its
+// is open (openBoxes), its stages' tip group boxes (one stage each). Between its tip group boxes (and above the first, below the last) are the places where its
 // own stages can be dropped while one is dragged, never shown otherwise. `block` is from
 // columnBlocks; `groupIndex` the place of its first tip group among all of them, for their colors;
 // `boxIndex` its box's index in the column.
@@ -3978,12 +3995,10 @@ function createTransferTableBox(plan, block, groupIndex, open, problems, drawnKe
   const box = createElement("div", "", "transfer-table");
   box.dataset.item = itemKey({ kind: "transferTable", id: transferTable.id });
   applyGlow(box, box.dataset.item, drawnKeys, { whenNew: false });
-  const expanded = openTables.has(transferTable.id);
+  const expanded = openBoxes.has(transferTable.id);
   const heading = createTransferTableHeading(transferTable, outOfDateTransferTables(plan).has(transferTable.id), expanded);
   heading.dataset.itemHandle = box.dataset.item;
-  const head = createElement("div", "", "transfer-table-head");
-  head.append(heading, createTablePencil(transferTable.id));
-  box.append(head);
+  box.append(createBoxHead(heading, createTablePencil(transferTable.id)));
   if (!expanded) {
     groups.forEach(({ group }) => noteDrawnWithoutGlow(group, drawnKeys));
     return box;
@@ -4013,59 +4028,92 @@ function createTableDropPlace(id, boxIndex, position) {
 // table icon, "Transfer table", and, at the right, "4 stages", or, when `outOfDate`, "needs update"
 // in red. Clicking it opens or closes the box (clickItem, as for any item's handle).
 function createTransferTableHeading(transferTable, outOfDate, expanded) {
-  const heading = createElement("button", "", "randomization-heading transfer-table-heading");
+  return createBoxHeading({
+    className: "transfer-table-heading",
+    expanded,
+    icon: createTableIcon(),
+    title: "Transfer table",
+    status: countOf(transferTable.stages.length, "stage"),
+    outOfDate,
+    outOfDateTooltip: "The plan changed since this was made: press ✎, then Update.",
+  });
+}
+
+// The heading of a transfer table's or randomization's box (section 7): a button, the class
+// "randomization-heading" and `className`, holding ▸ (closed) or ▾ (open) as `expanded` says (none
+// for null, a box with nothing to show), `icon`, `title` (semibold) and, at the right, `status`, or,
+// when `outOfDate`, "needs update" in red. Its tooltip is `outOfDateTooltip` when out of date, else
+// `tooltip` if given, else "Show its stages" / "Hide its stages". `aria-expanded` says whether it's
+// open. Clicks on it are handled as an item's handle's (clickItem).
+function createBoxHeading({ className, expanded, icon, title, status, outOfDate, outOfDateTooltip, tooltip = null }) {
+  const heading = createElement("button", "", `randomization-heading ${className}`);
   heading.type = "button";
-  heading.setAttribute("aria-expanded", String(expanded));
-  heading.title = outOfDate
-    ? "The plan changed since this was made: press ✎, then Update."
-    : expanded
-      ? "Hide its stages"
-      : "Show its stages";
-  const status = createElement(
-    "span",
-    outOfDate ? "needs update" : countOf(transferTable.stages.length, "stage"),
-    "randomization-status",
-  );
-  status.classList.toggle("needs-update", outOfDate);
-  heading.append(
-    createElement("span", expanded ? "▾" : "▸", "folder-mark"),
-    createTableIcon(),
-    createElement("span", "Transfer table", "randomization-title"),
-    status,
-  );
+  if (expanded !== null) {
+    heading.setAttribute("aria-expanded", String(expanded));
+  }
+  heading.title = outOfDate ? outOfDateTooltip : (tooltip ?? (expanded ? "Hide its stages" : "Show its stages"));
+  const statusElement = createElement("span", outOfDate ? "needs update" : status, "randomization-status");
+  statusElement.classList.toggle("needs-update", outOfDate);
+  if (expanded !== null) {
+    heading.append(createElement("span", expanded ? "▾" : "▸", "folder-mark"));
+  }
+  heading.append(icon, createElement("span", title, "randomization-title"), statusElement);
   return heading;
+}
+
+// The row of a transfer table's or randomization's heading: the heading button, then its ✎.
+function createBoxHead(heading, pencil) {
+  const head = createElement("div", "", "box-head");
+  head.append(heading, pencil);
+  return head;
+}
+
+// The ✎ on a transfer table's or randomization's heading (section 7), with `tooltip`,
+// `accessibleName` and `onClick`; `pressed` says whether what it opens is open. It sits outside the
+// heading button, so a press on it starts no drag.
+function createBoxPencil({ tooltip, accessibleName, onClick, pressed = false }) {
+  const pencil = createElement("button", "✎", "edit-button box-edit");
+  pencil.type = "button";
+  pencil.title = tooltip;
+  pencil.setAttribute("aria-label", accessibleName);
+  pencil.setAttribute("aria-pressed", String(pressed));
+  pencil.addEventListener("click", onClick);
+  return pencil;
 }
 
 // The ✎ on a transfer table's heading (section 7): opens its wizard at Review and selects it.
 function createTablePencil(id) {
-  const pencil = createElement("button", "✎", "edit-button table-edit");
-  pencil.type = "button";
-  pencil.title = "Change the table, its sources or remove it";
-  pencil.setAttribute("aria-label", "Edit transfer table");
-  pencil.addEventListener("click", () => {
-    if (closeRandomizationCard()) {
-      pickedSet = [{ kind: "transferTable", id }];
-      markSelection(selectedItems());
-      openWizardFor(id);
-    }
+  return createBoxPencil({
+    tooltip: "Change the table, its sources or remove it",
+    accessibleName: "Edit transfer table",
+    onClick: () => {
+      if (closeRandomizationCard()) {
+        pickedSet = [{ kind: "transferTable", id }];
+        markSelection(selectedItems());
+        openWizardFor(id);
+      }
+    },
   });
-  return pencil;
 }
 
-// Opens transfer table `id`'s box if it's closed, or closes it (section 7, "Its box"); it only
-// shows or hides, so it's no edit.
-function toggleTableBox(id) {
-  if (openTables.has(id)) {
-    openTables.delete(id);
+// Opens the box of `item` (a transfer table or a run randomization) if it's closed, or closes it
+// (section 7, "Its box"); it only shows or hides, so it's no edit. Closing a randomization's box
+// while its card is open closes the card as Close does; if that's refused, the box stays open.
+function toggleBox(item) {
+  if (openBoxes.has(item.id)) {
+    if (item.kind === "randomization" && card !== null && card.id === item.id && !closeRandomizationCard()) {
+      return;
+    }
+    openBoxes.delete(item.id);
   } else {
-    openTables.add(id);
+    openBoxes.add(item.id);
   }
-  const key = itemKey({ kind: "transferTable", id });
+  const key = itemKey(item);
   const hadFocus = document.activeElement?.dataset?.itemHandle === key;
   refreshStages();
   // The column is drawn afresh, so a heading toggled from the keyboard gets its focus back.
   if (hadFocus) {
-    elements.stagesList.querySelector(`.transfer-table-heading[data-item-handle="${cssEscape(key)}"]`)?.focus();
+    elements.stagesList.querySelector(`.randomization-heading[data-item-handle="${cssEscape(key)}"]`)?.focus();
   }
 }
 
@@ -5188,7 +5236,8 @@ function runBetween(plan, anchor, item) {
 
 // Acts on a click on an item's handle (section 7, "Selecting"): Ctrl (Cmd) adds or takes it out of
 // the selection, Shift selects a run, opening nothing; a plain click opens a stage (forgetting the
-// picked set), selects a tip group alone, or opens or closes a randomization's card, selecting it.
+// picked set), selects a tip group alone, opens or closes a transfer table's or run randomization's
+// box, or opens or closes the card of a randomization not set up yet, selecting it.
 function clickItem(item, keys) {
   if (keys.withCtrl || keys.withShift) {
     pickedSet = selectionAfterClick(item, keys);
@@ -5207,7 +5256,14 @@ function clickItem(item, keys) {
     // Its heading opens or closes its box, and selects it alone (section 7); its ✎ opens the wizard.
     if (closeRandomizationCard()) {
       pickedSet = [item];
-      toggleTableBox(item.id);
+      toggleBox(item);
+    }
+  } else if (hasRunRandomization(currentPlan(), item.id)) {
+    // A run randomization's heading opens or closes its box, and selects it alone (section 7); its
+    // ✎ opens its card.
+    if (card === null || card.id === item.id || closeRandomizationCard()) {
+      pickedSet = [item];
+      toggleBox(item);
     }
   } else if (card !== null && card.id === item.id) {
     if (closeRandomizationCard()) {
@@ -6928,12 +6984,13 @@ function clickInColumnWhileMoving(event) {
   if (target.closest("button.entry-row, .toggle-list") !== null) {
     return;
   }
-  // A transfer table's heading only shows or hides its stages, so it works while moving wells.
-  const tableHeading = target.closest(".transfer-table-heading");
-  if (tableHeading !== null) {
+  // A transfer table's or run randomization's heading only shows or hides its stages, so it works
+  // while moving wells.
+  const boxHeading = target.closest(".randomization-heading[aria-expanded]");
+  if (boxHeading !== null) {
     event.preventDefault();
     event.stopPropagation();
-    toggleTableBox(itemFromKey(tableHeading.dataset.itemHandle).id);
+    toggleBox(itemFromKey(boxHeading.dataset.itemHandle));
     return;
   }
   if (target.closest("button, input, select, textarea, label, [data-item-handle]") === null) {
