@@ -6045,6 +6045,17 @@ describe("transfer-designer", () => {
       ["randomizations", "stageList", "stageOrder", "operationList", "tipChanges"],
     ],
     [
+      "runRandomization with forAll",
+      (plan) =>
+        runRandomization(plan, "r1", {
+          destinationMode: OTHER_DESTINATION_MODE,
+          sourceMixes: true,
+          tipType: TIP_TYPES.at(-1),
+          probes: [1, 2],
+        }),
+      ["randomizations", "stageList", "operationList", "tipChanges"],
+    ],
+    [
       "removeRandomization",
       (plan) => removeRandomization(plan, "r1"),
       ["randomizations", "stageList", "stageOrder", "operationList", "tipChanges"],
@@ -6149,6 +6160,7 @@ describe("transfer-designer", () => {
     ["removeStage, a mix step", (plan) => removeStage(plan, mixStepOf(plan))],
     ["addStageWithNewTips before the first", (plan) => addStageWithNewTips(plan, "1").plan],
     ["addMixStepWithNewTips, last", (plan) => addMixStepWithNewTips(plan, null).plan],
+    ["addStageWithNewTips, last", (plan) => addStageWithNewTips(plan, null).plan],
     [
       "runRandomization, a source added and one taken out",
       (plan) => {

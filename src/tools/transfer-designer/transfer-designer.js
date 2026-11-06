@@ -1046,8 +1046,8 @@ const SOURCE_PROPERTIES = ["labware", "well", "replicates", "filler", "sharesTip
 const OWNED_STAGE_PROPERTIES = ["labware", "well", "stage"];
 
 // A randomization's values for its first run: what it holds only while it has no stages, null once
-// it has (section 3).
-const FIRST_RUN_PROPERTIES = ["settings", "tipType", "probes"];
+// it has (section 3). Exported so plan-file.js checks the same three.
+export const FIRST_RUN_PROPERTIES = Object.freeze(["settings", "tipType", "probes"]);
 
 // What a refusal says when an edit would put something inside a randomization's stages, or take its
 // first stage's tips (section 5).
@@ -4683,8 +4683,14 @@ function sourceGroupTips(randomization, before, startedFrom, groups) {
   groups.forEach(({ stages }, index) => {
     const keptAfter = groups
       .slice(index + 1)
-      .findIndex((group) => group.stages.some((stage) => beforeByStage.has(stage)));
-    tips.push(own[index] ?? tips[index - 1] ?? own[index + 1 + keptAfter]);
+      .find((group) => group.stages.some((stage) => beforeByStage.has(stage)));
+    const found = own[index] ?? tips[index - 1] ?? (keptAfter === undefined ? undefined : own[groups.indexOf(keptAfter)]);
+    // Can't happen: with no stage kept, every group's first stage started from the old first
+    // stage (newStageStart), so `own` gives it. A guard, so a broken rule is reported, not hidden.
+    if (found === undefined) {
+      throw new Error(`Running the randomization found no tips for its source group starting at stage ${describeValue(stages[0])}.`);
+    }
+    tips.push(found);
   });
   return tips;
 }
@@ -5263,7 +5269,7 @@ function checkMixStep(plan, id) {
 
 // A stage named by its place in the stage order (from 1) and its name, as messages start with it,
 // e.g. 'Stage 2, “Mix plate”'.
-function stageNamed(plan, id) {
+export function stageNamed(plan, id) {
   return `Stage ${plan.stageOrder.indexOf(id) + 1}, “${plan.stageList.get(id).name}”`;
 }
 

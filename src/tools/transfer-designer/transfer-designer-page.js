@@ -97,6 +97,7 @@ import {
   sourceName,
   runRandomization,
   randomizationStageValues,
+  stageNamed,
   removeRandomization,
   canRemoveRandomization,
   setConstituents,
@@ -3573,7 +3574,7 @@ function createCardTipsNote(hasRun) {
 function mixUnderMixedBlocked(plan, randomization, end) {
   for (const { stage } of randomization.stages) {
     const mode = modeOf(end, plan.stageList.get(stage).settings);
-    const named = `Stage ${stageOrder(plan).indexOf(stage) + 1}, “${plan.stageList.get(stage).name}”`;
+    const named = stageNamed(plan, stage);
     if (mode === null) {
       return `${named}, doesn't use one of the modes: choose a mode, or change that stage first.`;
     }

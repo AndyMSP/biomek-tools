@@ -53,6 +53,7 @@ import {
   addRandomization,
   randomizationAt,
   setRandomization,
+  FIRST_RUN_PROPERTIES,
   setTransferTables,
   setExperimentName,
   setConstituents,
@@ -106,8 +107,6 @@ const FIRST_VERSION_WITH_SHARES_TIPS = 10;
 // 4a), since its stages already hold what every run gave them.
 const FIRST_VERSION_WITH_STAGE_SETTINGS = 12;
 
-// A randomization's values for its first run, null once it has stages.
-const FIRST_RUN_PROPERTIES = ["settings", "tipType", "probes"];
 
 // A component's properties in a file: name and color, plus constituents from version 7 on, plus
 // osmolality from version 9 on.
