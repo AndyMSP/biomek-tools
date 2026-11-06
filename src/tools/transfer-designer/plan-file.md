@@ -336,9 +336,15 @@ Opening a file checks, in this order:
     4. **Renumbering**: their stage IDs (`beforeId`, each of `stages`' `stage`) are changed to the
        stages' new IDs (above).
     4a. **A run randomization's settings, by version** (new in version 12): in a version 6 to 11
-       file, each randomization whose `stages` is a non-empty list has its `settings`, `tipType`
-       and `probes` checked with `setRandomization`'s rules and messages (after `randomizations:
-       Randomization N: `), then set to `null`. Randomizations are taken in order.
+       file, each randomization that is an object with all three of `settings`, `tipType` and
+       `probes` and whose `stages` is a non-empty list has them checked, then set to `null`. The
+       checks, in this order, each with the message `setRandomization` or `setRandomizations` gives
+       (after `randomizations: Randomization N: `): `settings` by the stage list's settings checks
+       (`changeStageSettings`), then the mixing rule (section 3 of `transfer-designer.md`), then
+       not a mix step's (`MIX_STEP_MODE`); `tipType` one of `TIP_TYPES` (`setTipType`); `probes` by
+       `setTipProbes`' rules, then smallest first. A randomization that isn't an object, or lacks
+       any of the three, is skipped here and refused in step 5 with its form message.
+       Randomizations are taken in order.
     5. **`setRandomizations`** (`transfer-designer.md`) checks and sets them all at once.
 
     So a file with both a stage ID that isn't the file's and a source with the wrong form reports
@@ -548,6 +554,12 @@ row of section 5 has at least one test.
   of date; one whose randomization's `settings` are invalid (a mix step's) is still refused with
   `randomizations: Randomization 1: ` and the message, as before. A version 6 file's run
   randomization opens the same way.
+- **Step 4a's checks**, each in a version 11 file with a run randomization, refused with
+  `randomizations: Randomization 1: ` and its message: settings with an unknown property; settings
+  breaking the mixing rule (a mix whose technique doesn't match); a mix step's settings; `tipType`
+  `"BC50"`; `probes` `[9]`; `probes` `[2, 1]` (not smallest first). A version 11 randomization
+  lacking `tipType`, or one that is `5`, is refused by step 5's form message, not step 4a's. A run
+  randomization's valid settings in a version 10 file are dropped the same way.
 - A version 12 file with a run randomization whose `settings` aren't `null`, or one without stages
   whose `tipType` is `null`, is refused with `randomizations: ` and `setRandomizations`' message.
 - **Existing tests whose version numbers change** (the specification changed, not the tests'
