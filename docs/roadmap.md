@@ -442,10 +442,10 @@ Last updated: 2026-11-05
   the specifications and the build each reviewed by a separate agent, and checked in headless
   Chrome. Still to check by Andy.
 - **Decided: copying the deck** (Andy, 2026-11-06; item 23, below): every well as the deck shows
-  it, pasted into another plan's Start, from a preview. **Specified** (Draft, 2026-11-06, in the
+  it, pasted as another plan's Start, from a preview. **Specified** (Draft, 2026-11-06, in the
   hands-off workflow): `copyDeck`, `pasteDeck` and the copied deck's format (`transfer-designer.md`,
-  "Copied decks"), `Copy deck` and Ctrl+V on the page (`transfer-designer-page.md`, sections 6, 7
-  and 12), glossary "Copied deck". It changes no Biomek files and no plan files.
+  "Copied decks"), `Copy deck` and `Paste deck` on the page (`transfer-designer-page.md`, section
+  6), glossary "Copied deck". It changes no Biomek files and no plan files.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -989,15 +989,22 @@ added on 2026-10-28 (Andy).
       component per mixture.
     - **Along with the wells:** the components' details (colors, constituents, osmolality), the well
       labels and the labware labels.
-    - **Pasted into any plan's Start, on top of what it holds**; a component of the same name must
-      carry the same contents and osmolality, or it's a problem. Chosen over only a new or empty
-      plan.
-    - Decided in the hands-off workflow (2026-11-06; reasons in its pull request): `Copy deck` in
-      the deck panel's first bar, copying the point the deck shows; Ctrl+V on the page pastes it
-      (no paste button, as the clipboard can be read without asking only in a paste); copying is
-      refused after an overdraw or a draw into the dead volume, but not an overfill; labels that
-      clash (a well or labware already labeled differently) are problems; a new component keeps
-      its color when it's free; the pasted labware comes out onto the deck.
+    - **Pasted only into an empty start** (Andy, 2026-11-06, after trying the preview, where a deck
+      pasted onto its own plan doubled every well; replacing his first choice, "any plan's Start,
+      on top"): refused if any well holds something at the start; components, labels and stages
+      already in the plan don't count. Chosen over replacing Start.
+    - **A component of the same name must carry the same contents and osmolality**, even with
+      every well empty, or the paste is refused (Andy, 2026-11-06): a stock is never changed
+      behind the user's back. Chosen over the copy's version winning, and over pasting it renamed.
+    - **Two buttons, `Copy deck` and `Paste deck`, and no Ctrl+V** (Andy, 2026-11-06): chosen over
+      one button changing with the context, which the page can't judge without reading the
+      clipboard (a permission prompt). The copy is kept in the browser like copied stages, so it
+      pastes in any tab of the same browser; between computers, plan files are the way.
+    - Decided in the hands-off workflow (2026-11-06; reasons in its pull request): the buttons in
+      the deck panel's first bar, copying the point the deck shows; copying is refused after an
+      overdraw or a draw into the dead volume, but not an overfill; labels that clash (a well or
+      labware already labeled differently) are problems; a new component keeps its color when it's
+      free; the pasted labware comes out onto the deck.
     Shaped in a preview (2026-11-06).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the

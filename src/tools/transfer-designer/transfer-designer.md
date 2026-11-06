@@ -147,7 +147,7 @@
 
 > **Draft change (2026-11-06, copied decks, item 23 of v0.2.0):** a **copied deck**
 > (`docs/glossary.md`): what every well holds at one point of a plan, with the components' details
-> and the labels, added to another plan's starting contents: `copyDeck`, `pasteDeck`,
+> and the labels, pasted as another plan's starting contents (only into an empty start): `copyDeck`, `pasteDeck`,
 > `COPIED_DECK_FORMAT` and `COPIED_DECK_VERSION` (sections 3 to 6). Nothing new is kept in the plan,
 > so plan files and the Biomek files don't change. Shaped in a preview on 2026-11-06 and written in
 > the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its
@@ -603,7 +603,7 @@ a tab or a line break can't travel as pasted text (`tableToText`, `pasted-table.
 ### Copied decks
 (Andy, 2026-11-06; roadmap, item 23 of v0.2.0.) A **copied deck** (`docs/glossary.md`) is what every
 well holds at one point of a plan, with the components' details and the plan's labels, as plain
-data, so it can be added to another plan's starting contents: the end of one experiment becomes the
+data, so it can become another plan's starting contents: the end of one experiment becomes the
 start of the next. It isn't kept in the plan.
 
 ```js
@@ -620,57 +620,64 @@ start of the next. It isn't kept in the plan.
 
 **Copying** (`copyDeck(plan, snapshot, point)`): `snapshot` is a `ContentsSnapshot` of this plan at
 the point being copied (the caller makes it, as for `concentrationsOf`); `point` is the caller's
-text naming that point, kept so the paste can say where it came from (any text, not blank).
-- **Wells**: `snapshot.listContents()`, in its order, each `{ labware, well, components }` with only
-  the components above `NEGLIGIBLE_MICROLITERS` (contents tracking's allowance for arithmetic
-  leftovers), their volumes as the snapshot gives them (not rounded); a well left with none isn't
-  listed. A well's mixture stays its components (Andy, 2026-11-06: so concentrations and
-  osmolality keep working from the original stocks).
-- **Components**: the plan's components that any listed well holds, in the plan's order, each
-  `{ name, color, constituents, osmolality }` as the plan has it (Andy, 2026-11-06: their details
-  come along).
-- **Labels**: the plan's `wellLabels` and `labwareLabels`, all of them (Andy, 2026-11-06), since a
-  label belongs to a place on the deck for the whole run, not to a point.
-- **Refused** when the snapshot has a problem that isn't an overfill (a draw into the dead volume
-  or an overdraw), since then what the wells hold isn't what the Biomek would leave: `The deck can't
-  be copied at this point: a transfer before it draws more than a well can give. Fix the overdraws
-  first, or copy from an earlier point.` An overfill is copied as tracked (the volume that was put
-  in; the tool can't know what spilled), as the deck shows it.
-- A point where no well holds anything gives `wells: []` and `components: []` (the caller says so).
+non-blank text naming that point, kept so a paste can say where it came from. In this order:
+1. `point` is checked (non-blank text).
+2. **Refused** when the snapshot has a problem that isn't an overfill (a draw into the dead volume
+   or an overdraw), since then what the wells hold isn't what the Biomek would leave. An overfill is
+   copied as tracked (the volume that was put in; the tool can't know what spilled), as the deck
+   shows it.
+3. **Wells**: `snapshot.listContents()`, in its order, each `{ labware, well, components }` with its
+   components exactly as the snapshot gives them (contents tracking already tidies arithmetic
+   leftovers and keeps small real amounts, such as the tail of a serial dilution); a well whose
+   components are `{}` isn't listed. A well's mixture stays its components (Andy, 2026-11-06: so
+   concentrations and osmolality keep working from the original stocks).
+4. **Components**: the plan's components that any listed well holds, in the plan's order, each
+   `{ name, color, constituents, osmolality }` as the plan has it (Andy, 2026-11-06).
+5. **Labels**: the plan's `wellLabels` and `labwareLabels`, all of them (Andy, 2026-11-06), since a
+   label belongs to a place on the deck for the whole run, not to a point.
 
-**Pasting** (`pasteDeck(plan, copied, colors)`): the plan with the copied deck **added** to its
-starting contents, as one new plan, so a caller records it as one edit (Andy, 2026-11-06: into any
-plan's Start, on top of what it holds). `colors` is the list new components' colors come from, in
-order (as for stock tables). In this order, throwing the first problem's message and pasting none:
-1. **The form** (section 5): an object with exactly the properties above, `format` the
-   `COPIED_DECK_FORMAT`, `version` a whole number from 1 to `COPIED_DECK_VERSION` (a later version
-   is refused, saying the copy comes from a newer version of the tool), `point` non-blank text,
-   `components` a list of components (each with exactly `name`, `color`, `constituents`,
-   `osmolality`), `wells` a list of `{ labware, well, components }` each well at most once, and the
-   two label objects in the plan's form. The contents are checked by the plan's own edits below,
-   so their messages are the usual ones.
-2. **Components**, in the copy's order. A component whose name **is already in the plan** must
-   carry the same constituents (compared as JSON, in order) and the same osmolality; it keeps the
-   plan's color. Otherwise it's refused: `Media is already in this plan with different contents or
-   osmolality. Rename one of them, or make them match, then paste again.` A **new** component is
-   added (`addComponent`, `setConstituents`, `setOsmolality`) with its copied color if no component
-   in the plan has it yet, else the first color of `colors` that none has; with none free: `There's
-   no free color for Media: all 30 are taken. Remove a component first.` (30 is `colors.length`).
-3. **Wells**, in the copy's order, each component's volume **added** on top of what the well holds
-   at the start (`addToWells`), so its messages apply (a labware or well not on the deck). An
-   overfill this causes isn't refused; it's shown like any other.
-4. **Well labels**: each copied label is set (`setWellLabel`) unless the well already has it; a well
-   with a **different** label is refused: `Assay plate A1 is already named “Cond 2” here, but “Cond
-   1” in the copy. Rename one of them, then paste again.` (the labware by its label, as the plan has
-   it at that moment).
-5. **Labware labels**: each copied label is set (`setLabel`) unless the labware already has it; a
-   labware with a **different** label is refused: `Plate1 is labeled “Plate A” here, but “Assay
-   plate” in the copy. Rename one of them, then paste again.`; a label another labware has gives
-   `setLabel`'s message.
+A point where no well holds anything gives `wells: []` and `components: []` (the caller says so).
 
-Pasting the same copy twice adds its volumes twice (as filling wells twice does); its components
-and labels match the first time's, so they change nothing. Plan files don't change: a pasted deck
-is ordinary starting contents, components and labels.
+**Pasting** (`pasteDeck(plan, copied, colors)`): the plan whose starting contents are the copied
+deck's wells, with its components and labels added, as one new plan, so a caller records it as one
+edit. `colors` is the list new components' colors come from, in order (as for stock tables).
+Checked in this order, throwing the first problem's message and pasting none:
+1. **The form** (section 5), in this order: an object whose `format` is `COPIED_DECK_FORMAT` (else
+   not a copied deck); then, if `version` is a whole number above `COPIED_DECK_VERSION`, the
+   newer-version message (before the properties are checked, so a newer copy with new properties
+   gets it); then exactly the properties above, and `version` a whole number from 1 (else not a
+   copied deck); then each part in property order, **shapes only** (its values are checked by the
+   plan's own edits below, with their usual messages): `point` non-blank text; `components` a list
+   of objects with exactly `name`, `color`, `constituents` and `osmolality`, no `name` twice;
+   `wells` a list of objects with exactly `labware`, `well` and `components` (an object), no well
+   twice, and every component name a well holds among `components`' names; `wellLabels` an object
+   (not a list) whose values are objects of text; `labwareLabels` an object (not a list) whose
+   values are text.
+2. **Start must be empty** (Andy, 2026-11-06): if any well holds something at the start (the plan's
+   starting contents aren't `[]`), it's refused, so a deck is never pasted on top by accident (a
+   deck pasted into its own plan would double every well). Components and labels already in the
+   plan, and stages and transfers, don't count: only liquid at the start.
+3. **Components**, in the copy's order. A component whose name **is already in the plan** must carry
+   the same constituents (as `checkConstituents` gives them, compared as JSON, in order) and the
+   same osmolality; it keeps the plan's color. Otherwise the paste is refused (Andy, 2026-11-06: a
+   stock is never changed behind the user's back). A **new** component is added (`addComponent`,
+   then `setConstituents`, then `setOsmolality`) with its **copied color** if no component in the
+   plan has it; the others, in order, take the first color of `colors` that no component in the
+   plan has and that **no copied component carries**, so a later component's own color isn't taken
+   by an earlier one; with none left, refused.
+4. **Wells**, in the copy's order, each component's volume added to the empty start (`addToWells`),
+   so its messages apply (a labware or well not on the deck, a volume not above 0). An overfill
+   this gives isn't refused; it's shown like any other.
+5. **Well labels**, labware by labware and well by well in the copy's order: a well with **no label
+   of its own** (`wellLabelOf` gives `null`) gets the copy's (`setWellLabel`, so its checks
+   apply); a well whose own label equals the copy's is left alone; a well with a **different** own
+   label is refused.
+6. **Labware labels**, in the copy's order: a labware with **no label of its own** (no entry in
+   `labwareLabels`; `labelOf` falling back to the name doesn't count) gets the copy's (`setLabel`,
+   so its checks apply, including a label another labware has); one whose own label equals the
+   copy's is left alone; one with a **different** own label is refused.
+
+Plan files don't change: a pasted deck is ordinary starting contents, components and labels.
 
 ### Contents problems
 `contents-tracking` reports each transfer that asks a well for more than its usable volume (a
@@ -1806,7 +1813,7 @@ given; "returns the plan with …" means a new plan.
 | `addStocks(plan, table, colors)` | the plan with every stock of `readStockTable(plan, table, colors)` added as a component, in row order, with its color, constituents and osmolality: one new plan. Throws as `readStockTable` does, then its first problem's message, then if there are no stocks. |
 | `stockTable(plan)` | the plan's components as a stock table, a list of rows of text (section 3, "Stock tables"), e.g. `[["Name", "Osmolality", "Hy-Soy (g/L)"], ["Media", "300", "4"], ["Water", "0", ""]]`; `[["Name"]]` with no components. |
 | `copyDeck(plan, snapshot, point)` | the copied deck at the snapshot's point (section 3, "Copied decks"): `{ format, version, point, components, wells, wellLabels, labwareLabels }`, plain data. Throws if `point` isn't non-blank text, then if the snapshot has a problem other than an overfill. |
-| `pasteDeck(plan, copied, colors)` | the plan with the copied deck added to its starting contents, components and labels (section 3, "Copied decks"): one new plan. Throws, pasting none, at the first problem, in section 3's order. |
+| `pasteDeck(plan, copied, colors)` | the plan with the copied deck as its starting contents, and its components and labels added (section 3, "Copied decks"): one new plan. Refused unless the plan's start is empty. Throws, pasting none, at the first problem, in section 3's order. |
 | `COPIED_DECK_FORMAT`, `COPIED_DECK_VERSION` | `"biomek-tools copied deck"` and `1`: the `format` and latest `version` a copied deck carries, so a caller can recognize one on the clipboard. |
 
 `renameComponent`, `setComponentColor`, `removeComponent`, `setConstituents` and `setOsmolality`
@@ -1955,15 +1962,16 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | Stock table: a row's try throws | The thrown message, prefixed with the row's name and a colon: `Drug A stock: Hy-Soy is in g/L in Feeding media. Give it a unit of that kind (g/L, mg/L), or a different name.` |
 | Stock table: no color left for a row | `There's no free color for Feed. Two components can't share one, and all 30 are taken. Take some rows out, or remove a component.` (30 is `colors.length`) |
 | `addStocks`: no stocks | `The stock table has no stocks to add. Give it at least one row under the header.` |
-| `copyDeck`: `point` isn't non-blank text | `The point a deck is copied at must be text, like "At the end, after all stages", but got 5.` |
+| `copyDeck`: `point` isn't non-blank text | `The point a deck is copied at must be non-blank text, like "At the end, after all stages", but got 5.` (`describeValue`) |
 | `copyDeck`: a problem other than an overfill at the point | `The deck can't be copied at this point: a transfer before it draws more than a well can give. Fix the overdraws first, or copy from an earlier point.` |
-| `pasteDeck`: not a copied deck (not an object, the wrong properties or format) | `This isn't a copied deck: copy one with Copy deck in the transfer designer.` |
-| `pasteDeck`: a version above `COPIED_DECK_VERSION`, or not a whole number from 1 | `This deck was copied by a newer version of the transfer designer (copied deck version 2; this one reads up to 1). Use the newer version.` / for a version that isn't a whole number from 1, the not-a-copied-deck message. |
-| `pasteDeck`: `point`, `components`, `wells` or a label object not in its form | `This copied deck is damaged: its wells must be a list of { labware, well, components }, but got 5.` (naming the part: `its point must be text`, `its components must be a list of { name, color, constituents, osmolality }`, `its wells …`, `its well labels must be an object like { Plate1: { A1: "Cond 1" } }`, `its labware labels must be an object like { Plate1: "Assay plate" }`; a well listed twice: `… but Plate1 A1 is listed twice.`) |
+| `pasteDeck`: not a copied deck (not an object, another `format`, other properties, or a `version` that isn't a whole number from 1) | `This isn't a deck copied from the transfer designer.` |
+| `pasteDeck`: a whole-number `version` above `COPIED_DECK_VERSION` (checked before the properties) | `This deck was copied by a newer version of the transfer designer (copied deck version 2; this one reads up to 1). Use the newer version.` |
+| `pasteDeck`: a part not in its form (checked in property order; the part's value by `describeValue`) | `This copied deck is damaged: its point must be non-blank text, but got 5.` / `… its components must be a list of { name, color, constituents, osmolality }, but got 5.` (also for an entry that isn't, describing the entry) / `… its components list “Media” twice.` / `… its wells must be a list of { labware, well, components }, but got 5.` (also for an entry) / `This copied deck is damaged: it lists Plate1 A1 twice.` / `This copied deck is damaged: Plate1 A1 holds “Drug A”, which isn't among its components.` / `… its well labels must be an object like { Plate1: { A1: "Cond 1" } }, but got a list.` / `… its labware labels must be an object like { Plate1: "Assay plate" }, but got a list.` |
+| `pasteDeck`: the plan's start isn't empty | `A deck can be pasted only into an empty start, but 3 wells hold something at the start. Empty them first.` (`1 well holds`) |
 | `pasteDeck`: a component already in the plan differs | `Media is already in this plan with different contents or osmolality. Rename one of them, or make them match, then paste again.` |
-| `pasteDeck`: no free color | `There's no free color for Media: all 30 are taken. Remove a component first.` (30 is `colors.length`) |
-| `pasteDeck`: a well already labeled differently | `Assay plate A1 is already named “Cond 2” here, but “Cond 1” in the copy. Rename one of them, then paste again.` |
-| `pasteDeck`: a labware already labeled differently | `Plate1 is labeled “Plate A” here, but “Assay plate” in the copy. Rename one of them, then paste again.` |
+| `pasteDeck`: no free color | `There's no free color for Media: every color is taken. Remove a component first.` |
+| `pasteDeck`: a well already labeled differently | `Assay plate A1 is already named "Cond 2" here, but "Cond 1" in the copy. Rename one of them, then paste again.` (the labware by `labelOf`, as the plan has it at that moment; labels quoted as `describeValue` quotes text) |
+| `pasteDeck`: a labware already labeled differently | `Plate1 is labeled "Plate A" here, but "Assay plate" in the copy. Rename one of them, then paste again.` |
 | `setLabel`: label isn't text | `A label must be text, like "Assay plate", but got 5.` |
 | `setLabel`: another labware has that label | `Deep already has the label "Drug plate". Choose a different one.` |
 | `setLabels`: `labels` isn't an object (including `null` and lists) | `The labels must be an object of labware names and labels, like { Plate: "Assay plate" }, but got a list.` |
@@ -2567,34 +2575,43 @@ otherwise, and work out expected colors from it (CLAUDE.md, "Tests follow `confi
 designer's topic, with an example of each (CLAUDE.md, "Keep the REPL complete").
 
 **Copied decks** (2026-11-06). A test plan, built in a helper: Media (osmolality 300) and Drug A
-(Drug A 10 mM) at Start in a reservoir trough and a deep well, one stage moving 180 µL of Media and
-20 µL of Drug A into one plate well, labeled `Cond 1`, its plate labeled `Assay plate`. Labware and
-wells are taken from `config/deck.js` by type, not named (CLAUDE.md, "Tests follow `config/`"), and
-tests pass `COMPONENT_COLORS` as `colors` unless they say otherwise.
-- **Copying at the end:** three wells in `listContents()` order, the trough and deep well left with
+(Drug A 10 mM) at Start in a reservoir trough and a deep well, one stage moving some Media and some
+Drug A into one plate well, labeled `Cond 1`, its plate labeled `Assay plate`. Labware is taken from
+`config/deck.js` by type, never named, and every volume is worked out from `config/labware-types.js`
+(starting volumes the labware's dead volume plus what the stage draws plus some to spare; the
+overdraw, dead-volume and overfill snapshots below likewise), so changing a capacity or dead
+volume never breaks a test (CLAUDE.md, "Tests follow `config/`"). Tests pass `COMPONENT_COLORS` as
+`colors` unless they say otherwise. Empty plans are `emptyPlan().plan`.
+- **Copying at the end:** three wells in `listContents()` order, the trough and deep well holding
   their starting volumes minus what the stage drew, the plate well holding both components; both
   components with their details; both labels; `format`, `version` and `point` as given. Copying at
-  Start gives the starting contents. A component no listed well holds isn't copied; a well emptied
-  to 0 µL isn't listed; a component below `NEGLIGIBLE_MICROLITERS` in a well is left out of it.
+  Start gives the starting contents. A component no listed well holds isn't copied. A well's small
+  real amount (a serial dilution's tail, e.g. 1e-7 µL of Drug A) is copied as the snapshot gives it.
 - **Refused:** a snapshot after an overdraw, and after a draw into the dead volume, throw the
   copy's message; a snapshot whose only problem is an overfill is copied, with the overfilled
-  volume. `point` of `5` or `"  "` throws its message.
-- **Pasting into an empty plan** (`emptyPlan()`) gives starting contents, components (with their
-  colors, constituents and osmolality) and labels such that `copyDeck` of the result at Start
-  equals the copy (but `point`). The result is one plan; the given plan is unchanged.
-- **Pasting on top:** into a plan already holding 100 µL of Media in the plate well, its Media is
-  280 µL after the paste; pasting the same copy twice doubles the volumes and changes nothing
-  else.
-- **Components:** a plan with Media at osmolality 300 and its own color keeps that color and
-  pastes; with Media at 290, or carrying a constituent the copy's doesn't, it throws the mismatch
-  message and pastes nothing; a new component whose copied color is taken gets the first free color
-  of `colors`; with `colors` of one taken color, the no-free-color message.
+  volume. `point` of `5` or `"  "` throws its message, before any other check.
+- **Pasting into an empty plan** gives starting contents, components (with their colors,
+  constituents and osmolality) and labels such that `copyDeck` of the result at Start equals the
+  copy (but `point`); labware and wells without labels get the copy's. The result is one plan; the
+  given plan is unchanged.
+- **Start must be empty:** a plan holding anything at the start (one well, then three) throws the
+  not-empty message (`1 well holds`, `3 wells hold`), so pasting the same copy twice is refused the
+  second time; a plan with components and stages but nothing at the start pastes.
+- **Components:** a plan with Media (nothing at the start) at osmolality 300 and its own color keeps
+  that color and pastes; with Media at 290, or carrying a constituent the copy's doesn't, it throws
+  the mismatch message and pastes nothing; a new component whose copied color is taken gets the
+  first free color of `colors` that no copied component carries (a test where the first free color
+  is a later copied component's own: the later one keeps its own); with `colors` all taken, the
+  no-free-color message.
 - **Labels:** a well already labeled `Cond 1` pastes; labeled `Cond 2`, the well message (naming
   the labware by its label); a labware labeled `Assay plate` pastes; labeled `Plate A`, the labware
   message; another labware already labeled `Assay plate`, `setLabel`'s message.
 - **The form:** `pasteDeck` throws the not-a-copied-deck message for `5`, `null`, `{}`, copied items
-  (`COPIED_ITEMS_FORMAT`) and an extra property; the newer-version message for `COPIED_DECK_VERSION
-  + 1`; the damaged message for each part listed in section 5, and for a well listed twice.
+  (`COPIED_ITEMS_FORMAT`), an extra property, and a `version` of `0` and `1.5`; the newer-version
+  message for `COPIED_DECK_VERSION + 1`, also with an extra property; the damaged message for each
+  part in section 5, in property order (a bad `point` and bad `wells` together give the `point`
+  message), a component listed twice, a well listed twice, and a well holding a component not
+  among `components`.
 - **Round trip through text:** `pasteDeck(emptyPlan().plan, JSON.parse(JSON.stringify(copyDeck(…))),
   COMPONENT_COLORS)` gives the same as pasting the object.
 - Nothing reaches the Biomek files differently: `writeRunFiles` for a plan whose starting contents

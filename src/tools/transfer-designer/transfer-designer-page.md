@@ -171,9 +171,9 @@
 > 2026-11-05. Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
 > Andy are listed in its pull request. They become Final once built and tested by Andy.
 
-> **Draft changes (2026-11-06, copied decks, item 23 of v0.2.0):** `Copy deck` in the deck panel's
-> first bar copies every well as the deck shows it, with the components' details and the labels, and
-> Ctrl+V in another plan adds it to Start (sections 6, 7, 12 and 16; `transfer-designer.md`,
+> **Draft changes (2026-11-06, copied decks, item 23 of v0.2.0):** `Copy deck` and `Paste deck` in
+> the deck panel's first bar: copy every well as the deck shows it, with the components' details and
+> the labels, and start another plan, whose start is empty, from it (sections 6 and 16; `transfer-designer.md`,
 > "Copied decks"), from a preview on 2026-11-06. Written in the hands-off workflow (CLAUDE.md,
 > "Workflows"), so the choices made for Andy are listed in its pull request. They become Final once
 > built and tested by Andy.
@@ -364,8 +364,8 @@ has no local storage or refuses it (e.g. a private window), the page works witho
 nothing. Saving a file doesn't touch the copy; Reset leaves it holding the empty plan.
 
 ## 6. The deck panel
-**First bar.** On the left, the timeline (section 11); on the right, `Copy deck` (below, "Copying
-the deck"), `Move wells` (below, "Moving
+**First bar.** On the left, the timeline (section 11); on the right, `Copy deck` and `Paste deck` (below,
+"Copying the deck"), `Move wells` (below, "Moving
 wells"; beside `Undo`, since it changes the plan: Andy, 2026-11-02, beside `Names` and `Arrows` it
 read as a view setting), `Undo`, `Redo` (each disabled
 when there's nothing to undo or redo; messages `Undone.`, `Redone.`) and the problem count: `No
@@ -379,30 +379,33 @@ once per plan (after each edit, undo or
 redo) and reuses it for the headings, the problem count, the card and the Biomek files box
 (`stagesWithMixProblem`).
 
-**Copying the deck** (Andy, 2026-11-06; `transfer-designer.md`, "Copied decks"). `Copy deck`, an
-action button like `Move wells` (tooltip `Copy every well as the deck shows it now, to paste into
-another plan's Start with Ctrl+V`), copies the deck **at the point it shows** (the timeline, section
-11): `copyDeck(plan, snapshot, caption)`, the snapshot the deck is drawn from and the timeline's
-caption as the point, as JSON text on the clipboard (`navigator.clipboard.writeText`, then the
-older way with a hidden text area, as `Copy table` does, section 8; if both fail: `The browser
-didn't let the page copy. Try again.`). Not an edit. It works while moving wells too (it changes
-nothing). Messages:
-- copied: `Copied the deck (at the end, after all stages): 3 wells, 2 components. In another
-  Transfer Designer, press Ctrl+V to add it to Start.` (the caption with its first letter made
-  lowercase; `1 well`, `1 component`) (ok);
-- no well holds anything at that point: `Nothing to copy: no well holds anything here.` (note), and
-  nothing is copied;
-- refused (`copyDeck` throws): its message (error).
-
-**Pasting a deck**: Ctrl+V on the page (section 7, "Moving and copying") with a copied deck on the
-system clipboard (JSON with `format` `COPIED_DECK_FORMAT`; anything with that format goes to
-`pasteDeck`, so a damaged one shows its message) records `pasteDeck(plan, copied,
-COMPONENT_COLORS)` as one edit, with Start open, and brings out onto the deck every labware the
-plan then uses (as opening a plan does, section 5; labware already out stays out). Message `Added
-the copied deck to Start: 3 wells, copied at the end, after all stages. Undo takes it out.` (`1
-well`; the copy's `point` with its first letter made lowercase) (ok). Refused: `Not pasted: ` and
-`pasteDeck`'s message (error), nothing changed. It works whatever is selected or open, since it
-always goes into Start.
+**Copying the deck** (Andy, 2026-11-06; `transfer-designer.md`, "Copied decks"). Two action
+buttons, like `Move wells`, side by side: `Copy deck` and `Paste deck` (Andy, 2026-11-06: two
+buttons, not one that changes with the context, and no Ctrl+V).
+- **`Copy deck`** (tooltip `Copy every well as the deck shows it now, to paste into another plan
+  with Paste deck`) copies the deck **at the point it shows** (the timeline, section 11): first
+  `copyDeck(plan, snapshot, caption)`, with the snapshot the deck is drawn from and the timeline's
+  caption as the point; if it throws, its message (error) and nothing is copied; if its `wells` is
+  `[]`, `Nothing to copy: no well holds anything here.` (note) and nothing is copied. Otherwise the
+  copy is kept as the page's **deck copy**: in the browser's local storage under `biomek-tools
+  transfer designer: copied deck` (shared by every tab of the designer in that browser, as copied
+  items are, section 7), and in the page's memory for a browser without local storage. Message:
+  `Copied the deck (at the end, after all stages): 3 wells, 2 components. Press Paste deck in
+  another plan to start it from these wells.` (the caption with its first letter made lowercase;
+  `1 well`, `1 component`) (ok). Not an edit. It works while moving wells too, since it changes
+  nothing. Nothing goes on the system clipboard.
+- **`Paste deck`** (tooltip `Start this plan from the deck last copied with Copy deck`) reads the
+  deck copy (local storage first, then the page's memory). With none: `Nothing to paste yet: press
+  Copy deck in a plan first.` (note). Otherwise it records `pasteDeck(plan, copy,
+  COMPONENT_COLORS)` as one edit with Start open (`recordEdit(newPlan, START)`), first adding every
+  labware the new plan uses (`labwareUsed`) to the labware already out (none is put away; this
+  isn't opening a plan, which brings out exactly what's used). The brush's pick doesn't change.
+  Message `Started from the copied deck: 3 wells, copied at the end, after all stages. Undo takes
+  it out.` (`1 well`; the copy's `point` with its first letter made lowercase) (ok). Refused (it
+  throws): `Not pasted: ` and its message (error), nothing changed. Undo takes the paste out but
+  doesn't put labware away (as Undo never changes what's out). It's disabled while moving wells
+  (tooltip `Press Done first.`), like the other edits there. A press on it while an editing box or
+  a randomization's card has unsaved changes is handled as any press outside them (section 10).
 
 **Second bar.** On the left, the **labware tray**; on the right, the key, then the `Names` and
 `Arrows` toggles, all about what the deck draws (Andy, 2026-11-01: display toggles belong
@@ -1419,9 +1422,8 @@ becomes the selection).
   copied things described as in the drag's label, without `Move`). With nothing selected (Start or
   End open with no picked set, or an empty picked set):
   `Select a stage, a tip group (click its heading) or a randomization to copy it.` (note).
-- **Ctrl+V** (Cmd+V) with a **copied deck** on the system clipboard adds it to Start instead
-  (section 6, "Pasting a deck"). Otherwise it pastes (`pasteItems`) what the system clipboard holds
-  (through the browser's paste event) if it **holds copied items**: text that is JSON with `format` `"biomek-tools copied
+- **Ctrl+V** (Cmd+V) pastes (`pasteItems`) what the system clipboard holds (through the browser's
+  paste event) if it **holds copied items**: text that is JSON with `format` `"biomek-tools copied
   items"` (anything with that format goes to `pasteItems`, so a damaged one shows its message);
   otherwise the page's copy. It pastes just below the last selected thing in column order: inside
   its tip group, after it, for a stage of an ordinary tip group when nothing pasted is a tip group
@@ -1890,7 +1892,7 @@ and the deck shows its point again.
   wizard's own keys apply (Enter, Tab and Escape in its cells; Escape elsewhere in it closes it, as
   Cancel), and Ctrl+V pastes only into its paste zone or a cell.
 - **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups, randomizations and transfer tables
-  (section 7, "Moving and copying"), and Ctrl+V adds a copied deck to Start (section 6); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
+  (section 7, "Moving and copying"); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
   right-click menu. While a drag is on, **Escape** cancels it, and **Ctrl** switches it between
   moving and copying. Escape, when nothing above uses it, forgets the selection.
 
@@ -2104,11 +2106,12 @@ page's configuration (ADR 0009):
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
 - each item in sections 5 to 13 behaves as described;
-- copied decks (section 6): `Copy deck` at Start, after a stage and at End, then Ctrl+V in a second
-  window of the designer (and after Reset in the same one) adds the same wells, components and
-  labels to Start, the labware out on the deck, and one Undo takes it out; a paste onto a plan with
-  a component of the same name but different contents is refused with nothing changed; copying
-  after an overdraw is refused;
+- copied decks (section 6): `Copy deck` at Start, after a stage and at End, then `Paste deck` in a
+  second tab of the designer (and after Reset in the same one) starts it from the same wells,
+  components and labels, the labware out on the deck, and one Undo takes it out; `Paste deck` into
+  a plan holding anything at the start, or with a component of the same name but different
+  contents, is refused with nothing changed; copying after an overdraw is refused; Paste deck is
+  disabled while moving wells;
 - stocks (section 8): pasting a stock table from Excel adds its components with their colors,
   constituents and osmolality, and one Undo takes them out; a name already in the plan, a unit
   outside the configured ones and their spellings, and a bad number are each marked and stop Add;
