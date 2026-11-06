@@ -2615,14 +2615,15 @@ function draftProblems(plan, draft) {
   }
   const filled = new Set(making.flatMap((column) => column.amounts.flatMap((amount) => amount.wells.map(wellKey))));
   return making
-    .map((column) => columnSourceProblem(plan, draft, column, filled))
-    .filter((message) => message !== null)
-    .map(draftProblem);
+    .map((column) => ({ column: column.column, message: columnSourceProblem(plan, draft, column, filled) }))
+    .filter((problem) => problem.message !== null)
+    .map((problem) => draftProblem(problem.message, problem.column));
 }
 
-// A draft's problem found after reading the table: { row: null, column: null, message }.
-function draftProblem(message) {
-  return { row: null, column: null, message };
+// A draft's problem found after reading the table: { row: null, column, message }, `column` the
+// index of the column whose sources it's about, or null (section 3, "A draft").
+function draftProblem(message, column = null) {
+  return { row: null, column, message };
 }
 
 // The first problem with the sources of `column` (a column of readTransferTable) in `draft`, or
@@ -2633,6 +2634,8 @@ function columnSourceProblem(plan, draft, column, filled) {
   const shown = columnNameShown(plan, name);
   const allowed = new Set(sourceWellsOf(plan, name).map(wellKey));
   if (allowed.size === 0) {
+    // Only a component can have no source wells (a label always has its wells), so the name is a
+    // component's, shown unquoted as components are.
     return `No well holds only ${name} at Start. Fill one with ${name} at Start first, or label the well to draw from “${name}”.`;
   }
   if (!Object.hasOwn(draft.sources, name)) {
@@ -2670,8 +2673,9 @@ function columnNameShown(plan, name) {
   return hasComponentNamed(plan, name) ? name : `“${name}”`;
 }
 
-// True if the plan has a component called `name`, e.g. hasComponentNamed(plan, "Media") → true.
-function hasComponentNamed(plan, name) {
+// True if the plan has a component called `name` (exactly), e.g. hasComponentNamed(plan, "Media")
+// → true. Never throws.
+export function hasComponentNamed(plan, name) {
   return plan.components.some((component) => component.name === name);
 }
 

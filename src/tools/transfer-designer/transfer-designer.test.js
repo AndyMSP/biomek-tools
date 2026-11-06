@@ -115,6 +115,7 @@ import {
   readTransferTable,
   stockWellsOf,
   sourceWellsOf,
+  hasComponentNamed,
   transferTableProblems,
   sourceSplit,
   transferTableStages,
@@ -6455,10 +6456,10 @@ describe("transfer-designer", () => {
     const table = [["L", "Water", "Media", "Drug A", "DMSO"], ["Control", "1", "1", "1", "1"]];
     const sources = { "Drug A": [deepWell("A3")], DMSO: [deepWell("A4")] };
     assert.deepEqual(transferTableProblems(plan, { table, sources }, null), [
-      { row: null, column: null, message: "No well holds only Water at Start. Fill one with Water at Start first, or label the well to draw from “Water”." },
-      { row: null, column: null, message: "Choose a well for Media to draw from." },
-      { row: null, column: null, message: `${DEEP} A3 doesn't hold only Drug A at Start, so Drug A can't draw from it.` },
-      { row: null, column: null, message: `${DEEP} A4 doesn't hold only DMSO at Start, so DMSO can't draw from it.` },
+      { row: null, column: 1, message: "No well holds only Water at Start. Fill one with Water at Start first, or label the well to draw from “Water”." },
+      { row: null, column: 2, message: "Choose a well for Media to draw from." },
+      { row: null, column: 3, message: `${DEEP} A3 doesn't hold only Drug A at Start, so Drug A can't draw from it.` },
+      { row: null, column: 4, message: `${DEEP} A4 doesn't hold only DMSO at Start, so DMSO can't draw from it.` },
     ]);
   });
 
@@ -7327,6 +7328,14 @@ describe("transfer-designer", () => {
       { row: 0, column: 4, message: "Column 5 has amounts but no component or label." },
       { row: 0, column: 5, message: "“premix” isn't a component or a well label in the plan." },
     ]);
+  });
+
+  test("hasComponentNamed: true for a component, exactly; false for a label, another case or a non-name", () => {
+    const plan = labelPlan();
+    assert.equal(hasComponentNamed(plan, "Media"), true);
+    assert.equal(hasComponentNamed(plan, "media"), false);
+    assert.equal(hasComponentNamed(plan, "Premix"), false);
+    assert.equal(hasComponentNamed(plan, 5), false);
   });
 
   test("sourceWellsOf: stock wells, then labeled wells, each in deck order, a labeled stock well once", () => {
