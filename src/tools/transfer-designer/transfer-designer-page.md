@@ -1592,6 +1592,9 @@ wells that don't form a box: each click is its own edit (its own Undo step), as 
 - **What keeps it:** Undo and Redo; typing a volume; opening a transfer's volume box or the open
   stage's ✎ (a click on a deck well while an editing box with changes is open shakes the box, as
   for any click, and adds nothing); selecting in the Stages column.
+- **After an Undo or Redo** during a kept run (Andy, 2026-11-05), if what's open is no longer a
+  transfer stage (a mix step, Start, End, or a stage of a randomization or transfer table), the
+  source is cleared, as opening it would.
 - **Where it applies:** only in a transfer stage. In a mix step, at Start, at End, in a stage of a
   randomization or transfer table, with a randomization's card open, or while moving wells,
   Ctrl-click and Ctrl+drag do exactly what a click and a drag do there.
@@ -2009,14 +2012,15 @@ page's configuration (ADR 0009):
   adds one more and clears it; Escape clears a kept source; a Ctrl-click on the source clears it; a
   Ctrl-click with no source chooses one; a Ctrl+drag with no source adds one transfer; a Ctrl-click
   that makes an overdraw shows the error without the hint and keeps the source, and so does one the
-  logic refuses; a box holding only the source, and a Ctrl+drag ending on other labware or off
-  every labware, keep it, with the hint; Undo in the middle of a run keeps it; opening another
-  stage clears it; a Ctrl-click on a deck well while an editing box with changes is open shakes the
-  box, adds nothing and keeps the source; a Ctrl-click in the Stages column during a run selects as
-  usual and keeps the source; Ctrl+Enter on a focused well keeps it; in a mix step, at Start, at
-  End, in a randomization's or transfer table's stage, with a randomization's card open and while
-  moving wells, Ctrl-click acts as a click; on a Mac, Cmd-click keeps the source, and Ctrl-click on
-  a well with a source chosen opens its name box, adds nothing and keeps the source;
+  logic refuses; a box holding only the source, and a Ctrl+drag ending on other labware or off every
+  labware, keep it, with the hint; Undo in the middle of a run keeps it, and an Undo or Redo that
+  leaves a mix step or Start open clears it; opening another stage clears it; a Ctrl-click on a deck
+  well while an editing box with changes is open shakes the box, adds nothing and keeps the source;
+  a Ctrl-click in the Stages column during a run selects as usual and keeps the source; Ctrl+Enter
+  on a focused well keeps it; in a mix step, at Start, at End, in a randomization's or transfer
+  table's stage, with a randomization's card open and while moving wells, Ctrl-click acts as a
+  click; on a Mac, Cmd-click keeps the source, and Ctrl-click on a well with a source chosen opens
+  its name box, adds nothing and keeps the source;
 - every editing box: Save, Discard, Escape, a click outside with and without changes, Remove;
 - a stage's ✎ beside its name: it opens the stage's box under the card's heading, its menus show
   `Non-Contact` whole, and a stage whose settings aren't one of the modes shows `(not one of the
