@@ -7147,6 +7147,22 @@ describe("transfer-designer", () => {
     });
   });
 
+  test("moving wells, transfer order: a destination moved past another with its label keeps the table up to date", () => {
+    const { plan, id } = withExampleTable();
+    const moved = moveWell(plan, plateWell("A1"), plateWell("H9"));
+    assert.equal(isTransferTableOutOfDate(moved, id), false);
+    assert.equal(updateTransferTable(moved, id, draftOf(moved, id)), moved);
+  });
+
+  test("moving wells, transfer order: a move that changes how a column splits among its wells makes it out of date", () => {
+    const { plan, id } = withExampleTable();
+    const [media] = tableStages(plan, id);
+    const fromSecond = outlinesIn(plan, media).filter((transfer) => transfer.source.well === "2");
+    assert.deepEqual(fromSecond.map((transfer) => transfer.destination), [plateWell("B3")]);
+    const moved = moveWell(plan, plateWell("B1"), plateWell("H9"));
+    assert.equal(isTransferTableOutOfDate(moved, id), true);
+  });
+
   test("moving wells: a transfer table's source well is in use, and moving it keeps the table up to date", () => {
     let { plan, id } = withExampleTable();
     plan = emptyWells(plan, [trough("2")]);

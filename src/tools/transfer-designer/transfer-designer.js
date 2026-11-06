@@ -1559,8 +1559,9 @@ export function transferTableOf(plan, stageId) {
 
 // True if transfer table `id`'s draft (its table and sources) has problems now, or would give
 // different stages now: a different number, or, for any stage in order, a different component or
-// list of transfers (each one's source, destination and volume). Settings and tips aren't compared:
-// they're the user's (section 3, "Out of date"). Throws if there's no such transfer table.
+// different transfers (each one's source, destination and volume), compared ignoring their order,
+// since the Biomek orders a stage's transfers itself. Settings and tips aren't compared: they're
+// the user's (section 3, "Out of date"). Throws if there's no such transfer table.
 export function isTransferTableOutOfDate(plan, id) {
   const transferTable = checkTransferTableExists(plan, id);
   const draft = { table: transferTable.table, sources: transferTable.sources };
@@ -1570,11 +1571,11 @@ export function isTransferTableOutOfDate(plan, id) {
   const entries = stagesForDraft(plan, draft, transferTable.stages[0].stage, transferTable, {});
   const wouldMake = entries.map((entry) => ({
     component: entry.component,
-    transfers: entry.transfers.map(transferOutline),
+    transfers: transfersAsMultiset(entry.transfers),
   }));
   const made = transferTable.stages.map((owned) => ({
     component: owned.component,
-    transfers: transfersIn(plan, owned.stage).map(transferOutline),
+    transfers: transfersAsMultiset(transfersIn(plan, owned.stage)),
   }));
   return JSON.stringify(wouldMake) !== JSON.stringify(made);
 }
@@ -1976,9 +1977,12 @@ function copiedTips(tips) {
   return { tipType: tips.tipType, probes: [...tips.probes] };
 }
 
-// A transfer's source, destination and volume, as text-comparable data.
-function transferOutline({ source, destination, volume }) {
-  return [endOf(source), endOf(destination), volume];
+// Transfers as a multiset of (source, destination, volume), for comparing two stages' transfers
+// whatever their order: each as text, sorted, e.g. ['[{"labware":"Res1",…},…,190]', …].
+function transfersAsMultiset(transfers) {
+  return transfers
+    .map(({ source, destination, volume }) => JSON.stringify([endOf(source), endOf(destination), volume]))
+    .sort();
 }
 
 // Returns the plan with new stage `id`, just added on tips of its own, set as `entry` (an entry of
@@ -1991,12 +1995,18 @@ function withNewTableStageSet(plan, id, entry) {
   return withStageTransfers(setting, id, entry.transfers);
 }
 
-// Returns the plan with a transfer table's kept stage (`entry.stage`) given `entry`'s transfers, and
-// renamed after `entry`'s component if it was kept through renamedFrom. Its settings and tips stay.
+// Returns the plan with a transfer table's kept stage (`entry.stage`) given `entry`'s transfers,
+// unless it holds the same transfers in another order (they're kept, so an update that changes
+// nothing gives the same plan), and renamed after `entry`'s component if it was kept through
+// renamedFrom. Its settings and tips stay.
 function withKeptTableStageSet(plan, entry) {
   let setting = plan;
   if (plan.stageList.get(entry.stage).name !== entry.component) {
     setting = withParts(setting, { stageList: setting.stageList.rename(entry.stage, entry.component) });
+  }
+  const held = transfersAsMultiset(transfersIn(setting, entry.stage));
+  if (JSON.stringify(held) === JSON.stringify(transfersAsMultiset(entry.transfers))) {
+    return setting;
   }
   return withStageTransfers(setting, entry.stage, entry.transfers);
 }
