@@ -1693,4 +1693,19 @@ describe("plan-file", () => {
     const newId = String(file.stages.findIndex((stage) => stage.id === owned) + 1);
     assertRefused(file, `transfer tables: Stage "${newId}" belongs to transfer table 2 and randomization 1.`);
   });
+
+  test("check 14.1's order: a transfer table's exact properties come before its stages' form", () => {
+    const { plan } = transferTablePlan();
+    const file = JSON.parse(planToText(plan, SAVED_BY));
+    const both = structuredClone(file);
+    both.transferTables[0].extra = 1;
+    both.transferTables[0].stages = 5;
+    assertRefused(both, 'transfer tables: Transfer table 1 must be an object with exactly "id", "table", "sources" and "stages".');
+    const stagesOnly = structuredClone(file);
+    stagesOnly.transferTables[0].stages = 5;
+    assertRefused(
+      stagesOnly,
+      'transfer tables: Transfer table 1: its stages must be a non-empty list of objects with exactly "component" and "stage".',
+    );
+  });
 });

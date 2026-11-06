@@ -2170,10 +2170,16 @@ function checkStageAddBesideTransferTables(plan, beforeId, takeTips) {
 // Throws if `beforeId` isn't a stage or null, then if it's inside a transfer table (for the edits
 // that add a stage on new tips, which may go just before or after one).
 function checkStageAddWithNewTipsBesideTransferTables(plan, beforeId) {
+  checkStageToAddBefore(plan, beforeId);
+  checkNotInsideTransferTable(plan, beforeId);
+}
+
+// Throws unless `beforeId` is a stage or null, as every edit adding a stage checks it: 'There's no
+// stage "9" to add a stage before.'
+function checkStageToAddBefore(plan, beforeId) {
   if (beforeId !== null && !plan.stageList.has(beforeId)) {
     throw new Error(`There's no stage ${describeValue(beforeId)} to add a stage before.`);
   }
-  checkNotInsideTransferTable(plan, beforeId);
 }
 
 // Returns `added` (`plan` with a stage added without takeTips before `beforeId`) with a tip change
@@ -2234,7 +2240,7 @@ function withTransferTablesRenamed(plan, oldName, newName) {
   let changed = false;
   const transferTables = plan.transferTables.map((transferTable) => {
     const named =
-      transferTable.table[0].some((cell, column) => column > 0 && cell.trim() === oldName) ||
+      columnOfComponent(transferTable.table, oldName) !== -1 ||
       Object.hasOwn(transferTable.sources, oldName) ||
       transferTable.stages.some((owned) => owned.component === oldName);
     if (!named) {
@@ -2242,7 +2248,7 @@ function withTransferTablesRenamed(plan, oldName, newName) {
     }
     changed = true;
     const [header, ...rows] = transferTable.table;
-    const renamedHeader = header.map((cell, column) => (column > 0 && cell.trim() === oldName ? newName : cell));
+    const renamedHeader = header.map((cell, column) => (headerNames(cell, column, oldName) ? newName : cell));
     const sources = Object.fromEntries(
       Object.entries(transferTable.sources).map(([component, wells]) => [
         component === oldName ? newName : component,
@@ -2275,6 +2281,19 @@ function transferTablesWithoutSource(plan, name) {
   return changed ? transferTables : plan.transferTables;
 }
 
+// True if header cell `cell`, in column `column` of a transfer table, names `component`: a
+// component column (not the label column) whose text, trimmed, is the name, e.g.
+// headerNames(" Media ", 1, "Media") → true.
+function headerNames(cell, column, component) {
+  return column > 0 && cell.trim() === component;
+}
+
+// The index of the first column of `table` whose header names `component` (headerNames), or -1,
+// e.g. columnOfComponent([["Label", "Media"], …], "Media") → 1.
+function columnOfComponent(table, component) {
+  return table[0].findIndex((cell, column) => headerNames(cell, column, component));
+}
+
 // A copy of `transferTable` as a plan stores it, checked strictly (setTransferTables' order),
 // `number` being its place in the list from 1.
 function checkedStoredTransferTable(plan, transferTable, number) {
@@ -2304,6 +2323,7 @@ function checkedStoredTransferTable(plan, transferTable, number) {
 // consecutive in stage order and each the only stage of its tip group; none a mix step. A paste
 // checks its stages without `inPlace`, before they're placed.
 function checkedTableStages(plan, table, stages, inPlace) {
+  // True if `owned` is an entry of a transfer table's stages: exactly { component, stage }.
   const isEntry = (owned) => hasExactly(owned, TABLE_STAGE_PROPERTIES);
   if (!Array.isArray(stages) || stages.length === 0 || !stages.every(isEntry)) {
     throw new Error(
@@ -2313,8 +2333,8 @@ function checkedTableStages(plan, table, stages, inPlace) {
   if (inPlace) {
     checkTableStagesInPlan(plan, stages);
   }
-  const columnOf = (component) =>
-    table[0].findIndex((cell, column) => column > 0 && cell.trim() === component);
+  // The index of the column whose header names `component`, or -1.
+  const columnOf = (component) => columnOfComponent(table, component);
   const components = new Set();
   for (const { component } of stages) {
     if (columnOf(component) === -1) {
@@ -2660,7 +2680,7 @@ function checkedItems(plan, items, verb, boxes) {
   if (!Array.isArray(items) || items.length === 0) {
     const got = Array.isArray(items) ? "an empty list" : describeValue(items);
     throw new Error(
-      `The things to ${verb} must be a list of stages, tip groups or randomizations, but got ${got}.`,
+      `The things to ${verb} must be a list of stages, tip groups, randomizations or transfer tables, but got ${got}.`,
     );
   }
   const where = columnPlaces(boxes);
@@ -2709,7 +2729,7 @@ function columnPlaces(boxes) {
 function locatedItem(plan, item, number, where) {
   if (!isObject(item) || !ITEM_KINDS.includes(item.kind)) {
     throw new Error(
-      `Item ${number} must be { kind, id }, with kind "stage", "tipGroup" or "randomization", ` +
+      `Item ${number} must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", ` +
         `but got ${describeValue(isObject(item) ? item.kind : item)}.`,
     );
   }
@@ -2749,7 +2769,7 @@ function isContainerEntry(entry) {
 // "inTransferTable", index, position }.
 function checkPlace(boxes, place, holdsContainer, onlyStagesOf) {
   const formError = new Error(
-    `The place must be between boxes (index 0 to ${boxes.length}) or inside a tip group, ` +
+    `The place must be between boxes (index 0 to ${boxes.length}), inside a tip group or inside a transfer table, ` +
       `but got ${JSON.stringify(place) ?? String(place)}.`,
   );
   if (!isObject(place) || !Number.isInteger(place.index) || place.index < 0) {
@@ -2868,7 +2888,8 @@ function moveInsideTransferTable(plan, entries, box, position) {
 // of `afterComponent`; every other column, the label column included, keeps its order among the
 // rest, e.g. columns L, A, B, C with C moved before A → L, C, A, B.
 function tableWithColumnsMoved(table, movedComponents, beforeComponent, afterComponent) {
-  const columnOf = (component) => table[0].findIndex((cell, column) => column > 0 && cell.trim() === component);
+  // The index of the column whose header names `component`.
+  const columnOf = (component) => columnOfComponent(table, component);
   const movedColumns = movedComponents.map(columnOf);
   const rest = table[0].map((_, column) => column).filter((column) => !movedColumns.includes(column));
   const insertAt =
@@ -3144,7 +3165,7 @@ function copiedStage(plan, id) {
 // (COPIED_ITEMS_VERSIONS_READ), or a message saying a newer version copied them.
 function checkCopiedForm(copied) {
   const notCopiedItems = new Error(
-    "Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.",
+    "Can't paste: this isn't stages, tip groups, randomizations or transfer tables copied from the transfer designer.",
   );
   if (!hasExactly(copied, COPIED_ITEMS_PROPERTIES) || copied.format !== COPIED_ITEMS_FORMAT) {
     throw notCopiedItems;
@@ -4700,9 +4721,7 @@ function checkWellLabelAsStored(where, label) {
 // settings are of this kind; and a function giving the settings when no stage of this kind is
 // there to copy. Throws if `beforeId` isn't a stage or null.
 function addStageOfKind(plan, beforeId, takeTips, kind) {
-  if (beforeId !== null && !plan.stageList.has(beforeId)) {
-    throw new Error(`There's no stage ${describeValue(beforeId)} to add a stage before.`);
-  }
+  checkStageToAddBefore(plan, beforeId);
   const order = plan.stageOrder;
   const newPlace = beforeId === null ? order.length : order.indexOf(beforeId);
   const copiedFrom = nearestOfKind(plan, newPlace, kind.isOfKind);

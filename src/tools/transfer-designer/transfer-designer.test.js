@@ -5601,12 +5601,12 @@ describe("transfer-designer", () => {
     const plan = movingPlan();
     const before = snapshot(plan);
     const cases = [
-      [() => moveItems(plan, 5, between(0)), "The things to move must be a list of stages, tip groups or randomizations, but got 5."],
-      [() => copyOf(plan, []), "The things to copy must be a list of stages, tip groups or randomizations, but got an empty list."],
-      [() => copyItems(plan, 5, between(0)), "The things to copy must be a list of stages, tip groups or randomizations, but got 5."],
+      [() => moveItems(plan, 5, between(0)), "The things to move must be a list of stages, tip groups, randomizations or transfer tables, but got 5."],
+      [() => copyOf(plan, []), "The things to copy must be a list of stages, tip groups, randomizations or transfer tables, but got an empty list."],
+      [() => copyItems(plan, 5, between(0)), "The things to copy must be a list of stages, tip groups, randomizations or transfer tables, but got 5."],
       [
         () => moveItems(plan, [stageItem("1"), { kind: "box", id: "1" }], between(0)),
-        'Item 2 must be { kind, id }, with kind "stage", "tipGroup" or "randomization", but got "box".',
+        'Item 2 must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", but got "box".',
       ],
       [() => moveItems(plan, [stageItem("9")], between(0)), 'There\'s no stage "9" in the plan.'],
       [() => moveItems(plan, [groupItem("2")], between(0)), 'Stage "2" doesn\'t start a tip group, so it can\'t name one.'],
@@ -5614,11 +5614,11 @@ describe("transfer-designer", () => {
       [() => moveItems(plan, [randomizationItem("r9")], between(0)), 'There\'s no randomization "r9" in the plan.'],
       [
         () => moveItems(plan, [stageItem("1")], between(9)),
-        'The place must be between boxes (index 0 to 3) or inside a tip group, but got {"kind":"between","index":9}.',
+        'The place must be between boxes (index 0 to 3), inside a tip group or inside a transfer table, but got {"kind":"between","index":9}.',
       ],
       [
         () => moveItems(plan, [stageItem("1")], { kind: "over", index: 0 }),
-        'The place must be between boxes (index 0 to 3) or inside a tip group, but got {"kind":"over","index":0}.',
+        'The place must be between boxes (index 0 to 3), inside a tip group or inside a transfer table, but got {"kind":"over","index":0}.',
       ],
       [() => moveItems(plan, [stageItem("1")], inGroup(1, 7)), "Box 1 has positions 0 to 2, but got 7."],
       [() => moveItems(plan, [stageItem("1")], inGroup(2, 0)), "Box 2 is a randomization: nothing can be put inside it."],
@@ -5673,7 +5673,7 @@ describe("transfer-designer", () => {
 
   test("pasteItems refuses what isn't copied items, a newer version, and an entry not in its form", () => {
     const plan = movingPlan();
-    const notCopied = "Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.";
+    const notCopied = "Can't paste: this isn't stages, tip groups, randomizations or transfer tables copied from the transfer designer.";
     for (const copied of [
       "text",
       null,
@@ -5791,7 +5791,7 @@ describe("transfer-designer", () => {
       message: `Can't paste: item 1: "Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`,
     });
     assert.throws(() => pasteItems(plan, { format: "other" }, between(99)), {
-      message: "Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.",
+      message: "Can't paste: this isn't stages, tip groups, randomizations or transfer tables copied from the transfer designer.",
     });
   });
 

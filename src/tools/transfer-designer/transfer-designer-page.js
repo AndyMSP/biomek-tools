@@ -3913,6 +3913,7 @@ function createTableIcon() {
   icon.setAttribute("viewBox", "0 0 18 16");
   icon.setAttribute("class", "table-icon");
   icon.setAttribute("aria-hidden", "true");
+  // One SVG element called `name` with `attributes`, e.g. shape("line", { x1: 0, … }).
   const shape = (name, attributes) => {
     const element = document.createElementNS(svg, name);
     for (const [attribute, value] of Object.entries(attributes)) {
@@ -4766,7 +4767,8 @@ function addFromWizard() {
 }
 
 // Update: remakes the transfer table from the draft, with the renames the wizard remembers, as one
-// undoable edit; closes the wizard and opens its first stage. Nothing to change records nothing.
+// undoable edit; closes the wizard and opens its first stage. When nothing would change, nothing is
+// recorded, and a note says so (section 7, "Add and Update").
 function updateFromWizard() {
   const plan = currentPlan();
   const { id } = wizard;
@@ -4775,9 +4777,11 @@ function updateFromWizard() {
     return;
   }
   closeWizard();
-  if (updated !== plan) {
-    recordEdit(updated, transferTableAt(updated, id).stages[0].stage);
+  if (updated === plan) {
+    showMessage("Nothing to update: the transfer table already matches.", "note");
+    return;
   }
+  recordEdit(updated, transferTableAt(updated, id).stages[0].stage);
   showMessage(`Updated the transfer table: ${tableStagesText(updated, id)}.`, "ok");
 }
 
