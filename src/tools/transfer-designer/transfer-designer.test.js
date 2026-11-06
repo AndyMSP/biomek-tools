@@ -93,6 +93,7 @@ import {
   removeSources,
   tipSetsToMake,
   runRandomization,
+  randomizationStageValues,
   removeRandomization,
   canRemoveRandomization,
   setRandomizations,
@@ -3302,7 +3303,7 @@ describe("transfer-designer", () => {
     assert.equal(randomizationAt(run, id).stages.length, 2);
   });
 
-  test("running again: nothing changed keeps everything; a new seed shuffles; new settings, tips or volume keep the wells", () => {
+  test("running again: nothing changed keeps everything; a new seed shuffles; a new volume keeps the wells", () => {
     const { plan, id } = runRandomizationPlan();
     const again = runRandomization(plan, id);
     assert.deepEqual(randomizationAt(again, id), randomizationAt(plan, id));
@@ -3313,19 +3314,12 @@ describe("transfer-designer", () => {
     assert.deepEqual(randomizationAt(reseeded, id).stages, randomizationAt(plan, id).stages);
     assert.notDeepEqual(destinationsByStage(reseeded, id), destinationsByStage(plan, id));
 
-    const changed = runRandomization(
-      setRandomization(plan, id, {
-        settings: otherSettings(),
-        tipType: TIP_TYPES.at(-1),
-        probes: [1],
-        volume: 20,
-      }),
-      id,
-    );
+    // Settings and tips are the stages' own once it has run (2026-11-05, item 20), so only the volume
+    // is changed here; "settings on its stages" below covers them.
+    const changed = runRandomization(setRandomization(plan, id, { volume: 20 }), id);
     assert.deepEqual(destinationsByStage(changed, id), destinationsByStage(plan, id));
     for (const { stage } of randomizationAt(changed, id).stages) {
-      assert.deepEqual(changed.stageList.get(stage).settings, otherSettings());
-      assert.deepEqual(tipChangeAt(changed, stage), { tipType: TIP_TYPES.at(-1), probes: [1] });
+      assert.deepEqual(changed.stageList.get(stage).settings, plan.stageList.get(stage).settings);
       assert.ok(transfersIn(changed, stage).every((transfer) => transfer.volume === 20));
     }
   });
@@ -3453,10 +3447,9 @@ describe("transfer-designer", () => {
     const { plan, id } = runRandomizationPlan();
     const [first, second] = randomizationAt(plan, id).stages;
     addRandomization(plan, first.stage, { seed: 1, volume: 1 });
-    assert.throws(
-      () => addRandomization(plan, second.stage, { seed: 1, volume: 1 }),
-      /sits between tip groups/,
-    );
+    assert.throws(() => addRandomization(plan, second.stage, { seed: 1, volume: 1 }), {
+      message: "A randomization's stages stay together: add before its first stage or after its last.",
+    });
   });
 
   test("runRandomization with a problem throws its message, leaving the plan unchanged", () => {
@@ -3526,7 +3519,7 @@ describe("transfer-designer", () => {
   test("setRandomizations refuses one sitting before another's second stage, even when loading both at once", () => {
     const { plan, id } = runRandomizationPlan();
     const owner = JSON.parse(JSON.stringify(randomizationAt(plan, id)));
-    const sitting = { ...owner, id: "r2", beforeId: owner.stages[1].stage, stages: [] };
+    const sitting = { ...asNotRun(owner), id: "r2", beforeId: owner.stages[1].stage };
     assert.throws(
       () => setRandomizations({ ...plan, randomizations: [] }, [sitting, owner]),
       { message: /^Randomization 1: A randomization sits between tip groups, so it can't go before stage / },
@@ -3537,7 +3530,7 @@ describe("transfer-designer", () => {
     const { plan, id } = runRandomizationPlan();
     const good = () => JSON.parse(JSON.stringify(randomizationAt(plan, id)));
     const stageIds = good().stages.map((owned) => owned.stage);
-    const second = (changes) => [good(), { ...good(), id: "r2", stages: [], beforeId: null, ...changes }];
+    const second = (changes) => [good(), { ...asNotRun(good()), id: "r2", beforeId: null, ...changes }];
     const cases = [
       [5, "The randomizations must be a list, but got 5."],
       [
@@ -3575,7 +3568,7 @@ describe("transfer-designer", () => {
         "Randomization 1: its stages must come one after another, in stage order.",
       ],
       [
-        [good(), { ...good(), id: "r2", beforeId: null, stages: [] }, { ...good(), id: "r2", beforeId: null, stages: [] }],
+        [good(), { ...asNotRun(good()), id: "r2", beforeId: null }, { ...asNotRun(good()), id: "r2", beforeId: null }],
         'Randomizations 2 and 3 both have the ID "r2".',
       ],
       [[good(), { ...good(), id: "r2" }], `Stage "${stageIds[0]}" belongs to two randomizations, 1 and 2.`],
@@ -3631,13 +3624,27 @@ describe("transfer-designer", () => {
     return { ...plan, ...changes };
   }
 
-  // The plan without stage `stage`'s transfers.
+  // The plan without stage `stage`'s transfers. A randomization's stage refuses removeTransfer
+  // (since 2026-11-05, item 20), so they're removed with the randomizations set aside, then put back:
+  // a plan the edits would never make.
   function removeTransfersOf(plan, stage) {
-    let without = plan;
+    let without = withParts(plan, { randomizations: [] });
     for (const { position } of transfersIn(plan, stage).reverse()) {
       without = removeTransfer(without, position);
     }
-    return without;
+    return withParts(without, { randomizations: plan.randomizations });
+  }
+
+  // A randomization `randomization` (as stored) as one that hasn't run: no stages, and first-run
+  // settings and tips, which a run randomization holds as null (since 2026-11-05, item 20).
+  function asNotRun(randomization) {
+    return {
+      ...randomization,
+      stages: [],
+      settings: defaultSettings(),
+      tipType: TIP_TYPES[0],
+      probes: probesFor(DEFAULT_PROBE_COUNT),
+    };
   }
 
   // --- Several filler wells ---
@@ -3960,7 +3967,7 @@ describe("transfer-designer", () => {
   test("copying: a run randomization with three filler wells pastes with the same filler wells and one filler stage; version 1 pastes", () => {
     const { plan, id } = runFillerPlan();
     const copied = copyOf(plan, [{ kind: "randomization", id }]);
-    assert.equal(copied.version, 4);
+    assert.equal(copied.version, 5);
     const end = { kind: "between", index: columnBoxes(plan).length };
     const { plan: pasted, placed } = copyItems(plan, [{ kind: "randomization", id }], end);
     const copy = randomizationAt(pasted, placed[0].id);
@@ -3973,13 +3980,18 @@ describe("transfer-designer", () => {
     assert.equal(fromVersion1.randomizations.length, 2);
   });
 
-  // Copied items (copyOf's, version 3) as an older version, 1 or 2, holds them: each randomization's
-  // sources without sharesTips. Its owned stages must all have tips (none sharing).
+  // Copied items (copyOf's, version 5) as an older version, 1 or 2, holds them: each randomization's
+  // sources without sharesTips, and, as before version 5, a run randomization holding settings and
+  // tips: its first stage's, as every run then gave every stage. Its owned stages must all have tips
+  // (none sharing).
   function copiedAsVersion(copied, version) {
     const older = JSON.parse(JSON.stringify(copied));
     older.version = version;
     for (const item of older.items.filter((candidate) => candidate.kind === "randomization")) {
       item.randomization.sources = item.randomization.sources.map(({ sharesTips, ...rest }) => rest);
+      if (item.stages.length > 0) {
+        Object.assign(item.randomization, { settings: item.stages[0].stage.settings, ...item.stages[0].tips });
+      }
     }
     return older;
   }
@@ -4048,7 +4060,10 @@ describe("transfer-designer", () => {
 
   test("out of date: after its filler stage is removed, it's out of date, without throwing", () => {
     const { plan, id } = runFillerPlan();
-    const removed = removeStage(plan, fillerEntry(plan, id).stage);
+    // removeStage refuses an owned stage since 2026-11-05 (item 20), so it's removed with the
+    // randomizations set aside: a plan the edits no longer make, kept as a check that nothing throws.
+    const withoutRandomizations = removeStage(withParts(plan, { randomizations: [] }), fillerEntry(plan, id).stage);
+    const removed = withParts(withoutRandomizations, { randomizations: plan.randomizations });
     assert.equal(isRandomizationOutOfDate(removed, id), true);
   });
 
@@ -4751,8 +4766,8 @@ describe("transfer-designer", () => {
     assert.deepEqual(groupsIn(moved, id), [3, 1]);
     assert.equal(isRandomizationOutOfDate(moved, id), false);
     const copied = copyOf(plan, [randomizationItem(id)]);
-    assert.equal(copied.version, 4);
-    assert.equal(COPIED_ITEMS_VERSION, 4);
+    assert.equal(copied.version, 5);
+    assert.equal(COPIED_ITEMS_VERSION, 5);
     assert.deepEqual(copied.items[0].randomization.sources.map((entry) => entry.sharesTips), [false, true, true, false]);
     assert.deepEqual(copied.items[0].stages.map((owned) => owned.tips), [sharingTips(), null, null, sharingTips()]);
     const { plan: pasted, placed } = pasteItems(plan, copied, between(columnBoxes(plan).length));
@@ -4761,7 +4776,7 @@ describe("transfer-designer", () => {
     assert.equal(isRandomizationOutOfDate(pasted, placed[0].id), false);
   });
 
-  test("copied items: a version 2 copy pastes each stage alone; version 3 with a first owned stage sharing, and version 5, are refused", () => {
+  test("copied items: a version 2 copy pastes each stage alone; version 3 with a first owned stage sharing, and version 6, are refused", () => {
     const { plan: apartPlan, id: apartId } = sharingPlan([false, false, false, false]);
     const apart = runRandomization(apartPlan, apartId);
     const version2 = copiedAsVersion(copyOf(apart, [randomizationItem(apartId)]), 2);
@@ -4777,8 +4792,8 @@ describe("transfer-designer", () => {
     assert.throws(() => pasteItems(plan, copied, between(0)), {
       message: "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.",
     });
-    assert.throws(() => pasteItems(plan, { ...copyOf(plan, [randomizationItem(id)]), version: 5 }, between(0)), {
-      message: "Can't paste: these were copied by a newer version of the tools (version 5).",
+    assert.throws(() => pasteItems(plan, { ...copyOf(plan, [randomizationItem(id)]), version: 6 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 6).",
     });
   });
 
@@ -5573,7 +5588,7 @@ describe("transfer-designer", () => {
     const copied = copyOf(plan, [groupItem("3")]);
     assert.equal(snapshot(plan), before);
     assert.equal(copied.format, "biomek-tools copied items");
-    assert.equal(copied.version, 4);
+    assert.equal(copied.version, 5);
     assert.equal(COPIED_ITEMS_FORMAT, copied.format);
     assert.equal(COPIED_ITEMS_VERSION, copied.version);
     const throughJson = JSON.parse(JSON.stringify(copied));
@@ -5683,8 +5698,8 @@ describe("transfer-designer", () => {
     ]) {
       assert.throws(() => pasteItems(plan, copied, between(0)), { message: notCopied });
     }
-    assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 5 }, between(0)), {
-      message: "Can't paste: these were copied by a newer version of the tools (version 5).",
+    assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 6 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 6).",
     });
     const second = { kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS }, group: 2 };
     assert.throws(
@@ -6104,9 +6119,14 @@ describe("transfer-designer", () => {
   });
 
   // More edits that move stages or blocks, beyond EDITS: each made on fullPlan(), in which stage 1
-  // has one transfer, stage 2 has one, and stage 3 has none.
+  // has one transfer, stage 2 has one, and stage 3 has none. (Its run randomization is last, so
+  // addStage can't add last without joining its tips since 2026-11-05, item 20: it adds just
+  // before it instead.)
   const ORDER_EDITS = [
-    ["addStage, last", (plan) => addStage(plan, null).plan],
+    [
+      "addStage, just before the randomization",
+      (plan) => addStage(plan, randomizationAt(plan, "r1").stages[0].stage).plan,
+    ],
     ["addStage before the first, taking tips", (plan) => addStage(plan, "1", { takeTips: true }).plan],
     ["addTransfer, a stage's first", (plan) => addTransfer(plan, transferTo("3", "C2"))],
     [
@@ -6580,7 +6600,7 @@ describe("transfer-designer", () => {
     const owned = randomizationAt(randomized, rId).stages.map((entry) => entry.stage);
     assert.equal(addTransferTable(randomized, exampleDraft(), owned[0]).id, "t1");
     assert.throws(() => addTransferTable(randomized, exampleDraft(), owned[1]), {
-      message: /^A transfer table sits between tip groups, so it can't go before stage/,
+      message: "A randomization's stages stay together: add before its first stage or after its last.",
     });
   });
 
@@ -7035,7 +7055,11 @@ describe("transfer-designer", () => {
     });
     plan = runRandomization(plan, rId);
     const owned = randomizationAt(plan, rId).stages[0].stage;
-    plan = renameStage(plan, owned, "Media");
+    // A randomization's stage refuses renameStage (since 2026-11-05, item 20), so it's renamed with
+    // the randomizations set aside: a plan the edits would never make.
+    plan = withParts(renameStage(withParts(plan, { randomizations: [] }), owned, "Media"), {
+      randomizations: plan.randomizations,
+    });
     const table = { id: "t1", table: [["L", "Media"], ["Control", "1"]], sources: {}, stages: [{ component: "Media", stage: owned }] };
     assert.throws(() => setTransferTables(plan, [table]), {
       message: `Stage "${owned}" belongs to transfer table 1 and randomization 1.`,
@@ -7076,12 +7100,12 @@ describe("transfer-designer", () => {
     });
   });
 
-  test("copying a transfer table writes version 4 and pastes a new transfer table with new stages", () => {
+  test("copying a transfer table writes version 5 and pastes a new transfer table with new stages", () => {
     let { plan, id } = withExampleTable();
     const [media] = tableStages(plan, id);
     plan = setTipType(plan, media, TIP_TYPES.at(-1));
     const copied = copyOf(plan, [{ kind: "transferTable", id }]);
-    assert.equal(copied.version, 4);
+    assert.equal(copied.version, 5);
     assert.deepEqual(copied.items[0].transferTable, { table: exampleTable(), sources: exampleDraft().sources });
     assert.deepEqual(copied.items[0].stages.map((entry) => [entry.component, entry.tips.tipType]), [
       ["Media", TIP_TYPES.at(-1)],
@@ -7252,5 +7276,518 @@ describe("transfer-designer", () => {
     assert.equal(transferTableAt(plan, "t9"), null);
     assert.equal(transferTableOf(plan, tableStages(plan, id)[0]), id);
     assert.equal(transferTableOf(plan, "1"), null);
+  });
+
+  // --- A randomization's settings on its stages (2026-11-05, item 20) ---
+
+  // Modes found in the configuration, never named: a source mode other than the default (the one
+  // otherSettings() uses), a destination mode other than the default that can mix, and the end a
+  // mode that can't mix is used at (NON_MIXING_MODE).
+  const OTHER_SOURCE_MODE = modeOf("source", otherSettings());
+  const OTHER_DESTINATION_MODE = modesFor("destination").find(
+    (mode) => mode.name !== DEFAULT_PIPETTING_MODE && mode.mixingTechnique !== null,
+  ).name;
+  const CANT_MIX_END = NON_MIXING_MODE.ends.at(-1);
+
+  // Tips that differ from sharingTips() (the last tip type on two probes) and from a new plan's
+  // START tips (the first tip type on DEFAULT_PROBE_COUNT probes): the first tip type, on every probe.
+  function otherTips() {
+    return { tipType: TIP_TYPES[0], probes: probesFor(8) };
+  }
+
+  // `settings` with `end` using the mode called `name` (mixing as `mixes` says, with DEFAULT_MIX),
+  // e.g. withMode(defaultSettings(), "source", "Slow").
+  function withMode(settings, end, name, mixes = false) {
+    return { ...settings, ...modeSettings(end, name, mixes), [`${end}Mix`]: mixes ? { ...DEFAULT_MIX } : null };
+  }
+
+  // sharingPlan with every source on new tips (A1, A2, A3 and the filler A4), run: { plan, id }.
+  function runApartPlan() {
+    const { plan, id } = sharingPlan([false, false, false, false]);
+    return { plan: runRandomization(plan, id), id };
+  }
+
+  // The tips stage `stage` loads or shares: its tip group's { tipType, probes }.
+  function tipsOfStage(plan, stage) {
+    const { tipType, probes } = tipGroups(plan).find((group) => group.stages.includes(stage));
+    return { tipType, probes };
+  }
+
+  // The key of the tip change starting the tip group of stage `stage`: the stage itself, or START.
+  function tipKeyOf(plan, stage) {
+    return stageOrder(plan)[0] === stage ? START : stage;
+  }
+
+  // The plan with stage `stage`'s settings set to `settings` and its tip group's tips to `tips`.
+  function withStageSettingsAndTips(plan, stage, settings, tips) {
+    const key = tipKeyOf(plan, stage);
+    const changed = changeStageSettings(plan, stage, settings);
+    return setTipProbes(setTipType(changed, key, tips.tipType), key, tips.probes);
+  }
+
+  test("addRandomization starts from the nearest transfer stage before its place and the tips in use there", () => {
+    let plan = changeStageSettings(randomizingPlan(), "1", otherSettings());
+    plan = setTipProbes(setTipType(plan, START, otherTips().tipType), START, otherTips().probes);
+    const { plan: added, id } = addRandomization(plan, "2", { seed: 37, volume: 10 });
+    const randomization = randomizationAt(added, id);
+    assert.deepEqual(randomization.settings, otherSettings());
+    assert.equal(randomization.tipType, otherTips().tipType);
+    assert.deepEqual(randomization.probes, otherTips().probes);
+    // At the start of the plan: the first transfer stage's settings and the START tips.
+    const atStart = randomizationAt(addRandomization(plan, "1").plan, "r1");
+    assert.deepEqual(atStart.settings, otherSettings());
+    assert.deepEqual({ tipType: atStart.tipType, probes: atStart.probes }, otherTips());
+    // Only mix steps: the default settings.
+    let mixOnly = emptyPlan().plan;
+    mixOnly = addMixStep(mixOnly, null).plan;
+    mixOnly = removeStage(mixOnly, "1");
+    assert.deepEqual(randomizationAt(addRandomization(mixOnly, null).plan, "r1").settings, defaultSettings());
+  });
+
+  test("addRandomization's starting settings: a mix step just before is passed over; with only mix steps before, the nearest transfer stage after", () => {
+    let plan = changeStageSettings(randomizingPlan(), "1", otherSettings());
+    const { plan: withMix, id: mixStep } = addMixStepWithNewTips(plan, null);
+    plan = setTipType(withMix, mixStep, otherTips().tipType);
+    const { plan: added, id } = addRandomization(plan, null);
+    // Stage 2 is the transfer stage just before the mix step; the tips are the mix step's own.
+    assert.deepEqual(randomizationAt(added, id).settings, plan.stageList.get("2").settings);
+    assert.equal(randomizationAt(added, id).tipType, otherTips().tipType);
+    // Only a mix step before its place: stage 1's (the nearest after).
+    let mixFirst = changeStageSettings(randomizingPlan(), "1", otherSettings());
+    const { plan: withFirstMix, id: firstMix } = addMixStepWithNewTips(mixFirst, "1");
+    mixFirst = withFirstMix;
+    assert.equal(stageOrder(mixFirst)[0], firstMix);
+    assert.deepEqual(randomizationAt(addRandomization(mixFirst, "1").plan, "r1").settings, otherSettings());
+  });
+
+  test("a first run gives every stage the randomization's settings and every group its tips; then they're null", () => {
+    let { plan, id } = sharingPlan([false, true, false, false]);
+    plan = setRandomization(plan, id, { settings: otherSettings() });
+    const run = runRandomization(plan, id);
+    const randomization = randomizationAt(run, id);
+    for (const { stage } of randomization.stages) {
+      assert.deepEqual(run.stageList.get(stage).settings, otherSettings());
+      assert.deepEqual(tipsOfStage(run, stage), sharingTips());
+    }
+    assert.equal(randomization.settings, null);
+    assert.equal(randomization.tipType, null);
+    assert.equal(randomization.probes, null);
+  });
+
+  test("after a run, a stage's settings and a group's tips changed on their own stay through a run, and don't make it out of date", () => {
+    const { plan: run, id } = runApartPlan();
+    const a1 = stageFor(run, id, "A1");
+    const a2 = stageFor(run, id, "A2");
+    let plan = changeStageSettings(run, a1, otherSettings());
+    plan = setTipType(plan, a2, otherTips().tipType);
+    assert.equal(isRandomizationOutOfDate(plan, id), false);
+    const again = runRandomization(plan, id);
+    assert.deepEqual(again.stageList.get(a1).settings, otherSettings());
+    assert.equal(tipChangeAt(again, a2).tipType, otherTips().tipType);
+    for (const { stage } of randomizationAt(again, id).stages) {
+      assert.deepEqual(again.stageList.get(stage).settings, plan.stageList.get(stage).settings);
+      assert.deepEqual(tipsOfStage(again, stage), tipsOfStage(plan, stage));
+    }
+  });
+
+  test("setStageMix and setTipProbes work on a randomization's stage as on any stage", () => {
+    const { plan, id } = runApartPlan();
+    const a3 = stageFor(plan, id, "A3");
+    const mixed = setStageMix(plan, a3, "destination", exampleMix());
+    assert.deepEqual(mixed.stageList.get(a3).settings.destinationMix, exampleMix());
+    const probes = setTipProbes(plan, a3, [1]);
+    assert.deepEqual(tipChangeAt(probes, a3).probes, [1]);
+  });
+
+  test("a source added after a run starts like its neighbor: the nearest kept source before it, else after it", () => {
+    const { plan: run, id } = runApartPlan();
+    const a1 = stageFor(run, id, "A1");
+    let plan = withStageSettingsAndTips(run, a1, otherSettings(), otherTips());
+    plan = addToWells(plan, [deepWell("A5")], "Drug B", capacityOf(DEEP));
+    const sources = randomizationAt(plan, id).sources;
+    const between = runRandomization(
+      setRandomization(plan, id, { sources: [sources[0], source("A5", 1), ...sources.slice(1)] }),
+      id,
+    );
+    const a5 = stageFor(between, id, "A5");
+    assert.deepEqual(between.stageList.get(a5).settings, otherSettings());
+    assert.ok(tipChangeAt(between, a5) !== null);
+    assert.deepEqual(tipsOfStage(between, a5), otherTips());
+    const first = runRandomization(setRandomization(plan, id, { sources: [source("A5", 1), ...sources] }), id);
+    const firstA5 = stageFor(first, id, "A5");
+    assert.deepEqual(first.stageList.get(firstA5).settings, otherSettings());
+    assert.deepEqual(tipsOfStage(first, firstA5), otherTips());
+  });
+
+  test("a source split from its group starts new tips like the group before; joined again, it shares", () => {
+    const { plan: setUp, id } = sharingPlan([false, true, true, false]);
+    const run = runRandomization(setUp, id);
+    const a2 = stageFor(run, id, "A2");
+    assert.equal(tipChangeAt(run, a2), null);
+    const sources = randomizationAt(run, id).sources;
+    const split = runRandomization(setRandomization(run, id, { sources: setSourceSharesTips(sources, 1, false) }), id);
+    assert.deepEqual(tipChangeAt(split, a2), tipsOfStage(run, stageFor(run, id, "A1")));
+    const joined = runRandomization(setRandomization(split, id, { sources }), id);
+    assert.equal(tipChangeAt(joined, a2), null);
+  });
+
+  test("forAll: a mode alone sets that end of every stage, each other end as it was; {} is no forAll", () => {
+    const { plan: run, id } = runApartPlan();
+    const a1 = stageFor(run, id, "A1");
+    const plan = changeStageSettings(run, a1, otherSettings());
+    const fast = runRandomization(plan, id, { destinationMode: OTHER_DESTINATION_MODE });
+    for (const { stage } of randomizationAt(fast, id).stages) {
+      const settings = fast.stageList.get(stage).settings;
+      assert.equal(modeOf("destination", settings), OTHER_DESTINATION_MODE);
+      assert.equal(modeOf("source", settings), modeOf("source", plan.stageList.get(stage).settings));
+    }
+    assert.equal(modeOf("source", fast.stageList.get(a1).settings), OTHER_SOURCE_MODE);
+    assert.equal(snapshot(runRandomization(plan, id, {})), snapshot(runRandomization(plan, id)));
+  });
+
+  test("forAll: mixing turned on keeps a stage's own mix and gives the others DEFAULT_MIX; a mode that can't mix turns mixing off", () => {
+    const { plan: run, id } = runApartPlan();
+    const [first, ...others] = randomizationAt(run, id).stages.map((owned) => owned.stage);
+    const end = CANT_MIX_END;
+    const plan = setStageMix(run, first, end, exampleMix());
+    const mixing = runRandomization(plan, id, { [`${end}Mixes`]: true });
+    assert.deepEqual(mixing.stageList.get(first).settings[`${end}Mix`], exampleMix());
+    for (const stage of others) {
+      assert.deepEqual(mixing.stageList.get(stage).settings[`${end}Mix`], DEFAULT_MIX);
+      assert.equal(modeOf(end, mixing.stageList.get(stage).settings), modeOf(end, plan.stageList.get(stage).settings));
+    }
+    const offs = runRandomization(mixing, id, { [`${end}Mode`]: NON_MIXING_MODE.name });
+    for (const { stage } of randomizationAt(offs, id).stages) {
+      assert.equal(offs.stageList.get(stage).settings[`${end}Mix`], null);
+      assert.equal(modeOf(end, offs.stageList.get(stage).settings), NON_MIXING_MODE.name);
+    }
+    const before = snapshot(mixing);
+    assert.throws(() => runRandomization(mixing, id, { [`${end}Mode`]: NON_MIXING_MODE.name, [`${end}Mixes`]: true }), {
+      message: `${NON_MIXING_MODE.name} can't mix, so it can't be used at the ${end} while the ${end} mixes. Turn the ${end}'s mixing off first.`,
+    });
+    assert.equal(snapshot(mixing), before);
+  });
+
+  test("forAll: tipType and probes go to every group's tip change, START's for a group starting the plan", () => {
+    const { plan: setUp, id } = sharingPlan([false, true, false, false]);
+    const run = runRandomization(setUp, id);
+    const set = runRandomization(run, id, { tipType: otherTips().tipType, probes: [1, 2, 3] });
+    for (const { stage } of randomizationAt(set, id).stages) {
+      assert.deepEqual(tipsOfStage(set, stage), { tipType: otherTips().tipType, probes: [1, 2, 3] });
+    }
+    // Stages 1 and 2 (outside it) keep their tips.
+    assert.deepEqual(tipChangeAt(set, START), tipChangeAt(run, START));
+    assert.deepEqual(tipChangeAt(set, "2"), tipChangeAt(run, "2"));
+    // Its first stage the plan's first: START's tip change gets it.
+    const { plan: atTop, id: topId } = sharingPlan([false, false, false, false], { beforeId: "1" });
+    const firstRun = runRandomization(atTop, topId);
+    assert.equal(stageOrder(firstRun)[0], randomizationAt(firstRun, topId).stages[0].stage);
+    const top = runRandomization(firstRun, topId, { tipType: otherTips().tipType });
+    assert.equal(tipChangeAt(top, START).tipType, otherTips().tipType);
+  });
+
+  test("forAll: a wrong property or value is refused with its message, before the problems, changing nothing", () => {
+    const { plan, id } = runApartPlan();
+    const before = snapshot(plan);
+    const cases = [
+      [
+        { speed: 3 },
+        'The settings for every stage must be an object of "sourceMode", "sourceMixes", "destinationMode", "destinationMixes", "tipType" and "probes", but got "speed".',
+      ],
+      [
+        null,
+        'The settings for every stage must be an object of "sourceMode", "sourceMixes", "destinationMode", "destinationMixes", "tipType" and "probes", but got null.',
+      ],
+      [{ sourceMode: "Fastest" }, /^"Fastest" isn't a pipetting mode for the source\. /],
+      [{ sourceMixes: "yes" }, 'Whether the source mixes must be true or false, but got "yes".'],
+      [{ destinationMode: "Fastest" }, /^"Fastest" isn't a pipetting mode for the destination\. /],
+      [{ destinationMixes: 1 }, "Whether the destination mixes must be true or false, but got 1."],
+      [{ tipType: "BC50" }, `"BC50" isn't a tip type. Choose one of ${TIP_TYPES.map((tip) => `"${tip}"`).join(", ")}.`],
+      [{ probes: [9] }, /^Probe numbers must be whole numbers from 1 to 8/],
+      // The order: sourceMode before sourceMixes before destinationMode.
+      [{ destinationMode: "Fastest", sourceMixes: "yes" }, 'Whether the source mixes must be true or false, but got "yes".'],
+    ];
+    for (const [forAll, message] of cases) {
+      assert.throws(() => runRandomization(plan, id, forAll), { message }, JSON.stringify(forAll));
+    }
+    // forAll before the randomization's problems.
+    const problem = setRandomization(plan, id, { seed: null });
+    assert.throws(() => runRandomization(problem, id, { speed: 3 }), { message: /^The settings for every stage/ });
+    assert.throws(() => runRandomization(problem, id, {}), { message: "Type a seed." });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("forAll refused: mixing on where a stage's own mode can't mix, and mixing given where a stage's end isn't one of the modes", () => {
+    const { plan: run, id } = runApartPlan();
+    const [, a2, a3] = randomizationAt(run, id).stages.map((owned) => owned.stage);
+    const end = CANT_MIX_END;
+    const plan = changeStageSettings(run, a2, withMode(run.stageList.get(a2).settings, end, NON_MIXING_MODE.name));
+    const before = snapshot(plan);
+    assert.throws(() => runRandomization(plan, id, { [`${end}Mixes`]: true }), {
+      message: `Stage ${stageOrder(plan).indexOf(a2) + 1}, “${plan.stageList.get(a2).name}”, uses ${NON_MIXING_MODE.name} at the ${end}, which can't mix. Choose a mode for every stage, or change that stage first.`,
+    });
+    const custom = changeStageSettings(plan, a3, {
+      ...plan.stageList.get(a3).settings,
+      sourceTechnique: "Custom_Technique",
+      sourceLiquidType: "Custom_Liquid",
+    });
+    assert.throws(() => runRandomization(custom, id, { sourceMixes: false }), {
+      message: `Stage ${stageOrder(custom).indexOf(a3) + 1}, “${custom.stageList.get(a3).name}”, doesn't use one of the modes at the source. Choose a mode for every stage, or change that stage first.`,
+    });
+    // A mode given puts it right; an end not given is kept as it is.
+    const fixed = runRandomization(custom, id, { sourceMode: DEFAULT_PIPETTING_MODE });
+    assert.equal(modeOf("source", fixed.stageList.get(a3).settings), DEFAULT_PIPETTING_MODE);
+    assert.equal(runRandomization(custom, id, { destinationMode: DEFAULT_PIPETTING_MODE }).stageList.get(a3).settings.sourceTechnique, "Custom_Technique");
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("setRandomization refuses settings, tip type or probes once it has stages, even unchanged; before a run they're set", () => {
+    const { plan: setUp, id } = sharingPlan();
+    assert.deepEqual(randomizationAt(setRandomization(setUp, id, { settings: otherSettings() }), id).settings, otherSettings());
+    const run = runRandomization(setUp, id);
+    const message =
+      "This randomization has run, so its settings and tips are its stages': change them on the stages, or all at once when running it.";
+    for (const changes of [{ settings: defaultSettings() }, { tipType: TIP_TYPES[0] }, { probes: [1] }, { settings: null }]) {
+      assert.throws(() => setRandomization(run, id, changes), { message }, JSON.stringify(changes));
+    }
+    // Checked after the volume, before the settings themselves.
+    assert.throws(() => setRandomization(run, id, { volume: 0, settings: 5 }), /volume must be/);
+  });
+
+  test("setRandomizations refuses a run randomization holding settings, and one without stages holding none", () => {
+    const { plan, id } = runApartPlan();
+    const stored = () => JSON.parse(JSON.stringify(randomizationAt(plan, id)));
+    assert.throws(() => setRandomizations(plan, [{ ...stored(), settings: defaultSettings() }]), {
+      message: 'Randomization 1 has stages, so its "settings", "tipType" and "probes" must be null: its stages hold them.',
+    });
+    const notRun = { ...asNotRun(stored()), id: "r2", beforeId: null };
+    assert.throws(() => setRandomizations(plan, [stored(), { ...notRun, settings: null }]), {
+      message: `Randomization 2 hasn't run, so it needs "settings", "tipType" and "probes" for its first run.`,
+    });
+    assert.throws(() => setRandomizations(plan, [stored(), { ...notRun, tipType: null }]), /Randomization 2 hasn't run/);
+    assert.equal(setRandomizations(plan, [stored(), notRun]).randomizations.length, 2);
+    // The order: its values (when not null), then the stages' form, then this rule, then each stage.
+    const holding = { ...stored(), settings: defaultSettings() };
+    assert.throws(() => setRandomizations(plan, [{ ...holding, tipType: "BC50" }]), {
+      message: /^Randomization 1: "BC50" isn't a tip type/,
+    });
+    assert.throws(() => setRandomizations(plan, [{ ...holding, stages: [{ stage: "9" }] }]), {
+      message: /^Randomization 1: its stages must be a list of objects/,
+    });
+    assert.throws(() => setRandomizations(plan, [{ ...holding, stages: [{ ...holding.stages[0], stage: "99" }] }]), {
+      message: /^Randomization 1 has stages, so its/,
+    });
+  });
+
+  test("copied items version 5: a run randomization's settings are null; a version 4 copy pastes them dropped; a version 5 copy breaking the rule is refused", () => {
+    const { plan: run, id } = runApartPlan();
+    const a1 = stageFor(run, id, "A1");
+    const plan = withStageSettingsAndTips(run, a1, otherSettings(), otherTips());
+    const copied = copyOf(plan, [randomizationItem(id)]);
+    assert.equal(copied.version, 5);
+    assert.deepEqual(
+      FIRST_RUN_VALUES.map((property) => copied.items[0].randomization[property]),
+      [null, null, null],
+    );
+    // A version 4 copy, holding settings and tips as written then: dropped; its stages keep theirs.
+    const version4 = JSON.parse(JSON.stringify(copied));
+    version4.version = 4;
+    Object.assign(version4.items[0].randomization, { settings: defaultSettings(), ...sharingTips() });
+    const { plan: pasted, placed } = pasteItems(plan, version4, between(columnBoxes(plan).length));
+    const copy = randomizationAt(pasted, placed[0].id);
+    assert.deepEqual(FIRST_RUN_VALUES.map((property) => copy[property]), [null, null, null]);
+    assert.deepEqual(pasted.stageList.get(copy.stages[0].stage).settings, otherSettings());
+    assert.deepEqual(tipsOfStage(pasted, copy.stages[0].stage), otherTips());
+    assert.equal(setRandomizations(pasted, pasted.randomizations).randomizations.length, 2);
+    // A version 4 copy's settings are still checked.
+    const badVersion4 = JSON.parse(JSON.stringify(version4));
+    badVersion4.items[0].randomization.tipType = "BC50";
+    assert.throws(() => pasteItems(plan, badVersion4, between(0)), { message: /^Can't paste: item 1: "BC50" isn't a tip type/ });
+    // A version 5 copy breaking the rule.
+    const formMessage = "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.";
+    const holding = JSON.parse(JSON.stringify(copied));
+    holding.items[0].randomization.settings = defaultSettings();
+    assert.throws(() => pasteItems(plan, holding, between(0)), { message: formMessage });
+    const { plan: notRunPlan, id: notRunId } = sharingPlan();
+    const missing = copyOf(notRunPlan, [randomizationItem(notRunId)]);
+    assert.deepEqual(missing.items[0].randomization.settings, notRunPlan.randomizations[0].settings);
+    missing.items[0].randomization.probes = null;
+    assert.throws(() => pasteItems(notRunPlan, missing, between(0)), { message: formMessage });
+    assert.throws(() => pasteItems(plan, { ...copied, version: 6 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 6).",
+    });
+  });
+
+  // A randomization's values for its first run, null once it has stages.
+  const FIRST_RUN_VALUES = ["settings", "tipType", "probes"];
+
+  test("a randomization's stages are protected: edits of their transfers, names, places and tip sharing are refused, changing nothing", () => {
+    const { plan: setUp, id } = sharingPlan([false, true, false, false]);
+    const plan = runRandomization(setUp, id);
+    const [first, second, third] = randomizationAt(plan, id).stages.map((owned) => owned.stage);
+    const named = (stage) => `Stage ${stageOrder(plan).indexOf(stage) + 1}, “${plan.stageList.get(stage).name}”`;
+    const before = snapshot(plan);
+    const position = transfersIn(plan, first)[0].position;
+    const transfersMessage = `${named(first)}, is part of a randomization: change its sources and wells in the randomization.`;
+    assert.throws(() => addTransfer(plan, transferTo(first, "H12")), { message: transfersMessage });
+    assert.throws(() => addTransfers(plan, [transferTo(first, "H12")]), { message: transfersMessage });
+    assert.throws(() => changeVolume(plan, position, 3), { message: transfersMessage });
+    assert.throws(() => removeTransfer(plan, position), { message: transfersMessage });
+    assert.throws(() => renameStage(plan, first, "Mine"), {
+      message: `${named(first)}, is part of a randomization: it's named after its source.`,
+    });
+    assert.throws(() => removeStage(plan, first), {
+      message: `${named(first)}, is part of a randomization: take its source out of the randomization, or remove the whole randomization.`,
+    });
+    assert.throws(() => removeTipChange(plan, third), {
+      message: `${named(third)}, is part of a randomization: which of its stages share tips is set by its sources.`,
+    });
+    assert.throws(() => addTipChange(plan, second), {
+      message: `${named(second)}, is part of a randomization: which of its stages share tips is set by its sources.`,
+    });
+    const together = "A randomization's stages stay together: add before its first stage or after its last.";
+    assert.throws(() => addStage(plan, second), { message: together });
+    assert.throws(() => addStage(plan, third), { message: together });
+    assert.throws(() => addStage(plan, first, { takeTips: true }), { message: together });
+    assert.throws(() => addMixStep(plan, first, { takeTips: true }), { message: together });
+    assert.throws(() => addStageWithNewTips(plan, third), { message: together });
+    assert.throws(() => addMixStepWithNewTips(plan, third), { message: together });
+    assert.throws(() => addRandomization(plan, third), { message: together });
+    const { plan: notRun, id: notRunId } = addRandomization(plan, "2");
+    assert.throws(() => placeRandomization(notRun, notRunId, third), { message: together });
+    const joins = "A stage added here would share the randomization's tips. Add it with new tips, from the seam between tip groups.";
+    assert.throws(() => addStage(plan, "2"), { message: joins });
+    assert.throws(() => addMixStep(plan, "2"), { message: joins });
+    assert.equal(snapshot(plan), before);
+    // Allowed: new tips just after its last stage, and a stage taking stage 2's tips.
+    const { plan: afterLast, id: newId } = addStageWithNewTips(plan, "2");
+    assert.equal(stageOrder(afterLast).indexOf(newId), stageOrder(plan).indexOf("2"));
+    assert.equal(randomizationAt(afterLast, id).beforeId, newId);
+    addStage(plan, "2", { takeTips: true });
+    // At the end of a plan whose last stage is its own: refused without new tips.
+    const { plan: lastSetUp, id: lastId } = sharingPlan([false, false, false, false], { beforeId: null });
+    const last = runRandomization(lastSetUp, lastId);
+    assert.throws(() => addStage(last, null), { message: joins });
+    assert.equal(stageOrder(addStageWithNewTips(last, null).plan).length, stageOrder(last).length + 1);
+  });
+
+  test("addStage before a randomization that starts the plan: the new stage takes START, its first stage keeps its tips", () => {
+    const { plan: setUp, id } = sharingPlan([false, false, false, false], { beforeId: "1" });
+    const plan = runRandomization(setUp, id);
+    const first = randomizationAt(plan, id).stages[0].stage;
+    const { plan: added, id: newId } = addStage(plan, first);
+    assert.equal(stageOrder(added)[0], newId);
+    assert.deepEqual(tipChangeAt(added, first), tipChangeAt(plan, START));
+    assert.equal(setRandomizations(added, added.randomizations).randomizations.length, 1);
+  });
+
+  test("a randomization's own edits still change its stages: a run, removeRandomization, moveItems and moveWell", () => {
+    const { plan, id } = runApartPlan();
+    const smaller = setRandomization(plan, id, { sources: randomizationAt(plan, id).sources.slice(1) });
+    assert.equal(randomizationAt(runRandomization(smaller, id), id).stages.length, 3);
+    assert.equal(removeRandomization(plan, id).randomizations.length, 0);
+    const { plan: moved } = moveItems(plan, [randomizationItem(id)], between(0));
+    assert.equal(stageOrder(moved)[0], randomizationAt(plan, id).stages[0].stage);
+    const movedWell = moveWell(plan, deepWell("A1"), deepWell("H12"));
+    assert.equal(randomizationAt(movedWell, id).stages[0].well, "H12");
+  });
+
+  test("tips kept on a later run: a group whose first source is taken out keeps its tips; a source sharing again joins the group above", () => {
+    const { plan: setUp, id } = sharingPlan([false, true, false, false]);
+    const run = runRandomization(setUp, id);
+    const a1 = stageFor(run, id, "A1");
+    const a2 = stageFor(run, id, "A2");
+    const plan = setTipType(run, a1, otherTips().tipType);
+    const sources = randomizationAt(plan, id).sources;
+    const withoutA1 = runRandomization(setRandomization(plan, id, { sources: removeSources(sources, [0]) }), id);
+    assert.equal(tipsOfStage(withoutA1, a2).tipType, otherTips().tipType);
+    // A3 turned to share A1 and A2's tips: it joins them.
+    const a3 = stageFor(plan, id, "A3");
+    const joined = runRandomization(setRandomization(plan, id, { sources: setSourceSharesTips(sources, 2, true) }), id);
+    assert.equal(tipChangeAt(joined, a3), null);
+    assert.equal(tipsOfStage(joined, a3).tipType, otherTips().tipType);
+  });
+
+  test("nothing kept: every new stage starts like the old first stage; new filler wells start like the old filler stage", () => {
+    const { plan: run, id } = runApartPlan();
+    const [a1, a2, a3, filler] = randomizationAt(run, id).stages.map((owned) => owned.stage);
+    let plan = withStageSettingsAndTips(run, a1, otherSettings(), otherTips());
+    plan = addToWells(plan, [deepWell("A5"), deepWell("A6"), deepWell("A7")], "Drug B", capacityOf(DEEP));
+    // No filler among the new sources (7 + 7 + 6 fill the 20 wells): a new filler stage would start
+    // like the old filler stage, which the run removes (step 3's first rule).
+    const replaced = runRandomization(
+      setRandomization(plan, id, {
+        sources: [source("A5", 7), source("A6", 7, false, true), source("A7", 6)],
+      }),
+      id,
+    );
+    assert.equal(randomizationAt(replaced, id).stages.length, 3);
+    for (const { stage } of randomizationAt(replaced, id).stages) {
+      assert.deepEqual(replaced.stageList.get(stage).settings, otherSettings());
+      assert.deepEqual(tipsOfStage(replaced, stage), otherTips());
+    }
+    // The filler wells replaced: the new filler stage starts like the old one.
+    const fillerSettings = withMode(defaultSettings(), "destination", OTHER_DESTINATION_MODE);
+    let fillerPlan = withStageSettingsAndTips(run, filler, fillerSettings, otherTips());
+    fillerPlan = addToWells(fillerPlan, [deepWell("A8")], "Media", capacityOf(DEEP));
+    const sources = randomizationAt(fillerPlan, id).sources;
+    const newFiller = runRandomization(
+      setRandomization(fillerPlan, id, { sources: [...sources.slice(0, 3), source("A8", null, true)] }),
+      id,
+    );
+    const newFillerStage = stageFor(newFiller, id, "A8");
+    assert.equal(newFiller.stageList.has(filler), false);
+    assert.deepEqual(newFiller.stageList.get(newFillerStage).settings, fillerSettings);
+    assert.deepEqual(tipsOfStage(newFiller, newFillerStage), otherTips());
+    for (const stage of [a1, a2, a3]) {
+      assert.deepEqual(newFiller.stageList.get(stage).settings, fillerPlan.stageList.get(stage).settings);
+      assert.deepEqual(tipsOfStage(newFiller, stage), tipsOfStage(fillerPlan, stage));
+    }
+  });
+
+  test("randomizationStageValues gives its stages' shared values, null where they differ", () => {
+    const { plan: run, id } = runApartPlan();
+    const [a1, a2, a3] = randomizationAt(run, id).stages.map((owned) => owned.stage);
+    const shared = randomizationStageValues(run, id);
+    assert.deepEqual(shared, {
+      sourceMode: DEFAULT_PIPETTING_MODE,
+      sourceMixes: false,
+      destinationMode: DEFAULT_PIPETTING_MODE,
+      destinationMixes: false,
+      tipType: sharingTips().tipType,
+      probeCount: sharingTips().probes.length,
+    });
+    // The section 3 example: one stage aspirating another mode, every one dispensing the other mode.
+    let plan = runRandomization(run, id, { destinationMode: OTHER_DESTINATION_MODE });
+    plan = changeStageSettings(plan, a3, withMode(plan.stageList.get(a3).settings, "source", OTHER_SOURCE_MODE));
+    assert.deepEqual(randomizationStageValues(plan, id), {
+      sourceMode: null,
+      sourceMixes: false,
+      destinationMode: OTHER_DESTINATION_MODE,
+      destinationMixes: false,
+      tipType: sharingTips().tipType,
+      probeCount: sharingTips().probes.length,
+    });
+    // A stage whose end isn't one of the modes; a group's tips changed with its ✎.
+    const custom = changeStageSettings(run, a1, {
+      ...run.stageList.get(a1).settings,
+      destinationTechnique: "Custom_Technique",
+      destinationLiquidType: "Custom_Liquid",
+    });
+    assert.equal(randomizationStageValues(custom, id).destinationMode, null);
+    assert.equal(randomizationStageValues(setTipType(run, a2, otherTips().tipType), id).tipType, null);
+    assert.equal(randomizationStageValues(setTipProbes(run, a2, [1]), id).probeCount, null);
+    // Before a run: its own values.
+    const { plan: setUp, id: setUpId } = sharingPlan();
+    const own = setRandomization(setUp, setUpId, { settings: withMode(defaultSettings(), "source", OTHER_SOURCE_MODE, true) });
+    assert.deepEqual(randomizationStageValues(own, setUpId), {
+      sourceMode: OTHER_SOURCE_MODE,
+      sourceMixes: true,
+      destinationMode: DEFAULT_PIPETTING_MODE,
+      destinationMixes: false,
+      tipType: sharingTips().tipType,
+      probeCount: sharingTips().probes.length,
+    });
+    assert.throws(() => randomizationStageValues(run, "r9"), { message: `There's no randomization "r9" in the plan.` });
   });
 });

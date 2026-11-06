@@ -229,15 +229,16 @@ export function stageOrder(plan) {
 // a new stage copies the nearest stage of its own kind). With takeTips, a tip change before
 // `beforeId` moves onto the new stage, so the new stage is the first to use those tips; without it,
 // the new stage uses the tips before that tip change.
-// A transfer table's stages each keep tips of their own, so a new stage can't go inside one, take
-// its first stage's tips, or join its last stage's tips (section 3, "Transfer tables"); before a
-// transfer table that starts the plan, the new stage takes the START tips and the table's first
-// stage gets a tip change loading the tips it had.
+// A transfer table's stages each keep tips of their own, and a randomization's never share tips
+// with stages outside it, so a new stage can't go inside either, take its first stage's tips, or
+// join its last stage's tips (section 3, "Transfer tables" and "It owns its stages"); before one
+// that starts the plan, the new stage takes the START tips and its first stage gets a tip change
+// loading the tips it had.
 // e.g. addStage(plan, "2", { takeTips: true }).
 export function addStage(plan, beforeId, { takeTips = false } = {}) {
-  checkStageAddBesideTransferTables(plan, beforeId, takeTips);
+  checkStageAddBesideOwners(plan, beforeId, takeTips);
   const { plan: added, id } = addStageOfKind(plan, beforeId, takeTips, TRANSFER_STAGE_KIND);
-  const kept = withTransferTableFirstTipsKept(added, plan, beforeId);
+  const kept = withOwnedFirstTipsKept(added, plan, beforeId);
   return { plan: withRandomizationsAfterAdd(kept, beforeId, id), id };
 }
 
@@ -247,9 +248,9 @@ export function addStage(plan, beforeId, { takeTips = false } = {}) {
 // default mix step settings if the plan has none (transfer-designer.md, "Mix steps").
 // e.g. addMixStep(plan, "3") puts a mix step just before stage 3.
 export function addMixStep(plan, beforeId, { takeTips = false } = {}) {
-  checkStageAddBesideTransferTables(plan, beforeId, takeTips);
+  checkStageAddBesideOwners(plan, beforeId, takeTips);
   const { plan: added, id } = addStageOfKind(plan, beforeId, takeTips, MIX_STEP_KIND);
-  const kept = withTransferTableFirstTipsKept(added, plan, beforeId);
+  const kept = withOwnedFirstTipsKept(added, plan, beforeId);
   return { plan: withRandomizationsAfterAdd(kept, beforeId, id), id };
 }
 
@@ -259,7 +260,7 @@ export function addMixStep(plan, beforeId, { takeTips = false } = {}) {
 // e.g. addStageWithNewTips(plan, "3"): the new stage, just before stage 3, gets a tip change
 // loading the tips in use there, and so does stage 3 if it had none, keeping the tips it had.
 export function addStageWithNewTips(plan, beforeId) {
-  checkStageAddWithNewTipsBesideTransferTables(plan, beforeId);
+  checkStageAddWithNewTipsBesideOwners(plan, beforeId);
   const { plan: added, id } = addStageOfKind(plan, beforeId, false, TRANSFER_STAGE_KIND);
   const withTips = withOwnTipGroup(added, id, beforeId);
   return { plan: withRandomizationsAfterAdd(withTips, beforeId, id), id };
@@ -268,7 +269,7 @@ export function addStageWithNewTips(plan, beforeId) {
 // Returns { plan, id }: the same as addStageWithNewTips, for a new mix step (as addMixStep makes it).
 // e.g. addMixStepWithNewTips(plan, null) puts a mix step last, on tips of its own.
 export function addMixStepWithNewTips(plan, beforeId) {
-  checkStageAddWithNewTipsBesideTransferTables(plan, beforeId);
+  checkStageAddWithNewTipsBesideOwners(plan, beforeId);
   const { plan: added, id } = addStageOfKind(plan, beforeId, false, MIX_STEP_KIND);
   const withTips = withOwnTipGroup(added, id, beforeId);
   return { plan: withRandomizationsAfterAdd(withTips, beforeId, id), id };
@@ -331,10 +332,14 @@ export function unmixWell(plan, id, well) {
 }
 
 // Returns the plan with stage `id` called `name`. The stage list checks both. A transfer table's
-// stage is named after its component, so it's refused (section 3, "Transfer tables").
+// stage is named after its component, and a randomization's after its source, so both are refused
+// (section 3, "Transfer tables" and "It owns its stages").
 export function renameStage(plan, id, name) {
   if (plan.stageList.has(id) && transferTableOf(plan, id) !== null) {
     throw new Error(`${stageNamed(plan, id)}, is part of a transfer table: it's named after its component.`);
+  }
+  if (plan.stageList.has(id) && randomizationOf(plan, id) !== null) {
+    throw new Error(`${stageNamed(plan, id)}, is part of a randomization: it's named after its source.`);
   }
   return withParts(plan, { stageList: plan.stageList.rename(id, name) });
 }
@@ -400,7 +405,7 @@ export function canRemoveStage(plan, id) {
 
 // Returns the plan without stage `id`, its transfers, or a tip change before it. It's taken out of
 // the stage order, which keeps the other stages in their order. Throws if canRemoveStage is false,
-// or the stage is a transfer table's, which changes only through its table.
+// or the stage is a transfer table's or a randomization's, which change only through their owner.
 export function removeStage(plan, id) {
   if (!plan.stageList.has(id)) {
     // get() throws the stage list's own message for a stage that isn't there.
@@ -412,11 +417,18 @@ export function removeStage(plan, id) {
         "or remove the whole table.",
     );
   }
+  if (randomizationOf(plan, id) !== null) {
+    throw new Error(
+      `${stageNamed(plan, id)}, is part of a randomization: take its source out of the randomization, ` +
+        "or remove the whole randomization.",
+    );
+  }
   return removeStageOfAnyOwner(plan, id);
 }
 
-// removeStage without its refusal for a transfer table's stage, for a transfer table's own edits
-// (section 3, "Transfer tables": they keep every other rule of the edit they stand for).
+// removeStage without its refusals for a transfer table's or a randomization's stage, for their own
+// edits (section 3, "Transfer tables" and "It owns its stages": they keep every other rule of the
+// edit they stand for).
 function removeStageOfAnyOwner(plan, id) {
   if (!canRemoveStage(plan, id)) {
     throw new Error("A plan needs at least one stage, so its only stage can't be removed.");
@@ -489,8 +501,8 @@ export function addTransfer(plan, transfer) {
   return addTransferChecked(plan, transfer, true);
 }
 
-// addTransfer, refusing a transfer table's stage only if `protect` is true: a transfer table's own
-// edits fill its stages with protect false.
+// addTransfer, refusing a transfer table's or a randomization's stage only if `protect` is true:
+// their own edits fill their stages with protect false.
 function addTransferChecked(plan, transfer, protect) {
   // add() runs the operation list's checks first, so a badly formed transfer never reaches the
   // later checks. Its result is the new list if the stage already has transfers.
@@ -504,6 +516,7 @@ function addTransferChecked(plan, transfer, protect) {
   }
   if (protect) {
     checkNotTransferTableAmounts(plan, transfer.stage);
+    checkNotRandomizationTransfers(plan, transfer.stage);
   }
   if (isMixStep(plan, transfer.stage) && !isMixedWell(transfer)) {
     throw new Error(
@@ -526,13 +539,14 @@ export function addTransfers(plan, transfers) {
 
 // Returns the plan with the transfer at `position` (counting from 0) given `volume`, keeping its
 // place and stage, e.g. changeVolume(plan, 3, 25). The operation list checks both. Throws for a
-// mix step's mixed well, whose volume is a placeholder that can't be changed (transfer-designer.md,
-// "Mix steps").
+// transfer table's or a randomization's stage, and for a mix step's mixed well, whose volume is a
+// placeholder that can't be changed (transfer-designer.md, "Mix steps").
 export function changeVolume(plan, position, volume) {
   const operation = plan.operationList.listOperations()[position];
   // A position that isn't one gives undefined here; replace() reports it below.
   if (operation !== undefined) {
     checkNotTransferTableAmounts(plan, operation.stage);
+    checkNotRandomizationTransfers(plan, operation.stage);
   }
   if (operation !== undefined && isMixStep(plan, operation.stage)) {
     throw new Error(
@@ -548,11 +562,13 @@ export function changeVolume(plan, position, volume) {
 
 // Returns the plan without the transfer at `position` (counting from 0). The operation list checks
 // the position. The stage order doesn't change, even if it was its stage's last transfer. Throws for
-// a transfer of a transfer table's stage, whose amounts change only in its table.
+// a transfer of a transfer table's stage, whose amounts change only in its table, or of a
+// randomization's stage, whose transfers change only through it.
 export function removeTransfer(plan, position) {
   const operation = plan.operationList.listOperations()[position];
   if (operation !== undefined) {
     checkNotTransferTableAmounts(plan, operation.stage);
+    checkNotRandomizationTransfers(plan, operation.stage);
   }
   return withParts(plan, { operationList: plan.operationList.remove(position) });
 }
@@ -584,7 +600,8 @@ export function canAddTipChange(plan, beforeId) {
 }
 
 // Returns the plan with a tip change before stage `beforeId`, loading the tip type and probes
-// already in use there. Throws if canAddTipChange is false, saying why.
+// already in use there. Throws if canAddTipChange is false, saying why, then if `beforeId` is a
+// randomization's stage (its sources say which of its stages share tips).
 export function addTipChange(plan, beforeId) {
   if (!plan.stageList.has(beforeId)) {
     throw new Error(`There's no stage ${describeValue(beforeId)} to add new tips before.`);
@@ -597,6 +614,13 @@ export function addTipChange(plan, beforeId) {
   if (Object.hasOwn(plan.tipChanges, beforeId)) {
     throw new Error(`There are already new tips before stage ${describeValue(beforeId)}.`);
   }
+  checkNotRandomizationTips(plan, beforeId);
+  return withTipChangeAdded(plan, beforeId);
+}
+
+// addTipChange without its checks, for the edits that add tips where a stage needs its own
+// (withOwnTipGroup, withRandomizationsAfterRemove), which may be a randomization's first stage.
+function withTipChangeAdded(plan, beforeId) {
   const groupInUse = tipGroups(plan).find((group) => group.stages.includes(beforeId));
   const tipChange = { tipType: groupInUse.tipType, probes: groupInUse.probes };
   return withParts(plan, { tipChanges: withKey(plan.tipChanges, beforeId, tipChange) });
@@ -631,7 +655,8 @@ export function setTipProbes(plan, key, probes) {
 }
 
 // Returns the plan without the tip change at `key`, so the stages after it use the tips before it.
-// Throws for START, which the run always has, if there's no tip change at `key`, or if a
+// Throws for START, which the run always has, if there's no tip change at `key`, if it's a transfer
+// table's or a randomization's stage's (its sources say which of its stages share tips), or if a
 // randomization needs it: the stage just after a randomization's last stage keeps its own tips, so
 // the randomization never shares tips (section 3, "Randomizations"), and so does a stage a
 // randomization that hasn't run sits before, since it sits between tip groups.
@@ -643,6 +668,7 @@ export function removeTipChange(plan, key) {
   }
   checkTipChangeAt(plan, key);
   checkNoTransferTableNeedsTips(plan, key);
+  checkNotRandomizationTips(plan, key);
   checkNoRandomizationNeedsTips(plan, key);
   return withParts(plan, { tipChanges: withoutKey(plan.tipChanges, key) });
 }
@@ -1019,18 +1045,29 @@ const RANDOMIZATION_PROPERTIES = ["id", "beforeId", ...RANDOMIZATION_CHANGES, "s
 const SOURCE_PROPERTIES = ["labware", "well", "replicates", "filler", "sharesTips"];
 const OWNED_STAGE_PROPERTIES = ["labware", "well", "stage"];
 
+// A randomization's values for its first run: what it holds only while it has no stages, null once
+// it has (section 3).
+const FIRST_RUN_PROPERTIES = ["settings", "tipType", "probes"];
+
+// What a refusal says when an edit would put something inside a randomization's stages, or take its
+// first stage's tips (section 5).
+const RANDOMIZATION_STAYS_TOGETHER =
+  "A randomization's stages stay together: add before its first stage or after its last.";
+
 // The pool's problems (random-pool) that only follow from having no sources or no wells to fill,
 // so they aren't listed then (section 3, "Problems").
 const FOLLOW_ON_POOL_PROBLEMS = ["replicates-missing", "replicates-invalid", "too-many", "spare-without-filler"];
 
 // Returns { plan, id }: the plan with a new randomization, last in its randomizations, sitting just
 // before stage `beforeId` (or last, for null), with no sources, wells to fill or stages, the `seed`
-// and `volume` given (each may be null), the default settings, the first tip type and the first
-// DEFAULT_PROBE_COUNT probes; and its ID, "r" and one more than the largest number in use, e.g.
-// addRandomization(plan, "4", { seed: 37, volume: 50 }) → { plan, id: "r1" }. Throws, in this order,
-// if `beforeId` isn't a stage or null, isn't a place a randomization can sit (section 3), or `seed`
-// or `volume` isn't valid.
+// and `volume` given (each may be null), and, for its first run, the settings of the nearest
+// transfer stage and the tips in use just before its place (firstRunStart); and its ID, "r" and one
+// more than the largest number in use, e.g. addRandomization(plan, "4", { seed: 37, volume: 50 }) →
+// { plan, id: "r1" }. Throws, in this order, if `beforeId` is inside another randomization, isn't a
+// stage or null, isn't a place a randomization can sit (section 3), or `seed` or `volume` isn't
+// valid.
 export function addRandomization(plan, beforeId, { seed = null, volume = null } = {}) {
+  checkNotInsideRandomization(plan, beforeId);
   checkRandomizationPlace(plan, beforeId, null);
   checkSeed(seed);
   checkRandomizationVolume(volume);
@@ -1042,12 +1079,23 @@ export function addRandomization(plan, beforeId, { seed = null, volume = null } 
     fill: [],
     seed,
     volume,
-    settings: defaultSettings(),
-    tipType: TIP_TYPES[0],
-    probes: probesFor(DEFAULT_PROBE_COUNT),
+    ...firstRunStart(plan, beforeId),
     stages: [],
   };
   return { plan: withParts(plan, { randomizations: [...plan.randomizations, randomization] }), id };
+}
+
+// A new randomization's settings and tips for its first run (section 3, "Where a new
+// randomization's settings come from"), as { settings, tipType, probes }: the settings of the
+// nearest transfer stage to the place before `beforeId` (null: last), as addStage copies them, and
+// the tips of the tip group of the stage just before that place (START's at the start of the plan).
+function firstRunStart(plan, beforeId) {
+  const order = plan.stageOrder;
+  const placeIndex = beforeId === null ? order.length : order.indexOf(beforeId);
+  const copiedFrom = nearestOfKind(plan, placeIndex, TRANSFER_STAGE_KIND.isOfKind);
+  const settings = copiedFrom === undefined ? defaultSettings() : { ...plan.stageList.get(copiedFrom).settings };
+  const tips = placeIndex === 0 ? plan.tipChanges[START] : tipsInUseAt(plan, order[placeIndex - 1]);
+  return { settings, tipType: tips.tipType, probes: [...tips.probes] };
 }
 
 // The randomization with ID `id`, e.g. { id: "r1", beforeId: "4", sources: […], … }, or null.
@@ -1066,8 +1114,9 @@ export function randomizationOf(plan, stageId) {
 // Returns the plan with the randomization's sources, wells to fill, seed, volume, settings, tip
 // type and probes replaced by those in `changes` (any of them; the others kept), checked as
 // section 3 says, its wells to fill put in deck order and its probes smallest first, e.g.
-// setRandomization(plan, "r1", { seed: 38 }). Its stages and where it sits don't change. Gives back
-// the same plan if nothing changes. Throws, in section 5's order of checks, if there's no such
+// setRandomization(plan, "r1", { seed: 38 }). Its stages and where it sits don't change. Settings,
+// tip type and probes can be given only while it has no stages (its first run's; section 3). Gives
+// back the same plan if nothing changes. Throws, in section 5's order of checks, if there's no such
 // randomization or anything is invalid.
 export function setRandomization(plan, id, changes) {
   const randomization = checkRandomizationExists(plan, id);
@@ -1088,6 +1137,7 @@ export function placeRandomization(plan, id, beforeId) {
   if (randomization.stages.length > 0) {
     throw new Error("This randomization has run, so it sits where its stages are.");
   }
+  checkNotInsideRandomization(plan, beforeId);
   checkRandomizationPlace(plan, beforeId, id);
   if (randomization.beforeId === beforeId) {
     return plan;
@@ -1196,29 +1246,83 @@ function nameOfSource(plan, contentsOf, source) {
 // Returns the plan with randomization `id` run, as one edit (section 3, "Running"): one stage per
 // source that gets wells, in source order, named as its source is, moving `volume` from its source to
 // each of its wells, with new tips only where a source group starts (sources sharing tips share
-// them); stages of sources that no longer get wells removed. Throws its first problem's message if it
-// has any.
-export function runRandomization(plan, id) {
+// them); stages of sources that no longer get wells removed. Each stage it keeps keeps its settings,
+// and each source group its tips; a new stage starts from its neighbor's (steps 3 and 7). Then
+// `forAll`'s values (any of sourceMode, sourceMixes, destinationMode, destinationMixes, tipType and
+// probes) are set on every stage it owns or every tip change starting one of its source groups
+// (step 9), and its own settings, tipType and probes become null (step 10), e.g.
+// runRandomization(plan, "r1", { destinationMode: "Fast" }). Throws, in section 5's order,
+// `forAll`'s first wrong value's message, then its first problem's message, then step 9's refusals.
+export function runRandomization(plan, id, forAll = {}) {
   checkRandomizationExists(plan, id);
+  const checkedForAll = checkedSettingsForAll(forAll);
   const problems = randomizationProblems(plan, id);
   if (problems.length > 0) {
     throw new Error(problems[0]);
   }
+  checkForAllModesCanMix(checkedForAll);
   const randomization = randomizationAt(plan, id);
+  // What its stages were before the run, for the settings and tips of a later run (steps 3 and 7).
+  const before = stagesBeforeRun(plan, randomization);
   // Contents just before the randomization, replayed once per run (section 3, step 5).
   const contents = contentsBefore(plan, randomization);
   const runStages = runStagesOf(plan, randomization, contents);
   const kept = keptEntries(plan, randomization, runStages);
   const place = runPlace(plan, randomization);
-  let running = withNewSourceStages(plan, randomization, runStages, kept, place);
-  running = withoutUnusedSourceStages(running, id, kept);
+  const startFor = (runStage) => newStageStart(randomization, before, kept, runStage);
+  const added = withNewSourceStages(plan, randomization, runStages, kept, place, startFor);
+  let running = withoutUnusedSourceStages(added.plan, id, kept);
   for (const owned of randomizationAt(running, id).stages) {
     const runStage = runStages.find((candidate) => wellKey(candidate.well) === wellKey(owned));
     running = withSourceStageSet(running, randomization, owned, runStage);
   }
   running = withStagesInSourceOrder(running, id);
-  running = withTipsBySourceGroup(running, id);
-  return withRunPlaceNoted(running, id);
+  const tipsFor = (groups) => sourceGroupTips(randomization, before, added.startedFrom, groups);
+  running = withTipsBySourceGroup(running, id, tipsFor);
+  running = withRunPlaceNoted(running, id);
+  running = withSettingsForAll(running, id, checkedForAll);
+  return withRandomizationReplaced(running, {
+    ...randomizationAt(running, id),
+    settings: null,
+    tipType: null,
+    probes: null,
+  });
+}
+
+// Its stages' shared values, for a caller showing a randomization's settings (section 3, "Its
+// stages' shared values"): { sourceMode, sourceMixes, destinationMode, destinationMixes, tipType,
+// probeCount }. Once it has stages, each is the value every one of its stages (or every tip change
+// starting one of its source groups) shares, or null where they differ; a mode is also null when
+// any stage's end isn't one of the modes. With no stages, its own settings', tipType and number of
+// probes. e.g. stages aspirating Medium, Medium and Slow, each dispensing Fast without mixing, on
+// BC230 4 probes → { sourceMode: null, sourceMixes: false, destinationMode: "Fast",
+// destinationMixes: false, tipType: "BC230", probeCount: 4 }. Throws if there's no randomization `id`.
+export function randomizationStageValues(plan, id) {
+  const randomization = checkRandomizationExists(plan, id);
+  const owned = ownedStagesIn(plan, randomization);
+  if (owned.length === 0) {
+    const { settings } = randomization;
+    return {
+      sourceMode: modeOf("source", settings),
+      sourceMixes: settings.sourceMix !== null,
+      destinationMode: modeOf("destination", settings),
+      destinationMixes: settings.destinationMix !== null,
+      tipType: randomization.tipType,
+      probeCount: randomization.probes.length,
+    };
+  }
+  const settingsOf = owned.map(({ stage }) => plan.stageList.get(stage).settings);
+  const groupTips = owned
+    .filter(({ stage }) => isFirstOfTipGroup(plan, stage))
+    .map(({ stage }) => tipsInUseAt(plan, stage));
+  return {
+    sourceMode: sharedValue(settingsOf.map((settings) => modeOf("source", settings))),
+    sourceMixes: sharedValue(settingsOf.map((settings) => settings.sourceMix !== null)),
+    destinationMode: sharedValue(settingsOf.map((settings) => modeOf("destination", settings))),
+    destinationMixes: sharedValue(settingsOf.map((settings) => settings.destinationMix !== null)),
+    tipType: sharedValue(groupTips.map((tips) => tips.tipType)),
+    probeCount: sharedValue(groupTips.map((tips) => tips.probes.length)),
+  };
 }
 
 // Returns the plan without randomization `id` and every stage it owns, as one edit. Tip changes its
@@ -1236,7 +1340,7 @@ export function removeRandomization(plan, id) {
     randomizations: plan.randomizations.filter((candidate) => candidate.id !== id),
   });
   for (const owned of ownedStagesIn(plan, randomization)) {
-    removed = removeStage(removed, owned.stage);
+    removed = removeStageOfAnyOwner(removed, owned.stage);
   }
   return removed;
 }
@@ -2174,6 +2278,72 @@ function checkStageAddWithNewTipsBesideTransferTables(plan, beforeId) {
   checkNotInsideTransferTable(plan, beforeId);
 }
 
+// Throws, in section 5's order, if addStage or addMixStep can't add a stage before `beforeId` (with
+// or without `takeTips`) beside a transfer table (checkStageAddBesideTransferTables), then beside a
+// randomization (checkStageAddBesideRandomizations).
+function checkStageAddBesideOwners(plan, beforeId, takeTips) {
+  checkStageAddBesideTransferTables(plan, beforeId, takeTips);
+  checkStageAddBesideRandomizations(plan, beforeId, takeTips);
+}
+
+// Throws if `beforeId` isn't a stage or null, then if it's inside a transfer table or a
+// randomization (for the edits that add a stage on new tips, which may go just before or after
+// either).
+function checkStageAddWithNewTipsBesideOwners(plan, beforeId) {
+  checkStageAddWithNewTipsBesideTransferTables(plan, beforeId);
+  checkNotInsideRandomization(plan, beforeId);
+}
+
+// Throws if addStage or addMixStep can't add a stage before `beforeId` beside a randomization that
+// has run (section 3, "It owns its stages"): `beforeId` is inside it; with takeTips, it's its first
+// stage (the new stage would take its first source group's tips); or the new stage would join its
+// last tip group: without takeTips before the stage just after it, or at the end (null) when its
+// last stage is the plan's last. `beforeId` is a stage or null (checked already).
+function checkStageAddBesideRandomizations(plan, beforeId, takeTips) {
+  checkNotInsideRandomization(plan, beforeId);
+  if (takeTips && beforeId !== null && randomizationOf(plan, beforeId) !== null) {
+    throw new Error(RANDOMIZATION_STAYS_TOGETHER);
+  }
+  const joinsRandomizationTips =
+    beforeId === null
+      ? plan.stageOrder.length > 0 && randomizationOf(plan, plan.stageOrder.at(-1)) !== null
+      : !takeTips && isJustAfterRandomization(plan, beforeId);
+  if (joinsRandomizationTips) {
+    throw new Error(
+      "A stage added here would share the randomization's tips. Add it with new tips, from the " +
+        "seam between tip groups.",
+    );
+  }
+}
+
+// Throws if `beforeId` is one of a randomization's stages other than its first: something added
+// there would go inside it.
+function checkNotInsideRandomization(plan, beforeId) {
+  const ownerId = beforeId === null ? null : randomizationOf(plan, beforeId);
+  if (ownerId !== null && randomizationAt(plan, ownerId).stages[0].stage !== beforeId) {
+    throw new Error(RANDOMIZATION_STAYS_TOGETHER);
+  }
+}
+
+// Throws if stage `stageId` is a randomization's: its transfers change only through it.
+function checkNotRandomizationTransfers(plan, stageId) {
+  if (randomizationOf(plan, stageId) !== null) {
+    throw new Error(
+      `${stageNamed(plan, stageId)}, is part of a randomization: change its sources and wells in the randomization.`,
+    );
+  }
+}
+
+// Throws if stage `stageId` is a randomization's, for adding or removing a tip change before it:
+// which of its stages share tips is set by its sources.
+function checkNotRandomizationTips(plan, stageId) {
+  if (randomizationOf(plan, stageId) !== null) {
+    throw new Error(
+      `${stageNamed(plan, stageId)}, is part of a randomization: which of its stages share tips is set by its sources.`,
+    );
+  }
+}
+
 // Throws unless `beforeId` is a stage or null, as every edit adding a stage checks it: 'There's no
 // stage "9" to add a stage before.'
 function checkStageToAddBefore(plan, beforeId) {
@@ -2184,11 +2354,12 @@ function checkStageToAddBefore(plan, beforeId) {
 
 // Returns `added` (`plan` with a stage added without takeTips before `beforeId`) with a tip change
 // on `beforeId` loading the START tips of `plan`, if `beforeId` was the plan's first stage and a
-// transfer table's: the new stage takes the START tips, and the table's first stage keeps its own.
-function withTransferTableFirstTipsKept(added, plan, beforeId) {
-  const wasFirstOfTable =
-    beforeId !== null && plan.stageOrder[0] === beforeId && transferTableOf(plan, beforeId) !== null;
-  if (!wasFirstOfTable || added.stageOrder[0] === beforeId || Object.hasOwn(added.tipChanges, beforeId)) {
+// transfer table's or a randomization's: the new stage takes the START tips, and the owner's first
+// stage keeps its own.
+function withOwnedFirstTipsKept(added, plan, beforeId) {
+  const wasFirstOfOwner =
+    beforeId !== null && plan.stageOrder[0] === beforeId && ownerOf(plan, beforeId) !== null;
+  if (!wasFirstOfOwner || added.stageOrder[0] === beforeId || Object.hasOwn(added.tipChanges, beforeId)) {
     return added;
   }
   return withParts(added, { tipChanges: withKey(added.tipChanges, beforeId, copiedTips(plan.tipChanges[START])) });
@@ -2209,9 +2380,8 @@ function checkNoTransferTableNeedsTips(plan, key) {
 }
 
 // Throws, in section 5's order, unless a transfer table can be added before `beforeId`: a stage or
-// null; not inside a transfer table; then the first stage of a tip group that isn't inside a
-// randomization (a randomization's or transfer table's first stage is allowed: the new one goes
-// above it).
+// null; not inside a transfer table or a randomization; then the first stage of a tip group (a
+// randomization's or transfer table's first stage is allowed: the new one goes above it).
 function checkTransferTablePlace(plan, beforeId) {
   if (beforeId === null) {
     return;
@@ -2220,11 +2390,8 @@ function checkTransferTablePlace(plan, beforeId) {
     throw new Error(`There's no stage ${describeValue(beforeId)} to add a transfer table before.`);
   }
   checkNotInsideTransferTable(plan, beforeId);
-  const randomization = plan.randomizations.find((candidate) =>
-    candidate.stages.some((owned) => owned.stage === beforeId),
-  );
-  const insideRandomization = randomization !== undefined && randomization.stages[0].stage !== beforeId;
-  if (!isFirstOfTipGroup(plan, beforeId) || insideRandomization) {
+  checkNotInsideRandomization(plan, beforeId);
+  if (!isFirstOfTipGroup(plan, beforeId)) {
     throw new Error(
       `A transfer table sits between tip groups, so it can't go before ${stageNamedInText(plan, beforeId)}.`,
     );
@@ -2467,12 +2634,17 @@ function contentsBeforeStage(plan, at) {
 // (transfer-designer.md, "Moving and copying"). Exported, so a tool can recognize copied items on
 // the system clipboard by the same text.
 export const COPIED_ITEMS_FORMAT = "biomek-tools copied items";
-export const COPIED_ITEMS_VERSION = 4;
+export const COPIED_ITEMS_VERSION = 5;
 
 // The versions of copied items this module reads: version 1 (before several filler wells), version
 // 2 (before sources sharing tips; section 3, "Copied items version 2"), version 3 (before transfer
-// tables, "Copied items version 3") and the one it writes ("Copied items version 4").
-const COPIED_ITEMS_VERSIONS_READ = [1, 2, 3, COPIED_ITEMS_VERSION];
+// tables, "Copied items version 3"), version 4 (before a randomization's settings lived on its
+// stages, "Copied items version 4") and the one it writes ("Copied items version 5").
+const COPIED_ITEMS_VERSIONS_READ = [1, 2, 3, 4, COPIED_ITEMS_VERSION];
+
+// The first version of copied items whose randomizations with stages hold null settings, tipType
+// and probes (section 3, "Copied items version 5").
+const FIRST_COPIED_VERSION_WITH_STAGE_SETTINGS = 5;
 
 // The first version of copied items that may hold transfer tables.
 const FIRST_COPIED_VERSION_WITH_TRANSFER_TABLES = 4;
@@ -2641,6 +2813,7 @@ export function pasteItems(plan, copied, place) {
         itemAsVersion3(item, copied.version),
         [...plan.randomizations, ...created],
         [...plan.transferTables, ...createdTables],
+        copied.version,
       ),
     );
     working = result.plan;
@@ -3189,7 +3362,8 @@ function checkCopiedForm(copied) {
 // "Copied items"): a stage, a tip group (at least one stage), a randomization, or, from version 4, a
 // transfer table, each part with exactly its properties. In versions 1 and 2, a randomization's sources that are objects have no
 // sharesTips, and every owned stage has tips; from version 3, an owned stage's tips may be null,
-// except the first's. Values (and sources that aren't objects) are checked later, by the edits that
+// except the first's; from version 5, a randomization's settings, tipType and probes are null
+// exactly when it has stages. Values (and sources that aren't objects) are checked later, by the edits that
 // would make them.
 function checkCopiedItemForm(item, number, version) {
   // True if `stage` is a copied stage in its form: { name, settings, transfers }, each transfer
@@ -3224,6 +3398,10 @@ function checkCopiedItemForm(item, number, version) {
       sharing ||
       !Array.isArray(item.randomization?.sources) ||
       item.randomization.sources.every((source) => !isObject(source) || !Object.hasOwn(source, "sharesTips"));
+    // From version 5 its settings, tipType and probes are null exactly when it has stages.
+    const firstRunValuesInForm = (randomization, stages) =>
+      version < FIRST_COPIED_VERSION_WITH_STAGE_SETTINGS ||
+      FIRST_RUN_PROPERTIES.every((property) => (randomization[property] === null) === stages.length > 0);
     inForm =
       hasExactly(item, COPIED_RANDOMIZATION_PROPERTIES) &&
       hasExactly(item.randomization, RANDOMIZATION_CHANGES) &&
@@ -3231,7 +3409,8 @@ function checkCopiedItemForm(item, number, version) {
       Array.isArray(item.stages) &&
       item.stages.every(
         (owned, index) => hasExactly(owned, COPIED_OWNED_STAGE_PROPERTIES) && isStage(owned.stage) && hasTips(owned, index),
-      );
+      ) &&
+      firstRunValuesInForm(item.randomization, item.stages);
   } else if (isObject(item) && item.kind === "transferTable") {
     inForm =
       version >= FIRST_COPIED_VERSION_WITH_TRANSFER_TABLES &&
@@ -3268,8 +3447,8 @@ function itemAsVersion3(item, version) {
 // stage order for now: { plan, piece, randomization, transferTable }, `piece` being what goes at the
 // place (as withPiecesPlaced takes it) and `randomization` or `transferTable` a new one, if it is
 // one. Its values are checked in the order its edits check them; `existing` and `existingTables` are
-// the randomizations and transfer tables so far, for a new ID.
-function pastedPiece(plan, item, existing, existingTables) {
+// the randomizations and transfer tables so far, for a new ID; `version` is the copied items'.
+function pastedPiece(plan, item, existing, existingTables, version) {
   if (item.kind === "stage") {
     const added = withCopiedStage(plan, item.stage);
     const tips = checkedTips(item.tips);
@@ -3290,7 +3469,7 @@ function pastedPiece(plan, item, existing, existingTables) {
   if (item.kind === "transferTable") {
     return pastedTransferTable(plan, item, existingTables);
   }
-  return pastedRandomization(plan, item, existing);
+  return pastedRandomization(plan, item, existing, version);
 }
 
 // Pastes a copied transfer table (pastedPiece): its table's form, then its sources' form, with keys
@@ -3331,11 +3510,12 @@ function pastedTransferTable(plan, item, existing) {
   };
 }
 
-// Pastes a copied randomization (pastedPiece): its stages as new stages, in the tip groups the copy
-// gives (a stage with tips starts one; one with tips null joins the one before); then its values, checked as setRandomization checks them; then its stages' wells (on the deck, no
-// well twice, none a mix step), and not two of them its filler's. It gets the next free ID
-// among `existing`.
-function pastedRandomization(plan, item, existing) {
+// Pastes a copied randomization (pastedPiece) of copied items `version`: its stages as new stages,
+// in the tip groups the copy gives (a stage with tips starts one; one with tips null joins the one
+// before); then its values, checked as setRandomization checks them (its settings, tipType and
+// probes null once it has stages); then its stages' wells (on the deck, no well twice, none a mix
+// step), and not two of them its filler's. It gets the next free ID among `existing`.
+function pastedRandomization(plan, item, existing, version) {
   let pasting = plan;
   const groups = [];
   const owned = [];
@@ -3349,7 +3529,17 @@ function pastedRandomization(plan, item, existing) {
     }
     owned.push({ labware: entry.labware, well: entry.well, stage: added.id });
   }
-  const values = checkedRandomizationValues(item.randomization, { sources: [], fill: [] });
+  // A version 1 to 4 copy holds settings and tips even for a randomization with stages: checked as
+  // before, then dropped, since its stages hold them; a version 5 copy holds them as a plan does.
+  const values =
+    version < FIRST_COPIED_VERSION_WITH_STAGE_SETTINGS
+      ? checkedRandomizationValues(item.randomization, { sources: [], fill: [], stages: [] })
+      : checkedValuesAsStored(item.randomization);
+  if (owned.length > 0) {
+    for (const property of FIRST_RUN_PROPERTIES) {
+      values[property] = null;
+    }
+  }
   checkPastedOwnedStages(pasting, owned);
   const id = nextRandomizationId({ randomizations: existing });
   const randomization = {
@@ -3827,7 +4017,8 @@ function checkRandomizationChanges(changes) {
 
 // The values in `changes`, checked in section 5's order, as a randomization stores them: sources
 // copied, wells to fill in deck order, probes smallest first. `current` gives the values not in
-// `changes`, for the check that no well is both a source and a well to fill.
+// `changes`, for the check that no well is both a source and a well to fill, and its stages, for the
+// check that settings, tip type and probes are given only while it has none.
 function checkedRandomizationValues(changes, current) {
   const values = {};
   if (Object.hasOwn(changes, "sources")) {
@@ -3844,6 +4035,13 @@ function checkedRandomizationValues(changes, current) {
   if (Object.hasOwn(changes, "volume")) {
     checkRandomizationVolume(changes.volume);
     values.volume = changes.volume;
+  }
+  const givesFirstRunValues = FIRST_RUN_PROPERTIES.some((property) => Object.hasOwn(changes, property));
+  if (givesFirstRunValues && current.stages.length > 0) {
+    throw new Error(
+      "This randomization has run, so its settings and tips are its stages': change them on the " +
+        "stages, or all at once when running it.",
+    );
   }
   if (Object.hasOwn(changes, "settings")) {
     values.settings = checkedRandomizationSettings(changes.settings);
@@ -4277,12 +4475,15 @@ function runPlace(plan, randomization) {
   return order[order.indexOf(owned.at(-1).stage) + 1] ?? null;
 }
 
-// Returns the plan with a new stage, on new tips, before `place`, for each of `runStages`
-// (runStagesOf) that no kept entry is keyed to (`kept`, from keptEntries), in order, named as it
-// says; the randomization's stages list its own first, each kept one re-keyed, then the new ones.
-// Randomizations that haven't run, earlier in the list and sitting at the same place, move onto its
-// first stage, so they stay above it.
-function withNewSourceStages(plan, randomization, runStages, kept, place) {
+// Returns { plan, startedFrom }: the plan with a new stage, on new tips, before `place`, for each of
+// `runStages` (runStagesOf) that no kept entry is keyed to (`kept`, from keptEntries), in order,
+// named as it says, with the settings `startFor(runStage)` gives ({ settings, from }, newStageStart;
+// section 3, "Running", step 3); the randomization's stages list its own first, each kept one
+// re-keyed, then the new ones. `startedFrom` maps each new stage's ID to the stage this run removes
+// that its settings came from, or null. Randomizations that haven't run, earlier in the list and
+// sitting at the same place, move onto its first stage, so they stay above it.
+function withNewSourceStages(plan, randomization, runStages, kept, place, startFor) {
+  const startedFrom = new Map();
   let adding = plan;
   const stages = ownedStagesIn(plan, randomization).map((owned) => {
     const keyedTo = kept.get(owned.stage);
@@ -4294,7 +4495,9 @@ function withNewSourceStages(plan, randomization, runStages, kept, place) {
       continue;
     }
     const { plan: added, id } = addStageWithNewTips(adding, place);
-    adding = renameStage(added, id, runStage.name);
+    const start = startFor(runStage);
+    adding = changeStageSettings(renameStage(added, id, runStage.name), id, start.settings);
+    startedFrom.set(id, start.from);
     stages.push({ ...runStage.well, stage: id });
   }
   const firstRun = ownedStagesIn(plan, randomization).length === 0;
@@ -4311,7 +4514,7 @@ function withNewSourceStages(plan, randomization, runStages, kept, place) {
       stages.length > 0;
     return sitsAbove ? { ...candidate, beforeId: stages[0].stage } : candidate;
   });
-  return withParts(adding, { randomizations });
+  return { plan: withParts(adding, { randomizations }), startedFrom };
 }
 
 // Returns the plan without the stages of randomization `id` the run removes (section 3, "Running",
@@ -4322,37 +4525,28 @@ function withoutUnusedSourceStages(plan, id, keptByStage) {
   const unused = randomization.stages.filter((owned) => keptByStage.get(owned.stage) === null);
   let removing = plan;
   for (const owned of unused) {
-    removing = removeStage(removing, owned.stage);
+    removing = removeStageOfAnyOwner(removing, owned.stage);
   }
   const kept = randomization.stages.filter((owned) => !unused.includes(owned));
   return withRandomizationReplaced(removing, { ...randomizationAt(removing, id), stages: kept });
 }
 
 // Returns the plan with `owned`, one of a randomization's stages ({ labware, well, stage }), set as
-// `runStage` says (runStagesOf; section 3, "Running", step 5): its name, its settings and its
-// transfers, each of the randomization's volume, in order. Its tips are set later
-// (withTipsBySourceGroup, step 7).
+// `runStage` says (runStagesOf; section 3, "Running", step 5): its name and its transfers, each of
+// the randomization's volume, in order. Its settings aren't changed (a kept stage keeps its own, a
+// new one has step 3's), and its tips are set later (withTipsBySourceGroup, step 7). The stage is
+// the randomization's own, so it's renamed and filled without renameStage's and addTransfer's
+// refusals for an owned stage.
 function withSourceStageSet(plan, randomization, owned, runStage) {
   const stageId = owned.stage;
   let setting = plan;
   if (plan.stageList.get(stageId).name !== runStage.name) {
-    setting = renameStage(setting, stageId, runStage.name);
+    setting = withParts(setting, { stageList: setting.stageList.rename(stageId, runStage.name) });
   }
-  setting = changeStageSettings(setting, stageId, randomization.settings);
-  let operationList = setting.operationList;
-  for (const position of positionsInStage(setting, stageId).reverse()) {
-    operationList = operationList.remove(position);
-  }
-  setting = withParts(setting, { operationList });
-  return addTransfers(
+  return withStageTransfers(
     setting,
-    runStage.transfers.map(({ source, destination }) => ({
-      type: "transfer",
-      source: endOf(source),
-      destination: endOf(destination),
-      volume: randomization.volume,
-      stage: stageId,
-    })),
+    stageId,
+    runStage.transfers.map(({ source, destination }) => ({ source, destination, volume: randomization.volume })),
   );
 }
 
@@ -4377,11 +4571,12 @@ function withStagesInSourceOrder(plan, id) {
 }
 
 // Returns the plan with randomization `id`'s tips set by source group (section 3, "Running", step
-// 7): the first of each group's stages in stage order loads the randomization's tipType and probes
-// (its own tip change, or START's if it's the plan's first stage, with no tip change keyed by it);
-// each other stage of the group has no tip change, so it shares those tips. Tip changes outside the
-// randomization don't change.
-function withTipsBySourceGroup(plan, id) {
+// 7): the first of each group's stages in stage order loads the tips `tipsFor` gives it (its own tip
+// change, or START's if it's the plan's first stage, with no tip change keyed by it); each other
+// stage of the group has no tip change, so it shares those tips. Tip changes outside the
+// randomization don't change. `tipsFor(groups)` takes the groups that have stages, in sources'
+// order, each { stages } (its stage IDs, in stage order), and gives each one's { tipType, probes }.
+function withTipsBySourceGroup(plan, id, tipsFor) {
   const randomization = randomizationAt(plan, id);
   const indexOf = sourceIndexByStage(randomization);
   const groupOfSource = new Map();
@@ -4390,21 +4585,108 @@ function withTipsBySourceGroup(plan, id) {
       groupOfSource.set(index, groupIndex);
     }
   });
-  const tips = { tipType: randomization.tipType, probes: [...randomization.probes] };
-  let tipChanges = plan.tipChanges;
+  // The groups with stages, in stage order (which is sources' order after step 6).
+  const groups = [];
   let previousGroup = null;
   for (const stage of plan.stageOrder.filter((candidate) => indexOf.has(candidate))) {
     const group = groupOfSource.get(indexOf.get(stage));
     if (group === previousGroup) {
-      tipChanges = withoutKey(tipChanges, stage);
-    } else if (plan.stageOrder[0] === stage) {
-      tipChanges = withKey(withoutKey(tipChanges, stage), START, tips);
+      groups.at(-1).stages.push(stage);
     } else {
-      tipChanges = withKey(tipChanges, stage, tips);
+      groups.push({ stages: [stage] });
     }
     previousGroup = group;
   }
+  const tips = tipsFor(groups);
+  let tipChanges = plan.tipChanges;
+  groups.forEach(({ stages }, index) => {
+    const [first, ...sharing] = stages;
+    const loaded = copiedTips(tips[index]);
+    tipChanges =
+      plan.stageOrder[0] === first
+        ? withKey(withoutKey(tipChanges, first), START, loaded)
+        : withKey(tipChanges, first, loaded);
+    for (const stage of sharing) {
+      tipChanges = withoutKey(tipChanges, stage);
+    }
+  });
   return withParts(plan, { tipChanges: sameOrNew(plan.tipChanges, tipChanges) });
+}
+
+// What a randomization's stages were before a run (section 3, "Running"): for each of its stages in
+// the plan, in stage order, { stage, settings, tips }, `tips` the { tipType, probes } its tip group
+// loaded; [] for a first run (no stages).
+function stagesBeforeRun(plan, randomization) {
+  const order = plan.stageOrder;
+  return ownedStagesIn(plan, randomization)
+    .map(({ stage }) => ({ stage, settings: plan.stageList.get(stage).settings, tips: tipsInUseAt(plan, stage) }))
+    .sort((first, second) => order.indexOf(first.stage) - order.indexOf(second.stage));
+}
+
+// Where a new stage's settings come from on a run (section 3, "Running", step 3), as
+// { settings, from }, `from` being the ID of the stage this run removes that they came from, or
+// null: on a first run (`before` empty), the randomization's settings; on a later run, for the
+// filler's new stage when the run removes stages, the last of them in stage order; else the
+// nearest stage it keeps whose source comes before `runStage`'s in sources, else the nearest after
+// it; else, keeping none, its old first stage. `kept` is keptEntries' map.
+function newStageStart(randomization, before, kept, runStage) {
+  if (before.length === 0) {
+    return { settings: randomization.settings, from: null };
+  }
+  const removed = before.filter(({ stage }) => kept.get(stage) === null);
+  const fillerKey = fillerIndexes(randomization).map((index) => wellKey(randomization.sources[index]))[0];
+  if (wellKey(runStage.well) === fillerKey && removed.length > 0) {
+    const last = removed.at(-1);
+    return { settings: last.settings, from: last.stage };
+  }
+  const sourceIndexOf = (well) => randomization.sources.findIndex((source) => wellKey(source) === wellKey(well));
+  const ownIndex = sourceIndexOf(runStage.well);
+  const keptStages = before
+    .filter(({ stage }) => kept.get(stage) !== null)
+    .map((entry) => ({ ...entry, index: sourceIndexOf(kept.get(entry.stage)) }));
+  const earlier = keptStages.filter(({ index }) => index < ownIndex).sort((a, b) => b.index - a.index);
+  const later = keptStages.filter(({ index }) => index > ownIndex).sort((a, b) => a.index - b.index);
+  const nearest = earlier[0] ?? later[0];
+  if (nearest !== undefined) {
+    return { settings: nearest.settings, from: null };
+  }
+  return { settings: before[0].settings, from: before[0].stage };
+}
+
+// The tips each source group with stages loads on a run (section 3, "Running", step 7), in the
+// order of `groups` (each { stages }, from withTipsBySourceGroup): on a first run (`before` empty),
+// the randomization's tipType and probes; on a later run, for a group with a stage it had before
+// the run, the tips its first such stage's tip group loaded (in stage order before the run); for
+// a group of new stages whose first stage took its settings from a removed stage (`startedFrom`,
+// withNewSourceStages), that stage's tips; otherwise the tips of the group before it, else of the
+// nearest group after it with a stage it had before.
+function sourceGroupTips(randomization, before, startedFrom, groups) {
+  if (before.length === 0) {
+    return groups.map(() => ({ tipType: randomization.tipType, probes: randomization.probes }));
+  }
+  const beforeByStage = new Map(before.map((entry, index) => [entry.stage, { ...entry, index }]));
+  // The tips a group's own stages give it, or null: its first stage kept (by stage order before
+  // the run), else the removed stage its first stage started from.
+  const ownTips = ({ stages }) => {
+    const keptStages = stages
+      .filter((stage) => beforeByStage.has(stage))
+      .map((stage) => beforeByStage.get(stage))
+      .sort((first, second) => first.index - second.index);
+    if (keptStages.length > 0) {
+      return keptStages[0].tips;
+    }
+    const from = startedFrom.get(stages[0]) ?? null;
+    return from === null ? null : beforeByStage.get(from).tips;
+  };
+  const own = groups.map(ownTips);
+  const tips = [];
+  groups.forEach(({ stages }, index) => {
+    const keptAfter = groups
+      .slice(index + 1)
+      .findIndex((group) => group.stages.some((stage) => beforeByStage.has(stage)));
+    tips.push(own[index] ?? tips[index - 1] ?? own[index + 1 + keptAfter]);
+  });
+  return tips;
 }
 
 // Returns the plan with randomization `id`'s stages listed in stage order, and its beforeId the
@@ -4418,6 +4700,121 @@ function withRunPlaceNoted(plan, id) {
   const last = stages.at(-1).stage;
   const beforeId = order[order.indexOf(last) + 1] ?? null;
   return withRandomizationReplaced(plan, { ...randomization, stages, beforeId });
+}
+
+// The properties of runRandomization's forAll, in the order they're checked (section 5).
+const FOR_ALL_PROPERTIES = ["sourceMode", "sourceMixes", "destinationMode", "destinationMixes", "tipType", "probes"];
+
+// A copy of runRandomization's `forAll`, checked (section 5's order): an object of only its
+// properties, then each value given, in FOR_ALL_PROPERTIES' order: a mode for its end (modeSettings'
+// message), whether the end mixes (true or false), a tip type, probes (setTipProbes' rules). e.g.
+// checkedSettingsForAll({ speed: 3 }) throws 'The settings for every stage must be an object of
+// "sourceMode", … and "probes", but got "speed".'
+function checkedSettingsForAll(forAll) {
+  const extra = isObject(forAll) ? findExtraProperties(forAll, FOR_ALL_PROPERTIES) : [];
+  if (!isObject(forAll) || extra.length > 0) {
+    throw new Error(
+      `The settings for every stage must be an object of ${listNamesWithAnd(FOR_ALL_PROPERTIES)}, ` +
+        `but got ${describeValue(isObject(forAll) ? extra[0] : forAll)}.`,
+    );
+  }
+  for (const end of ENDS) {
+    if (Object.hasOwn(forAll, `${end}Mode`)) {
+      modeSettings(end, forAll[`${end}Mode`]);
+    }
+    const mixes = forAll[`${end}Mixes`];
+    if (Object.hasOwn(forAll, `${end}Mixes`) && typeof mixes !== "boolean") {
+      throw new Error(`Whether the ${end} mixes must be true or false, but got ${describeValue(mixes)}.`);
+    }
+  }
+  if (Object.hasOwn(forAll, "tipType")) {
+    checkTipType(forAll.tipType);
+  }
+  if (Object.hasOwn(forAll, "probes")) {
+    checkProbes(forAll.probes);
+  }
+  return { ...forAll };
+}
+
+// Throws modeSettings' message if `forAll` gives an end a mode that can't mix together with mixing
+// turned on there, e.g. destinationMode "Non-Contact" with destinationMixes true (section 5).
+function checkForAllModesCanMix(forAll) {
+  for (const end of ENDS) {
+    if (Object.hasOwn(forAll, `${end}Mode`) && forAll[`${end}Mixes`] === true) {
+      modeSettings(end, forAll[`${end}Mode`], true);
+    }
+  }
+}
+
+// Returns the plan with `forAll` (checked) set on every stage randomization `id` owns and every tip
+// change starting one of its source groups (section 3, "Running", step 9): each end given a mode or
+// its mixing gets them (endSettingsForAll), and each group's tip change the tip type and probes
+// given. The same plan if `forAll` gives nothing. Throws for the first stage, in stage order, that
+// can't take the values given.
+function withSettingsForAll(plan, id, forAll) {
+  let setting = plan;
+  const owned = randomizationAt(plan, id).stages;
+  for (const { stage } of owned) {
+    const settings = setting.stageList.get(stage).settings;
+    const changes = ENDS.map((end) => endSettingsForAll(setting, stage, settings, end, forAll));
+    if (changes.some((change) => change !== null)) {
+      setting = changeStageSettings(setting, stage, Object.assign({ ...settings }, ...changes));
+    }
+  }
+  for (const { stage } of owned.filter((entry) => isFirstOfTipGroup(setting, entry.stage))) {
+    const key = setting.stageOrder[0] === stage ? START : stage;
+    if (Object.hasOwn(forAll, "tipType")) {
+      setting = setTipType(setting, key, forAll.tipType);
+    }
+    if (Object.hasOwn(forAll, "probes")) {
+      setting = setTipProbes(setting, key, forAll.probes);
+    }
+  }
+  return setting;
+}
+
+// One end of stage `stage`'s `settings` as forAll sets it (section 3, "Running", step 9), as the
+// settings to change, or null when forAll gives that end neither a mode nor its mixing: the mode
+// given, else the stage's own; mixing as given, else as the stage mixes, except that a mode given
+// that can't mix, with no mixing given, turns it off; the end's settings are then the mode's, and
+// its mix its own if it mixed, else DEFAULT_MIX, or null when it doesn't mix. Throws if the stage's
+// end isn't one of the modes and only its mixing is given, or mixing is turned on and its own mode
+// can't mix, naming the stage.
+function endSettingsForAll(plan, stage, settings, end, forAll) {
+  const modeGiven = Object.hasOwn(forAll, `${end}Mode`);
+  const mixesGiven = Object.hasOwn(forAll, `${end}Mixes`);
+  if (!modeGiven && !mixesGiven) {
+    return null;
+  }
+  const ownMode = modeAt(end, settings);
+  if (!modeGiven && ownMode === undefined) {
+    throw new Error(
+      `${stageNamed(plan, stage)}, doesn't use one of the modes at the ${end}. ` +
+        "Choose a mode for every stage, or change that stage first.",
+    );
+  }
+  const mode = modeGiven ? modesFor(end).find((candidate) => candidate.name === forAll[`${end}Mode`]) : ownMode;
+  const mixSetting = `${end}Mix`;
+  let mixes = mixesGiven ? forAll[`${end}Mixes`] : settings[mixSetting] !== null;
+  if (modeGiven && !mixesGiven && mode.mixingTechnique === null) {
+    mixes = false;
+  }
+  if (mixes && mode.mixingTechnique === null) {
+    throw new Error(
+      `${stageNamed(plan, stage)}, uses ${mode.name} at the ${end}, which can't mix. ` +
+        "Choose a mode for every stage, or change that stage first.",
+    );
+  }
+  return {
+    ...modeSettings(end, mode.name, mixes),
+    [mixSetting]: mixes ? (settings[mixSetting] ?? { ...DEFAULT_MIX }) : null,
+  };
+}
+
+// The value every entry of `values` shares, or null if they differ (or any is null), e.g.
+// ["Fast", "Fast"] → "Fast", ["Fast", "Slow"] → null.
+function sharedValue(values) {
+  return values.every((value) => value === values[0]) ? values[0] : null;
 }
 
 // True if stage `id` is just after a randomization's last stage in the stage order.
@@ -4449,7 +4846,7 @@ function withRandomizationsAfterRemove(plan, removedId, nextId, keptTips) {
     return after;
   }
   if (nextId !== null && !isFirstOfTipGroup(after, nextId)) {
-    after = addTipChange(after, nextId);
+    after = withTipChangeAdded(after, nextId);
   }
   return withParts(after, {
     randomizations: after.randomizations.map((randomization) =>
@@ -4513,17 +4910,50 @@ function checkedStoredRandomization(plan, randomization, number) {
     );
   }
   const prefix = `Randomization ${number}: `;
+  const values = withPrefix(prefix, () => {
+    const checked = checkedValuesAsStored(randomization);
+    checkStoredOrder(randomization, checked);
+    checkOwnedStagesForm(randomization.stages);
+    return checked;
+  });
+  checkFirstRunValuesAsStored(randomization, number);
   return withPrefix(prefix, () => {
-    const changes = Object.fromEntries(
-      RANDOMIZATION_CHANGES.map((property) => [property, randomization[property]]),
-    );
-    const values = checkedRandomizationValues(changes, { sources: [], fill: [] });
-    checkStoredOrder(randomization, values);
     const stored = { id, beforeId: randomization.beforeId, ...values };
     stored.stages = checkedOwnedStages(plan, randomization.stages);
     checkOneFillerStage(stored);
     return stored;
   });
+}
+
+// A stored or copied randomization's values (its RANDOMIZATION_CHANGES), checked as setRandomization
+// checks them, except that settings, tipType and probes are checked only when not null (and kept
+// null): a randomization that has run holds them as null (section 3).
+function checkedValuesAsStored(randomization) {
+  const changes = Object.fromEntries(
+    RANDOMIZATION_CHANGES.filter(
+      (property) => !(FIRST_RUN_PROPERTIES.includes(property) && randomization[property] === null),
+    ).map((property) => [property, randomization[property]]),
+  );
+  const values = checkedRandomizationValues(changes, { sources: [], fill: [], stages: [] });
+  return Object.fromEntries(RANDOMIZATION_CHANGES.map((property) => [property, values[property] ?? null]));
+}
+
+// Throws unless stored randomization number `number`'s settings, tipType and probes are all null
+// when its stages aren't empty, and none null when they are (section 5).
+function checkFirstRunValuesAsStored(randomization, number) {
+  const hasRun = randomization.stages.length > 0;
+  const firstRunValues = FIRST_RUN_PROPERTIES.map((property) => randomization[property]);
+  if (hasRun && firstRunValues.some((value) => value !== null)) {
+    throw new Error(
+      `Randomization ${number} has stages, so its "settings", "tipType" and "probes" must be null: ` +
+        "its stages hold them.",
+    );
+  }
+  if (!hasRun && firstRunValues.some((value) => value === null)) {
+    throw new Error(
+      `Randomization ${number} hasn't run, so it needs "settings", "tipType" and "probes" for its first run.`,
+    );
+  }
 }
 
 // Throws if a randomization of `plan` sits where it can't (section 3, "Where it sits"), prefixed
@@ -4549,7 +4979,7 @@ function checkStoredOrder(randomization, values) {
         `${earlier.labware} ${earlier.well}.`,
     );
   }
-  if (randomization.probes.some((probe, index) => probe !== values.probes[index])) {
+  if (randomization.probes !== null && randomization.probes.some((probe, index) => probe !== values.probes[index])) {
     throw new Error("its probes must be listed smallest first.");
   }
 }
@@ -4560,10 +4990,7 @@ function checkStoredOrder(randomization, values) {
 // after its last); none a mix step. Its stages may share tip groups with each other. Returns copies. A stage's well needn't be one of the
 // sources: setRandomization leaves a dropped source's stage until the next run.
 function checkedOwnedStages(plan, stages) {
-  const formMessage = `its stages must be a list of objects with exactly ${listNamesWithAnd(OWNED_STAGE_PROPERTIES)}.`;
-  if (!Array.isArray(stages) || !stages.every((owned) => hasExactly(owned, OWNED_STAGE_PROPERTIES))) {
-    throw new Error(formMessage);
-  }
+  checkOwnedStagesForm(stages);
   const seenStages = new Set();
   const seenWells = new Set();
   for (const owned of stages) {
@@ -4602,6 +5029,13 @@ function checkedOwnedStages(plan, stages) {
     }
   }
   return stages.map(({ labware, well, stage }) => ({ labware, well, stage }));
+}
+
+// Throws unless a stored randomization's `stages` is a list of { labware, well, stage }.
+function checkOwnedStagesForm(stages) {
+  if (!Array.isArray(stages) || !stages.every((owned) => hasExactly(owned, OWNED_STAGE_PROPERTIES))) {
+    throw new Error(`its stages must be a list of objects with exactly ${listNamesWithAnd(OWNED_STAGE_PROPERTIES)}.`);
+  }
 }
 
 // Throws if two of a stored randomization's stages name its filler wells: 'its filler has two
@@ -4750,10 +5184,10 @@ function addStageOfKind(plan, beforeId, takeTips, kind) {
 function withOwnTipGroup(plan, id, afterId) {
   let withTips = plan;
   if (afterId !== null && !Object.hasOwn(withTips.tipChanges, afterId)) {
-    withTips = addTipChange(withTips, afterId);
+    withTips = withTipChangeAdded(withTips, afterId);
   }
   if (stageOrder(withTips)[0] !== id) {
-    withTips = addTipChange(withTips, id);
+    withTips = withTipChangeAdded(withTips, id);
   }
   return withTips;
 }
