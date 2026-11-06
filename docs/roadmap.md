@@ -424,6 +424,10 @@ Last updated: 2026-11-05
   tip groups, and its heading opening and closing its box with a ✎ for the card; the
   specifications and the build each reviewed by a separate agent, and checked in headless Chrome.
   Still to check by Andy.
+- **Decided: Ctrl-click keeps a transfer's source** (Andy, 2026-11-05; item 21, below), from a
+  second preview he approved. **Specified** (Draft, 2026-11-05, in the hands-off workflow):
+  `transfer-designer-page.md`, section 9 ("Keeping the source"), with its keys (section 12) and
+  by-hand checks (section 16). Page only: it changes no plan files and no Biomek files.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -920,7 +924,11 @@ added on 2026-10-28 (Andy).
       adds one transfer and clears the source, as today; Escape clears the source. Elsewhere
       Ctrl-click acts as a click. Each click is its own undo step.
     - **Tried in a preview first** (done, 2026-11-05). It changes no plan files and no Biomek files.
-      Next: the page specification.
+    - Decided in the hands-off workflow (2026-11-05; reasons in its pull request): Ctrl counts when
+      the mouse button is released, as for copying in the Stages column; a refused transfer keeps
+      the source; a drag that adds nothing keeps it; Ctrl+Enter and Ctrl+Space on a focused well
+      act as a Ctrl-click; Cmd on a Mac, where Ctrl-click is the right-click that names a well.
+    **Specified** (Draft, 2026-11-05): see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -955,7 +963,9 @@ final Biomek runs, so they test the files as they will be:
     files, but what a user ends up sending can change: a new randomization starts from the stage
     before it, new stages start from their neighbors, and Update no longer re-applies the card's
     values to every stage. So it needs Andy's sign-off, by merging, before the final runs.
-15. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+15. Ctrl-click keeps a transfer's source (item 21), added on 2026-11-05: preview,
+    specification, then build. Page only, so it needn't come before the final runs.
+16. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
