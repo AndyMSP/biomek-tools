@@ -427,7 +427,10 @@ Last updated: 2026-11-05
 - **Decided: Ctrl-click keeps a transfer's source** (Andy, 2026-11-05; item 21, below), from a
   second preview he approved. **Specified** (Draft, 2026-11-05, in the hands-off workflow):
   `transfer-designer-page.md`, section 9 ("Keeping the source"), with its keys (section 12) and
-  by-hand checks (section 16). Page only: it changes no plan files and no Biomek files.
+  by-hand checks (section 16). Page only: it changes no plan files and no Biomek files. **Built
+  (#140, 2026-11-05)**: the page script only; the specification and the build each reviewed by a
+  separate agent, and checked in headless Chrome (Cmd and a Mac's Ctrl-click simulated). Still to
+  check by Andy, on a Mac too if one is used.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -929,7 +932,7 @@ added on 2026-10-28 (Andy).
       platform, a press that opens the browser's context menu (a Mac's Ctrl-click) only naming the
       well; a refused transfer keeps the source; a drag that adds nothing keeps it; Undo and Redo
       keep it; Ctrl+Enter or Cmd+Enter on a focused well acts as a Ctrl-click (not Space).
-    **Specified** (Draft, 2026-11-05): see "Where things stand".
+    **Specified** (Draft, 2026-11-05) and **Built (#140, 2026-11-05)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
