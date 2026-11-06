@@ -2382,7 +2382,11 @@ page's configuration (ADR 0009):
   well's transfers showing the ordinary contents problem, not a table problem; two labeled wells
   splitting, the split line right; the label cleared on a source well making the table `needs
   update`, and Update after choosing its sources again; a component with neither stock well nor
-  label: the Sources step's wording with "label the well";
+  label: the Sources step's wording with "label the well"; a column named by a label a row also
+  uses: its first source well chosen automatically, and the problem `… is both a source of
+  “Control” and a well the table fills. Choose another well.` shown, Next disabled. Existing
+  checks whose expected text changes: the paste zone's error (`… at least one column of
+  amounts.`), the Table step's summary (`4 columns.`) and the no-stock-well wording on Sources;
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels;
 - the version line: the built file's name and the line show the same version; a click selects the

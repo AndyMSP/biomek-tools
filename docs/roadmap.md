@@ -1032,10 +1032,11 @@ added on 2026-10-28 (Andy).
       wells and the wells with that label); a header that is neither is a problem, as now.
     - **Several wells with the label** are all offered on the Sources step and used in the order
       chosen, as several stock wells are now.
-    - **Out of date as now:** a source well's label changing (relabeled, unlabeled, put on another
-      well, or a labeled well moved) or the split across several wells changing makes it
-      `needs update`; a change to what's in a label-named well, or contents with one source well,
-      doesn't. A label that's also a row label is a source and a destination, refused as now.
+    - **Out of date as now:** a chosen source well losing its label (relabeled or unlabeled) or the
+      split across several wells changing makes it `needs update`; a change to what's in a
+      label-named well with one source well doesn't. Moving a labeled source well keeps it up to
+      date (the label and transfers move with it), and putting the label on a second well only
+      adds that well as a choice (corrected after the specification review, 2026-11-06). A label that's also a row label is a source and a destination, refused as now.
     - **Hands-off workflow** (Andy, 2026-11-06). No plan-file format change: `sources` and `stages`
       are keyed by the column's name, a component's or a label, as before.
     **Specified** (Draft, 2026-11-06, in the hands-off workflow): see "Where things stand".

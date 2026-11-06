@@ -210,6 +210,14 @@ tables"), its `stages` entries each `{ component, stage }`:
   stage's: the transfer table holds none.
 - Whether its stages match what it would make now isn't a check on opening: a plan whose sources
   were emptied, or a well relabeled, before saving opens out of date, as it was saved.
+- **Label-named columns** (2026-11-06, item 24): a `sources` key and a `stages` entry's `component`
+  may be a well label rather than a component (`transfer-designer.md`, "Transfer tables"). No new
+  version: nothing's form changes, and no release has shipped with transfer tables, so no file in
+  use was written by a build that refuses them. A build from before this change refuses a file with
+  a label-named column (its `sources` key naming no component); a file saved before this change
+  opens unchanged. Tests: a version 11 and a version 12 file with a `Premix` key, a `Premix` header
+  and `Premix`-labeled source wells opens, its transfer table up to date; a version 12 file saved
+  before this change (component columns only) opens unchanged and up to date.
 - Why a new version: a version 10 tool would refuse the extra property with a message that doesn't
   say the file is newer (ADR 0010).
 
