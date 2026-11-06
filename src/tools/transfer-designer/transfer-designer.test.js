@@ -125,11 +125,19 @@ import {
   transferTableOf,
   isTransferTableOutOfDate,
   setTransferTables,
+  readStockTable,
+  addStocks,
+  stockTable,
 } from "./transfer-designer.js";
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
 import { assignPool } from "../../shared/random-pool/random-pool.js";
-import { CONCENTRATION_UNITS, CELL_DENSITY_UNIT } from "../../../config/concentration-units.js";
+import {
+  CONCENTRATION_UNITS,
+  CELL_DENSITY_UNIT,
+  UNIT_SPELLINGS,
+} from "../../../config/concentration-units.js";
+import { COMPONENT_COLORS } from "../../../config/component-colors.js";
 import { familyOf, unitsOf, seedingDensity } from "../../shared/concentrations/concentrations.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
@@ -7801,5 +7809,560 @@ describe("transfer-designer", () => {
       probeCount: sharingTips().probes.length,
     });
     assert.throws(() => randomizationStageValues(run, "r9"), { message: `There's no randomization "r9" in the plan.` });
+  });
+
+  // --- Stock tables (2026-11-05; transfer-designer.md, section 6, "Stock tables") ---
+
+  // The start of a stock table's form message.
+  const STOCK_FORM =
+    "A stock table must be a list of rows, each a list of the same number of cells, each text, but";
+
+  // The configured units, in the file's order, as the unknown-unit message lists them.
+  const CONFIGURED_UNITS = CONCENTRATION_UNITS.map((entry) => entry.unit);
+
+  // The unknown-unit message for unit text `written` in header `header`.
+  function unknownUnitMessage(written, header) {
+    return `“${written}” in “${header}” isn't a unit the tool knows. Use one of ${CONFIGURED_UNITS.join(", ")}.`;
+  }
+
+  // The colors of COMPONENT_COLORS that none of `plan`'s components has, in order.
+  function freeColors(plan) {
+    const taken = new Set(plan.components.map((component) => component.color));
+    return COMPONENT_COLORS.filter((color) => !taken.has(color));
+  }
+
+  // A plan whose one component is Media, drawn in the first color of COMPONENT_COLORS.
+  function planWithMedia() {
+    return addComponent(emptyPlan().plan, "Media", COMPONENT_COLORS[0]);
+  }
+
+  // The specification's example stock table: Feed, Drug A 10mM and Water. A new table each time.
+  function exampleStockTable() {
+    return [
+      ["Name", "Osmolality", "Hy-Soy (g/L)", "Yeast (g/L)", "Drug A (mM)", "DMSO (%)"],
+      ["Feed", "310", "4", "0.5", "", ""],
+      ["Drug A 10mM", "1450", "", "", "10", "100"],
+      ["Water", "0", "", "", "", ""],
+    ];
+  }
+
+  // The problems readStockTable gives for `table` on `plan`, with COMPONENT_COLORS.
+  function stockProblems(plan, table) {
+    return readStockTable(plan, table, COMPONENT_COLORS).problems;
+  }
+
+  // The amount readStockTable reads from a cell `text` under a "Salt (mM)" column, or the problem
+  // message it gives for it, as { amount } or { message }; amount undefined when nothing is read.
+  function readAmountCell(text) {
+    const table = [
+      ["Name", "Salt (mM)"],
+      ["Feed", text],
+    ];
+    const { stocks, problems } = readStockTable(emptyPlan().plan, table, COMPONENT_COLORS);
+    if (problems.length > 0) {
+      return { message: problems[0].message, at: [problems[0].row, problems[0].column] };
+    }
+    return { amount: stocks[0].constituents[0]?.amount };
+  }
+
+  // The osmolality readStockTable reads from a cell `text` under an Osmolality column, or the
+  // problem message it gives, as { osmolality } or { message }.
+  function readOsmolalityCell(text) {
+    const table = [
+      ["Name", "Osmolality"],
+      ["Feed", text],
+    ];
+    const { stocks, problems } = readStockTable(emptyPlan().plan, table, COMPONENT_COLORS);
+    if (problems.length > 0) {
+      return { message: problems[0].message };
+    }
+    return { osmolality: stocks[0].osmolality };
+  }
+
+  test("stock tables: readStockTable and addStocks throw the form message", () => {
+    const plan = planWithMedia();
+    const cases = [
+      [[], `${STOCK_FORM} got [].`],
+      [5, `${STOCK_FORM} got 5.`],
+      [[["Name"], []], `${STOCK_FORM} row 2 is [].`],
+      [[["Name", "Salt (mM)"], ["Feed"]], `${STOCK_FORM} row 2 has 1 cell and row 1 has 2.`],
+      [[["Name", null]], `${STOCK_FORM} row 1, cell 2 is null.`],
+    ];
+    for (const [table, message] of cases) {
+      assert.throws(() => readStockTable(plan, table, COMPONENT_COLORS), { message });
+      assert.throws(() => addStocks(plan, table, COMPONENT_COLORS), { message });
+    }
+  });
+
+  test("stock tables: the form is checked before the colors, then the colors message", () => {
+    const plan = planWithMedia();
+    assert.throws(() => readStockTable(plan, 5, 5), { message: `${STOCK_FORM} got 5.` });
+    for (const [colors, shown] of [
+      [5, "5"],
+      [[5], "a list"],
+    ]) {
+      const message = `The colors must be a list of color texts, like ["#4e79a7"], but got ${shown}.`;
+      assert.throws(() => readStockTable(plan, [["Name"]], colors), { message });
+      assert.throws(() => addStocks(plan, [["Name"]], colors), { message });
+    }
+  });
+
+  test("stock tables: a header alone reads as no stocks and no problems", () => {
+    assert.deepEqual(readStockTable(planWithMedia(), [["Name"]], COMPONENT_COLORS), {
+      stocks: [],
+      problems: [],
+    });
+  });
+
+  test("stock tables: the example reads as three stocks with the first free colors", () => {
+    const plan = planWithMedia();
+    const free = freeColors(plan);
+    assert.deepEqual(readStockTable(plan, exampleStockTable(), COMPONENT_COLORS), {
+      stocks: [
+        {
+          row: 1,
+          name: "Feed",
+          color: free[0],
+          constituents: [constituentOf("Hy-Soy", 4, "g/L"), constituentOf("Yeast", 0.5, "g/L")],
+          osmolality: 310,
+        },
+        {
+          row: 2,
+          name: "Drug A 10mM",
+          color: free[1],
+          constituents: [constituentOf("Drug A", 10, "mM"), constituentOf("DMSO", 100, "%")],
+          osmolality: 1450,
+        },
+        { row: 3, name: "Water", color: free[2], constituents: [], osmolality: 0 },
+      ],
+      problems: [],
+    });
+  });
+
+  test("stock tables: addStocks adds the example's stocks after Media, each as read", () => {
+    const plan = planWithMedia();
+    const { stocks } = readStockTable(plan, exampleStockTable(), COMPONENT_COLORS);
+    const added = addStocks(plan, exampleStockTable(), COMPONENT_COLORS);
+    assert.deepEqual(
+      added.components.map((component) => component.name),
+      ["Media", "Feed", "Drug A 10mM", "Water"],
+    );
+    assert.deepEqual(added.components[0], plan.components[0]);
+    stocks.forEach((stock, index) => {
+      assert.deepEqual(added.components[index + 1], {
+        name: stock.name,
+        color: stock.color,
+        constituents: stock.constituents,
+        osmolality: stock.osmolality,
+      });
+    });
+  });
+
+  test("stock tables: osmolality headers in any capitals, with or without (mOsm/kg)", () => {
+    for (const header of ["osmolality", "OSMOLALITY (mOsm/kg)", "Osmolality(mOsm/kg)", "Osmolality ( mOsm/kg )"]) {
+      const { stocks, problems } = readStockTable(
+        emptyPlan().plan,
+        [
+          ["Name", header],
+          ["Feed", "300"],
+        ],
+        COMPONENT_COLORS,
+      );
+      assert.deepEqual(problems, [], header);
+      assert.equal(stocks[0].osmolality, 300, header);
+    }
+  });
+
+  test("stock tables: Osmolality (mosm/kg) is a constituent in an unknown unit", () => {
+    assert.deepEqual(stockProblems(emptyPlan().plan, [["Name", "Osmolality (mosm/kg)"]]), [
+      { row: 0, column: 1, message: unknownUnitMessage("mosm/kg", "Osmolality (mosm/kg)") },
+    ]);
+  });
+
+  test("stock tables: every configured unit and every spelling is read as its unit", () => {
+    const written = [
+      ...CONFIGURED_UNITS.map((unit) => [unit, unit]),
+      ...Object.entries(UNIT_SPELLINGS),
+    ];
+    for (const [text, unit] of written) {
+      const { stocks, problems } = readStockTable(
+        emptyPlan().plan,
+        [
+          ["Name", `Salt (${text})`],
+          ["Feed", "4"],
+        ],
+        COMPONENT_COLORS,
+      );
+      assert.deepEqual(problems, [], text);
+      assert.deepEqual(stocks[0].constituents, [constituentOf("Salt", 4, unit)], text);
+    }
+  });
+
+  test("stock tables: units that are neither a unit nor a spelling are unknown", () => {
+    for (const text of ["UM", "G/L", "mm", "mg/mL", "% v/v"]) {
+      const configured = CONFIGURED_UNITS.includes(text) || Object.hasOwn(UNIT_SPELLINGS, text);
+      if (configured) {
+        continue;
+      }
+      const header = `Salt (${text})`;
+      assert.deepEqual(stockProblems(emptyPlan().plan, [["Name", header]]), [
+        { row: 0, column: 1, message: unknownUnitMessage(text, header) },
+      ]);
+    }
+  });
+
+  test("stock tables: spaces inside the brackets, and brackets in the name, are read", () => {
+    const { stocks, problems } = readStockTable(
+      emptyPlan().plan,
+      [
+        ["Name", "Drug ( mM )", "Salt (A) (mM)"],
+        ["Feed", "1", "2"],
+      ],
+      COMPONENT_COLORS,
+    );
+    assert.deepEqual(problems, []);
+    assert.deepEqual(stocks[0].constituents, [
+      constituentOf("Drug", 1, "mM"),
+      constituentOf("Salt (A)", 2, "mM"),
+    ]);
+  });
+
+  test("stock tables: each header problem is at its cell, and the cells under it aren't read", () => {
+    const table = [
+      ["Name", "", "Osmolality", "osmolality", "KCl", "(mM)", "NaCl (g)", "Drug A (mM)", "Drug A (µM)"],
+      ["Feed", "x", "300", "x", "x", "x", "x", "1", "x"],
+    ];
+    const { stocks, problems } = readStockTable(emptyPlan().plan, table, COMPONENT_COLORS);
+    assert.deepEqual(problems, [
+      { row: 0, column: 1, message: "Column 2 has no header. Give it one, like “Hy-Soy (g/L)”." },
+      { row: 0, column: 3, message: "There are two Osmolality columns. Keep one." },
+      { row: 0, column: 4, message: "“KCl” needs its unit in brackets, like “KCl (g/L)”." },
+      {
+        row: 0,
+        column: 5,
+        message: "“(mM)” needs a constituent's name before its unit, like “Drug A (mM)”.",
+      },
+      { row: 0, column: 6, message: unknownUnitMessage("g", "NaCl (g)") },
+      { row: 0, column: 8, message: "“Drug A” has two columns. Give each constituent one column." },
+    ]);
+    assert.equal(stocks[0].osmolality, 300);
+    assert.deepEqual(stocks[0].constituents, [constituentOf("Drug A", 1, "mM")]);
+  });
+
+  test("stock tables: the unknown-unit message lists the configured units in order", () => {
+    const [problem] = stockProblems(emptyPlan().plan, [["Name", "NaCl (g)"]]);
+    assert.ok(problem.message.endsWith(`Use one of ${CONFIGURED_UNITS.join(", ")}.`));
+  });
+
+  test("stock tables: fully blank columns and rows are ignored but keep their places", () => {
+    const table = [
+      ["Name", "Salt (mM)", "", "Drug (mM)"],
+      ["Feed", "1", "", "two"],
+      ["", "", "", ""],
+      ["Water", "", "", "x"],
+    ];
+    const { stocks, problems } = readStockTable(emptyPlan().plan, table, COMPONENT_COLORS);
+    assert.deepEqual(
+      stocks.map((stock) => [stock.row, stock.name]),
+      [
+        [1, "Feed"],
+        [3, "Water"],
+      ],
+    );
+    assert.deepEqual(problems, [
+      { row: 1, column: 3, message: "Feed's Drug must be a number, like 4, but is “two”." },
+      { row: 3, column: 3, message: "Water's Drug must be a number, like 4, but is “x”." },
+    ]);
+  });
+
+  test("stock tables: column 0 is the names even when it's fully blank", () => {
+    const table = [
+      ["", "Salt (mM)"],
+      ["", "1"],
+    ];
+    assert.deepEqual(stockProblems(emptyPlan().plan, table), [
+      { row: 1, column: 0, message: "Row 2 has no name. Give the stock a name, or take the row out." },
+    ]);
+  });
+
+  test("stock tables: name problems are at the name cell, and those rows take no color", () => {
+    const plan = planWithMedia();
+    const free = freeColors(plan);
+    const table = [
+      ["Name", "Salt (mM)"],
+      ["", "1"],
+      ["Media", "1"],
+      [" Media ", "1"],
+      ["Feed", "1"],
+      ["Feed", "2"],
+      ["Water", ""],
+    ];
+    const { stocks, problems } = readStockTable(plan, table, COMPONENT_COLORS);
+    assert.deepEqual(problems, [
+      { row: 1, column: 0, message: "Row 2 has no name. Give the stock a name, or take the row out." },
+      { row: 2, column: 0, message: "“Media” is already in the plan. Rename the row, or take it out." },
+      { row: 3, column: 0, message: "“Media” is already in the plan. Rename the row, or take it out." },
+      { row: 5, column: 0, message: "“Feed” is in the table twice. Each stock needs its own name." },
+    ]);
+    assert.deepEqual(
+      stocks.map((stock) => stock.color),
+      [null, null, null, free[0], null, free[1]],
+    );
+  });
+
+  test("stock tables: amounts are read with commas, decimals and exponents", () => {
+    const cases = [
+      ["4", 4],
+      ["0.5", 0.5],
+      [".5", 0.5],
+      ["4.", 4],
+      ["1,500,000", 1500000],
+      ["1.5e6", 1500000],
+      ["1e-7", 1e-7],
+    ];
+    for (const [text, amount] of cases) {
+      assert.deepEqual(readAmountCell(text), { amount }, text);
+    }
+  });
+
+  test("stock tables: blank, 0 and 0.0 add nothing", () => {
+    for (const text of ["", "0", "0.0"]) {
+      assert.deepEqual(readAmountCell(text), { amount: undefined }, text);
+    }
+  });
+
+  test("stock tables: anything else in an amount cell is a problem at its cell", () => {
+    for (const text of ["-4", "+4", "4 g", "two", "1.2.3", "e5", "0x10", "1e400"]) {
+      assert.deepEqual(
+        readAmountCell(text),
+        { message: `Feed's Salt must be a number, like 4, but is “${text}”.`, at: [1, 1] },
+        text,
+      );
+    }
+  });
+
+  test("stock tables: osmolality is read like an amount, but 0 is the value 0", () => {
+    assert.deepEqual(readOsmolalityCell(""), { osmolality: null });
+    assert.deepEqual(readOsmolalityCell("0"), { osmolality: 0 });
+    assert.deepEqual(readOsmolalityCell("1,450"), { osmolality: 1450 });
+    assert.deepEqual(readOsmolalityCell("1e-7"), { osmolality: 1e-7 });
+    for (const text of ["-5", "high", "1e400"]) {
+      assert.deepEqual(
+        readOsmolalityCell(text),
+        { message: `Feed's osmolality must be a number, like 300, but is “${text}”.` },
+        text,
+      );
+    }
+  });
+
+  test("stock tables: cells in a row whose name is a problem are still read", () => {
+    const table = [
+      ["Name", "Salt (mM)", "Osmolality"],
+      ["Media", "two", "high"],
+      ["", "x", ""],
+    ];
+    assert.deepEqual(stockProblems(planWithMedia(), table), [
+      { row: 1, column: 0, message: "“Media” is already in the plan. Rename the row, or take it out." },
+      { row: 1, column: 1, message: "Media's Salt must be a number, like 4, but is “two”." },
+      { row: 1, column: 2, message: "Media's osmolality must be a number, like 300, but is “high”." },
+      { row: 2, column: 0, message: "Row 3 has no name. Give the stock a name, or take the row out." },
+      { row: 2, column: 1, message: "Row 3's Salt must be a number, like 4, but is “x”." },
+    ]);
+  });
+
+  test("stock tables: a row whose try throws has a whole-row problem; others are added", () => {
+    const plan = planWithFeedingMedia();
+    const molar = unitsOf(familyOf(MOLAR_UNIT))[0];
+    const table = [
+      ["Name", `Hy-Soy (${molar})`, "Salt (mM)", "Osmolality"],
+      ["Feed", "1", "", "high"],
+      ["Feed 2", "1", "", ""],
+      ["Water", "", "1", ""],
+      ["Feed 3", "2", "", ""],
+    ];
+    const { stocks, problems } = readStockTable(plan, table, COMPONENT_COLORS);
+    const family = familyMessage("Hy-Soy", MASS_UNIT, "Feeding media");
+    assert.deepEqual(problems, [
+      { row: 1, column: 3, message: "Feed's osmolality must be a number, like 300, but is “high”." },
+      { row: 2, column: null, message: `Feed 2: ${family}` },
+      { row: 4, column: null, message: `Feed 3: ${family}` },
+    ]);
+    assert.deepEqual(
+      stocks.map((stock) => stock.color),
+      [null, null, freeColors(plan)[0], null],
+    );
+  });
+
+  test("stock tables: a bad header doesn't stop rows being tried and colored", () => {
+    const plan = planWithMedia();
+    const free = freeColors(plan);
+    const table = [
+      ["Name", "KCl", "Salt (mM)"],
+      ["Feed", "x", "1"],
+      ["Water", "", ""],
+    ];
+    const { stocks, problems } = readStockTable(plan, table, COMPONENT_COLORS);
+    assert.equal(problems.length, 1);
+    assert.deepEqual(
+      stocks.map((stock) => stock.color),
+      [free[0], free[1]],
+    );
+    assert.deepEqual(stocks[0].constituents, [constituentOf("Salt", 1, "mM")]);
+  });
+
+  test("stock tables: a row whose try fails takes no color, so the next row takes it", () => {
+    const plan = planWithFeedingMedia();
+    const free = freeColors(plan);
+    const table = [
+      ["Name", "Hy-Soy (mM)"],
+      ["First", ""],
+      ["Second", "1"],
+      ["Third", ""],
+    ];
+    const { stocks } = readStockTable(plan, table, COMPONENT_COLORS);
+    assert.deepEqual(
+      stocks.map((stock) => stock.color),
+      [free[0], null, free[1]],
+    );
+  });
+
+  test("stock tables: with no free color left, the rest have a whole-row problem", () => {
+    const plan = planWithMedia();
+    const colors = [COMPONENT_COLORS[0], COMPONENT_COLORS[1]];
+    const table = [["Name"], ["Feed"], ["Water"], ["Buffer"]];
+    const { stocks, problems } = readStockTable(plan, table, colors);
+    assert.deepEqual(
+      stocks.map((stock) => stock.color),
+      [COMPONENT_COLORS[1], null, null],
+    );
+    assert.deepEqual(
+      problems,
+      ["Water", "Buffer"].map((name, index) => ({
+        row: index + 2,
+        column: null,
+        message: `There's no free color for ${name}. Two components can't share one, and all ${colors.length} are taken. Take some rows out, or remove a component.`,
+      })),
+    );
+  });
+
+  test("stock tables: addStocks throws the first problem's message, then the no-stocks message", () => {
+    const plan = planWithMedia();
+    assert.throws(() => addStocks(plan, [["Name"], ["Media"], [""]], COMPONENT_COLORS), {
+      message: "“Media” is already in the plan. Rename the row, or take it out.",
+    });
+    const noStocks = {
+      message: "The stock table has no stocks to add. Give it at least one row under the header.",
+    };
+    assert.throws(() => addStocks(plan, [["Name"]], COMPONENT_COLORS), noStocks);
+    assert.throws(() => addStocks(plan, [["Name"], [""]], COMPONENT_COLORS), noStocks);
+  });
+
+  test("stock tables: addStocks doesn't change its plan, and one Undo takes its stocks out", () => {
+    const plan = planWithMedia();
+    const before = snapshot(plan);
+    const added = addStocks(plan, exampleStockTable(), COMPONENT_COLORS);
+    assert.equal(snapshot(plan), before);
+    assert.equal(new PlanHistory(plan).record(added).undo().present, plan);
+  });
+
+  test("stock tables: stockTable of an empty plan is a header alone", () => {
+    assert.deepEqual(stockTable(emptyPlan().plan), [["Name"]]);
+  });
+
+  test("stock tables: stockTable writes the plan's components in its order, columns first met", () => {
+    let plan = emptyPlan().plan;
+    plan = addComponent(plan, "Media", COMPONENT_COLORS[0]);
+    plan = addComponent(plan, "Feed", COMPONENT_COLORS[1]);
+    plan = addComponent(plan, "Water", COMPONENT_COLORS[2]);
+    plan = setConstituents(plan, "Media", [constituentOf("Yeast", 2, "g/L")]);
+    plan = setConstituents(plan, "Feed", [
+      constituentOf("Hy-Soy", 4, "g/L"),
+      constituentOf("Yeast", 0.5, "g/L"),
+    ]);
+    assert.deepEqual(stockTable(plan), [
+      ["Name", "Yeast (g/L)", "Hy-Soy (g/L)"],
+      ["Media", "2", ""],
+      ["Feed", "0.5", "4"],
+      ["Water", "", ""],
+    ]);
+    plan = setOsmolality(plan, "Water", 0);
+    plan = setOsmolality(plan, "Feed", 1e-7);
+    assert.deepEqual(
+      stockTable(plan).map((row) => row[1]),
+      ["Osmolality", "", "1e-7", "0"],
+    );
+  });
+
+  test("stock tables: stockTable converts amounts into the unit a name is first met in", () => {
+    let plan = emptyPlan().plan;
+    plan = addComponent(plan, "Low", COMPONENT_COLORS[0]);
+    plan = addComponent(plan, "High", COMPONENT_COLORS[1]);
+    plan = addComponent(plan, "Tiny", COMPONENT_COLORS[2]);
+    plan = setConstituents(plan, "Low", [constituentOf("Drug B", 1, "µM")]);
+    plan = setConstituents(plan, "High", [constituentOf("Drug B", 0.5, "mM")]);
+    plan = setConstituents(plan, "Tiny", [constituentOf("Drug B", 0.0003, "mM")]);
+    const ratio = factorOf("mM") / factorOf("µM");
+    assert.deepEqual(stockTable(plan), [
+      ["Name", "Drug B (µM)"],
+      ["Low", "1"],
+      ["High", String(Number((0.5 * ratio).toPrecision(12)))],
+      ["Tiny", String(Number((0.0003 * ratio).toPrecision(12)))],
+    ]);
+    if (ratio === 1000) {
+      assert.equal(stockTable(plan)[2][1], "500");
+      assert.equal(stockTable(plan)[3][1], "0.3");
+    }
+  });
+
+  test("stock tables: a plan written out reads back as the same components", () => {
+    let plan = emptyPlan().plan;
+    plan = addComponent(plan, "Media", COMPONENT_COLORS[0]);
+    plan = addComponent(plan, "Cell stock", COMPONENT_COLORS[1]);
+    plan = addComponent(plan, "Drug A stock", COMPONENT_COLORS[2]);
+    plan = addComponent(plan, "Empty", COMPONENT_COLORS[3]);
+    plan = setOsmolality(plan, "Media", 300);
+    plan = setOsmolality(plan, "Drug A stock", 1450);
+    plan = setConstituents(plan, "Media", [constituentOf("Hy-Soy", 4, "g/L")]);
+    plan = setConstituents(plan, "Cell stock", [
+      constituentOf("Cells", 1500000, CELL_DENSITY_UNIT),
+      constituentOf("Hy-Soy", 0.3, MASS_SUBUNIT),
+    ]);
+    plan = setConstituents(plan, "Drug A stock", [
+      constituentOf("Drug A", 10, "mM"),
+      constituentOf("DMSO", 100, "%"),
+    ]);
+    const table = stockTable(plan);
+    assert.deepEqual(readStockTable(emptyPlan().plan, table, COMPONENT_COLORS).problems, []);
+    const readBack = addStocks(emptyPlan().plan, table, COMPONENT_COLORS);
+    assert.deepEqual(
+      readBack.components.map(({ name, osmolality }) => ({ name, osmolality })),
+      plan.components.map(({ name, osmolality }) => ({ name, osmolality })),
+    );
+    // Each constituent compared in its family's base unit, within 1e-9 relative. Sorted by name:
+    // a stock table's columns put a component's constituents in first-met order, which may differ
+    // from the order it lists them in (Cell stock's Hy-Soy comes after Cells, but its column first).
+    const inBase = (component) =>
+      component.constituents
+        .map(({ name, amount, unit }) => ({ name, family: familyOf(unit), value: amount * factorOf(unit) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    plan.components.forEach((component, index) => {
+      const expected = inBase(component);
+      const actual = inBase(readBack.components[index]);
+      assert.deepEqual(
+        actual.map(({ name, family }) => ({ name, family })),
+        expected.map(({ name, family }) => ({ name, family })),
+      );
+      actual.forEach((entry, place) => {
+        const wanted = expected[place].value;
+        assert.ok(Math.abs(entry.value - wanted) <= 1e-9 * wanted, `${entry.name}: ${entry.value}`);
+      });
+    });
+  });
+
+  test("stock tables: config UNIT_SPELLINGS values are configured units, and no key is one", () => {
+    for (const [spelling, unit] of Object.entries(UNIT_SPELLINGS)) {
+      assert.ok(CONFIGURED_UNITS.includes(unit), `${spelling} → ${unit}`);
+      assert.ok(!CONFIGURED_UNITS.includes(spelling), spelling);
+    }
   });
 });

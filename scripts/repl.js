@@ -56,6 +56,7 @@ import {
 } from "../src/shared/concentrations/concentrations.js";
 import { checkOsmolality, wellOsmolality } from "../src/shared/osmolality/osmolality.js";
 import { CELL_DENSITY_UNIT } from "../config/concentration-units.js";
+import { COMPONENT_COLORS } from "../config/component-colors.js";
 import {
   writeRunFiles,
   checkExperimentName,
@@ -152,6 +153,9 @@ import {
   setOsmolality,
   osmolalityOf,
   seedingDensitiesOf,
+  readStockTable,
+  addStocks,
+  stockTable,
   columnBoxes,
   moveItems,
   copyOf,
@@ -586,6 +590,10 @@ const TOPICS = {
       setOsmolality,
       osmolalityOf,
       seedingDensitiesOf,
+      readStockTable,
+      addStocks,
+      stockTable,
+      COMPONENT_COLORS,
       columnBoxes,
       moveItems,
       copyOf,
@@ -739,6 +747,13 @@ const TOPICS = {
       'seedingDensitiesOf(seeded, replay(seeded.startingContents, seeded.operationList), { labware: "Plate1", well: "A1" })',
       'seedingDensitiesOf(seeded, replay(seeded.startingContents, seeded.operationList), { labware: "Deep1", well: "A1" })',
       'concentrationsOf(seeded, replay(seeded.startingContents, seeded.operationList), { labware: "Deep1", well: "A1" })',
+      'const stocks = [["Name", "Osmolality", "Hy-Soy (g/L)", "Drug A (uM)"], ["Feed", "310", "4", ""], ["Drug A stock", "", "", "10"]]',
+      "readStockTable(emptyPlan().plan, stocks, COMPONENT_COLORS)",
+      'readStockTable(emptyPlan().plan, [["Name", "KCl", "Salt (mm)"], ["Feed", "4", "two"]], COMPONENT_COLORS)',
+      "let stocked = addStocks(emptyPlan().plan, stocks, COMPONENT_COLORS)",
+      "stocked.components",
+      "stockTable(stocked)",
+      "addStocks(stocked, stocks, COMPONENT_COLORS)",
       'let column = addStageWithNewTips(addStage(emptyPlan().plan, null).plan, null).plan',
       'column = addStage(column, null).plan',
       "columnBoxes(column)",

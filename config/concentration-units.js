@@ -35,3 +35,20 @@ export const DEFAULT_CONCENTRATION_UNIT = "g/L";
 // The unit cells are counted in, so code knows which family is the cells' without naming it
 // (concentrations.md, "Cells"; Andy, 2026-11-05).
 export const CELL_DENSITY_UNIT = "cells/mL";
+
+// Other ways of writing a unit that a stock table's header may use (transfer-designer.md, "Stock
+// tables" and "Configuration"), each read as the configured unit it names, so a table typed in Excel
+// without the micro or multiplication sign still reads. Kept to these, so units are read strictly:
+// anything else is reported (Andy, 2026-11-05: "keep it tight"). Read by the transfer designer, not
+// by the concentrations module; its tests check every value is a unit above and no key is one.
+// "μM" is µM written with the Greek letter mu (U+03BC); the units above use the micro sign
+// (U+00B5), which looks the same.
+export const UNIT_SPELLINGS = {
+  uM: "µM",
+  "μM": "µM",
+  x: "×",
+  X: "×",
+  "g/l": "g/L",
+  "mg/l": "mg/L",
+  "cells/ml": "cells/mL",
+};
