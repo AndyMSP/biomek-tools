@@ -789,6 +789,12 @@ added on 2026-10-28 (Andy).
     - **One column per component** (Andy, 2026-11-05, by voice): a component in two columns is a
       problem on the Table step (`“Drug A” is in more than one column.`), since each column is one
       stage; a component needed at two points in the run means two transfer tables.
+    - **Part of v0.2.0** (Andy, 2026-11-05).
+    - **Its box collapses like a randomization's** (Andy, 2026-11-05): to its heading
+      (`Transfer table · 4 stages`) unless one of its stages is open.
+    - **It can be moved and copied as a whole** (Andy, 2026-11-05), by its heading, as a
+      randomization can (ADR 0014's container rule): only between tip groups, bringing its stages,
+      tips and table; a copy fills the same labeled wells again.
     - **A column can draw from several wells, like a randomization's filler** (Andy, 2026-11-05,
       by voice), for when one well can't hold enough (e.g. Media for every destination): its wells
       are used in the order chosen, each giving **whole transfers** until the next would reach
