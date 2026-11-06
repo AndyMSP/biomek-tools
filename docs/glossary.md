@@ -145,7 +145,9 @@ of the tools can still open it, or say why it can't.
 Part of a plan that spreads replicates of several sources at random over a set of wells to fill, on
 any number of plates, with a seed, and makes one stage per source, in the sources' order, moving
 them; each stage starts on new tips unless its source shares tips (see "Source group").
-It owns those stages: they change only through it. Its **sources** are the wells it moves liquid
+It owns those stages: their transfers, names and places change only through it, while their
+pipetting settings and tips are theirs, edited on each stage or all at once through it (ADR 0012,
+amended 2026-11-05). Its **sources** are the wells it moves liquid
 from; its **wells to fill**, the wells it fills; its **filler**, what fills the wells the other
 sources' replicates leave over: one or more sources, its **filler wells**, which should hold one
 liquid (it's a problem otherwise), used in their order, in one stage of their own (ADR 0012; Andy,

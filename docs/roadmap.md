@@ -410,6 +410,14 @@ Last updated: 2026-11-05
   tests and REPL of the transfer designer's transfer tables, plan files version 11 (versions 1 to
   10 still opening) and the page's table button, wizard and box; the specifications and the build
   each reviewed by a separate agent, and checked in headless Chrome. Still to check by Andy.
+- **A randomization's settings on its stages is specified** (Draft, 2026-11-05, in the hands-off
+  workflow; item 20, below; ADR 0012 amended): once run, a randomization's `settings`, `tipType`
+  and `probes` are `null` and its stages and tip changes hold them; its stages and tip groups get
+  their ✎; a run keeps each stage's settings and each group's tips, new ones starting from their
+  neighbors'; the card shows the stages' values or `Mixed` and sets them all at once on Update
+  (`runRandomization`'s `forAll`); a new randomization starts from the stage before it
+  (`transfer-designer.md`, `plan-file.md` with format version 12, copied items version 5,
+  `transfer-designer-page.md`, glossary "Randomization"). Built on #138's branch: merge #138 first.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -880,6 +888,7 @@ added on 2026-10-28 (Andy).
       chosen there goes to every stage on Update, and Mixed leaves each as it is. It's a view and
       a way to set them, not a second copy. Before the first run there are no stages, so the card
       holds what's chosen until the run makes them.
+    **Specified** (Draft, 2026-11-05, in the hands-off workflow): see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
