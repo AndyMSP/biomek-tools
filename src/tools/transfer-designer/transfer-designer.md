@@ -1259,7 +1259,10 @@ the table's terms.)
 component is now (`Media`, unquoted); a column whose name is only a well label is named in curly
 quotes (`“Premix”`), as labels are everywhere (`No well is labeled “Cond 9”.`).
 
-These are `{ row: null, column: null, message }`, so all of a draft's problems have one form.
+These are `{ row: null, column, message }`, so all of a draft's problems have one form: `column` is
+the index of the column whose sources the problem is about, or `null` for "adds nothing" (since
+2026-11-06, item 24, so a caller can tell which column a problem is about without reading its
+message; `null` for every one of them before).
 `sources` itself must be in its form (an object of names, each not blank, and lists of wells on the
 deck, each once); a draft that isn't is refused with a thrown message (section 5), not a problem, since a
 caller builds it.
@@ -1434,7 +1437,9 @@ randomizations since 2026-11-05, item 20, "It owns its stages"):
   table would have two columns of one name. Message (section 5): `A transfer table already has a
   column “Premix”. Choose another name, or change that column first.` When the table has a
   `sources` key of the new name whose column isn't in its table (an unused key), it's replaced by
-  the renamed one.
+  the renamed one, in the old key's place. When the new name's column **is** in the table (its key
+  in use), that key is kept and the old one is dropped: it's unused, since the table has no column
+  of the old name (otherwise the rename is refused, above).
 - **`removeComponent`** leaves the header and `sources` as they are (since 2026-11-06, item 24: a
   key is a name, which may still be a label; before, it took the key out). A header naming the
   removed component then names no component. The table is out of date only if this leaves a
@@ -1863,6 +1868,7 @@ given; "returns the plan with …" means a new plan.
 | `setComponentColor(plan, name, color)` | the plan with the component drawn in `color`. Throws if the color isn't text, or another component has it. |
 | `removeComponent(plan, name)` | the plan without the component, in the list or in any well. |
 | `countWellsWith(plan, name)` | how many wells hold the component at the start. |
+| `hasComponentNamed(plan, name)` | `true` if the plan has a component called `name` (exactly), else `false`. Never throws. |
 | `addToWells(plan, wells, name, volume)` | the plan with `volume` µL of the component added to each of `wells`, each a well on the deck (`deck.checkWell`), each once. Throws if the component isn't in the plan, the volume isn't above 0, or a well isn't on the deck. |
 | `emptyWells(plan, wells)` | the plan with `wells` empty at the start. Never throws for a well that's already empty. |
 | `setConstituents(plan, name, constituents)` | the plan with component `name` carrying `constituents` (section 3, "Constituents"), replacing what it carried; names trimmed as `checkConstituents` does. Throws if there's no such component, then as `checkConstituents` does, then if a constituent's family differs from its name's family in another component. |
@@ -3158,7 +3164,8 @@ between boxes are refused with section 5's messages; a pasted table whose stage 
   table draws Dye from wells, but there's no component called "Dye" in this plan.` (that key is now
   accepted); `readTransferTable`'s `columns` entries gaining `isComponent` and `labelWells`;
   `removeComponent` keeping the `sources` key; a pasted copy keeping a key for a component this
-  plan lacks.
+  plan lacks; a column's sources problems giving the column's index in `column` (the test listing
+  the Water, Media, Drug A and DMSO problems: columns 1 to 4).
 - **Label-named columns** (2026-11-06, item 24). On the same test plan, with Deep1 A4 (the Media and
   DMSO mix) labeled `Premix`, and Deep1 B1 (holding DMSO) and Deep1 B2 (empty) labeled `Media`:
   - **Reading:** a `Premix` header reads as a column with `isComponent` `false` and `labelWells`

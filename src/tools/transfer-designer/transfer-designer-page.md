@@ -1255,8 +1255,9 @@ frame scrolls; amounts are right-aligned, 13px.
   square) before its text; a header that's a well label (and no component) shows no swatch, and
   after its text `label · 2 wells` (11px gray; `1 well`); a header that's both shows the swatch and,
   after its text, `and a label · 2 wells` (item 24, 2026-11-06: the column draws from either kind of
-  well, so both are shown). A row's label some wells have shows, after its text, `3 wells` (11px
-  gray).
+  well, so both are shown). A header cell with a problem (e.g. a column to its left has the same
+  header) shows no `label · …` mark: only its red and its message. A row's label some wells have
+  shows, after its text, `3 wells` (11px gray).
 - **Problem cells** (`readTransferTable`'s problems, by `row` and `column`) are red (red tint
   background, red text, semibold), with the problem's message as their tooltip.
 - **Editing a cell**: a cell's box selects its text when focused. A change is read when the cell is
@@ -1313,7 +1314,8 @@ column that makes a stage, in column order:
   “Media”, and start the transfer table again.` (Cancel discards the paste, so it says so.) The
   page knows this case from `sourceWellsOf(plan, name)` being `[]` (only a component with no stock
   well and no well with its label: a label always has wells), and shows its own wording in place of
-  the logic's; every other problem on this step is shown as the logic gives it.
+  the logic's problem for that column (found by the problem's `column`, not by its text); every
+  other problem on this step is shown as the logic gives it.
 
 **Review step** (Andy, 2026-11-05: kept, as the last check before the plan changes; read-only). In
 gray: `4 stages, each on new tips, before stage 3, “Drugs”.` (`at the end of the run`, or `where its
