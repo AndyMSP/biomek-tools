@@ -1177,7 +1177,7 @@ gray: `4 stages, each on new tips, before stage 3, “Drugs”.` (`at the end of
 stages are now` for one in the plan), then ` Change a stage's pipetting or tips afterwards with its ✎
 in the Stages column.` Then a table from `transferTableStages` (with `renamedFrom`): `Stage` (as on
 Sources), `From` (its wells, `Res1 1, then Res1 2`), `Into` (`9 wells`), `Total` (µL, its
-transfers' volumes added, `1,710 µL`, as numbers are shown, section 13), `Aspirate · Dispense`
+transfers' volumes added, `1710 µL`, as numbers are shown, section 13), `Aspirate · Dispense`
 (each end's mode name, `modeOf`, `(other)` if none, with ` ⟳` after an end that mixes: `Slow ⟳ ·
 Medium`) and `Tips` (`4 × BC230`: probes × tip type). When a stage's largest amount is more than its tip
 type's value in `MIX_VOLUME_LIMITS` (`config/tip-types.js`), its Tips cell adds, in 11px gray, `up
@@ -1190,7 +1190,9 @@ stand-ins, are used; roadmap, "Technical debt"). Under the table, columns making
 **Add and Update.** **Add** adds it (`addTransferTable`, the seam's `beforeId`), closes the wizard
 and opens its first stage, as one undoable edit; message `Added a transfer table: 4 stages (Media,
 Drug A, Drug B, DMSO).` (ok). **Update** (`updateTransferTable`, with `renamedFrom`) likewise:
-`Updated the transfer table: 4 stages (Media, Drug A, Drug B, DMSO).` The new stages glow (section 7,
+`Updated the transfer table: 4 stages (Media, Drug A, Drug B, DMSO).`; when the update would
+change nothing (`updateTransferTable` gives back the same plan), nothing is recorded, the wizard
+closes, and the note `Nothing to update: the transfer table already matches.` shows. The new stages glow (section 7,
 "What changed glows"). If the logic refuses, its message is shown and the wizard stays open.
 
 **Remove** acts at once (`removeTransferTable`), as every Remove does: closes the wizard; message

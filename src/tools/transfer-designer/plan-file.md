@@ -315,9 +315,11 @@ Opening a file checks, in this order:
     So a file with both a stage ID that isn't the file's and a source with the wrong form reports
     the stage ID. A version 1 to 5 file opens with no randomizations.
 14. **Transfer tables** (version 11), in these steps, in this order:
-    1. **Just enough form to renumber**: each is an object whose `stages` is a list of objects
-       whose `stage` is text (else `setTransferTables`' own message for that form, after
-       `transfer tables: `).
+    1. **Just enough form to renumber**: each is an object with exactly `setTransferTables`'
+       properties (`id`, `table`, `sources`, `stages`), checked first, then its `stages` is a list
+       of objects whose `stage` is text (else `setTransferTables`' own message for that form, after
+       `transfer tables: `), so an entry with a wrong property and wrong stages gets the property
+       message.
     2. **Every stage ID named is one of the file's stages.**
     3. **Renumbering**: each `stage` is changed to the stage's new ID.
     4. **`setTransferTables`** (`transfer-designer.md`) checks and sets them all at once, after the
@@ -521,7 +523,9 @@ row of section 5 has at least one test.
   stage "9", …`; one whose stages share a tip group, or whose stage isn't named after its
   component, is refused with `transfer tables: ` and `setTransferTables`' message; one whose stage
   is also a randomization's is refused with `transfer tables: Stage "N" belongs to transfer table
-  1 and randomization 1.` (renumbered IDs).
+  1 and randomization 1.` (renumbered IDs). Check 14.1's order: an entry with an extra property
+  and stages that aren't a list gets the exact-properties message; one with only bad stages gets
+  the stages message.
 - **Existing tests whose version numbers change** (the specification changed, not the tests'
   purpose): `PLAN_FILE_VERSION` is `11`; the tests saving and checking "version 10" (an empty plan;
   three filler wells; an opened version 3 or 4 file saved again; a run randomization with shared

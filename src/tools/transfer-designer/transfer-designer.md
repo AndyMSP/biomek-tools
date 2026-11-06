@@ -1000,7 +1000,11 @@ has no problems (`at` = its first stage):
    consecutive, starting where its first stage now is, as a randomization's run orders its stages
    (section 3, "Randomizations", step 6): only its own stages move; each keeps its ID, name,
    settings and transfers; the operation list is rebuilt as a move rebuilds it, or left as it is if
-   its blocks already follow the new order.
+   its blocks already follow the new order. A randomization whose `beforeId` was its old first
+   stage (one without stages sitting above it, or one that has run just above it, whose `beforeId`
+   is the stage just after its last) now has its new first stage (section 3, "Where randomizations
+   sit afterwards"); this holds wherever a transfer table's or a randomization's stages are
+   reordered.
 6. **Tips**: every one of its stages starts a tip group of its own, its tip change loading the tip
    type and probes it had (a kept stage) or was given (a new one); one that is now the plan's first
    stage has the `START` tips set to those, and a tip change keyed by it is taken out. The stage
@@ -1195,7 +1199,8 @@ transfer table, with an `inTransferTable` place is refused). The move:
   at the bottom, just after the column of the transfer table's last stage that isn't moved).
   Columns that make no stage, and blank-header columns, stay where they are among the others; the
   label column never moves;
-- sets `stages` in the new order; nothing else changes. So the transfer table **doesn't go out of
+- sets `stages` in the new order, and a randomization whose `beforeId` was the table's old first
+  stage (sitting above it, run or not) now has its new first stage; nothing else changes. So the transfer table **doesn't go out of
   date**: its columns draw on what their wells hold just before it, which a reorder doesn't change.
 A move giving the same order gives back the same plan. Outside its table, a transfer table's stage
 can't be moved (as below).
@@ -1668,17 +1673,17 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `removeSources`: `indexes` isn't a list of the list's indexes, each once | `The sources to remove must be a list of indexes from 0 to 3, each once, but got [1, 1].` (one source: `… a list of index 0, at most once, but got [1].`; none: `There are no sources to remove, but got [0].`) |
 | `setRandomizations`: `beforeId` isn't a place it can sit | `Randomization 2: ` and `addRandomization`'s message |
 
-| `moveItems`, `copyOf`, `copyItems`: `items` isn't a non-empty list | `The things to move must be a list of stages, tip groups or randomizations, but got 5.` (`copy` for `copyOf` and `copyItems`) |
-| an item isn't `{ kind, id }` with a known kind | `Item 2 must be { kind, id }, with kind "stage", "tipGroup" or "randomization", but got "box".` |
+| `moveItems`, `copyOf`, `copyItems`: `items` isn't a non-empty list | `The things to move must be a list of stages, tip groups, randomizations or transfer tables, but got 5.` (transfer tables named since 2026-11-05) (`copy` for `copyOf` and `copyItems`) |
+| an item isn't `{ kind, id }` with a known kind | `Item 2 must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", but got "box".` |
 | an item's stage isn't in the plan | `There's no stage "9" in the plan.` |
 | a `tipGroup` item's ID isn't the first stage of an ordinary tip group | `Stage "3" doesn't start a tip group, so it can't name one.` |
 | an item's randomization isn't in the plan | `There's no randomization "r9" in the plan.` (as above) |
-| a place isn't one of the two forms, or its index is outside the column | `The place must be between boxes (index 0 to 4) or inside a tip group, but got {"kind":"between","index":9}.` (the column's real largest index; the place as JSON) |
+| a place isn't one of the three forms, or its index is outside the column | `The place must be between boxes (index 0 to 4), inside a tip group or inside a transfer table, but got {"kind":"between","index":9}.` (the column's real largest index; the place as JSON) |
 | `inTipGroup`'s position is outside its tip group | `Box 2 has positions 0 to 3, but got 7.` |
 | `inTipGroup` names a randomization's box | `Box 3 is a randomization: nothing can be put inside it.` |
 | a tip group or randomization put inside a tip group | `A tip group or randomization can't go inside another tip group: put it between tip groups.` |
 | `moveItems`: a randomization's stage without its randomization | `Stage 5, “Drug A”, belongs to a randomization, which moves its stages with it: move the whole randomization, or copy the stage.` |
-| `pasteItems`: not copied items (not an object, wrong `format`, `items` not a non-empty list) | `Can't paste: this isn't stages, tip groups or randomizations copied from the transfer designer.` |
+| `pasteItems`: not copied items (not an object, wrong `format`, `items` not a non-empty list) | `Can't paste: this isn't stages, tip groups, randomizations or transfer tables copied from the transfer designer.` (The per-item form message, `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.`, stays as it is.) |
 | `pasteItems`: a newer version | `Can't paste: these were copied by a newer version of the tools (version 3).` |
 | `pasteItems`: an entry isn't in its form | `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.` |
 | `pasteItems`: a value refused by the edit that would make it | `Can't paste: item 2: ` and that edit's message, e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1. Its wells are A1 to H12.` (Messages pass through unchanged, so the operation list's stage rule names the new stage's ID and an operation number, which the user never sees; roadmap, "Technical debt", "Some messages use internal terms".) |
@@ -2456,6 +2461,11 @@ B1 to B3 `A low`; one stage, `New stage`. Volumes and counts in these tests are 
   (its column cleared), and after one that reorders its columns so another stage is first;
   `setTransferTables` refuses a not-run randomization sitting before a stage of it other than its
   first, with its message.
+- **A run randomization above a reorder** (from the code review, 2026-11-05): a randomization run
+  just above a transfer table (its `beforeId` the table's first stage) has the new first stage as
+  its `beforeId` after moving the table's second stage to position 0, and after an update whose
+  first column is cleared and a new column added before the second; `setRandomizations` accepts the
+  result.
 - **`transferTableStages` with an `id`:** gives the same with `at` `null` as with its first stage.
 - **Out of date:** `false` right after adding and after updating; `true` after relabeling one of its
   wells, emptying a stock at Start, adding a stage before it that draws from Res1 1 (changing the
