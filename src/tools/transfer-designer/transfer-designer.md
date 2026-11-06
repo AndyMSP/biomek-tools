@@ -653,6 +653,8 @@ Checked in this order, throwing the first problem's message and pasting none:
    twice, and every component name a well holds among `components`' names; `wellLabels` an object
    (not a list) whose values are objects of text; `labwareLabels` an object (not a list) whose
    values are text.
+   Then `colors`, checked as stock tables check it (section 5, "`readStockTable`, `addStocks`:
+   `colors` isn't a list of text"), with the same message.
 2. **Start must be empty** (Andy, 2026-11-06): if any well holds something at the start (the plan's
    starting contents aren't `[]`), it's refused, so a deck is never pasted on top by accident (a
    deck pasted into its own plan would double every well). Components and labels already in the
@@ -1963,7 +1965,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | Stock table: no color left for a row | `There's no free color for Feed. Two components can't share one, and all 30 are taken. Take some rows out, or remove a component.` (30 is `colors.length`) |
 | `addStocks`: no stocks | `The stock table has no stocks to add. Give it at least one row under the header.` |
 | `copyDeck`: `point` isn't non-blank text | `The point a deck is copied at must be non-blank text, like "At the end, after all stages", but got 5.` (`describeValue`) |
-| `copyDeck`: a problem other than an overfill at the point | `The deck can't be copied at this point: a transfer before it draws more than a well can give. Fix the overdraws first, or copy from an earlier point.` |
+| `copyDeck`: a problem other than an overfill at the point | `The deck can't be copied at this point: a transfer before it draws more than a well can give, into its dead volume or beyond what it holds. Fix those transfers first, or copy from an earlier point.` |
 | `pasteDeck`: not a copied deck (not an object, another `format`, other properties, or a `version` that isn't a whole number from 1) | `This isn't a deck copied from the transfer designer.` |
 | `pasteDeck`: a whole-number `version` above `COPIED_DECK_VERSION` (checked before the properties) | `This deck was copied by a newer version of the transfer designer (copied deck version 2; this one reads up to 1). Use the newer version.` |
 | `pasteDeck`: a part not in its form (checked in property order; the part's value by `describeValue`) | `This copied deck is damaged: its point must be non-blank text, but got 5.` / `… its components must be a list of { name, color, constituents, osmolality }, but got 5.` (also for an entry that isn't, describing the entry) / `… its components list “Media” twice.` / `… its wells must be a list of { labware, well, components }, but got 5.` (also for an entry) / `This copied deck is damaged: it lists Plate1 A1 twice.` / `This copied deck is damaged: Plate1 A1 holds “Drug A”, which isn't among its components.` / `… its well labels must be an object like { Plate1: { A1: "Cond 1" } }, but got a list.` / `… its labware labels must be an object like { Plate1: "Assay plate" }, but got a list.` |

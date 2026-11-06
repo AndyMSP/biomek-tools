@@ -393,7 +393,8 @@ buttons, not one that changes with the context, and no Ctrl+V).
   `Copied the deck (at the end, after all stages): 3 wells, 2 components. Press Paste deck in
   another plan to start it from these wells.` (the caption with its first letter made lowercase;
   `1 well`, `1 component`) (ok). Not an edit. It works while moving wells too, since it changes
-  nothing. Nothing goes on the system clipboard.
+  nothing. With a randomization's card open, it copies the point the deck shows then, named by
+  the timeline's caption, like any other point. Nothing goes on the system clipboard.
 - **`Paste deck`** (tooltip `Start this plan from the deck last copied with Copy deck`) reads the
   deck copy (local storage first, then the page's memory). With none: `Nothing to paste yet: press
   Copy deck in a plan first.` (note). Otherwise it records `pasteDeck(plan, copy,

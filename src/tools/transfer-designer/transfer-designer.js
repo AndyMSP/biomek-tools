@@ -1294,7 +1294,7 @@ function checkNoDrawProblem(snapshot) {
     .some((problem) => DRAW_PROBLEM_KINDS.includes(problem.kind));
   if (hasDrawProblem) {
     throw new Error(
-      "The deck can't be copied at this point: a transfer before it draws more than a well can give. Fix the overdraws first, or copy from an earlier point.",
+      "The deck can't be copied at this point: a transfer before it draws more than a well can give, into its dead volume or beyond what it holds. Fix those transfers first, or copy from an earlier point.",
     );
   }
 }

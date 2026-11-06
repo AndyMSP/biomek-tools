@@ -8394,7 +8394,7 @@ describe("transfer-designer", () => {
   }
   const NOT_A_COPIED_DECK = "This isn't a deck copied from the transfer designer.";
   const CANT_COPY_DECK =
-    "The deck can't be copied at this point: a transfer before it draws more than a well can give. Fix the overdraws first, or copy from an earlier point.";
+    "The deck can't be copied at this point: a transfer before it draws more than a well can give, into its dead volume or beyond what it holds. Fix those transfers first, or copy from an earlier point.";
 
   // Media's and Drug A's details as the test plan has them. New objects each time.
   function deckMedia() {
@@ -8539,14 +8539,17 @@ describe("transfer-designer", () => {
     const overdrawn = deckPlanWithDraw(DECK_TROUGH_START, { labware: DEEP, well: "B1" });
     assert.ok(problemKinds(atEnd(overdrawn)).includes("overdraw"));
     assert.throws(() => copyDeck(overdrawn, atEnd(overdrawn), AT_END), { message: CANT_COPY_DECK });
-    // More than the trough's usable volume, less than it holds.
-    const usable = DECK_TROUGH_START - DECK_MEDIA_DRAW - deadVolumeOf(RESERVOIR);
-    const intoDead = deckPlanWithDraw(usable + deadVolumeOf(RESERVOIR) / 2, {
-      labware: DEEP,
-      well: "B1",
-    });
-    assert.deepEqual(problemKinds(atEnd(intoDead)), ["dead-volume"]);
-    assert.throws(() => copyDeck(intoDead, atEnd(intoDead), AT_END), { message: CANT_COPY_DECK });
+    // More than the trough's usable volume, less than it holds: only possible with a dead volume
+    // (config/labware-types.js), so skipped if the trough's is ever 0.
+    if (deadVolumeOf(RESERVOIR) > 0) {
+      const usable = DECK_TROUGH_START - DECK_MEDIA_DRAW - deadVolumeOf(RESERVOIR);
+      const intoDead = deckPlanWithDraw(usable + deadVolumeOf(RESERVOIR) / 2, {
+        labware: DEEP,
+        well: "B1",
+      });
+      assert.deepEqual(problemKinds(atEnd(intoDead)), ["dead-volume"]);
+      assert.throws(() => copyDeck(intoDead, atEnd(intoDead), AT_END), { message: CANT_COPY_DECK });
+    }
     // Copying before the problem works.
     assert.equal(copyDeck(overdrawn, atStart(overdrawn), "At Start").wells.length, 2);
   });

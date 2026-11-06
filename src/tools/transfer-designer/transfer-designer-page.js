@@ -162,7 +162,8 @@ const COPIED_ITEMS_KEY = "biomek-tools transfer designer: copied items";
 // of the designer, as copied items are (section 6, "Copying the deck").
 const COPIED_DECK_KEY = "biomek-tools transfer designer: copied deck";
 
-// Paste deck's tooltip when it can be pressed (section 6, "Copying the deck").
+// Paste deck's tooltip when it can be pressed (section 6, "Copying the deck"). Written only here:
+// refreshMovingWellsControls sets it on every redraw, so the HTML doesn't repeat it.
 const PASTE_DECK_TOOLTIP = "Start this plan from the deck last copied with Copy deck";
 
 // While dragging in the Stages column: the drop line looks for seams while the pointer is within
