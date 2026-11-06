@@ -6,7 +6,8 @@ Date: 2026-11-01
 Accepted (Andy, 2026-11-01: decided while shaping a preview on 2026-10-31 and 2026-11-01, and
 accepted by merging #123). Amended by ADR 0018 (2026-11-05, Proposed): a randomization's stages
 were each "on new tips"; its sources can now share tips, so its stages may share tips with each
-other, never with stages outside it.
+other, never with stages outside it. Amended 2026-11-05 (settings on its stages; "Amendment",
+below), proposed in the hands-off workflow until Andy merges it.
 
 ## Context
 v0.2.0's item 9, the randomizer link, asks that a randomized plate reach the Biomek without anyone
@@ -44,3 +45,25 @@ card always describes them (Andy, 2026-11-01).
   could gain per-source settings, or a way to turn a randomization into ordinary stages could come
   back (it was tried in the preview and dropped for now).
 - The randomizer's one-plate mode and its page are unchanged.
+
+## Amendment (2026-11-05): a randomization's settings live on its stages
+**Context.** A randomization's card held its own pipetting settings and tips, and every run copied
+them onto its stages, so they were held in two places (they couldn't disagree only because its
+stages were locked). Transfer tables (ADR 0019) keep settings only on their stages, edited with each
+stage's ✎. Andy (2026-11-05) asked for the tools to work consistently, with one source of truth.
+
+**Decision.** Once a randomization has run, its stages and their tip changes are its settings and
+tips, and nothing else holds them: its stages and tip groups can be edited with their ✎ like any
+others (names, transfers and places stay its own), and a run keeps each stage's settings and each
+source group's tips, a new stage starting from its neighbor's. Its card still **shows** them and can
+**set them all at once** (Andy, 2026-11-05: "otherwise you'd need to set dozens of settings
+manually"): each value its stages share shows as itself, and where they differ it shows **Mixed**,
+like the All sources replicates box; a value chosen there goes to every stage on Update, and Mixed
+leaves each as it is. It's a view and a way to set them, not a copy. Before its first run there are
+no stages, so the randomization keeps what its first run will give, and only then.
+
+**Consequences.** The randomization's own `settings`, `tipType` and `probes` are `null` once it has
+stages, so plan files go to format version 12 and copied items to version 5, older ones opening with
+a run randomization's three dropped (its stages already hold what every run gave them). Changing a
+stage's settings never makes a randomization out of date. A new randomization starts from the stage
+before it, as a new stage does.

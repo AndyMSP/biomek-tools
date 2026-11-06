@@ -410,6 +410,20 @@ Last updated: 2026-11-05
   tests and REPL of the transfer designer's transfer tables, plan files version 11 (versions 1 to
   10 still opening) and the page's table button, wizard and box; the specifications and the build
   each reviewed by a separate agent, and checked in headless Chrome. Still to check by Andy.
+- **A randomization's settings on its stages is specified** (Draft, 2026-11-05, in the hands-off
+  workflow; item 20, below; ADR 0012 amended): once run, a randomization's `settings`, `tipType`
+  and `probes` are `null` and its stages and tip changes hold them; its stages and tip groups get
+  their ✎; a run keeps each stage's settings and each group's tips, new ones starting from their
+  neighbors'; the card shows the stages' values or `Mixed` and sets them all at once on Update
+  (`runRandomization`'s `forAll`); a new randomization starts from the stage before it
+  (`transfer-designer.md`, `plan-file.md` with format version 12, copied items version 5,
+  `transfer-designer-page.md`, glossary "Randomization"). Built on #138's branch: merge #138 first.
+  **Built (#139, 2026-11-05)**: code, tests and REPL of the run, `forAll`,
+  `randomizationStageValues` and the protections in the logic, plan files version 12 (versions 1
+  to 11 still opening), copied items version 5, and the page's card (Mixed), ✎ on its stages and
+  tip groups, and its heading opening and closing its box with a ✎ for the card; the
+  specifications and the build each reviewed by a separate agent, and checked in headless Chrome.
+  Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -870,6 +884,31 @@ added on 2026-10-28 (Andy).
     blank and 0 cells add nothing; a column draws only from a well holding nothing but that
     component at Start; a label in two rows is refused.
 
+20. **A randomization's pipetting settings edited on its stages** (Andy, 2026-11-05, moved from
+    "Later" the same day, so the tools work consistently with one source of truth): a
+    randomization's card keeps its own Each transfer settings (modes, mixing, tip type, probes)
+    and copies them onto the stages it makes, so they're held in two places. Transfer tables
+    (item 19) keep settings only on their stages. Decided so far (Andy, 2026-11-05): the same
+    rule here, a topic of its own after transfer tables (its branch built on theirs, so plan
+    files go to the next version), **tried in a preview first**.
+    - **Settings live on its stages** (Andy, 2026-11-05): each of its stages gets its ✎ (name
+      locked, no Remove) and each of its tip groups its tip ✎; Update keeps each source's stage
+      settings and tips.
+    - **The card still sets them all at once** (Andy, 2026-11-05, "otherwise you'd need to set
+      dozens of settings manually"), like the All sources replicates box: once it has run, its
+      Mode, Mix and Tips show its stages' shared value, or **Mixed** where they differ; a value
+      chosen there goes to every stage on Update, and Mixed leaves each as it is. It's a view and
+      a way to set them, not a second copy. Before the first run there are no stages, so the card
+      holds what's chosen until the run makes them.
+    - **Its box opens and closes like a transfer table's** (Andy, 2026-11-05): clicking its heading
+      shows or hides its stages (▸/▾, Enter or Space too), a ✎ on the heading opens its card, and
+      whether each box is open is remembered while the page is open (not saved, not an undo step);
+      the box also opens when its card or one of its stages opens; dragging, copying and the menu
+      by the heading as before. One not set up yet has no ▸/▾ (nothing to show), and its heading
+      opens its card like its ✎ (Claude's choice).
+    **Specified** (Draft, 2026-11-05, in the hands-off workflow) and **Built (#139, 2026-11-05)**:
+    see "Where things stand".
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
@@ -898,7 +937,12 @@ final Biomek runs, so they test the files as they will be:
 13. Transfer tables (item 19), added on 2026-11-05: preview, specifications, then
     build. It writes ordinary stages and transfers, so it changes neither the Biomek files' format
     nor what a given plan writes, and needn't come before the final runs.
-14. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+14. A randomization's settings edited on its stages (item 20), added on 2026-11-05: preview,
+    specifications, then build. Changes plan files. The same plan still writes the same Biomek
+    files, but what a user ends up sending can change: a new randomization starts from the stage
+    before it, new stages start from their neighbors, and Update no longer re-applies the card's
+    values to every stage. So it needs Andy's sign-off, by merging, before the final runs.
+15. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
@@ -906,13 +950,6 @@ final Biomek runs, so they test the files as they will be:
   layout. Needs the random layout to stop depending on the card's source order (random-pool
   numbers sources by place), so it's a bigger change; reordering sources in the card reshuffles
   today.
-- **A randomization's pipetting settings edited on its stages** (Andy, 2026-11-05, from the
-  transfer table work): a randomization's card keeps its own Each transfer settings (modes,
-  mixing, tip type, probes) and copies them onto the stages it makes, so they're held in two
-  places, though the stages can't be changed to disagree. Transfer tables keep settings only on
-  their stages, edited with each stage's ✎ (item 19). Doing it the same way here means one rule
-  everywhere: the card drops its settings, each stage and tip change has its ✎, and a run keeps
-  each source's stage settings. Shaped in a preview first; changes plan files (a new version).
 - **Moving a randomization's source with the keyboard** (2026-11-05, from the shared-tips topic):
   sources are reordered only by dragging. The join and split buttons work from the keyboard, so
   sharing can be set without a mouse, and order can be changed by removing a source and picking it
@@ -991,14 +1028,13 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   share. Osmolality reads only the shares' own properties (#134); doing it properly means the same
   in `concentrations`, specification first, with a failing test, on its own branch. Nobody is
   likely to name a component that way, so it waits.
-- **A randomization's stages are protected by the page only** (2026-11-01): the transfer
-  designer's ordinary edits (adding or removing a transfer, changing a stage's settings, removing
-  a stage or its tip change) don't refuse an owned stage; the page simply doesn't offer them, and
-  `setRandomizations` checks a plan file's randomizations. Likewise, `addStage` or `addMixStep`
-  without `takeTips`, called directly just after a randomization, would put a stage on its tips (the
-  page never does: there are no seams inside its boxes). Doing it properly: each of those edits
-  refuses an owned stage, or gives a new stage next to one its own tips, with a message pointing to
-  the randomization's card.
+- **A randomization can't be set all at once while it has problems** (2026-11-05, item 20): its
+  card's Mode, Mix and Tips are applied only by Update, which is disabled while it has problems, so
+  then its stages can be changed only one at a time, with their ✎. Doing it properly: apply the
+  card's values without a run (a `forAll` edit of its own), if Andy finds he needs it.
+- *Resolved 2026-11-05 (item 20):* "A randomization's stages are protected by the page only": the
+  logic now refuses every edit of a randomization's stages that the page doesn't offer
+  (`transfer-designer.md`, "It owns its stages"), as for transfer tables.
 - **Tests that hard-code config values** (2026-10-30): CLAUDE.md now says tests work out their
   numbers from `config/`, but tests written before then may name config values (e.g. default
   volumes, tip types, the experiment name's 40 characters if it moves to `config/`). The mixing

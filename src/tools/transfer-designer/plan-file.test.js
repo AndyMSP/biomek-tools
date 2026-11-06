@@ -50,6 +50,7 @@ import {
   isTransferTableOutOfDate,
 } from "./transfer-designer.js";
 import { DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
+import { DEFAULT_MIX, MIX_STEP_MODE } from "../../../config/mixing.js";
 import { PLAN_FILE_FORMAT, PLAN_FILE_VERSION, planToText, planFromText } from "./plan-file.js";
 import { CONCENTRATION_UNITS, CELL_DENSITY_UNIT } from "../../../config/concentration-units.js";
 import { familyOf, unitsOf } from "../../shared/concentrations/concentrations.js";
@@ -152,28 +153,47 @@ function mixingPlan() {
   return setStageMix(plan, "3", "destination", { share: 50, times: 2, speed: 100 });
 }
 
-// `file` (a parsed version 11 plan file) as a version 10 file, as saved on 2026-11-05 before
-// transfer tables: no transferTables. A new object; `file` isn't changed.
+// `file` (a parsed version 12 plan file) as a version 11 file, as saved on 2026-11-05 before a
+// randomization's settings lived only on its stages: each run randomization holds the settings of
+// its first stage and the tips that stage starts with, as every run then gave every stage. A new
+// object; `file` isn't changed.
+function asVersion11(file) {
+  const randomizations = file.randomizations.map((randomization) => {
+    if (randomization.stages.length === 0) {
+      return randomization;
+    }
+    const first = randomization.stages[0].stage;
+    const key = file.stages[0].id === first ? "start" : first;
+    const { tipType, probes } = file.tipChanges[key];
+    const { settings } = file.stages.find((stage) => stage.id === first);
+    return { ...randomization, settings, tipType, probes };
+  });
+  return { ...file, version: 11, randomizations };
+}
+
+// `file` (a parsed version 12 plan file) as a version 10 file, as saved on 2026-11-05 before
+// transfer tables: as version 11 (asVersion11), with no transferTables. A new object; `file` isn't
+// changed.
 function asVersion10(file) {
-  const { transferTables, ...rest } = file;
+  const { transferTables, ...rest } = asVersion11(file);
   return { ...rest, version: 10 };
 }
 
-// `file` (a parsed version 11 plan file) as a version 9 file, as saved on 2026-11-05 before sources
+// `file` (a parsed version 12 plan file) as a version 9 file, as saved on 2026-11-05 before sources
 // sharing tips: each randomization source without sharesTips, and no transferTables. A new object;
 // `file` isn't changed.
 function asVersion9(file) {
   return {
     ...asVersion10(file),
     version: 9,
-    randomizations: file.randomizations.map((randomization) => ({
+    randomizations: asVersion10(file).randomizations.map((randomization) => ({
       ...randomization,
       sources: randomization.sources.map(({ sharesTips, ...rest }) => rest),
     })),
   };
 }
 
-// `file` (a parsed version 11 plan file) as a version 8 file, as saved from 2026-11-02 to 2026-11-05,
+// `file` (a parsed version 12 plan file) as a version 8 file, as saved from 2026-11-02 to 2026-11-05,
 // before osmolality: each component is { name, color, constituents }, and each randomization source
 // without sharesTips. A new object; `file` isn't changed.
 function asVersion8(file) {
@@ -317,7 +337,7 @@ describe("plan-file", () => {
 
   test("the format and version are the specification's", () => {
     assert.equal(PLAN_FILE_FORMAT, "biomek-tools transfer plan");
-    assert.equal(PLAN_FILE_VERSION, 11);
+    assert.equal(PLAN_FILE_VERSION, 12);
   });
 
   test("planToText writes each tip change with its probes, and each stage's settings without any", () => {
@@ -445,10 +465,10 @@ describe("plan-file", () => {
     assert.deepEqual(Object.keys(opened.tipChanges).sort(), ["3", START].sort());
   });
 
-  test('an empty plan, saved and opened, has the same contents, and is written as version 11, with "wellLabels": {}, "randomizations": [] and "transferTables": []', () => {
+  test('an empty plan, saved and opened, has the same contents, and is written as version 12, with "wellLabels": {}, "randomizations": [] and "transferTables": []', () => {
     const plan = emptyPlan().plan;
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 11);
+    assert.equal(JSON.parse(text).version, 12);
     assert.deepEqual(JSON.parse(text).wellLabels, {});
     assert.deepEqual(JSON.parse(text).randomizations, []);
     assert.deepEqual(JSON.parse(text).transferTables, []);
@@ -763,16 +783,20 @@ describe("plan-file", () => {
     return runRandomization(plan, "r1");
   }
 
-  // `file` (a parsed plan file) with its version set to `version`, and, for a version before 11,
-  // without transferTables (plan-file.md, "Version 11").
+  // `file` (a parsed plan file) with its version set to `version`: for a version before 12, its run
+  // randomizations holding settings and tips (plan-file.md, "Version 12"), and for a version before
+  // 11, without transferTables (plan-file.md, "Version 11").
   function asVersion(file, version) {
-    return version < 11 ? { ...asVersion10(file), version } : { ...file, version };
+    if (version < 11) {
+      return { ...asVersion10(file), version };
+    }
+    return version < 12 ? asVersion11(file) : { ...file, version };
   }
 
-  test("a randomization with three filler wells, run, is saved (now as version 11) and opens as the same plan", () => {
+  test("a randomization with three filler wells, run, is saved (now as version 12) and opens as the same plan", () => {
     const plan = severalFillersPlan();
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 11);
+    assert.equal(JSON.parse(text).version, 12);
     const opened = planFromText(text);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
     assert.deepEqual(opened.randomizations[0].sources, plan.randomizations[0].sources);
@@ -841,11 +865,11 @@ describe("plan-file", () => {
     return tipGroups(plan).map((group) => group.stages);
   }
 
-  test("a run randomization with sources sharing tips is saved as version 11, sharesTips last, and opens as the same plan", () => {
+  test("a run randomization with sources sharing tips is saved as version 12, sharesTips last, and opens as the same plan", () => {
     const plan = sharingPlan();
     const text = planToText(plan, SAVED_BY);
     const file = JSON.parse(text);
-    assert.equal(file.version, 11);
+    assert.equal(file.version, 12);
     for (const entry of file.randomizations[0].sources) {
       assert.deepEqual(Object.keys(entry), ["labware", "well", "replicates", "filler", "sharesTips"]);
     }
@@ -1064,9 +1088,9 @@ describe("plan-file", () => {
     assertRefused(file, /the experiment name: /);
   });
 
-  test("saving an opened version 4 file writes version 11, with no well labels", () => {
+  test("saving an opened version 4 file writes version 12, with no well labels", () => {
     const file = JSON.parse(planToText(open(version4File()), SAVED_BY));
-    assert.equal(file.version, 11);
+    assert.equal(file.version, 12);
     assert.deepEqual(file.wellLabels, {});
   });
 
@@ -1106,7 +1130,7 @@ describe("plan-file", () => {
     assertRefused(file, /stage 2: The stage name is blank\./);
   });
 
-  test("saving an opened version 3 file writes version 11, with the stages' mixes null", () => {
+  test("saving an opened version 3 file writes version 12, with the stages' mixes null", () => {
     const file = JSON.parse(planToText(open(version3File()), SAVED_BY));
     assert.equal(file.version, PLAN_FILE_VERSION);
     for (const stage of file.stages) {
@@ -1275,8 +1299,8 @@ describe("plan-file", () => {
 
   test("a version above this one was saved by a newer version of the tools", () => {
     assertRefused(
-      { ...fullFile(), version: 12 },
-      "it was saved by a newer version of the tools (plan format 12). Open it with that version or a later one.",
+      { ...fullFile(), version: 13 },
+      "it was saved by a newer version of the tools (plan format 13). Open it with that version or a later one.",
     );
   });
 
@@ -1610,11 +1634,11 @@ describe("plan-file", () => {
     return { plan, id: added.id };
   }
 
-  test("a plan with a transfer table is saved as version 11, transferTables last, and opens as the same plan", () => {
+  test("a plan with a transfer table is saved as version 12, transferTables last, and opens as the same plan", () => {
     const { plan, id } = transferTablePlan();
     const text = planToText(plan, SAVED_BY);
     const file = JSON.parse(text);
-    assert.equal(file.version, 11);
+    assert.equal(file.version, 12);
     assert.equal(Object.keys(file).at(-1), "transferTables");
     assert.deepEqual(Object.keys(file.transferTables[0]), ["id", "table", "sources", "stages"]);
     const opened = planFromText(text);
@@ -1706,6 +1730,149 @@ describe("plan-file", () => {
     assertRefused(
       stagesOnly,
       'transfer tables: Transfer table 1: its stages must be a non-empty list of objects with exactly "component" and "stage".',
+    );
+  });
+
+  // --- Version 12: a randomization's settings on its stages ---
+
+  // A plan with one stage and, after it, a randomization of DEEP A1 and A2 (2 replicates each, on
+  // new tips) filling PLATE's B2 to B5, run; then A1's stage set to aspirate with another mode than
+  // the default, on the last tip type: { plan, a1, a2 }. Last, so its stages keep their IDs.
+  function settingsOnStagesPlan() {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Drug A", "#4e79a7");
+    plan = addComponent(plan, "Drug B", "#e15759");
+    plan = addToWells(plan, [{ labware: DEEP, well: "A1" }], "Drug A", 500);
+    plan = addToWells(plan, [{ labware: DEEP, well: "A2" }], "Drug B", 500);
+    plan = addRandomization(plan, null, { seed: 37, volume: 10 }).plan;
+    plan = setRandomization(plan, "r1", {
+      sources: ["A1", "A2"].map((well) => ({ labware: DEEP, well, replicates: 2, filler: false, sharesTips: false })),
+      fill: ["B2", "B3", "B4", "B5"].map((well) => ({ labware: PLATE, well })),
+    });
+    plan = runRandomization(plan, "r1");
+    const [a1, a2] = plan.randomizations[0].stages.map((owned) => owned.stage);
+    plan = changeStageSettings(plan, a1, otherSourceSettings());
+    plan = setTipType(plan, a1, TIP_TYPES.at(-1));
+    return { plan, a1, a2 };
+  }
+
+  // The default settings with the source using the first source mode that isn't the default.
+  function otherSourceSettings() {
+    const otherMode = modesFor("source").find((mode) => mode.name !== DEFAULT_PIPETTING_MODE);
+    return { ...defaultSettings(), ...modeSettings("source", otherMode.name) };
+  }
+
+  // The message setRandomization gives for first-run `changes` (settings, tipType and probes) on a
+  // new randomization: the message step 4a gives after "randomizations: Randomization N: ".
+  function firstRunMessage(changes) {
+    const { plan, id } = addRandomization(emptyPlan().plan, null);
+    try {
+      setRandomization(plan, id, changes);
+    } catch (error) {
+      return error.message;
+    }
+    throw new Error(`setRandomization accepted ${JSON.stringify(changes)}`);
+  }
+
+  // A parsed version 12 file of settingsOnStagesPlan as a version 11 file whose run randomization
+  // holds `values` (any of settings, tipType and probes) over the first stage's.
+  function version11With(values) {
+    const file = asVersion11(JSON.parse(planToText(settingsOnStagesPlan().plan, SAVED_BY)));
+    Object.assign(file.randomizations[0], values);
+    return file;
+  }
+
+  test("a run randomization is saved as version 12 with null settings, tip type and probes, and opens as the same plan", () => {
+    const { plan, a1, a2 } = settingsOnStagesPlan();
+    const file = JSON.parse(planToText(plan, SAVED_BY));
+    assert.equal(file.version, 12);
+    const [randomization] = file.randomizations;
+    assert.deepEqual([randomization.settings, randomization.tipType, randomization.probes], [null, null, null]);
+    const opened = planFromText(planToText(plan, SAVED_BY));
+    assert.deepEqual(contentsOf(opened), contentsOf(plan));
+    assert.deepEqual(opened.stageList.get(a1).settings, otherSourceSettings());
+    assert.equal(tipGroups(opened).find((group) => group.stages.includes(a1)).tipType, TIP_TYPES.at(-1));
+    assert.deepEqual(opened.stageList.get(a2).settings, plan.stageList.get(a2).settings);
+    assert.equal(isRandomizationOutOfDate(opened, "r1"), false);
+    // One that hasn't run is written with its three, and opens with them.
+    const notRun = addRandomization(plan, null).plan;
+    const notRunFile = JSON.parse(planToText(notRun, SAVED_BY));
+    assert.deepEqual(notRunFile.randomizations[1].settings, notRun.randomizations[1].settings);
+    assert.deepEqual(planFromText(planToText(notRun, SAVED_BY)).randomizations[1], notRun.randomizations[1]);
+  });
+
+  test("a version 11 file's run randomization opens with its settings dropped and its stages' own kept; a mix step's settings are still refused", () => {
+    const fast = { ...defaultSettings(), ...modeSettings("source", modesFor("source").at(-1).name) };
+    const file = version11With({ settings: fast, tipType: TIP_TYPES[0], probes: [1, 2] });
+    file.stages = file.stages.map((stage) => ({ ...stage, settings: defaultSettings() }));
+    const opened = open(file);
+    const [randomization] = opened.randomizations;
+    assert.deepEqual([randomization.settings, randomization.tipType, randomization.probes], [null, null, null]);
+    for (const { stage } of randomization.stages) {
+      assert.deepEqual(opened.stageList.get(stage).settings, defaultSettings());
+    }
+    assert.equal(isRandomizationOutOfDate(opened, "r1"), false);
+    const mixStep = {
+      sourceTechnique: MIX_STEP_MODE.technique,
+      sourceLiquidType: MIX_STEP_MODE.liquidType,
+      destinationTechnique: MIX_STEP_MODE.technique,
+      destinationLiquidType: MIX_STEP_MODE.liquidType,
+      sourceMix: null,
+      destinationMix: { ...DEFAULT_MIX },
+    };
+    assertRefused(
+      version11With({ settings: mixStep }),
+      `randomizations: Randomization 1: ${firstRunMessage({ settings: mixStep })}`,
+    );
+    // A version 6 file's run randomization opens the same way.
+    const version6 = {
+      ...asVersion(JSON.parse(planToText(settingsOnStagesPlan().plan, SAVED_BY)), 6),
+    };
+    version6.components = version6.components.map(({ name, color }) => ({ name, color }));
+    version6.randomizations = version6.randomizations.map((entry) => ({
+      ...entry,
+      sources: entry.sources.map(({ sharesTips, ...rest }) => rest),
+    }));
+    const opened6 = open(version6);
+    assert.equal(opened6.randomizations[0].settings, null);
+    assert.deepEqual(opened6.stageList.get(opened6.randomizations[0].stages[0].stage).settings, otherSourceSettings());
+  });
+
+  test("step 4a's checks: each invalid first-run value of a version 11 run randomization is refused with its message", () => {
+    const cases = [
+      { settings: { ...defaultSettings(), speed: 3 } },
+      { settings: { ...defaultSettings(), sourceMix: { ...DEFAULT_MIX } } },
+      { tipType: "BC50" },
+      { probes: [9] },
+    ];
+    for (const values of cases) {
+      assertRefused(version11With(values), `randomizations: Randomization 1: ${firstRunMessage(values)}`);
+    }
+    assertRefused(version11With({ probes: [2, 1] }), "randomizations: Randomization 1: its probes must be listed smallest first.");
+    // Missing, or not an object: the form message.
+    const formMessage =
+      'randomizations: Randomization 1 must be an object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".';
+    const lacking = version11With({});
+    delete lacking.randomizations[0].tipType;
+    assertRefused(lacking, formMessage);
+    assertRefused({ ...version11With({}), randomizations: [5] }, formMessage);
+    // A version 10 file's valid settings are dropped the same way.
+    const version10 = asVersion(JSON.parse(planToText(settingsOnStagesPlan().plan, SAVED_BY)), 10);
+    assert.notEqual(version10.randomizations[0].settings, null);
+    assert.equal(open(version10).randomizations[0].settings, null);
+  });
+
+  test("a version 12 file breaking the rule is refused with setRandomizations' message", () => {
+    const file = JSON.parse(planToText(settingsOnStagesPlan().plan, SAVED_BY));
+    assertRefused(
+      { ...file, randomizations: [{ ...file.randomizations[0], settings: defaultSettings() }] },
+      'randomizations: Randomization 1 has stages, so its "settings", "tipType" and "probes" must be null: its stages hold them.',
+    );
+    const notRun = JSON.parse(planToText(addRandomization(settingsOnStagesPlan().plan, null).plan, SAVED_BY));
+    notRun.randomizations[1].tipType = null;
+    assertRefused(
+      notRun,
+      `randomizations: Randomization 2 hasn't run, so it needs "settings", "tipType" and "probes" for its first run.`,
     );
   });
 });

@@ -96,6 +96,8 @@ import {
   isRandomizationOutOfDate,
   sourceName,
   runRandomization,
+  randomizationStageValues,
+  stageNamed,
   removeRandomization,
   canRemoveRandomization,
   setConstituents,
@@ -181,6 +183,9 @@ const STAGES_BOTTOM_MARGIN = 12;
 
 // The Span-8 has probes 1 to 8 (a tip change's box offers each; section 10).
 const PROBE_COUNT = 8;
+
+// What a menu shows where a run randomization's stages differ (section 7).
+const MIXED = "Mixed";
 
 // How many color swatches a component's box shows at first (section 8).
 const FIRST_COLORS_SHOWN = 10;
@@ -361,12 +366,14 @@ const tablesOutOfDateByPlan = new WeakMap();
 // The transfer table wizard while it's open (section 7, "The wizard"), or null: see openNewWizard.
 let wizard = null;
 
-// The IDs of the transfer tables whose box is open, showing its stages (section 7, "Its box"):
-// remembered while the page is open, not saved in plan files and not an undo step.
-const openTables = new Set();
+// The IDs of the transfer tables and randomizations whose box is open, showing its stages (section
+// 7, "Its box"): remembered while the page is open, not saved in plan files and not an undo step.
+// Their IDs never clash ("t1", "r1").
+const openBoxes = new Set();
 
-// The open entry when refresh last looked, so a transfer table's box opens once when one of its
-// stages becomes the open entry, and can then be closed by its heading.
+// The open entry when refresh last looked, so a transfer table's or randomization's box opens once
+// when one of its stages (or a randomization's card) becomes the open entry, and can then be closed
+// by its heading.
 let openEntrySeen = null;
 
 // The page's elements that transfer-designer.html gives an id, looked up once.
@@ -647,7 +654,7 @@ function refresh() {
     history = history.replacePresent({ plan, open: place });
   }
   syncCard(plan, currentOpen());
-  openTableOfNewlyOpenStage(plan);
+  openBoxOfNewlyOpenEntry(plan);
   // Undo or redo can take the picked component away (e.g. undoing a rename): then, as when a picked
   // component is removed, the first component is picked, or the eraser if there's none.
   if (brush.pick.kind === "component" && !hasComponent(plan, brush.pick.name)) {
@@ -672,17 +679,23 @@ function refresh() {
   requestAnimationFrame(fitStagesColumn);
 }
 
-// Opens the box of the transfer table whose stage has just become the open entry (section 7, "Its
-// box"), once: after that, its heading can close it while the stage stays open.
-function openTableOfNewlyOpenStage(plan) {
+// Opens the box of the transfer table or randomization whose stage, or the randomization whose
+// card, has just become the open entry (section 7, "Its box"), once: after that, its heading can
+// close it while the stage stays open.
+function openBoxOfNewlyOpenEntry(plan) {
   const open = currentOpen();
   if (open === openEntrySeen) {
     return;
   }
   openEntrySeen = open;
-  const owner = isStage(plan, open) ? transferTableOf(plan, open) : null;
+  let owner = null;
+  if (isStage(plan, open)) {
+    owner = transferTableOf(plan, open) ?? randomizationOf(plan, open);
+  } else if (isRandomization(plan, open)) {
+    owner = open;
+  }
   if (owner !== null) {
-    openTables.add(owner);
+    openBoxes.add(owner);
   }
 }
 
@@ -819,7 +832,7 @@ function showReplacedPlan(plan, open) {
   bringOutUsedLabware(plan);
   pickFirstComponent(plan);
   // Another plan's transfer tables may reuse the IDs, so every box starts closed (section 7).
-  openTables.clear();
+  openBoxes.clear();
   recordEdit(plan, open);
 }
 
@@ -2006,9 +2019,9 @@ function createEntry(plan, key, open, problems) {
     row.append(mark);
   }
   // An open stage's ✎ sits just after its name, so its editing box floats under the heading
-  // (section 10); the count stays at the right. A randomization's stage has none (section 7); a
-  // transfer table's has one, for its pipetting.
-  if (isOpen && isStage(plan, key) && randomizationOf(plan, key) === null) {
+  // (section 10); the count stays at the right. A randomization's or transfer table's stage has one
+  // too, for its pipetting (section 7).
+  if (isOpen && isStage(plan, key)) {
     row.classList.add("with-pencil");
     row.append(createPencil("stage", key, `Edit stage ${stageOrder(plan).indexOf(key) + 1}`));
   }
@@ -2104,10 +2117,11 @@ function createEntryBody(plan, key) {
     // A mix step's card has no settings line: the ⟳ after its name says what it is (section 7).
     body.append(...createMixedWellSection(plan, key));
   } else if (randomizationOf(plan, key) !== null) {
-    // A randomization's stage is changed only through its card (section 7).
+    // A randomization's stage: its pipetting through its ✎, its sources and wells only in its card
+    // (section 7).
     body.append(
       createSettingsLine(plan, key),
-      createElement("p", "Part of a randomization: change it in its card.", "note"),
+      createElement("p", "Part of a randomization: its sources and wells change in its card.", "note"),
       ...createTransferSection(plan, key),
     );
   } else if (transferTableOf(plan, key) !== null) {
@@ -2471,8 +2485,8 @@ function seamPlace(blocks, index) {
 // A tip group's box: its heading (the tip change) and its stages, each between two seams. Boxes
 // alternate light blue and light sand. `block` is { group, nextGroup }, `nextGroup` being the box
 // after it, if any. A randomization's or transfer table's own tip group (`owned`: "randomization"
-// or "transferTable", otherwise false) has no seams inside it; a randomization's has no ✎ on its
-// heading either, since its stages change only through the randomization's card (section 7).
+// or "transferTable", otherwise false) has no seams inside it; its heading's ✎ edits its tips, as
+// any tip group's does (section 7).
 // `boxIndex` is its box's index in the column (columnBoxes), for an ordinary tip group: its seams
 // are the places inside it where moved or pasted stages can go.
 function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, drawnKeys, owned, boxIndex) {
@@ -2480,7 +2494,7 @@ function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, dr
   box.classList.toggle("sand", index % 2 === 1);
   box.classList.toggle("owned", owned !== false);
   box.dataset.group = group.key;
-  const heading = createTipGroupHeading(plan, group, owned === "randomization");
+  const heading = createTipGroupHeading(group);
   // An ordinary tip group is an item, selected and dragged by its heading; a randomization's own
   // tip group's heading counts as its first stage's row, since that tip group may hold several
   // stages when sources share tips (section 7, "Moving and copying").
@@ -2564,10 +2578,9 @@ function applyBoxGlow(box, group, drawnKeys) {
 }
 
 // A tip group's heading: a tip icon, "New tips · BC230 · 2 tips" and the ✎ that opens the tip
-// change's box (none on a randomization's own tip group, `owned`). The count is how many tips the
-// tip change loads: one per probe it loads, chosen in its box, and every stage in the group uses
-// all of them (section 7).
-function createTipGroupHeading(plan, group, owned) {
+// change's box. The count is how many tips the tip change loads: one per probe it loads, chosen in
+// its box, and every stage in the group uses all of them (section 7).
+function createTipGroupHeading(group) {
   const tips = countOf(group.probes.length, "tip");
   const heading = createElement("div", "", "tip-group-heading");
   heading.title = `Loads ${tips}. Every stage until the next new tips uses all of them.`;
@@ -2575,9 +2588,7 @@ function createTipGroupHeading(plan, group, owned) {
     createElement("span", "", "tip-icon"),
     createElement("span", `New tips · ${group.tipType} · ${tips}`),
   );
-  if (!owned) {
-    heading.append(createPencil("tip", group.key, "Edit these new tips"));
-  }
+  heading.append(createPencil("tip", group.key, "Edit these new tips"));
   return heading;
 }
 
@@ -2779,14 +2790,14 @@ function createRandomizationBox(plan, block, groupIndex, open, problems, drawnKe
   box.dataset.item = itemKey({ kind: "randomization", id: randomization.id });
   applyGlow(box, `randomization:${randomization.id}`, drawnKeys, { whenNew: false });
   const outOfDate = outOfDateRandomizations(plan).has(randomization.id);
-  const heading = createRandomizationHeading(randomization, cardOpen, outOfDate);
+  const expanded = cardOpen || openBoxes.has(randomization.id);
+  const heading = createRandomizationHeading(randomization, hasRun ? expanded : null, outOfDate);
   heading.dataset.itemHandle = box.dataset.item;
-  box.append(heading);
+  box.append(createBoxHead(heading, createRandomizationPencil(randomization.id, cardOpen)));
   if (cardOpen) {
     card.element = createRandomizationCard(plan, randomization);
     box.append(card.element);
   }
-  const expanded = cardOpen || groups.some(({ group }) => group.stages.includes(open));
   groups.forEach((groupBlock, place) => {
     if (expanded) {
       box.append(createTipGroupBox(plan, groupBlock, groupIndex + place, open, problems, drawnKeys, "randomization"));
@@ -2807,39 +2818,48 @@ function noteDrawnWithoutGlow(group, drawnKeys) {
   }
 }
 
-// A randomization's heading (section 7): a button the box's width, with the dice icon, "Randomize"
-// (not set up yet) or "Randomized" (run), and, at the right, "not set up yet", "68 stages · seed
-// 360310", or, when `outOfDate`, "needs update" in red. Clicking it opens its card, or closes it if
-// open.
-function createRandomizationHeading(randomization, cardOpen, outOfDate) {
+// A randomization's heading (section 7), as a transfer table's (createBoxHeading): ▸ or ▾ once it
+// has run (`expanded`; null for one not set up yet, which has nothing to show), the dice icon,
+// "Randomize" (not set up yet) or "Randomized" (run), and, at the right, "not set up yet", "68
+// stages · seed 360310", or, when `outOfDate`, "needs update" in red. Clicking it opens or closes
+// its box, or, not set up yet, its card (clickItem).
+function createRandomizationHeading(randomization, expanded, outOfDate) {
   const hasRun = randomization.stages.length > 0;
-  const heading = createElement("button", "", "randomization-heading");
-  heading.type = "button";
-  heading.setAttribute("aria-expanded", String(cardOpen));
-  let title = hasRun ? "Open to change it" : "Not set up yet: open it to finish setting it up.";
-  let status = hasRun
-    ? `${countOf(randomization.stages.length, "stage")} · seed ${randomization.seed}`
-    : "not set up yet";
-  if (outOfDate) {
-    title = "The plan changed since this last ran: open it and press Update.";
-    status = "needs update";
-  }
-  heading.title = title;
-  const statusElement = createElement("span", status, "randomization-status");
-  statusElement.classList.toggle("needs-update", outOfDate);
-  heading.append(
-    createDiceIcon(),
-    createElement("span", hasRun ? "Randomized" : "Randomize", "randomization-title"),
-    statusElement,
-  );
-  heading.addEventListener("click", () => {
-    if (cardOpen) {
-      closeRandomizationCard();
-    } else {
-      openEntry(randomization.id);
-    }
+  return createBoxHeading({
+    className: "randomization-own-heading",
+    expanded,
+    icon: createDiceIcon(),
+    title: hasRun ? "Randomized" : "Randomize",
+    status: hasRun ? `${countOf(randomization.stages.length, "stage")} · seed ${randomization.seed}` : "not set up yet",
+    outOfDate,
+    outOfDateTooltip: "The plan changed since this last ran: press ✎, then Update.",
+    tooltip: hasRun ? null : "Not set up yet: open it to finish setting it up.",
   });
-  return heading;
+}
+
+// The ✎ on a randomization's heading (section 7): opens its card, or closes it if open (`cardOpen`)
+// as Close does, and selects the randomization alone.
+function createRandomizationPencil(id, cardOpen) {
+  return createBoxPencil({
+    tooltip: "Change its sources, wells and settings, or remove it",
+    accessibleName: "Edit randomization",
+    pressed: cardOpen,
+    onClick: () => {
+      const item = { kind: "randomization", id };
+      if (cardOpen) {
+        if (closeRandomizationCard()) {
+          pickedSet = [item];
+        }
+      } else {
+        openEntry(id);
+        if (card !== null && card.id === id) {
+          pickedSet = [item];
+        }
+      }
+      selectionAnchor = item;
+      markSelection(selectedItems());
+    },
+  });
 }
 
 // The dice icon (section 7): two dice, one tilted behind showing three, one in front showing five,
@@ -2899,25 +2919,30 @@ function addRandomizationAt(beforeId) {
   scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(added.id)}"]`));
 }
 
-// The card's state for randomization `id`, opening: its draft (draftOf), the modes it had (for the
-// settings grid), and `returnTo`, the entry to open again when it closes.
+// The card's state for randomization `id`, opening: its draft (draftOf), the modes, Mix and tips it
+// showed (for the settings grid, and, once it has run, for what Update sets on every stage), and
+// `returnTo`, the entry to open again when it closes.
 function newCard(plan, id, returnTo) {
   const randomization = randomizationAt(plan, id);
-  const draft = draftOf(randomization, cardTabs.get(id) ?? "sources");
+  const draft = draftOf(plan, randomization, cardTabs.get(id) ?? "sources");
   const original = {
     aspirate: draft.aspirate,
     dispense: draft.dispense,
     aspirateMix: draft.aspirateMix,
     dispenseMix: draft.dispenseMix,
+    tipType: draft.tipType,
+    probes: draft.probes,
   };
   return { id, draft, original, returnTo, element: null };
 }
 
 // A randomization as its card shows it, for editing: its sources with their replicates as typed
-// text and whether each shares the tips before it, its wells to fill, its seed and volume as text, each end's mode and Mix (as a stage's box
-// holds them), its tip type and probes, and the open tab.
-function draftOf(randomization, tab) {
-  const { settings } = randomization;
+// text and whether each shares the tips before it, its wells to fill, its seed and volume as text,
+// each end's mode and Mix (as a stage's box holds them), its tip type and probes, and the open tab.
+// Before it has run, the settings and tips are its own (its first run's); once it has, they're its
+// stages' shared values (randomizationStageValues), each null where they differ (Mixed; section 7).
+function draftOf(plan, randomization, tab) {
+  const values = randomizationStageValues(plan, randomization.id);
   return {
     tab,
     sources: randomization.sources.map(({ labware, well, replicates, filler, sharesTips }) => ({
@@ -2930,26 +2955,27 @@ function draftOf(randomization, tab) {
     fill: randomization.fill.map(({ labware, well }) => ({ labware, well })),
     seedText: randomization.seed === null ? "" : String(randomization.seed),
     volumeText: randomization.volume === null ? "" : String(randomization.volume),
-    aspirate: modeOf("source", settings),
-    dispense: modeOf("destination", settings),
-    aspirateMix: settings.sourceMix !== null,
-    dispenseMix: settings.destinationMix !== null,
-    tipType: randomization.tipType,
-    probes: [...randomization.probes],
+    aspirate: values.sourceMode,
+    dispense: values.destinationMode,
+    aspirateMix: values.sourceMixes,
+    dispenseMix: values.destinationMixes,
+    tipType: values.tipType,
+    probes: values.probeCount === null ? null : probesFor(values.probeCount),
   };
 }
 
+// True if randomization `id` has run: it has stages, which hold its settings and tips (section 7).
+function hasRunRandomization(plan, id) {
+  return randomizationAt(plan, id).stages.length > 0;
+}
+
 // The changes the open card's draft makes, as setRandomization takes them (section 7): values the
-// logic would refuse as null, e.g. a replicate count of "four" or a seed of 0, and the settings
-// built end by end from the draft's modes and Mix, as a stage's box builds them.
+// logic would refuse as null, e.g. a replicate count of "four" or a seed of 0, and, before its first
+// run, the settings built end by end from the draft's modes and Mix, as a stage's box builds them,
+// and its tips. Once it has run, its settings and tips are its stages' (forAllOfCard sets them).
 function draftChanges(plan) {
   const { draft } = card;
-  const stored = randomizationAt(plan, card.id).settings;
-  const settings = { ...stored };
-  for (const boxEnd of BOX_ENDS) {
-    Object.assign(settings, stageEndSettings(stored, boxEnd, draft[boxEnd.mode], draft[boxEnd.mix]));
-  }
-  return {
+  const changes = {
     sources: draft.sources.map(({ labware, well, replicatesText, filler, sharesTips }) => ({
       labware,
       well,
@@ -2960,10 +2986,43 @@ function draftChanges(plan) {
     fill: draft.fill.map(({ labware, well }) => ({ labware, well })),
     seed: seedValue(draft.seedText),
     volume: cardVolumeValue(draft.volumeText),
-    settings,
-    tipType: draft.tipType,
-    probes: [...draft.probes],
   };
+  if (hasRunRandomization(plan, card.id)) {
+    return changes;
+  }
+  const stored = randomizationAt(plan, card.id).settings;
+  const settings = { ...stored };
+  for (const boxEnd of BOX_ENDS) {
+    Object.assign(settings, stageEndSettings(stored, boxEnd, draft[boxEnd.mode], draft[boxEnd.mix]));
+  }
+  return { ...changes, settings, tipType: draft.tipType, probes: [...draft.probes] };
+}
+
+// What Update sets on every stage of the open card's run randomization (section 7), as
+// runRandomization's forAll: only the values chosen that differ from what the card showed when it
+// opened (a mode, a Mix, the tip type, the probes), so Mixed values and untouched shared ones leave
+// each stage as it is, e.g. { destinationMode: "Fast" }. {} before its first run.
+function forAllOfCard(plan) {
+  const { draft, original } = card;
+  const forAll = {};
+  if (!hasRunRandomization(plan, card.id)) {
+    return forAll;
+  }
+  for (const boxEnd of BOX_ENDS) {
+    if (draft[boxEnd.mode] !== null && draft[boxEnd.mode] !== original[boxEnd.mode]) {
+      forAll[`${boxEnd.end}Mode`] = draft[boxEnd.mode];
+    }
+    if (draft[boxEnd.mix] !== null && draft[boxEnd.mix] !== original[boxEnd.mix]) {
+      forAll[`${boxEnd.end}Mixes`] = draft[boxEnd.mix];
+    }
+  }
+  if (draft.tipType !== null && draft.tipType !== original.tipType) {
+    forAll.tipType = draft.tipType;
+  }
+  if (draft.probes !== null && draft.probes.length !== original.probes?.length) {
+    forAll.probes = [...draft.probes];
+  }
+  return forAll;
 }
 
 // A replicate count as typed, as a number if it's a whole number of at least 1, otherwise null,
@@ -2992,8 +3051,12 @@ function draftPlan(plan) {
   return setRandomization(plan, card.id, draftChanges(plan));
 }
 
-// True if the open card's draft changes the randomization.
+// True if the open card's draft changes the randomization, or, once it has run, chooses a value
+// for every stage (forAllOfCard; section 7).
 function isCardDirty(plan) {
+  if (Object.keys(forAllOfCard(plan)).length > 0) {
+    return true;
+  }
   try {
     return draftPlan(plan) !== plan;
   } catch {
@@ -3067,6 +3130,7 @@ function randomizeTooltip(plan) {
 // The open randomization's card (section 7): the tabs and the open tab's contents, Each transfer,
 // Seed, and the footer with its first problem and buttons. Escape in it closes it, as on the page.
 function createRandomizationCard(plan, randomization) {
+  const hasRun = randomization.stages.length > 0;
   const element = createElement("div", "", "randomization-card");
   element.setAttribute("role", "group");
   element.setAttribute("aria-label", "Randomization");
@@ -3085,9 +3149,12 @@ function createRandomizationCard(plan, randomization) {
       draft: card.draft,
       original: card.original,
       redraw: redrawCard,
-      mixTooltip: (boxEnd) => mixTooltipText(boxEnd, randomization.settings[`${boxEnd.end}Mix`], ""),
+      mixTooltip: (boxEnd) =>
+        mixTooltipText(boxEnd, randomization.settings?.[`${boxEnd.end}Mix`] ?? null, ""),
+      mixed: hasRun ? { mixBlockedReason: (boxEnd) => mixUnderMixedBlocked(plan, randomization, boxEnd.end) } : null,
     }),
-    createCardTipsField(),
+    createCardTipsField(hasRun),
+    createCardTipsNote(hasRun),
     createCardVolumeField(),
     createCardSeedField(),
     createCardFooter(plan, randomization),
@@ -3483,37 +3550,81 @@ function createFillTab(plan) {
 
 // The card's Tips (section 7): a menu of tip types and one of probe counts ("1 probe" … "8
 // probes", choosing probesFor), for each set of new tips its stages load: one before each box of
-// sources, so before each stage when no source shares tips.
-function createCardTipsField() {
-  const { draft } = card;
+// sources, so before each stage when no source shares tips. Once it has run (`hasRun`), a menu whose
+// tip groups differed when the card opened starts with "Mixed", chosen, which leaves each as it is.
+function createCardTipsField(hasRun) {
+  const { draft, original } = card;
   const field = createElement("div", "", "card-field");
   field.append(createElement("span", "Tips", "field-name"));
   const menus = createElement("div", "", "card-tips");
   const tipMenu = document.createElement("select");
   tipMenu.dataset.focusKey = "tip-type";
   tipMenu.setAttribute("aria-label", "Tip type");
+  if (hasRun && original.tipType === null) {
+    tipMenu.append(new Option(MIXED, ""));
+  }
   for (const tipType of TIP_TYPES) {
     tipMenu.append(new Option(tipType, tipType));
   }
-  tipMenu.value = draft.tipType;
+  tipMenu.value = draft.tipType ?? "";
   tipMenu.addEventListener("change", () => {
-    draft.tipType = tipMenu.value;
+    draft.tipType = tipMenu.value === "" ? null : tipMenu.value;
     redrawCard();
   });
   const probeMenu = document.createElement("select");
   probeMenu.dataset.focusKey = "probes";
   probeMenu.setAttribute("aria-label", "Probes");
+  if (hasRun && original.probes === null) {
+    probeMenu.append(new Option(MIXED, ""));
+  }
   for (let count = 1; count <= PROBE_COUNT; count++) {
     probeMenu.append(new Option(countOf(count, "probe"), String(count)));
   }
-  probeMenu.value = String(draft.probes.length);
+  probeMenu.value = draft.probes === null ? "" : String(draft.probes.length);
   probeMenu.addEventListener("change", () => {
-    draft.probes = probesFor(Number(probeMenu.value));
+    draft.probes = probeMenu.value === "" ? null : probesFor(Number(probeMenu.value));
     redrawCard();
   });
   menus.append(tipMenu, createElement("span", "on", "muted"), probeMenu);
   field.append(menus);
   return field;
+}
+
+// The note under the card's Tips (section 7): before its first run, that every stage starts with
+// these; once it has run (`hasRun`), that a value chosen goes to every stage on Update, starting
+// with what Mixed means when any value shows Mixed.
+function createCardTipsNote(hasRun) {
+  if (!hasRun) {
+    return createElement("p", "Every stage starts with these. Change one stage with its ✎ once it has run.", "note card-tips-note");
+  }
+  const { draft } = card;
+  const showsMixed = [draft.aspirate, draft.dispense, draft.aspirateMix, draft.dispenseMix, draft.tipType, draft.probes].some(
+    (value) => value === null,
+  );
+  const mixed = showsMixed ? "Mixed: its stages differ, and stay as they are unless you choose a value. " : "";
+  return createElement(
+    "p",
+    `${mixed}A value chosen here goes to every stage on Update; a stage's ✎ changes just that one.`,
+    "note card-tips-note",
+  );
+}
+
+// Why the Mix checkbox of `end` can't be used while the card's mode there shows Mixed (section 7),
+// or null if every stage of the run randomization can mix there: the first stage, in stage order,
+// whose mode there can't mix or isn't one of the modes, e.g. 'Stage 5, “A1”, uses Non-Contact,
+// which can't mix: choose a mode, or change that stage first.'
+function mixUnderMixedBlocked(plan, randomization, end) {
+  for (const { stage } of randomization.stages) {
+    const mode = modeOf(end, plan.stageList.get(stage).settings);
+    const named = stageNamed(plan, stage);
+    if (mode === null) {
+      return `${named}, doesn't use one of the modes: choose a mode, or change that stage first.`;
+    }
+    if (!canMix(end, mode)) {
+      return `${named}, uses ${mode}, which can't mix: choose a mode, or change that stage first.`;
+    }
+  }
+  return null;
 }
 
 // The card's Volume (section 7): a text box like Seed's, 80px wide, then "µL"; what's typed
@@ -3610,7 +3721,7 @@ function createCardFooter(plan, randomization) {
   run.disabled = problem !== null;
   if (problem === null) {
     run.title = hasRun
-      ? "Applies these settings to its stages. The same seed and source order keep the same wells; " +
+      ? "Applies these changes to its stages. The same seed and source order keep the same wells; " +
         "a new seed or a new order shuffles again."
       : randomizeTooltip(plan);
   }
@@ -3630,8 +3741,9 @@ function redrawCard() {
   const old = card.element;
   const active = document.activeElement;
   const focusKey = old.contains(active) ? active.dataset.focusKey : undefined;
+  // Only a text box has a caret: a checkbox's selectionStart is null.
   const caret =
-    focusKey !== undefined && active instanceof HTMLInputElement
+    focusKey !== undefined && active instanceof HTMLInputElement && active.selectionStart !== null
       ? [active.selectionStart, active.selectionEnd]
       : null;
   card.element = createRandomizationCard(plan, randomizationAt(plan, card.id));
@@ -3714,12 +3826,14 @@ function refuseCardClose() {
 }
 
 // Randomize or Update (section 7): saves the draft and runs it, as one undoable edit, closes the
-// card and opens its first stage.
+// card and opens its first stage. Update also sets the values chosen on the card on every stage
+// (forAllOfCard); if the logic refuses, its message shows and nothing changes.
 function runOpenRandomization() {
   const plan = currentPlan();
   const id = card.id;
   const hadRun = randomizationAt(plan, id).stages.length > 0;
-  const run = tryLogic(() => runRandomization(draftPlan(plan), id));
+  const forAll = forAllOfCard(plan);
+  const run = tryLogic(() => runRandomization(draftPlan(plan), id, forAll));
   if (run === false) {
     return;
   }
@@ -3872,7 +3986,7 @@ function isOwnedStage(plan, id) {
 const TABLE_PROBLEMS_LISTED = 6;
 
 // A transfer table's box in the Stages column (section 7): its heading and ✎, then, while the box
-// is open (openTables), its stages' tip group boxes (one stage each). Between its tip group boxes (and above the first, below the last) are the places where its
+// is open (openBoxes), its stages' tip group boxes (one stage each). Between its tip group boxes (and above the first, below the last) are the places where its
 // own stages can be dropped while one is dragged, never shown otherwise. `block` is from
 // columnBlocks; `groupIndex` the place of its first tip group among all of them, for their colors;
 // `boxIndex` its box's index in the column.
@@ -3881,12 +3995,10 @@ function createTransferTableBox(plan, block, groupIndex, open, problems, drawnKe
   const box = createElement("div", "", "transfer-table");
   box.dataset.item = itemKey({ kind: "transferTable", id: transferTable.id });
   applyGlow(box, box.dataset.item, drawnKeys, { whenNew: false });
-  const expanded = openTables.has(transferTable.id);
+  const expanded = openBoxes.has(transferTable.id);
   const heading = createTransferTableHeading(transferTable, outOfDateTransferTables(plan).has(transferTable.id), expanded);
   heading.dataset.itemHandle = box.dataset.item;
-  const head = createElement("div", "", "transfer-table-head");
-  head.append(heading, createTablePencil(transferTable.id));
-  box.append(head);
+  box.append(createBoxHead(heading, createTablePencil(transferTable.id)));
   if (!expanded) {
     groups.forEach(({ group }) => noteDrawnWithoutGlow(group, drawnKeys));
     return box;
@@ -3916,59 +4028,92 @@ function createTableDropPlace(id, boxIndex, position) {
 // table icon, "Transfer table", and, at the right, "4 stages", or, when `outOfDate`, "needs update"
 // in red. Clicking it opens or closes the box (clickItem, as for any item's handle).
 function createTransferTableHeading(transferTable, outOfDate, expanded) {
-  const heading = createElement("button", "", "randomization-heading transfer-table-heading");
+  return createBoxHeading({
+    className: "transfer-table-heading",
+    expanded,
+    icon: createTableIcon(),
+    title: "Transfer table",
+    status: countOf(transferTable.stages.length, "stage"),
+    outOfDate,
+    outOfDateTooltip: "The plan changed since this was made: press ✎, then Update.",
+  });
+}
+
+// The heading of a transfer table's or randomization's box (section 7): a button, the class
+// "randomization-heading" and `className`, holding ▸ (closed) or ▾ (open) as `expanded` says (none
+// for null, a box with nothing to show), `icon`, `title` (semibold) and, at the right, `status`, or,
+// when `outOfDate`, "needs update" in red. Its tooltip is `outOfDateTooltip` when out of date, else
+// `tooltip` if given, else "Show its stages" / "Hide its stages". `aria-expanded` says whether it's
+// open. Clicks on it are handled as an item's handle's (clickItem).
+function createBoxHeading({ className, expanded, icon, title, status, outOfDate, outOfDateTooltip, tooltip = null }) {
+  const heading = createElement("button", "", `randomization-heading ${className}`);
   heading.type = "button";
-  heading.setAttribute("aria-expanded", String(expanded));
-  heading.title = outOfDate
-    ? "The plan changed since this was made: press ✎, then Update."
-    : expanded
-      ? "Hide its stages"
-      : "Show its stages";
-  const status = createElement(
-    "span",
-    outOfDate ? "needs update" : countOf(transferTable.stages.length, "stage"),
-    "randomization-status",
-  );
-  status.classList.toggle("needs-update", outOfDate);
-  heading.append(
-    createElement("span", expanded ? "▾" : "▸", "folder-mark"),
-    createTableIcon(),
-    createElement("span", "Transfer table", "randomization-title"),
-    status,
-  );
+  if (expanded !== null) {
+    heading.setAttribute("aria-expanded", String(expanded));
+  }
+  heading.title = outOfDate ? outOfDateTooltip : (tooltip ?? (expanded ? "Hide its stages" : "Show its stages"));
+  const statusElement = createElement("span", outOfDate ? "needs update" : status, "randomization-status");
+  statusElement.classList.toggle("needs-update", outOfDate);
+  if (expanded !== null) {
+    heading.append(createElement("span", expanded ? "▾" : "▸", "folder-mark"));
+  }
+  heading.append(icon, createElement("span", title, "randomization-title"), statusElement);
   return heading;
+}
+
+// The row of a transfer table's or randomization's heading: the heading button, then its ✎.
+function createBoxHead(heading, pencil) {
+  const head = createElement("div", "", "box-head");
+  head.append(heading, pencil);
+  return head;
+}
+
+// The ✎ on a transfer table's or randomization's heading (section 7), with `tooltip`,
+// `accessibleName` and `onClick`; `pressed` says whether what it opens is open. It sits outside the
+// heading button, so a press on it starts no drag.
+function createBoxPencil({ tooltip, accessibleName, onClick, pressed = false }) {
+  const pencil = createElement("button", "✎", "edit-button box-edit");
+  pencil.type = "button";
+  pencil.title = tooltip;
+  pencil.setAttribute("aria-label", accessibleName);
+  pencil.setAttribute("aria-pressed", String(pressed));
+  pencil.addEventListener("click", onClick);
+  return pencil;
 }
 
 // The ✎ on a transfer table's heading (section 7): opens its wizard at Review and selects it.
 function createTablePencil(id) {
-  const pencil = createElement("button", "✎", "edit-button table-edit");
-  pencil.type = "button";
-  pencil.title = "Change the table, its sources or remove it";
-  pencil.setAttribute("aria-label", "Edit transfer table");
-  pencil.addEventListener("click", () => {
-    if (closeRandomizationCard()) {
-      pickedSet = [{ kind: "transferTable", id }];
-      markSelection(selectedItems());
-      openWizardFor(id);
-    }
+  return createBoxPencil({
+    tooltip: "Change the table, its sources or remove it",
+    accessibleName: "Edit transfer table",
+    onClick: () => {
+      if (closeRandomizationCard()) {
+        pickedSet = [{ kind: "transferTable", id }];
+        markSelection(selectedItems());
+        openWizardFor(id);
+      }
+    },
   });
-  return pencil;
 }
 
-// Opens transfer table `id`'s box if it's closed, or closes it (section 7, "Its box"); it only
-// shows or hides, so it's no edit.
-function toggleTableBox(id) {
-  if (openTables.has(id)) {
-    openTables.delete(id);
+// Opens the box of `item` (a transfer table or a run randomization) if it's closed, or closes it
+// (section 7, "Its box"); it only shows or hides, so it's no edit. Closing a randomization's box
+// while its card is open closes the card as Close does; if that's refused, the box stays open.
+function toggleBox(item) {
+  if (openBoxes.has(item.id)) {
+    if (item.kind === "randomization" && card !== null && card.id === item.id && !closeRandomizationCard()) {
+      return;
+    }
+    openBoxes.delete(item.id);
   } else {
-    openTables.add(id);
+    openBoxes.add(item.id);
   }
-  const key = itemKey({ kind: "transferTable", id });
+  const key = itemKey(item);
   const hadFocus = document.activeElement?.dataset?.itemHandle === key;
   refreshStages();
   // The column is drawn afresh, so a heading toggled from the keyboard gets its focus back.
   if (hadFocus) {
-    elements.stagesList.querySelector(`.transfer-table-heading[data-item-handle="${cssEscape(key)}"]`)?.focus();
+    elements.stagesList.querySelector(`.randomization-heading[data-item-handle="${cssEscape(key)}"]`)?.focus();
   }
 }
 
@@ -5091,7 +5236,8 @@ function runBetween(plan, anchor, item) {
 
 // Acts on a click on an item's handle (section 7, "Selecting"): Ctrl (Cmd) adds or takes it out of
 // the selection, Shift selects a run, opening nothing; a plain click opens a stage (forgetting the
-// picked set), selects a tip group alone, or opens or closes a randomization's card, selecting it.
+// picked set), selects a tip group alone, opens or closes a transfer table's or run randomization's
+// box, or opens or closes the card of a randomization not set up yet, selecting it.
 function clickItem(item, keys) {
   if (keys.withCtrl || keys.withShift) {
     pickedSet = selectionAfterClick(item, keys);
@@ -5110,7 +5256,14 @@ function clickItem(item, keys) {
     // Its heading opens or closes its box, and selects it alone (section 7); its ✎ opens the wizard.
     if (closeRandomizationCard()) {
       pickedSet = [item];
-      toggleTableBox(item.id);
+      toggleBox(item);
+    }
+  } else if (hasRunRandomization(currentPlan(), item.id)) {
+    // A run randomization's heading opens or closes its box, and selects it alone (section 7); its
+    // ✎ opens its card.
+    if (card === null || card.id === item.id || closeRandomizationCard()) {
+      pickedSet = [item];
+      toggleBox(item);
     }
   } else if (card !== null && card.id === item.id) {
     if (closeRandomizationCard()) {
@@ -6831,12 +6984,13 @@ function clickInColumnWhileMoving(event) {
   if (target.closest("button.entry-row, .toggle-list") !== null) {
     return;
   }
-  // A transfer table's heading only shows or hides its stages, so it works while moving wells.
-  const tableHeading = target.closest(".transfer-table-heading");
-  if (tableHeading !== null) {
+  // A transfer table's or run randomization's heading only shows or hides its stages, so it works
+  // while moving wells.
+  const boxHeading = target.closest(".randomization-heading[aria-expanded]");
+  if (boxHeading !== null) {
     event.preventDefault();
     event.stopPropagation();
-    toggleTableBox(itemFromKey(tableHeading.dataset.itemHandle).id);
+    toggleBox(itemFromKey(boxHeading.dataset.itemHandle));
     return;
   }
   if (target.closest("button, input, select, textarea, label, [data-item-handle]") === null) {
@@ -7671,11 +7825,15 @@ function colorsOffered(plan, ownName, ownColor, showAll) {
 function stageBoxFields(plan) {
   const { draft, original, key } = editingBox;
   const nameField = createNameField(draft.name, "Name");
-  // A transfer table's stage is named after its component (section 10).
-  if (transferTableOf(plan, key) !== null) {
+  // A transfer table's stage is named after its component, a randomization's after its source
+  // (section 10).
+  if (transferTableOf(plan, key) !== null || randomizationOf(plan, key) !== null) {
     const box = nameField.querySelector("input");
     box.disabled = true;
-    box.title = "Named after its component in the transfer table.";
+    box.title =
+      transferTableOf(plan, key) !== null
+        ? "Named after its component in the transfer table."
+        : "Named after its source in the randomization.";
   }
   const grid = createSettingsGrid({
     draft,
@@ -7715,7 +7873,11 @@ const BOX_ENDS = [
 // empty: it's above the labels and left of the headings. `draft` holds each end's mode and Mix as
 // they're chosen (the names in BOX_ENDS); `original` the same before any change; `redraw` redraws
 // what holds the grid after a change; `mixTooltip(boxEnd)` gives a Mix checkbox's tooltip.
-function createSettingsGrid({ draft, original, redraw, mixTooltip: tooltipFor }) {
+// `mixed`, for a run randomization's card (section 7), shows where its stages differ: a mode null
+// is "Mixed" rather than "(not one of the modes)", and a Mix null is indeterminate;
+// `mixed.mixBlockedReason(boxEnd)` says why Mix can't be used under a Mixed mode, or null. It's
+// null for a stage's box.
+function createSettingsGrid({ draft, original, redraw, mixTooltip: tooltipFor, mixed = null }) {
   const grid = createElement("div", "", "settings-grid");
   grid.append(
     createElement("span"),
@@ -7724,10 +7886,15 @@ function createSettingsGrid({ draft, original, redraw, mixTooltip: tooltipFor })
     ...BOX_ENDS.map((boxEnd) => {
       const offerNotAMode = original[boxEnd.mode] === null;
       const onChoose = (name) => chooseMode(draft, original, boxEnd, name, redraw);
-      return createModeMenu(boxEnd.end, `${boxEnd.heading} mode`, draft[boxEnd.mode], offerNotAMode, onChoose);
+      const notAModeLabel = mixed === null ? "(not one of the modes)" : MIXED;
+      return createModeMenu(boxEnd.end, `${boxEnd.heading} mode`, draft[boxEnd.mode], offerNotAMode, onChoose, notAModeLabel);
     }),
     createElement("span", "Mix", "field-name"),
-    ...BOX_ENDS.map((boxEnd) => createMixCell(draft, boxEnd, tooltipFor(boxEnd))),
+    ...BOX_ENDS.map((boxEnd) =>
+      mixed === null
+        ? createMixCell(draft, boxEnd, tooltipFor(boxEnd))
+        : createMixedMixCell({ draft, original, boxEnd, tooltip: tooltipFor(boxEnd), blockedReason: mixed.mixBlockedReason(boxEnd), redraw }),
+    ),
   );
   return grid;
 }
@@ -7780,6 +7947,42 @@ function createMixCell(draft, boxEnd, tooltip) {
   return cell;
 }
 
+// One end's Mix cell on a run randomization's card (section 7): as a stage's box's (createMixCell),
+// except where its stages differ. Under a Mixed mode the checkbox is enabled only when every stage
+// can mix there, otherwise disabled with `blockedReason` as its tooltip. A Mix that opened as Mixed
+// (null in `original`) is indeterminate while null, and a click cycles it checked, unchecked, then
+// Mixed again; one that opened checked or unchecked toggles as any checkbox. Calls `redraw` after a
+// click, so the checkbox shows the draft.
+function createMixedMixCell({ draft, original, boxEnd, tooltip, blockedReason, redraw }) {
+  const mode = draft[boxEnd.mode];
+  if (mode !== null && !canMix(boxEnd.end, mode)) {
+    return createMixCell(draft, boxEnd, tooltip);
+  }
+  const cell = createElement("span", "", "mix-cell");
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = draft[boxEnd.mix] === true;
+  checkbox.indeterminate = draft[boxEnd.mix] === null;
+  checkbox.setAttribute("aria-label", boxEnd.mixName);
+  checkbox.dataset.focusKey = `mix:${boxEnd.end}`;
+  const blocked = mode === null ? blockedReason : null;
+  cell.title = blocked ?? tooltip;
+  checkbox.title = cell.title;
+  checkbox.disabled = blocked !== null;
+  checkbox.addEventListener("change", () => {
+    if (original[boxEnd.mix] === null) {
+      // Checked, unchecked, then Mixed again.
+      const next = { null: true, true: false, false: null };
+      draft[boxEnd.mix] = next[String(draft[boxEnd.mix])];
+    } else {
+      draft[boxEnd.mix] = checkbox.checked;
+    }
+    redraw();
+  });
+  cell.append(checkbox);
+  return cell;
+}
+
 // What a Mix checkbox does, from that end's mix, or DEFAULT_MIX if the stage doesn't mix there,
 // e.g. "Mix before aspirating: 90% of the well, 3 times, at 400 µL/s." When the saved stage mixes
 // there and has transfers, the volume it works out to follows "of the well": "(≈ 108 µL)", or a range
@@ -7812,14 +8015,15 @@ function mixVolumeText(plan, id, end) {
 }
 
 // One end's menu of pipetting modes (modesFor), with "(not one of the modes)" first if the stage's
-// settings there aren't one of them (`offerNotAMode`), so it can be chosen again after another mode.
+// settings there aren't one of them (`offerNotAMode`), so it can be chosen again after another mode;
+// a run randomization's card says `notAModeLabel` ("Mixed") there instead (section 7).
 // Its column heading isn't its label, so `accessibleName` (e.g. "Aspirate mode") names it for screen
 // readers. `chosen` is the mode shown (null for that line); `onChoose` gets the mode's name, or null.
-function createModeMenu(end, accessibleName, chosen, offerNotAMode, onChoose) {
+function createModeMenu(end, accessibleName, chosen, offerNotAMode, onChoose, notAModeLabel = "(not one of the modes)") {
   const menu = document.createElement("select");
   menu.setAttribute("aria-label", accessibleName);
   if (offerNotAMode) {
-    menu.append(new Option("(not one of the modes)", ""));
+    menu.append(new Option(notAModeLabel, ""));
   }
   for (const mode of modesFor(end)) {
     menu.append(new Option(mode.name, mode.name));
@@ -7929,6 +8133,12 @@ function removalFor(plan) {
       reason: "Part of a transfer table: to remove it, clear its column in the table, or remove the whole table.",
     };
   }
+  if (kind === "stage" && randomizationOf(plan, key) !== null) {
+    return {
+      kind: "none",
+      reason: "Part of a randomization: to remove it, remove its source in the randomization's card.",
+    };
+  }
   if (kind === "stage" && !canRemoveStage(plan, key)) {
     return { kind: "button", disabled: true, reason: "Keep at least one stage." };
   }
@@ -7937,6 +8147,9 @@ function removalFor(plan) {
   }
   if (kind === "tip" && transferTableOf(plan, key) !== null) {
     return { kind: "none", reason: "Every stage of a transfer table starts on new tips, so these can't be removed." };
+  }
+  if (kind === "tip" && randomizationOf(plan, key) !== null) {
+    return { kind: "none", reason: "Which of its sources share tips is set in the randomization's card." };
   }
   return { kind: "button", disabled: false };
 }

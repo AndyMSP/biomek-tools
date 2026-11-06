@@ -150,6 +150,13 @@
 > (sections 5, 6, 7, 10, 12, 15 and 16), from previews Andy shaped on 2026-11-05. Written in the
 > hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull
 > request. They become Final once built and tested by Andy.
+>
+> **Draft changes (2026-11-05, a randomization's settings on its stages, item 20 of v0.2.0):** a
+> randomization's stages and their tip groups get their ✎ (name locked, no Remove), and its card's
+> Each transfer and Tips show its stages' own values, `Mixed` where they differ, and set them all at
+> once on Update (sections 7 and 10, and 16), from a preview Andy shaped on 2026-11-05. Written in
+> the hands-off workflow, so the choices made for Andy are listed in its pull request. They become
+> Final once built and tested by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -843,18 +850,36 @@ like a tip group's, with seams between tip groups above and below it as for any 
   its heading. **Run**: a solid border, its heading, then its stages' tip group boxes, as usual
   (as `columnBoxes` gives them; since 2026-11-05 one may hold several of its stages, when their
   sources share tips, each heading counting its tips as any tip group's does).
-  It **collapses to its heading** unless its card is open or one of its stages is the open entry
-  (Andy, 2026-11-01: a randomization of 68 stages would fill the column). The timeline's `‹` and
-  `›` (section 11) step into and through its stages as any others, opening the box.
-- **Its heading**, a button the box's width: the **dice icon** (a small SVG of two dice, one tilted
-  behind showing three, one in front showing five, in the text's color, so it's the same on every
-  PC), then `Randomize` (not set up yet) or `Randomized` (run), semibold, then at the right, in
-  gray, `not set up yet` or `68 stages · seed 360310` (the stages it owns; `1 stage`), or, when
+  A run randomization's box is **open** (showing its stages) or **closed** (its heading only, and
+  its card if that's open), like a folder, exactly as a transfer table's box (below, "Transfer
+  tables", "Its box"; Andy, 2026-11-05, item 20: "a randomization's box works the same way";
+  until then it collapsed to its heading unless its card or one of its stages was open, so its
+  stages couldn't be seen or dragged otherwise): clicking its heading opens or closes it. It also
+  opens whenever its card opens or one of its stages becomes the open entry (the timeline's `‹`
+  and `›`, section 11, step into and through its stages as any others), and stays open after that
+  until its heading closes it. Closing it while its card is open closes the card as `Close` does
+  (one with unsaved changes after a run refuses, as `Close` does, and the box stays open). Whether
+  each randomization's box is open is remembered while the page is open, by its ID, with the
+  transfer tables': not saved in plan files or the browser copy, not an undo step; a new page, or
+  a plan opened from a file, starts with every box closed, except one whose card or stage is open.
+- **Its heading**, a row the box's width, as a transfer table's: a button (most of the row) holding,
+  once it has run, `▸` (closed) or `▾` (open); the **dice icon** (a small SVG of two dice, one
+  tilted behind showing three, one in front showing five, in the text's color, so it's the same on
+  every PC), then `Randomize` (not set up yet) or `Randomized` (run), semibold, then at the right,
+  in gray, `not set up yet` or `68 stages · seed 360310` (the stages it owns; `1 stage`), or, when
   it's out of date (`isRandomizationOutOfDate`), `needs update` in red, semibold (Andy,
-  2026-11-02). Tooltip, not set up yet: `Not set up yet: open it to finish setting it up.`; run:
-  `Open to change it`; out of date: `The plan changed since this last ran: open it and press
-  Update.` Clicking it opens its card, or, if
-  open, closes it (saving, below).
+  2026-11-02); then, after the button, a **✎** (as a stage's, accessible name `Edit
+  randomization`, tooltip `Change its sources, wells and settings, or remove it`), which opens its
+  card, or closes it if open (as `Close`), and selects the randomization. **Run**: clicking the
+  button (or Enter or Space on it) opens or closes the box and selects the randomization; its
+  `aria-expanded` says whether the box is open; tooltip `Show its stages` / `Hide its stages`, or,
+  out of date, `The plan changed since this last ran: press ✎, then Update.` **Not set up yet**
+  (no stages, so nothing to show or hide; Claude's choice, 2026-11-05): no `▸`/`▾`, and clicking
+  the button opens its card, as its ✎ does (or closes it if open); tooltip `Not set up yet: open it
+  to finish setting it up.` The button is what the randomization is dragged, copied and given the
+  right-click menu by (a press on the ✎ starts no drag). While moving wells (below), a run
+  randomization's heading opens and closes its box as usual; a not-set-up one's, which would open
+  its card, says why it can't; its ✎ is hidden with the others.
 - **Seams around it**: a seam between tip groups above its box and one below, as for any box, and
   **none inside it** (not between its stages' boxes, nor inside them). For one that hasn't run,
   the seam below adds before the same stage as the seam above, then moves the randomization above
@@ -862,12 +887,13 @@ like a tip group's, with seams between tip groups above and below it as for any 
   Several that haven't run at one place are shown in the order of the plan's randomizations (the
   order they were added, unless moved since), with a seam
   between them adding before the same stage and placing those below it after the new stage.
-- **Its stages** look like any stage, but can be changed only through its card (Andy, 2026-11-01:
-  so the card always matches them): no ✎ on them or on their tip changes, no seams inside their
-  tip group boxes, no `×` on their transfers, and their volumes aren't buttons. Each one's card
-  says, in gray, `Part of a randomization: change it in its card.` A click or drag on the deck
-  while one is open adds nothing: message `This stage is part of a randomization: change it in its
-  card.` (a note).
+- **Its stages** look like any stage. **What can be changed on them** (Andy, 2026-11-05, item 20:
+  pipetting the normal way, one source of truth): a stage's ✎ opens its box (section 10), and each
+  of its tip groups' headings has its ✎ (section 10). **What can't** (Andy, 2026-11-01: so its card
+  always matches them): their transfers (no `×`, volumes not buttons), their names, removing them,
+  seams inside their tip group boxes. Each one's card says, in gray, `Part of a randomization: its
+  sources and wells change in its card.` A click or drag on the deck while one is open adds nothing:
+  message `This stage is part of a randomization: change it in its card.` (a note).
 
 **A randomization's card** opens under its heading, inside its box, and is the open entry: the deck
 shows the plates where the randomization sits (section 11), and fades nothing. It closes when
@@ -894,7 +920,10 @@ first closes it as `Close` would. Its changes are a **draft**, until:
 - The card **is changed** (its draft differs from the randomization) exactly when applying the
   draft gives a different plan (`setRandomization` gives back the same plan when nothing changes),
   so changing only a source's sharing, or only the sources' order, counts as a change (Andy,
-  2026-11-05: Update must be offered for it). The page keeps no separate record of sharing: it's in
+  2026-11-05: Update must be offered for it). **Once it has run**, its Each transfer and Tips values
+  aren't part of what `setRandomization` is given (its stages hold them; `transfer-designer.md`,
+  "Randomizations"), so the card is also changed when any of them differs from what the card
+  showed when it opened (2026-11-05, item 20). The page keeps no separate record of sharing: it's in
   the draft's sources and the plan's.
 
 From the top:
@@ -919,8 +948,9 @@ From the top:
     group** (`sourceGroups` of the draft's sources): a box holds the sources whose stages share one
     set of tips. Every source picked starts in a box of its own (new tips, as before this change),
     and the first source always starts new tips (a randomization never shares tips with stages
-    outside it). Only the sharing is set here: the tip type and probes stay the card's one **Tips**
-    setting (Andy: not per source).
+    outside it). Only the sharing is set here, not which tips (Andy: not per source): those are
+    the card's **Tips** (all groups at once) or each tip group's ✎ (one group), section 7, "Each
+    transfer" (2026-11-05, item 20).
     - **A box** is a rounded box (10px corners, 1px border, padding 4px 6px 0) in light blue
       (`#EEF3FA`, border `#9DB7DB`), alternating with light sand (`#F5F1E8`, border `#D9D2C3`), as the
       Stages column's tip groups (section 15). Its **heading**, at its top left, 11px semibold gray:
@@ -998,9 +1028,34 @@ From the top:
   capitals), then the stage box's grid, exactly as in a stage's box (section 10): `Aspirate` and
   `Dispense` columns, a **Mode** row of menus and a **Mix** row of checkboxes (`Can't mix` for a
   mode that can't), mixing with `DEFAULT_MIX`. Then **Tips**: a menu of tip types and a menu of
-  probe counts (`1 probe` … `8 probes`, choosing `probesFor`; showing how many `probes` holds),
-  `BC230 on 4 probes`, for each set of new tips its stages load: one before each box of sources
-  (below), so before each stage when no source shares tips. Then **Volume**: a text box
+  probe counts (`1 probe` … `8 probes`, choosing `probesFor`), `BC230 on 4 probes`, for each set of
+  new tips its stages load: one before each box of sources (below), so before each stage when no
+  source shares tips. **What they show** (Andy, 2026-11-05, item 20, "sort of like replicate count
+  works"):
+  - **Not run yet**: the randomization's own `settings`, `tipType` and `probes` (its first run's;
+    a new randomization's are the stage's before it, `addRandomization`), as before.
+  - **Run**: its **stages' own values**, read from the plan each time the card opens
+    (`randomizationStageValues`): each end's mode and whether it mixes, the tip type and the probe
+    count of its tip groups. A value every stage (or every tip group) shares shows as itself; where
+    they differ (`null`) it shows
+    **Mixed**: the mode menu gains a first entry `Mixed` (in place of `(not one of the modes)`,
+    which a run randomization's menu never shows: a stage whose end isn't one of the modes counts
+    as differing), chosen; the Mix checkbox is indeterminate (a dash); the tip type and probes menus
+    gain a first entry `Mixed`, chosen. Choosing `Mixed` again in a menu puts it back as it was.
+  - **Mix under a Mixed mode**: enabled when every stage's mode at that end can mix (`canMix`);
+    otherwise disabled, with the tooltip naming the first stage in stage order that can't: `Stage
+    5, “A1”, uses Non-Contact, which can't mix: choose a mode, or change that stage first.`, or,
+    for an end that isn't one of the modes, `Stage 5, “A1”, doesn't use one of the modes: choose a
+    mode, or change that stage first.` (so the card never offers what `runRandomization` refuses).
+  - **A Mix checkbox opened as Mixed** (indeterminate): a click cycles checked → unchecked → Mixed
+    (indeterminate again, leaving each stage's mixing as it is). One opened checked or unchecked
+    toggles as any checkbox, never showing Mixed.
+  - A note under Tips, 12px gray: not run yet, `Every stage starts with these. Change one stage with
+    its ✎ once it has run.`; run, `A value chosen here goes to every stage on Update; a stage's ✎
+    changes just that one.`, starting `Mixed: its stages differ, and stay as they are unless you
+    choose a value. ` when any value shows Mixed.
+
+  Then **Volume**: a text box
   like Seed's, 80px wide, then `µL` in gray; its accessible name `Volume per transfer in µL`.
   What's typed changes the card's draft at once, as Seed's box does (Andy, 2026-11-01: never typed
   at the deck). (Andy, 2026-11-01: it was a button that turned into a box when clicked, as a
@@ -1017,13 +1072,19 @@ From the top:
   sets of new tips.` instead, the count being `tipSetsToMake` of the draft (`transfer-designer.md`,
   "Sets of new tips a run makes"); when no source shares, the first wording, as before; while the
   draft has a problem, the tooltip isn't shown, as Randomize is disabled)
-  or **Update** (run; tooltip `Applies these settings to its stages. The same seed and source order
+  or **Update** (run; tooltip `Applies these changes to its stages. The same seed and source order
   keep the same wells; a new seed or a new order shuffles again.`), disabled while there's a problem. With no problem, a card
   that has run, has no unsaved changes and is out of date shows, in the problem's place and in red,
   `The plan has changed since this last ran. Press Update to bring its stages up to date.` (Update
   stays enabled; Andy, 2026-11-02). Randomize and Update save the draft and run it
   (`runRandomization`, which puts its stages in the sources' order and gives new tips only where a
-  box of sources starts; the page does nothing more to the stages or tips), as one undoable edit, close the card and open its first stage (message
+  box of sources starts; the page does nothing more to the stages or tips), as one undoable edit.
+  **Randomize** saves Each transfer and Tips with the draft (`setRandomization`), so the first run
+  gives every stage them. **Update** doesn't (its stages hold them): it passes, as
+  `runRandomization`'s `forAll`, only the values that differ from what the card showed when it
+  opened (a mode, a Mix, the tip type, the probes), so Mixed values and untouched shared ones leave
+  each stage as it is (2026-11-05, item 20). If the logic refuses (e.g. mixing chosen where a
+  stage's own mode can't mix), the message shows as an error and nothing changes. Otherwise the card closes and its first stage opens (message
   `Randomized: 12 stages with 96 transfers (seed 37). Undo takes the change out again.`). After
   Update the message is `Updated: 12 stages with 96 transfers (seed 37). Undo takes the change out
   again.`. `Remove` acts at once (`removeRandomization`), as every Remove does: `Removed the
@@ -1240,8 +1301,9 @@ one of its stages without the table copies it as an ordinary stage, as for a ran
 - **Click** a stage's row opens it, as before, and forgets the picked set (so it's selected alone).
 - **Click an ordinary tip group's heading** (anywhere but its ✎) makes the picked set that group
   alone, and opens nothing.
-- **Click a randomization's heading** opens or closes its card, as before, and makes the picked set
-  that randomization alone.
+- **Click a randomization's heading** opens or closes its box (one not set up yet: its card), and
+  makes the picked set that randomization alone (2026-11-05, item 20; until then it opened or
+  closed its card). Its ✎ opens or closes its card and selects it alone.
 - **Ctrl-click** (Cmd on a Mac) a stage's row or a heading: with no picked set, one starts, holding
   what was selected (what's open), and then this thing is added or taken out; with one, this thing
   is added to it or taken out. Nothing opens. A picked set can be empty: then nothing is selected,
@@ -1368,13 +1430,13 @@ the column keeps its look, but only three things work there: clicking a closed e
 (Start, a stage, End; a randomization's stages too), `Show transfers` / `Hide transfers`, and
 pointing at a transfer row, which singles out its transfer as usual. The ✎
 buttons, the `×` on transfer rows and the seams are hidden (their space kept, so nothing shifts).
-Any other click on a control or heading in the column (a volume, a component chip, a randomization's
-heading, which would open its card) does nothing but say `Stages can't be changed while moving
+Any other click on a control or heading in the column (a volume, a component chip, the heading of a
+randomization not set up yet, which would open its card) does nothing but say `Stages can't be changed while moving
 wells. Press Done first.` (note); a click on plain text or empty space does nothing and says
 nothing. An undo or redo that would open a randomization's card while moving wells opens instead
 the point it sits at (its first stage, or the stage it sits before, or End), so no card opens. A
-transfer table's heading opens and closes its box as usual (it only shows or hides); its ✎ is
-hidden with the others. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
+transfer table's or run randomization's heading opens and closes its box as usual (it only shows or
+hides); its ✎ is hidden with the others. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
 are off.
 
 ## 8. Starting contents (Start open)
@@ -1603,6 +1665,10 @@ Contains rows fit; section 15), so its menus show their whole names, such as `No
   (tooltip `Named after its component in the transfer table.`) and there's no **Remove**; in its
   place, on a line above the buttons, in gray: `Part of a transfer table: to remove it, clear its
   column in the table, or remove the whole table.` Save changes its settings only.
+- **A randomization's stage** (2026-11-05, item 20): the same, with **Name**'s tooltip `Named after
+  its source in the randomization.` and, in Remove's place, `Part of a randomization: to remove it,
+  remove its source in the randomization's card.` Save changes its settings only; the randomization's
+  card then shows that end as `Mixed` if the stage now differs from the others.
 
 **Save** renames it (if the name changed) and changes its settings as one edit (message `Saved stage
 2, “Drugs”.`). Settings the box doesn't offer, such as the stage's mixes, are kept as they are.
@@ -1622,7 +1688,10 @@ since every stage uses all its tips' probes); **Remove**, which removes it at on
 (`removeTipChange`; message `Removed the new tips: the stages after them keep the tips
 before.`). The first tip change has no Remove, and says `The run always starts by loading tips, so
 these can't be removed.` A transfer table's tip change (2026-11-05) has no Remove either, and says
-`Every stage of a transfer table starts on new tips, so these can't be removed.` **Save** sets the
+`Every stage of a transfer table starts on new tips, so these can't be removed.` A randomization's
+tip change (one starting one of its boxes of sources; 2026-11-05, item 20) has no Remove either,
+and says `Which of its sources share tips is set in the randomization's card.` (the first stage's,
+when it's the plan's first, says the first tip change's line). **Save** sets the
 tip type and probes as one edit (`setTipType`,
 `setTipProbes`; message `New tips: BC230 on 4 probes.`).
 
@@ -1923,9 +1992,27 @@ page's configuration (ADR 0009):
   trough topped up, then the heading, the card's line, the problem count, the Biomek files box, and
   Update clearing them; every filler trough's liquid changed, and Update renaming the stage); more
   than `SOURCES_SHOWN` sources; Each
-  transfer, Tips and Volume; each problem message; Randomize: stages in source order, named, each on
+  transfer, Tips and Volume; **a run randomization's settings on its stages** (2026-11-05, item
+  20): each of its stages' ✎ (Name disabled with its tooltip, no Remove with its note; a mode
+  changed and saved) and each of its tip groups' ✎ (no Remove, its note); the card then showing
+  that value as `Mixed` (mode menu, Mix dash, tip menus) with its note; Mix under a Mixed mode
+  enabled when every stage's mode can mix, and disabled with the tooltip naming a stage dispensing
+  Non-Contact; a Mix opened as Mixed cycling checked, unchecked, Mixed; `Mixed` chosen again
+  restoring a menu; a value chosen on the card (Dispense Fast)
+  enabling Update and, after Update, on every stage, the stage changed by ✎ keeping its other end;
+  Update with nothing chosen keeping every stage's settings and tips; a new source added after a run
+  starting like its neighbor; a randomization not run yet showing its own values and its first-run note, and a new
+  one starting from the stage before it; each problem message; Randomize: stages in source order, named, each on
   new tips, the stage after keeping its tips, every well filled once; Update with the same seed (same
-  wells) and a new one; a source removed and added; Remove before and after running, and Undo; the
+  wells) and a new one; a source removed and added; Remove before and after running, and Undo; its
+  box (2026-11-05, item 20): a closed run randomization's box opening on a click of its heading to
+  show its stages and closing again (▸/▾, `aria-expanded`, Enter and Space), its ✎ (`Edit
+  randomization`) opening the card (and the box) and closing it, a press on it starting no drag,
+  the randomization still dragged and copied by its heading, the box opening when `‹` and `›` step
+  into its stages and staying open after, closing it with the card open after a run with changes
+  refused, its open state kept across edits and undo but not across a reload; a not-set-up one
+  showing no ▸/▾, its heading and ✎ each opening its card; while moving wells, a run one's heading
+  opening and closing its box, a not-set-up one's saying why it can't; the
   Sources list's boxes (2026-11-05): every new source in a box of its own, blue and sand
   alternating, the headings `New tips` and `New tips · shared by 3 sources`; the tip button on a
   seam between boxes joining them and on a seam inside a box splitting it, each showing only while

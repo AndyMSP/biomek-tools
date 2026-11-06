@@ -1682,14 +1682,14 @@ button.entry-row {
   background: var(--page-background);
 }
 
-/* A transfer table's heading row: the heading button, then its ✎. */
-.transfer-table-head {
+/* A transfer table's or randomization's heading row: the heading button, then its ✎. */
+.box-head {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.transfer-table-head .transfer-table-heading {
+.box-head .randomization-heading {
   flex: 1;
   min-width: 0;
 }
@@ -2390,6 +2390,12 @@ button.source-tip-button {
   padding: 0 4px;
 }
 
+/* The note under a randomization's Tips (section 7): what its values do, and what Mixed means. */
+.card-tips-note {
+  font-size: 12px;
+  margin: 2px 0 0;
+}
+
 input.seed-box {
   width: 120px;
 }
@@ -3005,7 +3011,7 @@ body.column-dragging * {
 }
 
 .tip-group.selected > .tip-group-heading,
-.randomization.selected > .randomization-heading {
+.randomization.selected > .box-head > .randomization-heading {
   color: var(--blue);
   font-weight: 600;
 }
