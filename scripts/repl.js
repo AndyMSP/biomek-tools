@@ -23,7 +23,11 @@ import {
   checkName,
   checkVolume,
 } from "../src/shared/input-checks/input-checks.js";
-import { parsePastedTable, isMultiCell } from "../src/shared/pasted-table/pasted-table.js";
+import {
+  parsePastedTable,
+  isMultiCell,
+  tableToText,
+} from "../src/shared/pasted-table/pasted-table.js";
 import { OperationList } from "../src/shared/operation-list/operation-list.js";
 import { replay, ContentsSnapshot } from "../src/shared/contents-tracking/contents-tracking.js";
 import { StageList } from "../src/shared/stage-list/stage-list.js";
@@ -52,6 +56,7 @@ import {
 } from "../src/shared/concentrations/concentrations.js";
 import { checkOsmolality, wellOsmolality } from "../src/shared/osmolality/osmolality.js";
 import { CELL_DENSITY_UNIT } from "../config/concentration-units.js";
+import { COMPONENT_COLORS } from "../config/component-colors.js";
 import {
   writeRunFiles,
   checkExperimentName,
@@ -148,6 +153,9 @@ import {
   setOsmolality,
   osmolalityOf,
   seedingDensitiesOf,
+  readStockTable,
+  addStocks,
+  stockTable,
   columnBoxes,
   moveItems,
   copyOf,
@@ -266,14 +274,16 @@ const TOPICS = {
     ],
   },
   "pasted-table": {
-    loaded: { parsePastedTable, isMultiCell },
+    loaded: { parsePastedTable, isMultiCell, tableToText },
     examples: [
       'parsePastedTable("Drug A\\t4\\r\\nVehicle\\t3\\r\\n")',
       'parsePastedTable("A\\t\\tC")',
       'parsePastedTable("A\\n\\n")',
       'isMultiCell("Drug A\\t4")',
       'isMultiCell("Drug A")',
+      'tableToText([["Drug A", "4"], ["Vehicle", "3"]])',
       "parsePastedTable(5)",
+      'tableToText([["Feed\\tA"]])',
     ],
   },
   "operation-list": {
@@ -580,6 +590,10 @@ const TOPICS = {
       setOsmolality,
       osmolalityOf,
       seedingDensitiesOf,
+      readStockTable,
+      addStocks,
+      stockTable,
+      COMPONENT_COLORS,
       columnBoxes,
       moveItems,
       copyOf,
@@ -733,6 +747,13 @@ const TOPICS = {
       'seedingDensitiesOf(seeded, replay(seeded.startingContents, seeded.operationList), { labware: "Plate1", well: "A1" })',
       'seedingDensitiesOf(seeded, replay(seeded.startingContents, seeded.operationList), { labware: "Deep1", well: "A1" })',
       'concentrationsOf(seeded, replay(seeded.startingContents, seeded.operationList), { labware: "Deep1", well: "A1" })',
+      'const stocks = [["Name", "Osmolality", "Hy-Soy (g/L)", "Drug A (uM)"], ["Feed", "310", "4", ""], ["Drug A stock", "", "", "10"]]',
+      "readStockTable(emptyPlan().plan, stocks, COMPONENT_COLORS)",
+      'readStockTable(emptyPlan().plan, [["Name", "KCl", "Salt (mm)"], ["Feed", "4", "two"]], COMPONENT_COLORS)',
+      "let stocked = addStocks(emptyPlan().plan, stocks, COMPONENT_COLORS)",
+      "stocked.components",
+      "stockTable(stocked)",
+      "addStocks(stocked, stocks, COMPONENT_COLORS)",
       'let column = addStageWithNewTips(addStage(emptyPlan().plan, null).plan, null).plan',
       'column = addStage(column, null).plan',
       "columnBoxes(column)",

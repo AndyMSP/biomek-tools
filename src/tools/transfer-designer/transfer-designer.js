@@ -58,6 +58,7 @@ import {
   seedingDensity,
 } from "../../shared/concentrations/concentrations.js";
 import { checkOsmolality, wellOsmolality } from "../../shared/osmolality/osmolality.js";
+import { CONCENTRATION_UNITS, UNIT_SPELLINGS } from "../../../config/concentration-units.js";
 
 // START and tipGroups live in the tip-groups shared module, which the file writer uses too. They're
 // re-exported (passed on under the same names) so the page and plan-file.js can keep importing them
@@ -887,6 +888,321 @@ export function emptyWells(plan, wells) {
   return withParts(plan, {
     startingContents: plan.startingContents.filter((entry) => !keys.has(wellKey(entry))),
   });
+}
+
+// --- Stock tables ---
+
+// A stock table's amount or osmolality, once commas (thousands separators) are removed: digits with
+// at most one decimal point, optionally an exponent, no sign, e.g. "4", ".5", "4.", "1.5e6", "1e-7"
+// (section 3, "Stock tables"). Unlike a transfer table's amounts, an exponent is allowed: stocks of
+// cells are counted in millions per mL.
+const STOCK_NUMBER_PATTERN = /^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+// An osmolality column's header: the word Osmolality in any capitals, alone or followed by
+// "(mOsm/kg)", written exactly, with spaces allowed before and inside the brackets, e.g.
+// "osmolality (mOsm/kg)". The word is matched case-blind separately (isOsmolalityHeader).
+const OSMOLALITY_HEADER_PATTERN = /^([A-Za-z]+)\s*(\(\s*mOsm\/kg\s*\))?$/;
+
+// The stock table read against the plan (section 3, "Stock tables"): { stocks, problems }, each
+// stock { row, name, color, constituents, osmolality }, each problem { row, column, message }, in
+// reading order. `colors` is the list a new component's color is taken from, in order. Throws if
+// `table` isn't in its form, then if `colors` isn't a list of text, e.g. readStockTable(plan,
+// [["Name", "Hy-Soy (g/L)"], ["Feed", "4"]], COMPONENT_COLORS) → { stocks: [{ row: 1, name:
+// "Feed", color: "#f28e2b", constituents: [{ name: "Hy-Soy", amount: 4, unit: "g/L" }],
+// osmolality: null }], problems: [] } on a plan whose one component is drawn in "#4e79a7".
+export function readStockTable(plan, table, colors) {
+  const { stocks, problems } = readStocks(plan, table, colors);
+  return { stocks, problems };
+}
+
+// The plan with every stock of readStockTable(plan, table, colors) added as a component, in row
+// order, with its color, constituents and osmolality: one new plan, so a tool records it as one
+// edit. Throws as readStockTable does, then with its first problem's message, then if the table
+// has no stocks, e.g. addStocks(plan, [["Name"], ["Water"]], COMPONENT_COLORS) adds Water.
+export function addStocks(plan, table, colors) {
+  const { stocks, problems, added } = readStocks(plan, table, colors);
+  if (problems.length > 0) {
+    throw new Error(problems[0].message);
+  }
+  if (stocks.length === 0) {
+    throw new Error(
+      "The stock table has no stocks to add. Give it at least one row under the header.",
+    );
+  }
+  return added;
+}
+
+// The plan's components as a stock table, rows of text in the form readStockTable reads (section
+// 3, "Stock tables"): a header of "Name", then "Osmolality" if any component has one, then one
+// "Name (unit)" column per constituent name in the order first met; then one row per component,
+// amounts converted into their column's unit, e.g. [["Name", "Osmolality", "Hy-Soy (g/L)"],
+// ["Media", "300", "4"], ["Water", "0", ""]]. A plan without components gives [["Name"]].
+export function stockTable(plan) {
+  const hasOsmolality = plan.components.some((component) => component.osmolality !== null);
+  const columns = constituentColumnsOf(plan.components);
+  const header = [
+    "Name",
+    ...(hasOsmolality ? ["Osmolality"] : []),
+    ...columns.map(({ name, unit }) => `${name} (${unit})`),
+  ];
+  const rows = plan.components.map((component) => [
+    component.name,
+    ...(hasOsmolality ? [osmolalityText(component.osmolality)] : []),
+    ...columns.map((column) => amountInColumn(component, column)),
+  ]);
+  return [header, ...rows];
+}
+
+// --- Stock tables: helpers ---
+
+// readStockTable's work, also giving `added`: the plan with every added stock in it (the plan
+// itself when none was added), which addStocks returns.
+function readStocks(plan, table, colors) {
+  checkTableForm(table, "A stock table");
+  checkColors(colors);
+  const trimmed = table.map((row) => row.map((cell) => cell.trim()));
+  const problems = [];
+  const columns = stockColumnsOf(trimmed, problems);
+  const stocks = [];
+  let added = plan;
+  const namesAbove = new Set();
+  for (let row = 1; row < trimmed.length; row += 1) {
+    const cells = trimmed[row];
+    // A fully blank row is ignored, as in a transfer table: stray empty lines are harmless.
+    if (cells.every((cell) => cell === "")) {
+      continue;
+    }
+    const stock = readStockRow(plan, cells, row, columns, namesAbove, problems);
+    namesAbove.add(stock.name);
+    if (stock.tried) {
+      added = tryStock(added, stock, colors, problems);
+    }
+    stocks.push({
+      row,
+      name: stock.name,
+      color: stock.color,
+      constituents: stock.constituents,
+      osmolality: stock.osmolality,
+    });
+  }
+  return { stocks, problems, added };
+}
+
+// Throws unless `colors` is a list of text (section 5), e.g. checkColors(5) throws 'The colors must
+// be a list of color texts, like ["#4e79a7"], but got 5.' A list with something other than text in
+// it is described by describeValue as "a list".
+function checkColors(colors) {
+  if (!Array.isArray(colors) || colors.some((color) => typeof color !== "string")) {
+    throw new Error(
+      `The colors must be a list of color texts, like ["#4e79a7"], but got ${describeValue(colors)}.`,
+    );
+  }
+}
+
+// The columns of a stock table's (trimmed) header that are read, left to right, after column 0:
+// { column, kind: "osmolality" } for the osmolality column, and { column, kind: "constituent",
+// name, unit } for each constituent column (unit as configured, spellings read). A fully blank
+// column is skipped; a header's problems are pushed onto `problems` at its cell, and its column
+// isn't read.
+function stockColumnsOf(table, problems) {
+  const header = table[0];
+  const columns = [];
+  for (let column = 1; column < header.length; column += 1) {
+    const hasText = table.slice(1).some((row) => row[column] !== "");
+    if (header[column] === "" && !hasText) {
+      continue;
+    }
+    const { entry, message } = stockColumnOf(header[column], column, columns);
+    if (message !== null) {
+      problems.push({ row: 0, column, message });
+    } else {
+      columns.push(entry);
+    }
+  }
+  return columns;
+}
+
+// What the (trimmed, not fully blank) header `text` of column `column` makes: { entry, message },
+// `entry` the column to read when `message` (its problem) is null. `columns` are the columns read
+// to its left, e.g. "Hy-Soy (g/L)" → { entry: { column, kind: "constituent", name: "Hy-Soy", unit:
+// "g/L" }, message: null }.
+function stockColumnOf(text, column, columns) {
+  const problem = (message) => ({ entry: null, message });
+  if (text === "") {
+    return problem(`Column ${column + 1} has no header. Give it one, like “Hy-Soy (g/L)”.`);
+  }
+  if (isOsmolalityHeader(text)) {
+    return columns.some((entry) => entry.kind === "osmolality")
+      ? problem("There are two Osmolality columns. Keep one.")
+      : { entry: { column, kind: "osmolality" }, message: null };
+  }
+  const open = text.lastIndexOf("(");
+  if (!text.endsWith(")") || open === -1) {
+    return problem(`“${text}” needs its unit in brackets, like “${text} (g/L)”.`);
+  }
+  const name = text.slice(0, open).trim();
+  const written = text.slice(open + 1, -1).trim();
+  if (name === "") {
+    return problem(`“${text}” needs a constituent's name before its unit, like “Drug A (mM)”.`);
+  }
+  const unit = configuredUnitOf(written);
+  if (unit === null) {
+    const known = CONCENTRATION_UNITS.map((entry) => entry.unit).join(", ");
+    return problem(`“${written}” in “${text}” isn't a unit the tool knows. Use one of ${known}.`);
+  }
+  if (columns.some((entry) => entry.kind === "constituent" && entry.name === name)) {
+    return problem(`“${name}” has two columns. Give each constituent one column.`);
+  }
+  return { entry: { column, kind: "constituent", name, unit }, message: null };
+}
+
+// True if the (trimmed) header `text` heads an osmolality column, e.g. "OSMOLALITY (mOsm/kg)" →
+// true; "Osmolality (mosm/kg)" → false (the unit must be written exactly).
+function isOsmolalityHeader(text) {
+  const match = OSMOLALITY_HEADER_PATTERN.exec(text);
+  return match !== null && match[1].toLowerCase() === "osmolality";
+}
+
+// The configured unit that a stock table's header writes as `written`: the unit itself, capitals
+// included, or the unit a spelling in UNIT_SPELLINGS names, or null for anything else, e.g. "mM" →
+// "mM", "uM" → "µM", "mm" → null.
+function configuredUnitOf(written) {
+  if (CONCENTRATION_UNITS.some((entry) => entry.unit === written)) {
+    return written;
+  }
+  // Object.hasOwn, so a word like "constructor" isn't found on the object's prototype.
+  return Object.hasOwn(UNIT_SPELLINGS, written) ? UNIT_SPELLINGS[written] : null;
+}
+
+// One row of a stock table read, before it's tried: { row, name, color: null, constituents, osmolality,
+// tried }, `tried` true when its name and cells have no problem. Its problems are pushed onto
+// `problems`: its name's first (blank, in the plan, or in `namesAbove`), then its cells', left to
+// right. Cells are read even when the name has a problem, so all of a row's problems show at once.
+function readStockRow(plan, cells, row, columns, namesAbove, problems) {
+  const name = cells[0];
+  const before = problems.length;
+  const nameProblem = stockNameProblem(plan, name, row, namesAbove);
+  if (nameProblem !== null) {
+    problems.push({ row, column: 0, message: nameProblem });
+  }
+  const shownName = name === "" ? `Row ${row + 1}` : name;
+  const constituents = [];
+  let osmolality = null;
+  for (const entry of columns) {
+    const text = cells[entry.column];
+    const value = stockNumberOf(text);
+    if (value === null) {
+      const what = entry.kind === "osmolality" ? "osmolality" : entry.name;
+      const like = entry.kind === "osmolality" ? 300 : 4;
+      problems.push({
+        row,
+        column: entry.column,
+        message: `${shownName}'s ${what} must be a number, like ${like}, but is “${text}”.`,
+      });
+    } else if (entry.kind === "osmolality") {
+      osmolality = value ?? null;
+    } else if (value > 0) {
+      constituents.push({ name: entry.name, amount: value, unit: entry.unit });
+    }
+  }
+  return { row, name, color: null, constituents, osmolality, tried: problems.length === before };
+}
+
+// The problem with a stock's (trimmed) name in row `row`, or null: blank, a component's in the plan
+// (a paste never changes an existing component), or a row above's (`namesAbove`).
+function stockNameProblem(plan, name, row, namesAbove) {
+  if (name === "") {
+    return `Row ${row + 1} has no name. Give the stock a name, or take the row out.`;
+  }
+  if (plan.components.some((component) => component.name === name)) {
+    return `“${name}” is already in the plan. Rename the row, or take it out.`;
+  }
+  if (namesAbove.has(name)) {
+    return `“${name}” is in the table twice. Each stock needs its own name.`;
+  }
+  return null;
+}
+
+// The number a stock table's (trimmed) cell `text` holds, once commas are removed: undefined for
+// blank, the number, or null if it isn't one, e.g. "1,500,000" → 1500000, "1.5e6" → 1500000, "" →
+// undefined, "-4", "4 g" and "1e400" (not finite) → null.
+function stockNumberOf(text) {
+  const digits = text.replaceAll(",", "");
+  if (digits === "") {
+    return undefined;
+  }
+  if (!STOCK_NUMBER_PATTERN.test(digits)) {
+    return null;
+  }
+  const value = Number(digits);
+  return Number.isFinite(value) ? value : null;
+}
+
+// Tries `stock` on `plan` (which already holds every earlier added stock): takes the first color of
+// `colors` that no component has, then adds the component, its constituents and its osmolality.
+// Returns the plan with it added, setting stock.color; or, with no color left or if an edit throws,
+// pushes a whole-row problem (column null) and returns `plan` unchanged, stock.color staying null.
+function tryStock(plan, stock, colors, problems) {
+  const taken = new Set(plan.components.map((component) => component.color));
+  const color = colors.find((entry) => !taken.has(entry));
+  const { row } = stock;
+  if (color === undefined) {
+    problems.push({
+      row,
+      column: null,
+      message: `There's no free color for ${stock.name}. Two components can't share one, and all ${colors.length} are taken. Take some rows out, or remove a component.`,
+    });
+    return plan;
+  }
+  try {
+    let added = addComponent(plan, stock.name, color);
+    added = setConstituents(added, stock.name, stock.constituents);
+    added = setOsmolality(added, stock.name, stock.osmolality);
+    stock.color = color;
+    return added;
+  } catch (error) {
+    problems.push({ row, column: null, message: `${stock.name}: ${error.message}` });
+    return plan;
+  }
+}
+
+// The constituent columns a stock table written from `components` has: one { name, unit } per
+// constituent name, in the order first met (components in order, each one's constituents in
+// order), in the unit that name is first met in.
+function constituentColumnsOf(components) {
+  const columns = [];
+  for (const component of components) {
+    for (const { name, unit } of component.constituents) {
+      if (!columns.some((column) => column.name === name)) {
+        columns.push({ name, unit });
+      }
+    }
+  }
+  return columns;
+}
+
+// An osmolality as a stock table writes it: the number as text, or "" for none, e.g. 300 → "300".
+function osmolalityText(osmolality) {
+  return osmolality === null ? "" : String(osmolality);
+}
+
+// The amount of `column`'s constituent that `component` carries, as a stock table writes it:
+// converted into the column's unit and rounded to 12 significant digits so a conversion's
+// floating-point noise doesn't show, or "" if it doesn't carry it, e.g. 0.5 mM in a µM column →
+// "500". A name keeps one family across the plan, so the units always convert.
+function amountInColumn(component, column) {
+  const carried = component.constituents.find((entry) => entry.name === column.name);
+  if (carried === undefined) {
+    return "";
+  }
+  const value = (carried.amount * unitFactorOf(carried.unit)) / unitFactorOf(column.unit);
+  return String(Number(value.toPrecision(12)));
+}
+
+// The factor of the configured unit `unit`: how many of its family's base unit one of it is, e.g.
+// "mM" → 0.001.
+function unitFactorOf(unit) {
+  return CONCENTRATION_UNITS.find((entry) => entry.unit === unit).factor;
 }
 
 // --- Labware ---
@@ -1734,10 +2050,10 @@ export function setTransferTables(plan, transferTables) {
 // Throws unless `table` is a non-empty list of rows, each a non-empty list of the same number of
 // cells, each text, naming the value, or the first row or cell that's wrong (section 5), e.g.
 // 'A transfer table must be a list of rows, each a list of the same number of cells, each text, but
-// row 3 has 4 cells and row 1 has 5.'
-function checkTableForm(table) {
-  const start =
-    "A transfer table must be a list of rows, each a list of the same number of cells, each text, but ";
+// row 3 has 4 cells and row 1 has 5.' `kind` names the table at the start of the message: a stock
+// table has the same form (section 3, "Stock tables"), e.g. checkTableForm(5, "A stock table").
+function checkTableForm(table, kind = "A transfer table") {
+  const start = `${kind} must be a list of rows, each a list of the same number of cells, each text, but `;
   // [] is shown as itself, since describeValue calls any list "a list".
   const shown = (value) => (Array.isArray(value) && value.length === 0 ? "[]" : describeValue(value));
   if (!Array.isArray(table) || table.length === 0) {

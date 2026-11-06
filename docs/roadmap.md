@@ -431,6 +431,16 @@ Last updated: 2026-11-05
   (#140, 2026-11-05)**: the page script only; the specification and the build each reviewed by a
   separate agent, and checked in headless Chrome (Cmd and a Mac's Ctrl-click simulated). Still to
   check by Andy, on a Mac too if one is used.
+- **Decided: pasting and copying a table of stocks** (Andy, 2026-11-05; item 22, below): components,
+  with what they contain and their osmolality, pasted from a spreadsheet in one go, and copied out
+  the same way, from a preview Andy approved. **Specified** (Draft, 2026-11-05, in the hands-off
+  workflow): `readStockTable`, `addStocks`, `stockTable` and `UNIT_SPELLINGS`
+  (`transfer-designer.md`, "Stock tables"), `tableToText` (`pasted-table.md`), the palette's two
+  buttons and the stock dialog (`transfer-designer-page.md`, section 8), glossary "Stock table". It
+  changes no Biomek files and no plan files. **Built (#141, 2026-11-06)**: code, tests and REPL of
+  `tableToText`, the three functions and `UNIT_SPELLINGS`, and the page's two buttons and dialog;
+  the specifications and the build each reviewed by a separate agent, and checked in headless
+  Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -915,7 +925,6 @@ added on 2026-10-28 (Andy).
       opens its card like its ✎ (Claude's choice).
     **Specified** (Draft, 2026-11-05, in the hands-off workflow) and **Built (#139, 2026-11-05)**:
     see "Where things stand".
-
 21. **Ctrl-click to pick scattered wells** (Andy, 2026-11-05): wherever wells are picked on the deck, Ctrl-click
     (Cmd on a Mac) picks wells that don't form a box. Decided so far (Andy, 2026-11-05):
     - **No selection step** (Andy, 2026-11-05, after trying a first preview in which Ctrl-click
@@ -933,6 +942,38 @@ added on 2026-10-28 (Andy).
       well; a refused transfer keeps the source; a drag that adds nothing keeps it; Undo and Redo
       keep it; Ctrl+Enter or Cmd+Enter on a focused well acts as a Ctrl-click (not Space).
     **Specified** (Draft, 2026-11-05) and **Built (#140, 2026-11-05)**: see "Where things stand".
+22. **Pasting a table of stocks** (Andy, 2026-11-05): a table copied from a spreadsheet adds many
+    components at once, each with its constituents (its `Contains`) and its osmolality, so a lab's
+    stock list doesn't have to be typed in one component at a time. Shaped in the standard
+    workflow, then specified and built in the hands-off workflow (Andy, 2026-11-05). Decided so
+    far (Andy, 2026-11-05):
+    - **One row per stock**: a header row, then one row per component. The first column is the
+      component's name; a column headed `Osmolality` holds its measured osmolality (mOsm/kg); every
+      other column is one constituent, its header the constituent's name with its unit in brackets,
+      e.g. `Hy-Soy (g/L)`, `Drug A (mM)`, each cell the amount in that stock. A blank cell means the
+      stock doesn't carry it (or, for osmolality, that it wasn't measured). Chosen over one row per
+      constituent and over `Contains` written out as text in one cell.
+    - **A name already in the plan is a problem**: the paste can't be added until that row is
+      renamed or taken out of the table. Pasting never changes a component that's already there
+      (chosen over updating it, and over skipping it).
+    - **Started by a `Paste table` button** beside `+ New` in the Start card's palette, opening a
+      dialog over the page: paste, see each stock and any problems, then Add. Not by Ctrl+V.
+    - **Units are read strictly** (Andy, 2026-11-05: "keep it tight"): a header's unit must be a
+      configured unit exactly, capitals included, or one of a few spellings of the same unit
+      (`uM` and `μM` for µM, `x` and `X` for ×, `g/l`, `mg/l`, `cells/ml`). Considered and
+      declined: ignoring capitals for mass and cell units, reading equivalent units such as
+      `mg/mL` as g/L, and accepting `% v/v` or `% w/v` as %.
+    - **A `Copy table` button copies every stock** (Andy, 2026-11-05), beside `Paste table`: all
+      the plan's components, with their constituents and osmolality, as a table in the same shape,
+      so it pastes into another plan's `Paste table`, or into Excel as a stock sheet. Only the
+      stocks: chosen over also copying the wells they fill at Start, and over the whole plan
+      (which plan files already move).
+    - Draft details, Claude's, to try in the preview (2026-11-05): new components get the next free
+      colors, as `+ New` gives them; the whole paste is one edit, so one Undo takes it all out;
+      the plan's other rules apply as when typed (e.g. one unit family per constituent name across
+      the plan); empty rows and columns are ignored.
+    - Andy approved the preview (2026-11-05) and chose the hands-off workflow for the rest.
+    **Specified** (Draft, 2026-11-05) and **Built (#141, 2026-11-06)**: see "Where things stand".
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -969,7 +1010,9 @@ final Biomek runs, so they test the files as they will be:
     values to every stage. So it needs Andy's sign-off, by merging, before the final runs.
 15. Ctrl-click keeps a transfer's source (item 21), added on 2026-11-05: preview,
     specification, then build. Page only, so it needn't come before the final runs.
-16. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+16. Pasting and copying a table of stocks (item 22), added on 2026-11-05: preview, specifications,
+    then build. It changes no Biomek files or plan files, so it needn't come before the final runs.
+17. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a

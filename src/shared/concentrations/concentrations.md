@@ -262,6 +262,9 @@ out)
   submultiples were tried in the preview and dropped: the lab writes mass in g/L, and tracks no
   enzyme activities.) Molar's base unit is M, mass's is g/L; percent and × are families of one unit
   each. The symbol for fold is the multiplication sign `×`, not the letter x.
+- `UNIT_SPELLINGS` (2026-11-05): other ways of writing a unit, read by a tool, not by this module; its form
+  is described and checked where that tool's specification says (`transfer-designer.md`,
+  "Configuration").
 - `DEFAULT_CONCENTRATION_UNIT`: the unit a new constituent starts with, `"g/L"`, the one the lab's
   protocols use most (Andy, 2026-11-01).
 - **Cells** (Andy, 2026-11-05): `CONCENTRATION_UNITS` gains, as its **last entry**, after `×`,

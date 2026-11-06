@@ -2036,6 +2036,33 @@ input.cell-box:focus {
   margin-top: 6px;
 }
 
+/* The stock dialog (section 8, "Pasting stocks"), in the wizard's look. A name cell's swatch keeps
+   its space when its stock takes no color. */
+.stock-swatch.no-color {
+  visibility: hidden;
+}
+
+/* The example table under the paste zone's help: read-only cells with the grid's look. */
+.stock-example {
+  align-self: flex-start;
+}
+
+.stock-example .wizard-cell {
+  padding: 4px 8px;
+}
+
+.stock-example .amount-cell {
+  text-align: right;
+}
+
+/* Copy table's older way of copying: a text area the page selects and copies, never seen. */
+.hidden-copy {
+  position: fixed;
+  top: 0;
+  left: -9999px;
+  opacity: 0;
+}
+
 /* The Sources and Review tables. */
 .wizard-table {
   border-collapse: collapse;

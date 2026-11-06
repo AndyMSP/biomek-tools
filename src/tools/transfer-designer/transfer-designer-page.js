@@ -5,7 +5,8 @@
 // goes through transfer-designer.js, undo and redo through plan-history.js, saving and opening
 // through plan-file.js, the labware through deck.js, what each well holds through
 // contents-tracking.js, how much each mixed well is mixed through mix-volumes.js, a randomization's
-// seed and spare wells through random-pool.js, a pasted table's text through pasted-table.js, and
+// seed and spare wells through random-pool.js, a pasted or copied table's text through
+// pasted-table.js, and
 // the Biomek files through file-writer.js and zip.js. When one of them
 // refuses an edit, the page shows its message and changes nothing. What this file decides is only
 // how things look and how the user does them: how typing a volume works, how numbers are shown,
@@ -31,7 +32,7 @@ import {
 } from "../../shared/deck/deck.js";
 import { writeRunFiles, checkExperimentName } from "../../shared/file-writer/file-writer.js";
 import { zipFiles } from "../../shared/zip/zip.js";
-import { parsePastedTable } from "../../shared/pasted-table/pasted-table.js";
+import { parsePastedTable, tableToText } from "../../shared/pasted-table/pasted-table.js";
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
 import {
@@ -124,6 +125,9 @@ import {
   transferTableAt,
   transferTableOf,
   isTransferTableOutOfDate,
+  readStockTable,
+  addStocks,
+  stockTable,
 } from "./transfer-designer.js";
 import {
   CONCENTRATION_UNITS,
@@ -366,6 +370,10 @@ const tablesOutOfDateByPlan = new WeakMap();
 // The transfer table wizard while it's open (section 7, "The wizard"), or null: see openNewWizard.
 let wizard = null;
 
+// The stock dialog while it's open (section 8, "Pasting stocks"), or null: { table, pasteRefused,
+// gridElement, mainButton }, `table` the pasted rows of cells (null before a paste).
+let stockDialog = null;
+
 // The IDs of the transfer tables and randomizations whose box is open, showing its stages (section
 // 7, "Its box"): remembered while the page is open, not saved in plan files and not an undo step.
 // Their IDs never clash ("t1", "r1").
@@ -421,6 +429,8 @@ const elements = {
   pageVersion: byId("page-version"),
   wizardBackdrop: byId("wizard-backdrop"),
   wizard: byId("wizard"),
+  stockBackdrop: byId("stock-backdrop"),
+  stockDialog: byId("stock-dialog"),
 };
 
 setUpPage();
@@ -443,6 +453,7 @@ function setUpPage() {
   connectInlineBoxGuard();
   connectHeaderBoxGuard();
   connectWizard();
+  connectStockDialog();
   window.addEventListener("scroll", fitStagesColumn);
   window.addEventListener("resize", () => {
     fitStagesColumn();
@@ -4256,6 +4267,11 @@ function closeWizard() {
   }
 }
 
+// True if a dialog is open over the page: the transfer table wizard or the stock dialog.
+function isDialogOpen() {
+  return wizard !== null || stockDialog !== null;
+}
+
 // Draws the wizard's dialog: its header, the current step's body and its footer. The focus, if it
 // was on one of the dialog's controls, goes back to the same control.
 function drawWizard() {
@@ -4275,10 +4291,11 @@ function drawWizard() {
   }
 }
 
-// Focuses the wizard's control whose focus key (data-wizard-focus) is `key`, e.g. "main" or
-// "cell:2:1", selecting a text box's text; nothing if there's none.
-function focusWizardElement(key) {
-  const element = elements.wizard.querySelector(`[data-wizard-focus="${cssEscape(key)}"]`);
+// Focuses the control in `dialog` (the wizard unless given; the stock dialog uses it too) whose
+// focus key (data-wizard-focus) is `key`, e.g. "main" or "cell:2:1", selecting a text box's text;
+// nothing if there's none.
+function focusWizardElement(key, dialog = elements.wizard) {
+  const element = dialog.querySelector(`[data-wizard-focus="${cssEscape(key)}"]`);
   if (element === null) {
     return;
   }
@@ -4462,18 +4479,7 @@ function createTableStep(plan) {
 // The paste zone (section 7, "Table step, before a paste"): a dashed box taking a paste from Excel,
 // help text under it, and, after a paste it couldn't use, why in red.
 function createPasteZone() {
-  const zone = withFocusKey(
-    createElement("div", "Click here and press Ctrl+V to paste a table from Excel", "paste-zone"),
-    "paste-zone",
-  );
-  zone.tabIndex = 0;
-  zone.setAttribute("role", "textbox");
-  zone.setAttribute("aria-label", "Paste a table from Excel here");
-  zone.addEventListener("paste", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    takePastedTable(event.clipboardData?.getData("text/plain") ?? "");
-  });
+  const zone = createPasteTarget(takePastedTable);
   const parts = [
     zone,
     createElement(
@@ -4494,6 +4500,24 @@ function createPasteZone() {
     );
   }
   return parts;
+}
+
+// The paste zone's dashed box, focusable, taking a paste's plain text to `takeText`; typing in it
+// does nothing. The wizard and the stock dialog both use it.
+function createPasteTarget(takeText) {
+  const zone = withFocusKey(
+    createElement("div", "Click here and press Ctrl+V to paste a table from Excel", "paste-zone"),
+    "paste-zone",
+  );
+  zone.tabIndex = 0;
+  zone.setAttribute("role", "textbox");
+  zone.setAttribute("aria-label", "Paste a table from Excel here");
+  zone.addEventListener("paste", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    takeText(event.clipboardData?.getData("text/plain") ?? "");
+  });
+  return zone;
 }
 
 // Takes pasted `text` as the draft's table (section 7): read with parsePastedTable, rows whose cells
@@ -4606,15 +4630,19 @@ function connectGridCell(box, row, column) {
       box.select();
     }
   });
-  box.addEventListener("paste", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const text = (event.clipboardData?.getData("text/plain") ?? "").replace(/\r\n|[\t\r\n]/g, " ");
-    const start = box.selectionStart ?? box.value.length;
-    const end = box.selectionEnd ?? box.value.length;
-    box.value = box.value.slice(0, start) + text + box.value.slice(end);
-    box.setSelectionRange(start + text.length, start + text.length);
-  });
+  box.addEventListener("paste", (event) => pastePlainTextInto(box, event));
+}
+
+// Pastes a paste `event`'s plain text into a grid cell's text `box`, its tabs and line breaks made
+// spaces, in place of the selected text, so a cell never takes a table.
+function pastePlainTextInto(box, event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const text = (event.clipboardData?.getData("text/plain") ?? "").replace(/\r\n|[\t\r\n]/g, " ");
+  const start = box.selectionStart ?? box.value.length;
+  const end = box.selectionEnd ?? box.value.length;
+  box.value = box.value.slice(0, start) + text + box.value.slice(end);
+  box.setSelectionRange(start + text.length, start + text.length);
 }
 
 // Reads a cell's new text into the draft, if it changed, and re-reads the table (its problems,
@@ -5671,8 +5699,8 @@ function describeItems(plan, items) {
 // system clipboard as text (the event's own clipboard data) and as the page's copy. A text box or
 // menu, or text selected on the page, keeps the browser's copy.
 function copyFromClipboardEvent(event) {
-  // Ctrl+C is ignored while moving wells (section 12), and while the wizard is open.
-  if (movingWells || wizard !== null || keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
+  // Ctrl+C is ignored while moving wells (section 12), and while the wizard or stock dialog is open.
+  if (movingWells || isDialogOpen() || keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
     return;
   }
   const copied = copySelection();
@@ -5756,8 +5784,8 @@ function copiedHoldsContainer(copied) {
 function pasteFromClipboardEvent(event) {
   // Ctrl+V is ignored while moving wells (section 12); while the wizard is open, it pastes only
   // into its paste zone or a cell, which handle it themselves (Andy, 2026-11-05: Ctrl+V on the page
-  // never starts a transfer table).
-  if (movingWells || wizard !== null || keepsOwnClipboard(event.target)) {
+  // never starts a transfer table). The stock dialog's paste zone and cells handle theirs alike.
+  if (movingWells || isDialogOpen() || keepsOwnClipboard(event.target)) {
     return;
   }
   event.preventDefault();
@@ -5992,7 +6020,7 @@ function closeColumnMenuPressedOutside(event) {
 // --- Starting contents: the palette (section 8) ---
 
 // The Start card's palette: a chip and ✎ per component, then + New (or the box for a new name),
-// then Eraser.
+// then Paste table and Copy table, then Eraser.
 function createPalette(plan) {
   const palette = createElement("div", "", "palette");
   for (const component of plan.components) {
@@ -6014,6 +6042,7 @@ function createPalette(plan) {
     palette.append(holder);
   }
   palette.append(addingComponent === null ? createNewComponentButton() : createNewComponentBox(plan));
+  palette.append(...createStockTableButtons(plan));
   const eraser = createElement("button", "Eraser", "component-chip eraser");
   eraser.type = "button";
   eraser.classList.toggle("picked", brush.pick.kind === "eraser");
@@ -6233,6 +6262,442 @@ function startingOverfills(plan) {
   return replay(plan.startingContents, plan.operationList)
     .listProblems()
     .filter((problem) => problem.operationIndex === null);
+}
+
+// --- Starting contents: pasting and copying stocks (section 8, "Pasting stocks", "Copying stocks") ---
+
+// `Paste table` and `Copy table`, after + New in the palette, looking like it.
+function createStockTableButtons(plan) {
+  const paste = createElement("button", "Paste table", "component-chip");
+  paste.type = "button";
+  paste.title = "Add several components at once, from a table copied from Excel";
+  paste.addEventListener("click", openStockDialog);
+  const copy = createElement("button", "Copy table", "component-chip");
+  copy.type = "button";
+  copy.title = "Copy every component, with what it contains and its osmolality, as a table";
+  copy.disabled = plan.components.length === 0;
+  copy.addEventListener("click", copyStockTable);
+  return [paste, copy];
+}
+
+// Connects the stock dialog: a press on its backdrop closes it, and Escape anywhere in it but a
+// cell being edited closes it too, changing nothing (as the wizard, section 7).
+function connectStockDialog() {
+  elements.stockBackdrop.addEventListener("pointerdown", (event) => {
+    if (event.target === elements.stockBackdrop) {
+      closeStockDialog();
+    }
+  });
+  elements.stockDialog.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      // Stopped here, so the page's own Escape doesn't act on it too.
+      event.stopPropagation();
+      closeStockDialog();
+    }
+  });
+}
+
+// Opens the stock dialog before a paste, its paste zone focused, making everything behind it
+// unreachable (inert) except the message bar. Nothing is added until Add.
+function openStockDialog() {
+  closeEditingBox();
+  stockDialog = { table: null, pasteRefused: false, gridElement: null };
+  for (const child of document.body.children) {
+    if (child !== elements.stockBackdrop && child !== elements.messageBar) {
+      child.inert = true;
+    }
+  }
+  elements.stockBackdrop.hidden = false;
+  drawStockDialog();
+  focusWizardElement("paste-zone", elements.stockDialog);
+}
+
+// Closes the stock dialog without changing anything, and makes the page reachable again.
+function closeStockDialog() {
+  if (stockDialog === null) {
+    return;
+  }
+  stockDialog = null;
+  elements.stockBackdrop.hidden = true;
+  elements.stockDialog.replaceChildren();
+  for (const child of document.body.children) {
+    child.inert = false;
+  }
+}
+
+// Draws the stock dialog: its header (the table icon and "Paste stocks"), its body (the paste zone
+// before a paste, then the table, its problems and what Add does) and its footer.
+function drawStockDialog() {
+  const plan = currentPlan();
+  const header = createElement("div", "", "wizard-header");
+  const title = createElement("h2", "Paste stocks", "wizard-title");
+  title.id = "stock-dialog-title";
+  title.prepend(createTableIcon());
+  header.append(title);
+  const body = createElement("div", "", "wizard-body");
+  if (stockDialog.table === null) {
+    body.append(...createStockPasteZone());
+  } else {
+    body.append(createStockGrid(), createStockSummary(plan));
+    decorateStockGrid(plan);
+  }
+  elements.stockDialog.replaceChildren(header, body, createStockFooter(plan));
+}
+
+// The paste zone before a paste (section 8): the wizard's zone, the help, an example table, and,
+// after a paste it couldn't use, why in red.
+function createStockPasteZone() {
+  const zone = createPasteTarget((text) => takePastedStocks(text));
+  const parts = [
+    zone,
+    createElement(
+      "p",
+      "One row per stock. The first column is its name; an Osmolality column (mOsm/kg) is optional; " +
+        "every other column is something it contains, its unit in brackets. A blank cell means the " +
+        "stock doesn't contain it, or its osmolality wasn't measured. For example:",
+      "wizard-help",
+    ),
+    createStockExample(),
+  ];
+  if (stockDialog.pasteRefused) {
+    parts.push(
+      createElement("p", "Paste a table with a header row and at least one row of stocks.", "wizard-error"),
+    );
+  }
+  return parts;
+}
+
+// The example stock table under the help: read-only, in the wizard grid's look, the header row
+// tinted.
+function createStockExample() {
+  const rows = [
+    ["Name", "Osmolality", "Hy-Soy (g/L)", "Drug A (mM)", "DMSO (%)"],
+    ["Media", "300", "4", "", ""],
+    ["Drug A stock", "1450", "", "10", "100"],
+  ];
+  const table = createElement("table", "", "wizard-grid stock-example");
+  rows.forEach((row, rowIndex) => {
+    const tr = createElement("tr");
+    row.forEach((text, column) => {
+      const cell = createElement(rowIndex === 0 ? "th" : "td", text, "wizard-cell");
+      cell.classList.toggle("header-cell", rowIndex === 0);
+      cell.classList.toggle("amount-cell", rowIndex > 0 && column > 0);
+      tr.append(cell);
+    });
+    table.append(tr);
+  });
+  return table;
+}
+
+// Takes pasted `text` as the stock table (section 8): read with parsePastedTable, short rows filled
+// with empty cells, then rows, and columns after the first, whose cells are all blank dropped (the
+// first column is the names, so it's kept even when blank). With fewer than two
+// rows left, the paste zone stays and says why.
+function takePastedStocks(text) {
+  const table = text === "" ? [] : withoutBlankRowsAndColumns(parsePastedTable(text));
+  if (table.length < 2) {
+    stockDialog.pasteRefused = true;
+    drawStockDialog();
+    focusWizardElement("paste-zone", elements.stockDialog);
+    return;
+  }
+  stockDialog.table = table;
+  stockDialog.pasteRefused = false;
+  drawStockDialog();
+  focusWizardElement(isStockTableReady(currentPlan()) ? "main" : "cell:0:0", elements.stockDialog);
+}
+
+// `rows` as a rectangle without blank lines: short rows filled with empty cells to the widest's
+// length, then the rows, and the columns after the first, whose cells are all blank dropped, e.g.
+// [["A", ""], ["", ""], ["B"]] → [["A"], ["B"]]; [["", "x (mM)"], ["", "4"]] keeps its blank first
+// column, since the first column is always the names.
+function withoutBlankRowsAndColumns(rows) {
+  const width = Math.max(0, ...rows.map((row) => row.length));
+  const filled = rows
+    .map((row) => [...row, ...Array(width - row.length).fill("")])
+    .filter((row) => row.some((cell) => cell.trim() !== ""));
+  const kept = [...Array(width).keys()].filter(
+    (column) => column === 0 || filled.some((row) => row[column].trim() !== ""),
+  );
+  return filled.map((row) => kept.map((column) => row[column]));
+}
+
+// The stock table read against the plan, with the configured colors (readStockTable).
+function stockReading(plan) {
+  return readStockTable(plan, stockDialog.table, COMPONENT_COLORS);
+}
+
+// True if Add can be pressed: a table is in, with no problems and at least one stock.
+function isStockTableReady(plan) {
+  if (stockDialog.table === null) {
+    return false;
+  }
+  const { stocks, problems } = stockReading(plan);
+  return problems.length === 0 && stocks.length > 0;
+}
+
+// The editable grid (section 8): every cell a text box, as the wizard's, the header row and the
+// name column tinted; each name cell (after the header) with its stock's swatch before it and a ×
+// taking its row out.
+function createStockGrid() {
+  const frame = createElement("div", "", "wizard-grid-frame");
+  const grid = createElement("table", "", "wizard-grid");
+  stockDialog.table.forEach((row, rowIndex) => {
+    const tr = createElement("tr");
+    row.forEach((_, column) => tr.append(createStockCell(rowIndex, column)));
+    grid.append(tr);
+  });
+  frame.append(grid);
+  stockDialog.gridElement = grid;
+  return frame;
+}
+
+// One cell of the stock grid at `row` and `column`: a text box; a name cell after the header also
+// has a swatch before it (its space kept when the stock takes no color) and a × after it.
+function createStockCell(row, column) {
+  const cell = createElement(row === 0 ? "th" : "td", "", "wizard-cell");
+  cell.classList.toggle("header-cell", row === 0);
+  cell.classList.toggle("label-cell", column === 0);
+  cell.classList.toggle("amount-cell", row > 0 && column > 0);
+  cell.dataset.row = String(row);
+  cell.dataset.column = String(column);
+  const inner = createElement("div", "", "wizard-cell-inner");
+  const isNameCell = row > 0 && column === 0;
+  if (isNameCell) {
+    inner.append(createElement("span", "", "swatch cell-swatch stock-swatch"));
+  }
+  const box = withFocusKey(document.createElement("input"), `cell:${row}:${column}`);
+  box.type = "text";
+  box.className = "cell-box";
+  box.value = stockDialog.table[row][column];
+  box.setAttribute("aria-label", cellName(row, column));
+  connectStockCell(box, row, column);
+  inner.append(box);
+  if (isNameCell) {
+    const remove = createElement("button", "×", "cell-delete");
+    remove.type = "button";
+    remove.tabIndex = -1;
+    remove.title = "Take this row out";
+    remove.setAttribute("aria-label", `Take row ${row + 1} out`);
+    remove.addEventListener("click", () => takeOutStockRow(row));
+    inner.append(remove);
+  }
+  cell.append(inner);
+  return cell;
+}
+
+// Connects a stock grid cell's text box, as the wizard's (section 7, "Editing a cell"): its text
+// selected when focused; a change read when it's left or on Enter, which also moves down a row;
+// Escape puts the text back; a paste is plain text, its tabs and line breaks made spaces.
+function connectStockCell(box, row, column) {
+  box.addEventListener("focus", () => box.select());
+  box.addEventListener("blur", () => commitStockCell(row, column, box.value));
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commitStockCell(row, column, box.value);
+      const below = Math.min(row + 1, stockDialog.table.length - 1);
+      focusWizardElement(`cell:${below}:${column}`, elements.stockDialog);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      box.value = stockDialog.table[row][column];
+      box.select();
+    }
+  });
+  box.addEventListener("paste", (event) => pastePlainTextInto(box, event));
+}
+
+// Reads a stock cell's new text into the table, if it changed, and re-reads the table (its
+// problems, swatches, summary and Add button) without drawing the grid again, so the focus stays
+// where it went.
+function commitStockCell(row, column, text) {
+  if (stockDialog === null || stockDialog.table === null || stockDialog.table[row]?.[column] === undefined) {
+    return;
+  }
+  if (stockDialog.table[row][column] === text) {
+    return;
+  }
+  stockDialog.table[row][column] = text;
+  const plan = currentPlan();
+  decorateStockGrid(plan);
+  elements.stockDialog.querySelector(".stock-summary")?.replaceWith(createStockSummary(plan));
+  updateStockMainButton(plan);
+}
+
+// Takes row `row` out of the table and focuses the dialog itself, so the focus stays in the dialog
+// (redrawing it would otherwise drop it onto the page) and Escape still closes it; not a cell, where
+// Escape puts the cell's text back. Taking out the last stock row goes back to the paste zone.
+function takeOutStockRow(row) {
+  stockDialog.table.splice(row, 1);
+  if (stockDialog.table.length < 2) {
+    stockDialog.table = null;
+    drawStockDialog();
+    focusWizardElement("paste-zone", elements.stockDialog);
+    return;
+  }
+  drawStockDialog();
+  // tabIndex -1 lets the dialog take the focus from code without joining the Tab order.
+  elements.stockDialog.tabIndex = -1;
+  elements.stockDialog.focus();
+}
+
+// Marks the stock grid from the table read against the plan: problem cells red with their message
+// as tooltip (a whole-row problem on its name cell), and each name cell's swatch in the color its
+// stock will take, or hidden with its space kept.
+function decorateStockGrid(plan) {
+  const { stocks, problems } = stockReading(plan);
+  const messages = new Map();
+  for (const problem of problems) {
+    const key = `${problem.row}:${problem.column ?? 0}`;
+    messages.set(key, messages.has(key) ? `${messages.get(key)} ${problem.message}` : problem.message);
+  }
+  const colors = new Map(stocks.map((stock) => [stock.row, stock.color]));
+  for (const cell of stockDialog.gridElement.querySelectorAll(".wizard-cell")) {
+    const row = Number(cell.dataset.row);
+    const column = Number(cell.dataset.column);
+    const message = messages.get(`${row}:${column}`);
+    cell.classList.toggle("problem", message !== undefined);
+    cell.querySelector(".cell-box").title = message ?? "";
+    const swatch = cell.querySelector(".stock-swatch");
+    if (swatch !== null) {
+      const color = colors.get(row) ?? null;
+      swatch.classList.toggle("no-color", color === null);
+      swatch.style.setProperty("--swatch-color", color ?? "transparent");
+    }
+  }
+}
+
+// Under the grid: every problem's message, in order, in the wizard's red problems box, then one
+// line saying how to fix them, or what Add does.
+function createStockSummary(plan) {
+  const { stocks, problems } = stockReading(plan);
+  const holder = createElement("div", "", "stock-summary");
+  const count = stocks.length;
+  if (problems.length > 0) {
+    const box = createElement("div", "", "wizard-problems");
+    for (const problem of problems) {
+      box.append(createElement("p", problem.message));
+    }
+    const what = count === 1 ? "the stock" : `the ${count} stocks`;
+    holder.append(
+      box,
+      createElement("p", `Fix the problems above (red), or take those rows out, to add ${what}.`, "wizard-help"),
+    );
+  } else {
+    holder.append(createElement("p", addSummaryText(count), "wizard-help"));
+  }
+  return holder;
+}
+
+// What Add does, for `count` stocks and no problems (section 8): one sentence for one stock, one
+// for several, and what to do when there are none.
+function addSummaryText(count) {
+  if (count === 0) {
+    return "Add at least one row of stocks under the header.";
+  }
+  if (count === 1) {
+    return "Add puts 1 new component in the Start card, with what it contains and its osmolality. Undo takes it out.";
+  }
+  return (
+    `Add puts ${count} new components in the Start card, each with what it contains and its osmolality. ` +
+    "One Undo takes them all out."
+  );
+}
+
+// The stock dialog's footer: `Paste a different table` at the left once a table is in, then Cancel
+// and the main button, `Add 3 stocks` (`Add` before a paste), disabled until Add can be pressed.
+function createStockFooter(plan) {
+  const footer = createElement("div", "", "wizard-footer");
+  if (stockDialog.table !== null) {
+    const again = withFocusKey(createElement("button", "Paste a different table", "action"), "paste-again");
+    again.type = "button";
+    again.addEventListener("click", () => {
+      stockDialog.table = null;
+      stockDialog.pasteRefused = false;
+      drawStockDialog();
+      focusWizardElement("paste-zone", elements.stockDialog);
+    });
+    footer.append(again);
+  }
+  footer.append(createElement("span", "", "spacer"));
+  const cancel = withFocusKey(createElement("button", "Cancel", "action"), "cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", closeStockDialog);
+  const main = withFocusKey(createElement("button", "Add", "primary wizard-main"), "main");
+  main.type = "button";
+  main.addEventListener("click", addStocksFromDialog);
+  footer.append(cancel, main);
+  stockDialog.mainButton = main;
+  updateStockMainButton(plan);
+  return footer;
+}
+
+// Brings the main button's label and whether it can be pressed up to date: `Add 3 stocks` (`Add 1
+// stock`), or `Add` before a paste.
+function updateStockMainButton(plan) {
+  const main = stockDialog.mainButton;
+  main.textContent =
+    stockDialog.table === null ? "Add" : `Add ${countOf(stockReading(plan).stocks.length, "stock")}`;
+  main.disabled = !isStockTableReady(plan);
+}
+
+// Add: closes the dialog and records every stock as one edit (addStocks), naming them in row order.
+// The brush's pick doesn't change.
+function addStocksFromDialog() {
+  const plan = currentPlan();
+  const { table } = stockDialog;
+  const added = tryLogic(() => addStocks(plan, table, COMPONENT_COLORS));
+  if (added === false) {
+    return;
+  }
+  const names = readStockTable(plan, table, COMPONENT_COLORS).stocks.map((stock) => stock.name);
+  closeStockDialog();
+  recordEdit(added);
+  showMessage(`Added ${countOf(names.length, "stock")}: ${names.join(", ")}.`, "ok");
+}
+
+// Copy table (section 8, "Copying stocks"): puts every component, as a stock table's text, on the
+// clipboard, trying the older way if the browser refuses the clipboard. Not an edit.
+function copyStockTable() {
+  const plan = currentPlan();
+  const text = tryLogic(() => tableToText(stockTable(plan)));
+  if (text === false) {
+    return;
+  }
+  const copied = `Copied ${countOf(plan.components.length, "stock")} as a table. Paste it into another plan's Paste table, or into Excel.`;
+  const fallBack = () => {
+    if (copyWithTextArea(text)) {
+      showMessage(copied, "ok");
+    } else {
+      showMessage("The browser didn't let the page copy. Try again.", "error");
+    }
+  };
+  if (navigator.clipboard?.writeText === undefined) {
+    fallBack();
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => showMessage(copied, "ok"), fallBack);
+}
+
+// Copies `text` the older way: a hidden text area, selected, and document.execCommand("copy").
+// True if the browser copied it.
+function copyWithTextArea(text) {
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.className = "hidden-copy";
+  document.body.append(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+  area.remove();
+  return copied;
 }
 
 // --- Transfers (section 9) ---
@@ -8532,10 +8997,10 @@ function connectKeys() {
   document.addEventListener("keydown", handleKey);
 }
 
-// Acts on one key press (section 12). While the transfer table wizard is open, none act on the
-// page: the wizard handles its own keys.
+// Acts on one key press (section 12). While the transfer table wizard or the stock dialog is open,
+// none act on the page: the dialog handles its own keys.
 function handleKey(event) {
-  if (wizard !== null) {
+  if (isDialogOpen()) {
     return;
   }
   // While a drag is on in the Stages column, Escape cancels it and Ctrl (Cmd) switches it to
