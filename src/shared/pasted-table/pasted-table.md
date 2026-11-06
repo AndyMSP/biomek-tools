@@ -1,8 +1,14 @@
 # pasted-table — specification
 
+> **Draft change (2026-11-05, stock tables, item 21 of v0.2.0):** `tableToText`, the reverse of
+> `parsePastedTable`, so a tool can put a table on the clipboard for a spreadsheet or another paste
+> (sections 1, 4 and 5). Written in the hands-off workflow (CLAUDE.md, "Workflows"). It becomes
+> Final once built and tested by Andy.
+
 ## 1. Purpose
 `pasted-table.js` turns text copied from a spreadsheet, such as Excel, into rows of cells, so a tool
-can fill a table from a paste. It knows nothing about what the cells mean; each tool decides where
+can fill a table from a paste, and turns rows of cells back into such text, so a tool can copy a
+table. It knows nothing about what the cells mean; each tool decides where
 they go.
 
 ## 2. Background
@@ -19,11 +25,12 @@ contain tabs or line breaks themselves (spreadsheets put those in quotes), and H
 clipboard.
 
 ## 4. Interface
-The module exports two functions.
+The module exports three functions.
 
 | Function | Returns | Example |
 |---|---|---|
 | `parsePastedTable(text)` | The rows, each a list of its cells' text, in order. | `"Drug A\t4\r\nVehicle\t3\r\n"` → `[["Drug A", "4"], ["Vehicle", "3"]]` |
+| `tableToText(rows)` | The rows as a spreadsheet copies them: cells joined by tabs, each row ended by `\r\n` (the last too). | `[["Drug A", "4"], ["Vehicle", "3"]]` → `"Drug A\t4\r\nVehicle\t3\r\n"` |
 | `isMultiCell(text)` | `true` if the text holds more than one cell, so a tool should fill a table instead of one box. | `"Drug A\t4"` → `true`; `"Drug A"` → `false` |
 
 Rules for `parsePastedTable`:
@@ -38,7 +45,18 @@ Rules for `parsePastedTable`:
 `isMultiCell` is `true` when `parsePastedTable` gives more than one row, or a row with more than one
 cell.
 
-Both functions take text. Anything else throws `Pasted text must be text, but got 5.` (using
+Rules for `tableToText`:
+- `rows` is a non-empty list of rows, each a non-empty list of cells, each text; rows may have
+  different numbers of cells. Anything else throws `A table to copy must be a list of rows, each a
+  list of cells, each text, but got 5.` (or `… but row 2 is [].` / `… but row 2, cell 3 is null.`,
+  rows and cells counted from 1; `describeValue`).
+- A cell holding a tab or a line break (`\t`, `\n` or `\r`) throws `Row 2, cell 1 holds a tab or a
+  line break, which a copied table can't carry: "Feed\tA".` (`describeValue`), since version 1
+  writes no quotes (section 3) and `parsePastedTable` would split it.
+- Cells are written exactly, spaces included; nothing is quoted.
+- `parsePastedTable(tableToText(rows))` gives `rows` back for any rows it accepts.
+
+`parsePastedTable` and `isMultiCell` take text. Anything else throws `Pasted text must be text, but got 5.` (using
 `describeValue`, `error-messages` module).
 
 ## 5. Test cases
@@ -53,3 +71,10 @@ Each becomes at least one unit test in `pasted-table.test.js`.
 - `""` → `[[""]]`.
 - `isMultiCell`: `true` for `"A\tB"`, `"A\nB"` and the example; `false` for `"A"`, `"A\n"` and `""`.
 - `parsePastedTable(5)` and `isMultiCell(null)` throw the text error.
+- `tableToText` gives the example in section 2 from `[["Drug A", "4"], ["Vehicle", "3"]]`; one
+  cell `[["A"]]` gives `"A\r\n"`; empty cells and spaces are kept (`[[" A ", "", "C"]]` →
+  `" A \t\tC\r\n"`); rows of different lengths are kept.
+- `tableToText` round-trips through `parsePastedTable` for the examples above.
+- `tableToText` throws its form message for `5`, `[]`, `[[]]`, `[["A"], []]` and `[["A", null]]`,
+  and its tab-or-line-break message for a cell holding `\t`, `\n` or `\r`.
+- The REPL's `pasted-table` topic gains `tableToText`, with an example.

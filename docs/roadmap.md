@@ -424,8 +424,13 @@ Last updated: 2026-11-05
   tip groups, and its heading opening and closing its box with a ✎ for the card; the
   specifications and the build each reviewed by a separate agent, and checked in headless Chrome.
   Still to check by Andy.
-- **Decided: pasting a table of stocks** (Andy, 2026-11-05; item 21, below): components, with what
-  they contain and their osmolality, pasted from a spreadsheet in one go. Being tried in a preview.
+- **Decided: pasting and copying a table of stocks** (Andy, 2026-11-05; item 21, below): components,
+  with what they contain and their osmolality, pasted from a spreadsheet in one go, and copied out
+  the same way, from a preview Andy approved. **Specified** (Draft, 2026-11-05, in the hands-off
+  workflow): `readStockTable`, `addStocks`, `stockTable` and `UNIT_SPELLINGS`
+  (`transfer-designer.md`, "Stock tables"), `tableToText` (`pasted-table.md`), the palette's two
+  buttons and the stock dialog (`transfer-designer-page.md`, section 8), glossary "Stock table". It
+  changes no Biomek files and no plan files.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -939,6 +944,7 @@ added on 2026-10-28 (Andy).
       colors, as `+ New` gives them; the whole paste is one edit, so one Undo takes it all out;
       the plan's other rules apply as when typed (e.g. one unit family per constituent name across
       the plan); empty rows and columns are ignored.
+    - Andy approved the preview (2026-11-05) and chose the hands-off workflow for the rest.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:

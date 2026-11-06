@@ -176,6 +176,14 @@ divided by its growth area, **assuming every cell settles onto the bottom** (`co
 the well lowers its cell density but not its seeding density. Only for wells on labware with a
 growth area.
 
+**Stock table**
+A table of components, usually pasted from or copied to a spreadsheet, one row each: its name, then
+its osmolality (optional), then one column per constituent, headed with the constituent's name and
+unit in brackets, such as `Hy-Soy (g/L)`, each cell the amount that component carries (Andy,
+2026-11-05; `transfer-designer.md`, "Stock tables"). Pasting one adds its rows as new components;
+copying one writes out the plan's components. It isn't kept in the plan. ("Stock" is the lab's word
+for a component as it's made up, such as a 10 mM drug stock.)
+
 **Stage**
 A group of operations that can run in any order and share one set of settings: the technique and
 liquid type at the sources and at the destinations (chosen as pipetting modes). Stages run one after

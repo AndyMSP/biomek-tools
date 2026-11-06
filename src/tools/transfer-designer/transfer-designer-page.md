@@ -158,6 +158,13 @@
 > the hands-off workflow, so the choices made for Andy are listed in its pull request. They become
 > Final once built and tested by Andy.
 
+> **Draft changes (2026-11-05, stock tables, item 21 of v0.2.0):** `Paste table` and `Copy table`
+> in the Start card's palette: a dialog that adds many components at once from a table pasted from
+> Excel, with what each contains and its osmolality, and a button copying every component as such a
+> table (sections 8 and 16; `transfer-designer.md`, "Stock tables"), from a preview Andy shaped on
+> 2026-11-05. Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
+> Andy are listed in its pull request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -1444,7 +1451,8 @@ While Start is open, clicking a well fills it, and dragging from one well to ano
 labware fills the box between them; each fill is one undoable edit.
 
 **The palette**, in the Start card: a chip for each component (its swatch and name), in the plan's
-order, each with a small ✎ beside it; then `+ New`; then `Eraser`. Picking a chip or the eraser
+order, each with a small ✎ beside it; then `+ New`; then `Paste table` and `Copy table` (below,
+"Pasting stocks" and "Copying stocks"), looking like `+ New`; then `Eraser`. Picking a chip or the eraser
 gives it a blue outline (the eraser, red); nothing changes size or moves. Under them, one line saying
 what a click does:
 - a component picked: `Adds `**`1000 µL`**` of Media to each well you click, on top of what's there.
@@ -1484,6 +1492,53 @@ with a name typed adds it first. The new component's color is the first in `COMP
 (section 14) that no component has. If all are taken: `All 30 colors are in use, and two components
 can't share one. Remove a component to add another.` If `addComponent` refuses the name, its message
 is shown and the box stays open with the name, to fix it. Message `Added Media.`
+
+**Pasting stocks** (Andy, 2026-11-05; `transfer-designer.md`, "Stock tables"). `Paste table` (tooltip
+`Add several components at once, from a table copied from Excel`) opens the **stock dialog**: a
+dialog over the page, looking and behaving as the transfer table wizard's (section 7: the same
+backdrop, frame, header, body and footer, everything behind it unreachable but the message bar; a
+press on the backdrop or Escape closes it, changing nothing), with no steps. Its title: `Paste
+stocks`. Nothing is added until Add.
+- **Before a paste:** the wizard's paste zone, `Click here and press Ctrl+V to paste a table from
+  Excel`, focused when the dialog opens; under it the help `One row per stock. The first column is
+  its name; an Osmolality column (mOsm/kg) is optional; every other column is something it contains,
+  its unit in brackets. A blank cell means the stock doesn't contain it, or its osmolality wasn't
+  measured. For example:` and a small example table, read-only, in the wizard grid's look (header
+  cells tinted): `Name`, `Osmolality`, `Hy-Soy (g/L)`, `Drug A (mM)`, `DMSO (%)`; `Media`, `300`,
+  `4`; `Drug A stock`, `1450`, (blank), `10`, `100`.
+- **A paste** (`parsePastedTable`) drops rows and columns whose cells are all blank and fills short
+  rows with empty cells, as the wizard's Table step does. With fewer than two rows left, the paste
+  zone stays and says in red: `Paste a table with a header row and at least one row of stocks.`
+  Otherwise the dialog shows **the table**: the wizard's editable grid (section 7, "Table step"), each
+  cell a text box (header row tinted and sticky, the name column tinted, other cells right-aligned),
+  a change saved when the box loses focus or on Enter. Each name cell starts with the swatch of the
+  color its stock will take (`readStockTable`'s `color`), or no swatch (its space kept) when it has
+  none; a row's name cell has the wizard's × (tooltip `Take this row out`), which takes the row out
+  (taking out the last row goes back to the paste zone). There's no adding rows or columns: the
+  table comes from Excel.
+- **Problems:** the grid is read with `readStockTable(plan, table, COMPONENT_COLORS)` after every
+  change. A cell with a problem is marked as the wizard marks one (red tint, red bold text); a
+  whole-row problem marks its name cell. Under the grid, every problem's message, in order, in the
+  wizard's red problems box. Then one line: with problems, `Fix the problems above (red), or take
+  those rows out, to add the 3 stocks.` (`the stock` for one); without, `Add puts 3 new components
+  in the Start card, each with what it contains and its osmolality. One Undo takes them all out.`
+  (`component` for one).
+- **The footer:** once a table is in, `Paste a different table` at the left (back to the paste zone,
+  focused; the table is dropped); then Cancel, and the main button `Add 3 stocks` (`Add 1 stock`;
+  `Add` before a paste), disabled before a paste, with problems or with no stocks.
+- **Add** closes the dialog and records `addStocks(plan, table, COMPONENT_COLORS)` as one edit;
+  message `Added 3 stocks: Feed, Drug A 10mM, Water.` (`Added 1 stock: Feed.`), naming them in row
+  order. The brush's pick doesn't change. Undo takes them all out.
+
+**Copying stocks** (Andy, 2026-11-05). `Copy table` (tooltip `Copy every component, with what it
+contains and its osmolality, as a table`), disabled when the plan has no components, puts
+`tableToText(stockTable(plan))` (`pasted-table.md`) on the clipboard with
+`navigator.clipboard.writeText`, so it pastes into another plan's `Paste table` or into Excel.
+Message `Copied 3 stocks as a table. Paste it into another plan's Paste table, or into Excel.`
+(`1 stock`). If `tableToText` throws (a name holding a tab or line break), its message is shown as
+an error. If the browser refuses the clipboard, the page tries the older way (a hidden text area,
+selected, `document.execCommand("copy")`); if that fails too: `The browser didn't let the page copy.
+Try again.` Not an edit.
 
 **Editing a component**: its ✎ opens its editing box (section 10), floating just under its chip, over
 the chips below, moved left if needed to stay inside the Start card:
@@ -1952,6 +2007,11 @@ page's configuration (ADR 0009):
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
 - each item in sections 5 to 13 behaves as described;
+- stocks (section 8): pasting a stock table from Excel adds its components with their colors,
+  constituents and osmolality, and one Undo takes them out; a name already in the plan, a unit
+  outside the configured ones and their spellings, and a bad number are each marked and stop Add;
+  editing a cell or taking a row out fixes it; `Copy table`, then pasting into Excel gives the same
+  table, and pasting it into another plan's `Paste table` gives the same components;
 - saving, then opening the saved file in a new window, gives the same plan; reloading the page
   brings the plan back; a private window starts empty and works;
 - clicking, dragging, and sending one source into a box of wells, in all four directions;
