@@ -930,8 +930,9 @@ From the top:
     group** (`sourceGroups` of the draft's sources): a box holds the sources whose stages share one
     set of tips. Every source picked starts in a box of its own (new tips, as before this change),
     and the first source always starts new tips (a randomization never shares tips with stages
-    outside it). Only the sharing is set here: the tip type and probes stay the card's one **Tips**
-    setting (Andy: not per source).
+    outside it). Only the sharing is set here, not which tips (Andy: not per source): those are
+    the card's **Tips** (all groups at once) or each tip group's ✎ (one group), section 7, "Each
+    transfer" (2026-11-05, item 20).
     - **A box** is a rounded box (10px corners, 1px border, padding 4px 6px 0) in light blue
       (`#EEF3FA`, border `#9DB7DB`), alternating with light sand (`#F5F1E8`, border `#D9D2C3`), as the
       Stages column's tip groups (section 15). Its **heading**, at its top left, 11px semibold gray:
@@ -1015,15 +1016,22 @@ From the top:
   works"):
   - **Not run yet**: the randomization's own `settings`, `tipType` and `probes` (its first run's;
     a new randomization's are the stage's before it, `addRandomization`), as before.
-  - **Run**: its **stages' own values**, read from the plan each time the card opens: each end's
-    mode (`modeOf`) and whether it mixes, the tip type and the probe count of its tip groups. A
-    value every stage (or every tip group) shares shows as itself; where they differ it shows
+  - **Run**: its **stages' own values**, read from the plan each time the card opens
+    (`randomizationStageValues`): each end's mode and whether it mixes, the tip type and the probe
+    count of its tip groups. A value every stage (or every tip group) shares shows as itself; where
+    they differ (`null`) it shows
     **Mixed**: the mode menu gains a first entry `Mixed` (in place of `(not one of the modes)`,
     which a run randomization's menu never shows: a stage whose end isn't one of the modes counts
     as differing), chosen; the Mix checkbox is indeterminate (a dash); the tip type and probes menus
-    gain a first entry `Mixed`, chosen. While an end's mode shows `Mixed`, its Mix checkbox is
-    disabled with the tooltip `Choose a mode to set every stage's mixing.`, as `(not one of the
-    modes)` disables it today. Choosing `Mixed` again in a menu puts it back as it was.
+    gain a first entry `Mixed`, chosen. Choosing `Mixed` again in a menu puts it back as it was.
+  - **Mix under a Mixed mode**: enabled when every stage's mode at that end can mix (`canMix`);
+    otherwise disabled, with the tooltip naming the first stage in stage order that can't: `Stage
+    5, “A1”, uses Non-Contact, which can't mix: choose a mode, or change that stage first.`, or,
+    for an end that isn't one of the modes, `Stage 5, “A1”, doesn't use one of the modes: choose a
+    mode, or change that stage first.` (so the card never offers what `runRandomization` refuses).
+  - **A Mix checkbox opened as Mixed** (indeterminate): a click cycles checked → unchecked → Mixed
+    (indeterminate again, leaving each stage's mixing as it is). One opened checked or unchecked
+    toggles as any checkbox, never showing Mixed.
   - A note under Tips, 12px gray: not run yet, `Every stage starts with these. Change one stage with
     its ✎ once it has run.`; run, `A value chosen here goes to every stage on Update; a stage's ✎
     changes just that one.`, starting `Mixed: its stages differ, and stay as they are unless you
@@ -1954,12 +1962,13 @@ page's configuration (ADR 0009):
   transfer, Tips and Volume; **a run randomization's settings on its stages** (2026-11-05, item
   20): each of its stages' ✎ (Name disabled with its tooltip, no Remove with its note; a mode
   changed and saved) and each of its tip groups' ✎ (no Remove, its note); the card then showing
-  that value as `Mixed` (mode menu, Mix dash, tip menus) with its note, the Mix checkbox disabled
-  under a Mixed mode, `Mixed` chosen again restoring it; a value chosen on the card (Dispense Fast)
+  that value as `Mixed` (mode menu, Mix dash, tip menus) with its note; Mix under a Mixed mode
+  enabled when every stage's mode can mix, and disabled with the tooltip naming a stage dispensing
+  Non-Contact; a Mix opened as Mixed cycling checked, unchecked, Mixed; `Mixed` chosen again
+  restoring a menu; a value chosen on the card (Dispense Fast)
   enabling Update and, after Update, on every stage, the stage changed by ✎ keeping its other end;
   Update with nothing chosen keeping every stage's settings and tips; a new source added after a run
-  starting like its neighbor; mixing chosen where a stage's mode can't mix refused with its
-  message; a randomization not run yet showing its own values and its first-run note, and a new
+  starting like its neighbor; a randomization not run yet showing its own values and its first-run note, and a new
   one starting from the stage before it; each problem message; Randomize: stages in source order, named, each on
   new tips, the stage after keeping its tips, every well filled once; Update with the same seed (same
   wells) and a new one; a source removed and added; Remove before and after running, and Undo; the
