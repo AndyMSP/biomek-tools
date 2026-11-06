@@ -2044,8 +2044,10 @@ function withOwnTipsAt(plan, id, tips) {
 
 // Returns the plan with `ids`, stages that are consecutive in the stage order in some order, put in
 // the order given, starting where the first of them now is; every other stage keeps its place. A
-// randomization without stages that sat before their old first now sits before the new first. The
-// operation list follows the new stage order. The same plan if they're in that order already.
+// randomization whose beforeId was their old first (one without stages sitting above them, or one
+// that has run just above them) now has the new first (section 3, "Where randomizations sit
+// afterwards"). The operation list follows the new stage order. The same plan if they're in that
+// order already.
 function withStagesReordered(plan, ids) {
   const order = plan.stageOrder;
   const wanted = new Set(ids);
@@ -2056,9 +2058,7 @@ function withStagesReordered(plan, ids) {
   const start = order.indexOf(current[0]);
   const stageOrder = [...order.slice(0, start), ...ids, ...order.slice(start + current.length)];
   const randomizations = plan.randomizations.map((candidate) =>
-    candidate.stages.length === 0 && candidate.beforeId === current[0]
-      ? { ...candidate, beforeId: ids[0] }
-      : candidate,
+    candidate.beforeId === current[0] ? { ...candidate, beforeId: ids[0] } : candidate,
   );
   return withOperationsInStageOrder(withParts(plan, { stageOrder, randomizations: sameOrNew(plan.randomizations, randomizations) }));
 }

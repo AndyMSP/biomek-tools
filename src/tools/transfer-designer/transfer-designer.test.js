@@ -6695,6 +6695,44 @@ describe("transfer-designer", () => {
     });
   });
 
+  // The test plan with a randomization run just before stage 1, then the three-stage table added
+  // there, between them: { plan, id, rId }. The randomization's beforeId is the table's first stage.
+  function runRandomizationAboveTable() {
+    let plan = tablePlan();
+    const { plan: withR, id: rId } = addRandomization(plan, "1", { seed: 3, volume: 10 });
+    plan = setRandomization(withR, rId, {
+      sources: [{ labware: DEEP, well: "A3", replicates: 1, filler: false, sharesTips: false }],
+      fill: [plateWell("H1")],
+    });
+    plan = runRandomization(plan, rId);
+    const table = [["Label", "Media", "Drug A", "DMSO"], ["Control", "190", "", "5"], ["A low", "190", "2", "5"]];
+    const sources = { Media: [trough("1"), trough("2")], "Drug A": [deepWell("A1")], DMSO: [deepWell("A3")] };
+    const added = addTransferTable(plan, { table, sources }, "1");
+    return { plan: added.plan, id: added.id, rId };
+  }
+
+  test("a run randomization just above a transfer table follows its new first stage after a move inside it", () => {
+    const { plan, id, rId } = runRandomizationAboveTable();
+    const [media, drug] = tableStages(plan, id);
+    assert.equal(randomizationAt(plan, rId).beforeId, media);
+    const { plan: moved } = moveItems(plan, [stageItem(drug)], inTable(tableBoxIndex(plan, id), 0));
+    assert.equal(randomizationAt(moved, rId).beforeId, drug);
+    assert.equal(setRandomizations(moved, moved.randomizations).randomizations.length, 1);
+    assert.equal(moveItems(plan, [stageItem(media)], inTable(tableBoxIndex(plan, id), 0)).plan, plan);
+  });
+
+  test("a run randomization just above a transfer table follows its new first stage after an update", () => {
+    const { plan, id, rId } = runRandomizationAboveTable();
+    const draft = draftOf(plan, id);
+    // Media cleared, and DMSO moved before Drug A.
+    draft.table = [["Label", "Media", "DMSO", "Drug A"], ["Control", "", "5", ""], ["A low", "", "5", "2"]];
+    const updated = updateTransferTable(plan, id, draft);
+    const stages = tableStages(updated, id);
+    assert.deepEqual(stages.map((stage) => updated.stageList.get(stage).name), ["DMSO", "Drug A"]);
+    assert.equal(randomizationAt(updated, rId).beforeId, stages[0]);
+    assert.equal(setRandomizations(updated, updated.randomizations).randomizations.length, 1);
+  });
+
   test("transferTableStages with an id gives the same with `at` null as with its first stage", () => {
     const { plan, id } = withExampleTable();
     const first = tableStages(plan, id)[0];
