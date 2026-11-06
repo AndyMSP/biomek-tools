@@ -1521,8 +1521,8 @@ stocks`. Nothing is added until Add.
   a change saved when the box loses focus or on Enter. Each name cell starts with the swatch of the
   color its stock will take (`readStockTable`'s `color`), or no swatch (its space kept) when it has
   none; a row's name cell has the wizard's × (tooltip `Take this row out`), which takes the row out
-  and puts the focus on the name cell now in its place, or the one above if it was the last row, so
-  Escape still closes the dialog (taking out the last row goes back to the paste zone, focused). There's no adding rows or columns: the
+  and puts the focus on the dialog itself (not on a cell, where Escape puts the cell's text back),
+  so Escape still closes the dialog (taking out the last row goes back to the paste zone, focused). There's no adding rows or columns: the
   table comes from Excel.
 - **Problems:** the grid is read with `readStockTable(plan, table, COMPONENT_COLORS)` after every
   change. A cell with a problem is marked as the wizard marks one (red tint, red bold text); a

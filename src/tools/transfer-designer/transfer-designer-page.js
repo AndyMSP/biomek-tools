@@ -6391,7 +6391,8 @@ function createStockExample() {
 }
 
 // Takes pasted `text` as the stock table (section 8): read with parsePastedTable, short rows filled
-// with empty cells, then rows and columns whose cells are all blank dropped. With fewer than two
+// with empty cells, then rows, and columns after the first, whose cells are all blank dropped (the
+// first column is the names, so it's kept even when blank). With fewer than two
 // rows left, the paste zone stays and says why.
 function takePastedStocks(text) {
   const table = text === "" ? [] : withoutBlankRowsAndColumns(parsePastedTable(text));
@@ -6408,14 +6409,17 @@ function takePastedStocks(text) {
 }
 
 // `rows` as a rectangle without blank lines: short rows filled with empty cells to the widest's
-// length, then the rows and the columns whose cells are all blank dropped, e.g. [["A", ""], ["",
-// ""], ["B"]] → [["A"], ["B"]].
+// length, then the rows, and the columns after the first, whose cells are all blank dropped, e.g.
+// [["A", ""], ["", ""], ["B"]] → [["A"], ["B"]]; [["", "x (mM)"], ["", "4"]] keeps its blank first
+// column, since the first column is always the names.
 function withoutBlankRowsAndColumns(rows) {
   const width = Math.max(0, ...rows.map((row) => row.length));
   const filled = rows
     .map((row) => [...row, ...Array(width - row.length).fill("")])
     .filter((row) => row.some((cell) => cell.trim() !== ""));
-  const kept = [...Array(width).keys()].filter((column) => filled.some((row) => row[column].trim() !== ""));
+  const kept = [...Array(width).keys()].filter(
+    (column) => column === 0 || filled.some((row) => row[column].trim() !== ""),
+  );
   return filled.map((row) => kept.map((column) => row[column]));
 }
 
@@ -6522,7 +6526,9 @@ function commitStockCell(row, column, text) {
   updateStockMainButton(plan);
 }
 
-// Takes row `row` out of the table; taking out the last stock row goes back to the paste zone.
+// Takes row `row` out of the table and focuses the dialog itself, so the focus stays in the dialog
+// (redrawing it would otherwise drop it onto the page) and Escape still closes it; not a cell, where
+// Escape puts the cell's text back. Taking out the last stock row goes back to the paste zone.
 function takeOutStockRow(row) {
   stockDialog.table.splice(row, 1);
   if (stockDialog.table.length < 2) {
@@ -6532,6 +6538,9 @@ function takeOutStockRow(row) {
     return;
   }
   drawStockDialog();
+  // tabIndex -1 lets the dialog take the focus from code without joining the Tab order.
+  elements.stockDialog.tabIndex = -1;
+  elements.stockDialog.focus();
 }
 
 // Marks the stock grid from the table read against the plan: problem cells red with their message
@@ -6577,16 +6586,24 @@ function createStockSummary(plan) {
       createElement("p", `Fix the problems above (red), or take those rows out, to add ${what}.`, "wizard-help"),
     );
   } else {
-    holder.append(
-      createElement(
-        "p",
-        `Add puts ${count} new ${count === 1 ? "component" : "components"} in the Start card, each with ` +
-          "what it contains and its osmolality. One Undo takes them all out.",
-        "wizard-help",
-      ),
-    );
+    holder.append(createElement("p", addSummaryText(count), "wizard-help"));
   }
   return holder;
+}
+
+// What Add does, for `count` stocks and no problems (section 8): one sentence for one stock, one
+// for several, and what to do when there are none.
+function addSummaryText(count) {
+  if (count === 0) {
+    return "Add at least one row of stocks under the header.";
+  }
+  if (count === 1) {
+    return "Add puts 1 new component in the Start card, with what it contains and its osmolality. Undo takes it out.";
+  }
+  return (
+    `Add puts ${count} new components in the Start card, each with what it contains and its osmolality. ` +
+    "One Undo takes them all out."
+  );
 }
 
 // The stock dialog's footer: `Paste a different table` at the left once a table is in, then Cancel
