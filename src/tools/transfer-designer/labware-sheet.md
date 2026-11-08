@@ -37,8 +37,10 @@ job is the labware's names); check boxes (tried and dropped); where each labware
 
 ### What the sheet holds
 `labwareSheetContent(plan, folderName, made)` gives the sheet's content as plain data:
-- `experimentName`: the plan's experiment name.
-- `zipName`: the folder name and `.zip`, e.g. `2026-11-08_134118_Exp36-feeding.zip`.
+- `experimentName`: the plan's experiment name, passed through `toPdfText` (`pdf.md`).
+- `zipName`: the folder name and `.zip`, e.g. `2026-11-08_134118_Exp36-feeding.zip`, passed through
+  `toPdfText`. (The file writer's names never need it; cleaning them anyway means the module never
+  passes the PDF text it can't show, whatever it's given; from the build's review, 2026-11-08.)
 - `made`: the moment, written `YYYY-MM-DD HH:MM` (24-hour clock, leading zeros), e.g.
   `2026-11-08 13:41`.
 - `labware`: one entry per labware the plan uses (`labwareUsed`, `transfer-designer.md`: starting
@@ -132,7 +134,10 @@ The folder name is checked before the date.
 ## 6. Test cases
 Each becomes at least one unit test in `labware-sheet.test.js`, inside `describe("labware-sheet",
 …)`. Tests build plans with the transfer designer's own edits, and work out labware names, types and
-counts from `config/` (CLAUDE.md, "Tests follow config/").
+counts from `config/` (CLAUDE.md, "Tests follow config/"): labware is picked from `labwareNames()`
+by its labware type (e.g. the first and second deep-well plates, the first reservoir), never named,
+so `Res1`, `Deep1` and `Deep2` below stand for those picks. A plan whose content is compared is given
+an experiment name (`setExperimentName`), so the name is checked.
 
 **The content**
 - A plan with starting contents in `Res1`, a transfer from `Res1` into `Deep1`, a well label on
@@ -145,7 +150,7 @@ counts from `config/` (CLAUDE.md, "Tests follow config/").
 - `zipName` is the folder name and `.zip`; `made` for `new Date(2026, 10, 8, 9, 5, 7)` is
   `2026-11-08 09:05`.
 - `tips` equals `tipsUsed(plan)`; a plan without transfers gives `[]`.
-- A label `Drug → plate` gives `Drug ? plate`.
+- A label `Drug → plate` gives `Drug ? plate`; a folder name holding `→` gives a `zipName` with `?`.
 - The plan is unchanged afterwards.
 
 **The layout**

@@ -41,8 +41,8 @@ A US Letter page is 612 × 792 points.
 
 ### Inputs
 **The pages:** a list of at least one page, each `{ width, height, items }`:
-- `width` and `height`: the page's size in points, numbers greater than 0 and at most 14,400 (200
-  inches, the largest page PDF readers must support).
+- `width` and `height`: the page's size in points, numbers from 0.001 to 14,400 (200 inches, the
+  largest page PDF readers must support).
 - `items`: a list of what's drawn on the page, in order, later items drawn over earlier ones. Each
   is one of:
   - **Text** `{ kind: "text", x, y, text, size, bold }`: `text` written starting at (`x`, `y`), the
@@ -55,7 +55,9 @@ A US Letter page is 612 × 792 points.
     corner at (`x`, `y`), with no outline, in the gray `gray`, from 0 (black) to 1 (white).
 - Every number is **finite** (not `NaN` or `Infinity`) and from −32,767 to 32,767, the practical
   limit PDF readers handle (ISO 32000-1, Annex C); `size`, the line's `width` and the box's `width`
-  and `height` are greater than 0. Positions may be off the page (it's allowed; it's just not seen).
+  and `height` are at least 0.001, the smallest number written with 3 decimals (section 3,
+  "Numbers"; a smaller one would be written as `0`; found in the build's review, 2026-11-08).
+  Positions may be off the page (it's allowed; it's just not seen).
   So no number is ever written in exponent form (`1e+21`).
 
 **Characters a PDF can show.** The text is written in the **WinAnsi** character set (Windows'
@@ -146,7 +148,7 @@ The module exports three functions. None changes its inputs.
 | Function | Takes | Returns | Throws |
 |---|---|---|---|
 | `writePdf(pages)` | the pages (section 3) | the PDF, as ASCII text | if the pages aren't valid (section 5); nothing is returned then |
-| `textWidth(text, size, bold)` | text the PDF can show, a size greater than 0, `true` or `false` | its width in points, e.g. `textWidth("Deep1", 10, false)` → 29.46 | if the text has a character the PDF can't show, or the size or bold isn't valid (section 5) |
+| `textWidth(text, size, bold)` | text the PDF can show, a size from 0.001 to 32,767, `true` or `false` | its width in points, e.g. `textWidth("Deep1", 10, false)` → 29.46 | if the text has a character the PDF can't show, or the size or bold isn't valid (section 5) |
 | `toPdfText(text)` | any text | a copy with each character the PDF can't show replaced by `?`, e.g. `"Drug → plate"` → `"Drug ? plate"` | if `text` isn't text |
 
 Example:
@@ -179,18 +181,18 @@ pass users' text through `toPdfText` first.
 |---|---|
 | `pages` isn't a list, or is empty | `The pages of a PDF must be a list of at least one { width, height, items }, but got null.` |
 | A page isn't an object with exactly `width`, `height` and `items` | `Page 2 must be an object with exactly "width", "height" and "items".` |
-| A page's width or height isn't a number greater than 0 and at most 14,400 | `Page 2's width must be a number of points greater than 0 and at most 14400, but got 0.` |
+| A page's width or height isn't a number from 0.001 to 14,400 | `Page 2's width must be a number of points from 0.001 to 14400, but got 0.` |
 | `items` isn't a list | `Page 2's items must be a list, but got null.` |
-| An item isn't an object whose `kind` is `"text"`, `"line"` or `"box"` | `Page 2, item 3, must be an object whose kind is "text", "line" or "box", but got "circle".` |
+| An item isn't an object whose `kind` is the text `"text"`, `"line"` or `"box"` (a list such as `["text"]` isn't) | `Page 2, item 3, must be an object whose kind is "text", "line" or "box", but got "circle".` |
 | An item hasn't exactly its kind's properties | `Page 2, item 3 (text), must have exactly "kind", "x", "y", "text", "size" and "bold".` |
 | A position isn't a finite number | `Page 2, item 3's x must be a number, but got "54".` (also `NaN` and `Infinity`) |
 | A position isn't from −32,767 to 32,767 | `Page 2, item 3's x must be from -32767 to 32767 points, but got 40000.` |
-| A size, width, height or line width isn't a finite number greater than 0 (and at most 32,767) | `Page 2, item 3's size must be a number greater than 0 and at most 32767, but got 0.` |
+| A size, width, height or line width isn't a finite number from 0.001 to 32,767 | `Page 2, item 3's size must be a number from 0.001 to 32767, but got 0.` |
 | `gray` isn't a number from 0 to 1 | `Page 2, item 3's gray must be a number from 0 (black) to 1 (white), but got 1.5.` |
 | `bold` isn't `true` or `false` | `Page 2, item 3's bold must be true or false, but got "yes".` |
 | `text` isn't text | `Page 2, item 3's text must be text, but got 5.` |
 | `text` has a character the PDF can't show | `Page 2, item 3's text, "Drug → plate", has "→", which a PDF's standard fonts can't show here: pass it through toPdfText first.` (a tab or line break is named as `a tab` or `a line break`) |
-| `textWidth`: text, size or bold not valid | `The text to measure must be text, but got 5.` / `The text to measure, "→", has "→", which a PDF's standard fonts can't show here: pass it through toPdfText first.` / `The size to measure at must be a number greater than 0 and at most 32767, but got 0.` (also `Infinity`) / `Bold must be true or false, but got "yes".` |
+| `textWidth`: text, size or bold not valid | `The text to measure must be text, but got 5.` / `The text to measure, "→", has "→", which a PDF's standard fonts can't show here: pass it through toPdfText first.` / `The size to measure at must be a number from 0.001 to 32767, but got 0.` (also `Infinity`) / `Bold must be true or false, but got "yes".` |
 | `toPdfText`: not text | `The text for a PDF must be text, but got 5.` |
 
 Pages and items are numbered from 1, in the order given. The list is checked first, then each page
@@ -249,7 +251,8 @@ section 5 has at least one test.
 **Refusing** (section 5)
 - Each row gives its message, with at least: `null`, `[]` and `"pages"` for the list; a page missing
   `items`; widths `0`, `-1`, `14401`, `"612"`; a kind `"circle"`; a text item missing `bold`; an x of
-  `"54"`, `NaN`, `Infinity`, `40000` and `1e21`; sizes `0`, `-1` and `Infinity`; gray `1.5` and `-0.1`; bold `"yes"`; text `5`,
+  `"54"`, `NaN`, `Infinity`, `40000` and `1e21`; sizes `0`, `0.0001`, `-1` and `Infinity`; a page width
+  of `0.0001`; a kind `["text"]`; gray `1.5` and `-0.1`; bold `"yes"`; text `5`,
   `"→"`, a tab and a line break.
 - Order of checks: page 1's bad item is reported before page 2's bad width (pages in order, each
   in full); an item's kind before its properties; its properties before its values.
