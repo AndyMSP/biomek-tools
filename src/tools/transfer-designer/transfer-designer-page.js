@@ -7,7 +7,7 @@
 // contents-tracking.js, how much each mixed well is mixed through mix-volumes.js, a randomization's
 // seed and spare wells through random-pool.js, a pasted or copied table's text through
 // pasted-table.js, and
-// the Biomek files through file-writer.js and zip.js. When one of them
+// the Biomek files through file-writer.js, labware-sheet.js and zip.js. When one of them
 // refuses an edit, the page shows its message and changes nothing. What this file decides is only
 // how things look and how the user does them: how typing a volume works, how numbers are shown,
 // where boxes float, and what each message says.
@@ -20,6 +20,7 @@ import { SOURCES_SHOWN } from "../../../config/randomizations.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
 import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
+import { RECORDS_FOLDER } from "../../../config/records.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
 import { randomSeed, MAX_SEED } from "../../shared/random-pool/random-pool.js";
@@ -35,6 +36,7 @@ import { zipFiles } from "../../shared/zip/zip.js";
 import { parsePastedTable, tableToText } from "../../shared/pasted-table/pasted-table.js";
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
+import { labwareSheet } from "./labware-sheet.js";
 import {
   START,
   DEFAULT_MIX,
@@ -1060,17 +1062,19 @@ function checkNameAsTyped(box) {
 
 // --- The Biomek files box (section 5) ---
 
-// The run the Biomek files box will write, { folderName, files, now }: the file writer's folder
-// name and files, and the moment the box opened, which they're named and dated by. Null while the
-// box is closed, or open with a plan the writer refused.
+// The run the Biomek files box will write, { folderName, files, sheet, now }: the file writer's
+// folder name and files, the labware sheet ({ name, text }) for the Records folder, and the moment
+// the box opened, which they're named and dated by. Null while the box is closed, or open with a
+// plan the writer refused.
 let biomekRun = null;
 
 // Opens the Biomek files box under its button, or closes it if it's open. Opening it closes
-// Reset's question, and works out the run's files at once with writeRunFiles, the moment the box
-// opens as their timestamp, so the zip's name it shows is the one Write files saves. If the writer
-// refuses the plan, its message is shown instead, unchanged, with Write files disabled. Before
-// that, a randomization or transfer table that's out of date is named instead, as the writer never
-// reads them.
+// Reset's question, and works out the run's files at once with writeRunFiles, and the labware
+// sheet with labwareSheet, the moment the box opens as their timestamp, so the zip's name it shows
+// is the one Write files saves, and the box never offers files it can't write. If either refuses
+// the plan, its message is shown instead, unchanged, with Write files disabled. Before that, a
+// randomization or transfer table that's out of date is named instead, as the writer never reads
+// them.
 function toggleBiomekBox() {
   if (!elements.biomekBox.hidden) {
     closeBiomekBox();
@@ -1085,12 +1089,14 @@ function toggleBiomekBox() {
   try {
     checkNoRandomizationOutOfDate(currentPlan());
     const { folderName, files } = writeRunFiles(currentPlan(), now);
-    biomekRun = { folderName, files, now };
+    const sheet = labwareSheet(currentPlan(), folderName, now);
+    biomekRun = { folderName, files, sheet, now };
     summary.classList.remove("refused");
     summary.replaceChildren(
       "This saves",
       createElement("code", `${folderName}.zip`, "zip-name"),
-      `holding the folder ${folderName}, with ${describeRunFiles(files)}.`,
+      `holding the folder ${folderName}, with ${describeRunFiles(files)}, ` +
+        `and a ${RECORDS_FOLDER} folder with the labware sheet.`,
     );
     elements.writeFiles.disabled = false;
   } catch (error) {
@@ -1125,6 +1131,15 @@ function describeRunFiles(files) {
   return `Setup.csv, Stages.csv and ${countOf(transferFileCount, "Transfer From File file")}`;
 }
 
+// The zip's entries for `run` (as biomekRun holds it): the file writer's files under the run's
+// folder, exactly as before, then the labware sheet in its Records folder (ADR 0020),
+// e.g. "2026-11-08_134118_Exp36/Setup.csv", …, "2026-11-08_134118_Exp36/Records/Labware sheet.pdf".
+function zipEntriesFor({ folderName, files, sheet }) {
+  const runEntries = files.map((file) => ({ name: `${folderName}/${file.name}`, text: file.text }));
+  const sheetEntry = { name: `${folderName}/${RECORDS_FOLDER}/${sheet.name}`, text: sheet.text };
+  return [...runEntries, sheetEntry];
+}
+
 // Closes the Biomek files box, forgetting the run it worked out.
 function closeBiomekBox() {
   biomekRun = null;
@@ -1132,17 +1147,16 @@ function closeBiomekBox() {
   elements.biomekFiles.setAttribute("aria-expanded", "false");
 }
 
-// Write files: builds one zip of the run's files with zipFiles, each under the run's folder, dated
-// with the moment the box opened, and saves it through the save dialog where the browser has one,
-// otherwise to the downloads; then the box closes. If the user closes the dialog, nothing happens
-// and the box stays open.
+// Write files: builds one zip with zipFiles of the run's files, each under the run's folder, then
+// the labware sheet in the Records folder inside it, all dated with the moment the box opened, and
+// saves it through the save dialog where the browser has one, otherwise to the downloads; then the
+// box closes. If the user closes the dialog, nothing happens and the box stays open.
 async function writeBiomekFiles() {
   if (biomekRun === null) {
     return;
   }
-  const { folderName, files, now } = biomekRun;
-  const entries = files.map((file) => ({ name: `${folderName}/${file.name}`, text: file.text }));
-  const bytes = tryLogic(() => zipFiles(entries, now));
+  const { folderName, now } = biomekRun;
+  const bytes = tryLogic(() => zipFiles(zipEntriesFor(biomekRun), now));
   if (bytes === false) {
     return;
   }

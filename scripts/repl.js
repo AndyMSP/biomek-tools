@@ -63,6 +63,7 @@ import {
   folderNameFor,
 } from "../src/shared/file-writer/file-writer.js";
 import { zipFiles, crc32 } from "../src/shared/zip/zip.js";
+import { writePdf, textWidth, toPdfText } from "../src/shared/pdf/pdf.js";
 import {
   findProblems,
   placeName,
@@ -183,6 +184,11 @@ import {
   planToText,
   planFromText,
 } from "../src/tools/transfer-designer/plan-file.js";
+import {
+  labwareSheetContent,
+  labwareSheetPages,
+  labwareSheet,
+} from "../src/tools/transfer-designer/labware-sheet.js";
 import { buildVersion, branchLabel, fileNameFor, readGitFacts } from "./build-version.js";
 
 // What the REPL loads, grouped by topic: one topic per module, named like its folder. Each topic
@@ -473,6 +479,19 @@ const TOPICS = {
       "Buffer.from(zipBytes).toString(\"hex\").match(/../g).join(\" \")",
       'zipFiles([{ name: "Run\\\\Setup.csv", text: "" }], new Date())',
       'zipFiles([{ name: "a.csv", text: "" }, { name: "a.csv", text: "" }], new Date())',
+    ],
+  },
+  pdf: {
+    loaded: { writePdf, textWidth, toPdfText },
+    examples: [
+      'textWidth("Deep1", 10, false)',
+      'textWidth("Feeding DWP", 10, true)',
+      'toPdfText("Drug → plate")',
+      'toPdfText("50 µL at 37 °C")',
+      'const pdfText = writePdf([{ width: 612, height: 792, items: [{ kind: "box", x: 54, y: 700, width: 504, height: 18, gray: 0.92 }, { kind: "text", x: 58, y: 705, text: "Your label", size: 10, bold: true }, { kind: "line", x1: 54, y1: 690, x2: 558, y2: 690, width: 0.3 }] }])',
+      "console.log(pdfText)",
+      'writePdf([{ width: 612, height: 792, items: [{ kind: "text", x: 58, y: 705, text: "Drug → plate", size: 10, bold: false }] }])',
+      'writePdf([{ width: 612, height: 792, items: [{ kind: "circle", x: 0, y: 0 }] }])',
     ],
   },
   randomizer: {
@@ -820,6 +839,24 @@ const TOPICS = {
       'let fromPremix = addTransferTable(premixed, { table: [["Dest Well Label", "Premix"], ["Control", "20"]], sources: { Premix: [{ labware: "Deep1", well: "A4" }] } }, null)',
       'transfersIn(fromPremix.plan, "2")',
       'isTransferTableOutOfDate(setWellLabel(fromPremix.plan, { labware: "Deep1", well: "A4" }, ""), "t1")',
+    ],
+  },
+  "labware-sheet": {
+    loaded: { labwareSheetContent, labwareSheetPages, labwareSheet },
+    examples: [
+      'let sheetPlan = setExperimentName(emptyPlan().plan, "Exp36")',
+      'sheetPlan = addToWells(addComponent(sheetPlan, "Media", "#4e79a7"), [{ labware: "Res1", well: "1" }], "Media", 10000)',
+      'sheetPlan = addTransfer(sheetPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Deep1", well: "A1" }, volume: 100, stage: "1" })',
+      'sheetPlan = setLabel(setLabel(sheetPlan, "Deep1", "Feeding DWP"), "Res1", "Media → res")',
+      'const sheetContent = labwareSheetContent(sheetPlan, "2026-11-08_134118_Exp36", new Date())',
+      "sheetContent.labware",
+      "sheetContent.unused",
+      "sheetContent.tips",
+      "labwareSheetPages(sheetContent)[0].items.slice(0, 6)",
+      'const sheet = labwareSheet(sheetPlan, "2026-11-08_134118_Exp36", new Date())',
+      "sheet.name",
+      "console.log(sheet.text)",
+      'labwareSheet(sheetPlan, "", new Date())',
     ],
   },
   "plan-file": {

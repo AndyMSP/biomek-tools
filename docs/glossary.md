@@ -90,6 +90,12 @@ names that labware. Until the user gives one, the label is the labware's name in
 description. A label is only for people: transfers and the Biomek files always use the deck
 description's name.
 
+**Labware sheet**
+A one-page PDF in a run's Records folder saying which Biomek name each labware the plan uses has:
+its labware label beside its name in the deck description (e.g. `Feeding DWP` is `Deep1`), with its
+labware type and whether it's filled before the run, then the deck's unused labware and the tips the
+run uses (ADR 0020; `labware-sheet.md`).
+
 **Mix**
 How a stage mixes at one end: before aspirating, at its sources, or after dispensing, into its
 destinations. A mix is a share of the well's volume (a percentage), a number of times and a speed.
@@ -159,6 +165,11 @@ from; its **wells to fill**, the wells it fills; its **filler**, what fills the 
 sources' replicates leave over: one or more sources, its **filler wells**, which should hold one
 liquid (it's a problem otherwise), used in their order, in one stage of their own (ADR 0012; Andy,
 2026-11-02). It's **out of date** when its stages differ from what running it now would make.
+
+**Records folder**
+The folder `Records` inside a run's folder in the Biomek files' zip, holding the files for people
+rather than the Biomek, such as the labware sheet, so the Biomek's own files stay as they are
+(ADR 0020).
 
 **Seam**
 A place in the transfer designer's Stages column where a stage, a mix step or a tip change can be

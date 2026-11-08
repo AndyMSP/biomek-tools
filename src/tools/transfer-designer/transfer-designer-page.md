@@ -185,6 +185,12 @@
 > the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its
 > pull request. They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-08, the labware sheet, item 25 of v0.2.0):** Write files also puts a
+> `Records` folder in the zip, holding the labware sheet (`labware-sheet.md`; ADR 0020), and the
+> Biomek files box says so (sections 5, 14 and 16), from a preview Andy approved on 2026-11-08.
+> Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are
+> listed in its pull request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -305,8 +311,11 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
 `now` being the moment the box opens, and shows what Write files will save:
 - If the files can be written: `This saves`, the zip's name on a line of its own in monospace
   (`<folder name>.zip`, e.g. `2026-10-28_172600_Exp36.zip`), then `holding the folder <folder name>,
-  with Setup.csv, Stages.csv and 3 Transfer From File files.` (the count from the files), with
-  `Cancel` and `Write files` (solid blue), focused on Write files.
+  with Setup.csv, Stages.csv and 3 Transfer From File files, and a Records folder with the labware
+  sheet.` (the count from the files; `Records` is `RECORDS_FOLDER`), with `Cancel` and `Write files`
+  (solid blue), focused on Write files. The labware sheet is made at the same moment, with
+  `labwareSheet(plan, folderName, now)` (`labware-sheet.md`), so the box never offers files it can't
+  write; if it throws, its message is shown as the writer's are, in red, with Write files disabled.
 - If the plan is refused, `writeRunFiles`'s message instead (for example `Name the experiment first:
   the files' folder is named after it.`, or an overdraw), in red, with Write files disabled and
   Cancel focused. The page shows the writer's messages unchanged, with no wording of its own, so
@@ -322,8 +331,12 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
 The time is fixed when the box opens, so the name it shows is the name Write files saves (Andy,
 2026-10-28: "tell you what file name it's actually generating").
 
-**Write files** builds one zip with `zipFiles` (`zip.md`): each file under the folder, as
-`<folder name>/<file name>`, dated with the same moment. Where the browser can ask where to save
+**Write files** builds one zip with `zipFiles` (`zip.md`): each of the file writer's files under the
+folder, as `<folder name>/<file name>`, then the labware sheet in the `Records` folder, as
+`<folder name>/<RECORDS_FOLDER>/<name>`, the name being the one `labwareSheet` gives
+(`LABWARE_SHEET_FILE_NAME`, `config/records.js`; e.g.
+`2026-11-08_134118_Exp36-feeding/Records/Labware sheet.pdf`), all dated with the same moment. The
+Biomek's own files are exactly as before (ADR 0020). Where the browser can ask where to save
 (Edge and Chrome can), it asks, suggesting `<folder name>.zip`; message `Saved <file name>. Unzip it
 into <BASE_FOLDER>, then point the method's setup worklist at <BASE_FOLDER><folder name>\Setup.csv.`
 (ok; `BASE_FOLDER` from `config/paths.js`). If the user closes that dialog, nothing happens and the
@@ -2010,6 +2023,10 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
 - **`config/default-volumes.js`** exports `DEFAULT_TRANSFER_VOLUME` (`50`) and `DEFAULT_FILL_VOLUME`
   (`1000`), in µL: the volumes the next transfer and the brush start with when the page opens.
 
+- **`config/records.js`** (`labware-sheet.md`, section 4) gives `RECORDS_FOLDER`, the folder the
+  labware sheet goes in (section 5); the page doesn't check
+  it (the labware sheet module's tests do).
+
 The page also uses the transfer designer's configuration (`config/pipetting-modes.js`,
 `config/tip-types.js`) through that module, and the deck description through `deck`.
 
@@ -2173,6 +2190,11 @@ page's configuration (ADR 0009):
 - Biomek files: the box with no name, with an overdraw, and ready; the zip's name it shows is the one
   saved; the header boxes closing on a press outside, on Escape, and the Biomek files box on undo by
   key;
+- the labware sheet (2026-11-08): the Biomek files box mentions the Records folder; the saved zip
+  holds `Records/Labware sheet.pdf` beside the unchanged Biomek files; the sheet opens in Edge and
+  Chrome, with the plan's name, the zip's name, each used labware's label, Biomek name, type and
+  Fill first or Starts empty, the unused labware and the tips End shows, labels as typed,
+  and a label with `→` showing `?`;
 - a zip saved, unzipped into the base folder on the Biomek PC, and run there in simulation, with
   any security warnings noted;
 - undo and redo with the buttons and the keys, after each kind of edit;
