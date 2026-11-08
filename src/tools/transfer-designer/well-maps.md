@@ -77,6 +77,10 @@ It doesn't change the plan.
 beside the other names of the Records folder's files; this module's tests check it (it ends `.csv`,
 and with a name of 40 characters stays a name `zip` accepts).
 
+### The REPL
+`scripts/repl.js` gains a topic, `well-maps`, with `wellMaps` and a small plan with one run, named
+randomization ready to try (CLAUDE.md, "Keep the REPL complete").
+
 ## 5. Errors
 None: the plan is the transfer designer's, already checked (section 3).
 
@@ -103,4 +107,5 @@ from `config/` (CLAUDE.md, "Tests follow config/").
 - Two sources with the same well label give rows with the same `Source`.
 - The plan is unchanged afterwards.
 - **The configuration:** `WELL_MAP_SUFFIX` ends `.csv`; a 40-character name plus it is a name `zip`
-  accepts.
+  accepts. Tests build expected file names from `WELL_MAP_SUFFIX`, never from the text ` well
+  map.csv` (CLAUDE.md, "Tests follow config/").
