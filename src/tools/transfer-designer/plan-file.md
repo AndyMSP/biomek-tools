@@ -351,8 +351,11 @@ Opening a file checks, in this order:
     well labels.
 13. **Randomizations** (versions 6 to 13), in these steps, in this order:
     1. **Just enough form to renumber**: each is an object with exactly the properties of its
-       version (version 13's `setRandomizations` takes; versions 6 to 12 without `name`; a property
-       missing or extra gives `setRandomizations`' form message, naming version 13's properties), and its `beforeId` is text or `null`,
+       file's version (version 13: the eleven `setRandomizations` takes; versions 6 to 12: those ten,
+       without `name`); a property missing or extra gives the form message naming **the file's
+       version's** properties, e.g. for a version 12 file `randomizations: Randomization 1 must be an
+       object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings",
+       "tipType", "probes" and "stages".` (the module keeps one list per version); and its `beforeId` is text or `null`,
        and its `stages` a list of objects whose `stage` is text (else `setRandomizations`' own
        message for that form, after `randomizations: `).
     2. **Every stage ID named is one of the file's stages** (`beforeId` and each of `stages`'
@@ -447,7 +450,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 | The well labels are refused (`setWellLabels`) | `well labels: ` and its message, e.g. `well labels: The label for Deep A1 is blank. A well without a label is left out of the well labels.` |
 | A randomization names a stage that isn't one of the file's (`beforeId` or one of its `stages`) | `randomization 1 names stage "9", which isn't one of the file's stages.` |
 | The randomizations are refused (`setRandomizations`) | `randomizations: ` and its message, e.g. `randomizations: Randomization 1: its stages must come one after another, in stage order.` |
-| A randomization's source has `sharesTips` in a version 6 to 9 file, or lacks it in a version 10 to 12 file | `randomization 1, source 2, has "sharesTips", which a version 9 file's sources don't have.` / `randomization 1, source 2, is missing "sharesTips", which a version 11 file's sources have.` (with the file's version) |
+| A randomization's source has `sharesTips` in a version 6 to 9 file, or lacks it in a version 10 to 13 file | `randomization 1, source 2, has "sharesTips", which a version 9 file's sources don't have.` / `randomization 1, source 2, is missing "sharesTips", which a version 11 file's sources have.` (with the file's version) |
 | A transfer table names a stage that isn't one of the file's | `transfer table 1 names stage "9", which isn't one of the file's stages.` |
 | The transfer tables are refused (`setTransferTables`) | `transfer tables: ` and its message, e.g. `transfer tables: Transfer table 1: stage "2" shares tips with another stage. Every stage of a transfer table starts on new tips.` |
 | The experiment name is refused (`checkExperimentName`) | `the experiment name: ` and its message. |
@@ -584,8 +587,10 @@ row of section 5 has at least one test.
   names included.
 - A version 12 file with three randomizations opens with them named `Randomization1`,
   `Randomization2` and `Randomization3`, in the file's order; a version 6 file's the same way.
-- A version 12 file whose randomization has a `name` is refused with `randomizations: ` and the form
-  message; so is a version 13 file whose randomization lacks one.
+- A version 12 file whose randomization has a `name` is refused with `randomizations: Randomization
+  1 must be an object with exactly "id", "beforeId", …, "probes" and "stages".` (ten properties, no
+  `name`); a version 13 file whose randomization lacks one, with the eleven, `"name"` after
+  `"id"`.
 - A version 13 file with a name `"AA levels"`, and one with two randomizations named alike, are
   refused with `randomizations: ` and `setRandomizations`' messages (`Randomization 2: A
   randomization's name can't contain …` / `Randomizations 1 and 2 are both named …`).

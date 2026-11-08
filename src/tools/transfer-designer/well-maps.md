@@ -22,6 +22,13 @@ Not in version 1, decided with Andy on 2026-11-08:
 - **The labware's Biomek name.** The `Plate` column holds the label only, the name the user knows
   (or the Biomek name when the labware has no label, as everywhere a label is shown).
 - **A plate-shaped grid** (rows A to H, columns 1 to 12). Considered; the list suits analysis.
+- **Excel's own reading of labels.** A field is written exactly as the label is. Excel, opening the
+  file by double-click, reads a field starting `+`, `-`, `=` or `@` as a formula (`+ctrl` shows
+  `#NAME?`) and some like `1-2` as dates; R and pandas read them as written. Kept exact (2026-11-08)
+  so analysis code gets the real labels; in Excel, Data → From Text/CSV with the column set to Text
+  keeps them, and labels like `ctrl+` avoid it.
+- **The component name** for a source without a well label: it's named by its well (`Res1 9`), not
+  by what it holds, since the label is what the user gave it for analysis.
 - **Which source well**, when several sources share a label: they appear under the one label, which
   is what analysis wants (the same condition).
 
@@ -54,14 +61,14 @@ A randomization that hasn't run has no file. A plan without randomizations gives
   - `Source`: the source well's well label (`wellLabelOf`), or, with none, its labware's name, a
     space and its well name, e.g. `Hy-Soy 100 g/L` or `Res1 9`. (The Biomek name, not the label,
     so `Res1 9` reads as a well, since a labware label may hold spaces.)
-- **Order:** rows by destination labware in the deck's order (`labwareNames`), then by well in the
-  grid's order (`wellNames()`, `well-grid.md`: `A1, A2 … A12, B1 …`), whatever order the stages and
+- **Order:** rows by destination labware in the deck's order (`labwareNames`), then by well in its
+  grid's order (`gridOf(labware).wellNames()`, `deck.md` and `well-grid.md`: `A1, A2 … A12, B1 …`), whatever order the stages and
   transfers come in. A well appears once: a randomization fills each of its wells to fill once.
 - **The CSV's rules** (as the file writer's, `file-writer.md`, "How values are written", except for
   the BOM): every line ends with **CRLF**, the last included; a field holding a comma, a double quote,
   or a line break is put in double quotes, with each double quote inside doubled (**RFC 4180**), e.g.
   `"Drug ""A"", 10 mM"`; no other field is quoted.
-- **A UTF-8 byte order mark** (BOM, the hidden character `﻿`) starts the text, unlike the Biomek's
+- **A UTF-8 byte order mark** (BOM, the hidden character written `\uFEFF` in JavaScript) starts the text, unlike the Biomek's
   files (2026-11-08): labels can hold `µ`, and Excel reads a CSV without one in the wrong character
   set, showing `Âµ`. Excel, R's readr and Python's pandas all read the BOM correctly. The `zip`
   module stores the text as UTF-8, so the file starts with the bytes `EF BB BF`.
@@ -79,7 +86,14 @@ and with a name of 40 characters stays a name `zip` accepts).
 
 ### The REPL
 `scripts/repl.js` gains a topic, `well-maps`, with `wellMaps` and a small plan with one run, named
-randomization ready to try (CLAUDE.md, "Keep the REPL complete").
+randomization ready to try (CLAUDE.md, "Keep the REPL complete"). The `transfer-designer` topic
+gains `renameRandomization`, and the `file-writer` topic `checkNameRule`, in their lists of what's
+loaded.
+
+### Building it
+This topic's build starts only once item 25's build (#144: `config/records.js`, `labwareSheet` and the
+Records folder in Write files) is on the branch it's built on; it adds `WELL_MAP_SUFFIX` to that
+file, never creates it.
 
 ## 5. Errors
 None: the plan is the transfer designer's, already checked (section 3).
@@ -87,8 +101,10 @@ None: the plan is the transfer designer's, already checked (section 3).
 ## 6. Test cases
 Each becomes at least one unit test in `well-maps.test.js`, inside `describe("well-maps", …)`. Tests
 build plans with the transfer designer's own edits (`addRandomization`, `setRandomization`,
-`runRandomization`, `renameRandomization`, `setLabel`, `setWellLabel`), and take labware names
-from `config/` (CLAUDE.md, "Tests follow config/").
+`runRandomization`, `renameRandomization`, `setLabel`, `setWellLabel`). Labware is picked from
+`labwareNames()` by its labware type (the first reservoir, the first two 96-well plates;
+`labwareTypeOf`, `gridOf`), never named, so a change to `config/deck.js` doesn't break them (CLAUDE.md,
+"Tests follow config/"); `Res1` and `Plate1` below stand for those picks.
 
 - A plan without randomizations gives `[]`; one with a randomization that hasn't run gives `[]`.
 - A run randomization named `HySoy_dose`, with sources `Res1 9` (labeled `Hy-Soy 100 g/L`, 3

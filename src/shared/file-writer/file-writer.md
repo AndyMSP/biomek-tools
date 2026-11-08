@@ -272,7 +272,8 @@ still pass when the deck changes (as `deck.test.js` does).
 - `checkNameRule` with a randomization's words (above) accepts `"HySoy_dose"` and refuses `"AA
   levels"`, `""`, 41 characters and `5`, each with its message in those words; with no
   `characterExample`, the character message's example is `example`. `checkExperimentName`'s
-  messages are unchanged.
+  messages are unchanged: its character message still ends `e.g. "Exp36_repeat".`
+- `words` isn't checked: callers are the project's own code, passing fixed words.
 - `folderNameFor(new Date(2026, 9, 28, 1, 57, 32), "Exp36")` gives `"2026-10-28_015732_Exp36"`.
 - Leading zeros: `new Date(2026, 0, 5, 9, 7, 2)` gives `"2026-01-05_090702_…"`; and
   `new Date(2026, 11, 31, 23, 59, 59)` gives `"2026-12-31_235959_…"`.

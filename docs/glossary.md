@@ -166,7 +166,7 @@ sources' replicates leave over: one or more sources, its **filler wells**, which
 liquid (it's a problem otherwise), used in their order, in one stage of their own (ADR 0012; Andy,
 2026-11-02). It's **out of date** when its stages differ from what running it now would make.
 It has a **name** (Andy, 2026-11-08), by the experiment name's rule and unique in its plan
-(`Randomization1` until renamed), which names its well map.
+regardless of capitals (`Randomization` and a number until renamed), which names its well map.
 
 **Records folder**
 The folder `Records` inside a run's folder in the Biomek files' zip, holding the files for people

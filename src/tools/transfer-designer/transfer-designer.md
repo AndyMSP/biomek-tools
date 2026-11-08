@@ -743,7 +743,7 @@ per source moving them. It's part of the plan, so it's undone and saved like any
 ```js
 {
   id:        "r1",                 // "r" and one more than the largest number in use (addRandomization)
-  name:      "HySoy_dose",         // its name, unique in the plan (below); "Randomization1" when added
+  name:      "HySoy_dose",         // unique in the plan, capitals aside (below); Randomization1 … when added
   beforeId:  "4",                  // where it sits while it has no stages (below)
   sources:   [{ labware: "Deep", well: "A1", replicates: 4, filler: false, sharesTips: false }, …],
   fill:      [{ labware: "Plate1", well: "B2" }, …],
@@ -756,15 +756,24 @@ per source moving them. It's part of the plan, so it's undone and saved like any
 }
 ```
 
-- **`name`** (Andy, 2026-11-08): what the user calls it, shown on its heading and naming its well
-  map (`well-maps.md`). It follows **the experiment name's rule** (`checkExperimentName`,
-  `file-writer.md`: letters, digits, hyphens and underscores, 1 to 40 characters; Andy, 2026-11-08,
-  so the well map's file is named exactly what's typed), and **no two randomizations of a plan
-  share a name** (their well maps would collide). A new one is named **`Randomization` and the
+- **`name`** (Andy, 2026-11-08): what the user calls it, naming its well map (`well-maps.md`). It
+  follows **the experiment name's rule** (`checkNameRule`, `file-writer.md`, with the words
+  `{ subject: "A randomization's name", example: "HySoy_dose", blank: 'Type a name for the
+  randomization, such as "HySoy_dose".' }`: letters, digits, hyphens and underscores, 1 to 40
+  characters; Andy, 2026-11-08, so the well map's file is named exactly what's typed), and **no two
+  randomizations of a plan share a name, ignoring capitals** (`HySoy_dose` and `hysoy_dose` count as
+  the same: their well maps' files would be one file to Windows; 2026-11-08). A new one is named **`Randomization` and the
   smallest whole number from 1 up that no randomization of the plan has**, e.g. `Randomization1`,
   then `Randomization2`; with `Randomization1` renamed `HySoy_dose`, the next new one is
-  `Randomization1` again. It changes only through `renameRandomization`, which never needs a run: a
-  name changes no stage or transfer, so it never makes a randomization out of date.
+  `Randomization1` again ("no randomization has it" ignoring capitals, as above). It changes only
+  through `renameRandomization`, which never needs a run: a name changes no stage or transfer, so it
+  never makes a randomization out of date.
+  - **It isn't one of `setRandomization`'s changes**: `setRandomization` can't rename (its "changes
+    must be an object of …" message is unchanged), and copied items don't hold it, so their format
+    stays version 5. In code, `name` joins the list of a randomization's stored properties (after
+    `id`) but not the list of `setRandomization`'s changes.
+  - **Property order:** every randomization built (by `addRandomization`, `setRandomizations` and
+    pasting) has `name` right after `id`, as above, since plan files write randomizations as stored.
 - **`sources`**: wells on the deck, each once, in the order given. `replicates` is a whole number of
   at least 1, or `null` (not given yet). Any number of sources may be **filler wells** (`filler:
   true`), each with `replicates` always `null`; together they're the **filler**, which fills the
@@ -1613,8 +1622,9 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
   ordinary stages, owned by nothing, as a randomization's are.
 - A copied randomization is a **new randomization**: the next free ID (`r` and one more than the
   largest number in use, as `addRandomization` gives), a new name as `addRandomization` gives
-  (`Randomization` and the smallest free number; a copy never takes the original's name, which
-  copied items don't hold; 2026-11-08), the copied values, and the copies of its
+  (`Randomization` and the smallest number free among the plan's randomizations and those made
+  earlier in the same paste; a copy never takes the original's name, which copied items don't
+  hold; 2026-11-08), the copied values, and the copies of its
   stages as its `stages`, each with its source's well, in the same tip groups as the original's
   (a stage that started new tips starts new tips loading the tips it had; one that shared the tips
   of the stage before it shares the copy's), each keeping its settings. A copy of a run
@@ -2110,7 +2120,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `removeTipChange`: the tip change after a randomization | `This tip change keeps stage 7, “Media”, off the randomization's tips. A randomization never shares tips with other stages.` (`… never shares tips.` until 2026-11-05) |
 | `setRandomizations`: not a list, or a randomization isn't an object with exactly its eleven properties | `The randomizations must be a list, but got 5.` / `Randomization 2 must be an object with exactly "id", "name", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".` |
 | `renameRandomization`, `setRandomizations`: the name breaks the experiment name's rule (2026-11-08) | `A randomization's name must be text, like "HySoy_dose", but got 5.` / `Type a name for the randomization, such as "HySoy_dose".` (blank) / `A randomization's name is 41 characters long; it can be at most 40.` / `A randomization's name can't contain " " (a space). Use only letters, digits, hyphens (-) and underscores (_), e.g. "HySoy_dose".` (each prefixed `Randomization 2: ` by `setRandomizations`). The file writer's experiment-name check and this one are **one function**, given what's named and an example (`file-writer.md`, section 4), so the rule can't drift. |
-| `renameRandomization`: another randomization has the name; `setRandomizations`: two share one | `Another randomization is already named "HySoy_dose". Choose a different name.` / `Randomizations 1 and 3 are both named "HySoy_dose".` |
+| `renameRandomization`: another randomization has the name, ignoring capitals; `setRandomizations`: two share one, ignoring capitals | `Another randomization is already named "HySoy_dose". Choose a different name.` (the other's name as stored) / `Randomizations 1 and 3 are both named "HySoy_dose".` (or `… are named "HySoy_dose" and "hysoy_dose", which differ only in capitals.` when they differ) |
 | `setRandomizations`: `settings`, `tipType` and `probes` not all `null` once it has stages, or any `null` while it has none (2026-11-05, item 20) | `Randomization 2 has stages, so its "settings", "tipType" and "probes" must be null: its stages hold them.` / `Randomization 2 hasn't run, so it needs "settings", "tipType" and "probes" for its first run.` |
 | `runRandomization`: `forAll` isn't an object of only `sourceMode`, `sourceMixes`, `destinationMode`, `destinationMixes`, `tipType` and `probes` | `The settings for every stage must be an object of "sourceMode", "sourceMixes", "destinationMode", "destinationMixes", "tipType" and "probes", but got "speed".` (naming the first wrong property, or the value) |
 | `runRandomization`: a mode in `forAll` isn't one for its end, or `…Mixes` isn't `true` or `false` | `modeSettings`' message for that end (e.g. `"Fastest" isn't a pipetting mode for the source. …`) / `Whether the source mixes must be true or false, but got "yes".` |
@@ -2763,7 +2773,16 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
   another's name throws the "already named" message; an unknown ID throws. Undoing is the caller's
   (the plan is immutable): the plan before the rename still has the old name.
 - A pasted copy of a named randomization gets `Randomization` and the smallest free number, never the
-  original's name.
+  original's name; pasting two randomizations at once into a plan holding `Randomization1` gives
+  `Randomization2` and `Randomization3`.
+- `renameRandomization` refuses `hysoy_dose` when another is `HySoy_dose` (the "already named"
+  message, naming the other's name as stored); renaming one from `HySoy_dose` to `HYSOY_DOSE` is
+  allowed (it's its own name). `setRandomizations` refuses two named alike but for capitals.
+- **Existing tests that change** (the specification changed, not the tests' purpose): the
+  stored-randomization fixtures given to `setRandomizations` gain a `name` after `id` (e.g.
+  `Randomization1`, `Randomization2` in order); the form message lists `"name"` after `"id"`
+  (eleven properties); tests comparing a whole randomization expect its `name`. No other expected
+  result changes.
 - `setRandomizations` refuses a randomization without `name`, a name breaking the rule (prefixed
   `Randomization 2: `), and two with one name (`Randomizations 1 and 3 are both named …`), in
   the order of checks; it accepts `Randomization7` alongside `HySoy_dose`.
