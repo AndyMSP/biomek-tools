@@ -120,6 +120,8 @@ build plans with the transfer designer's own edits (`addRandomization`, `setRand
 - Quoting: a source label `Drug "A", 10 mM` gives the field `"Drug ""A"", 10 mM"`; a label with `µ`
   is written as is; a field without a comma or quote isn't quoted.
 - Every line ends `\r\n`, the last included.
+- The text's first character is the BOM, checked by its code (`charCodeAt(0)` is `0xFEFF`); code and
+  tests write it `"\uFEFF"`, never as the invisible character itself.
 - Two sources with the same well label give rows with the same `Source`.
 - The plan is unchanged afterwards.
 - **The configuration:** `WELL_MAP_SUFFIX` ends `.csv`; a 40-character name plus it is a name `zip`

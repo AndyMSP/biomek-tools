@@ -1023,6 +1023,8 @@ From the top:
     to whatever is now under the pointer, once, so clicking Close, Randomize, Update, Discard or a
     tab right after typing still does it. The box is saved **at most once** per change: a box
     removed while it has focus (the card closing, or the redraw after Enter) saves nothing more.
+    After a save by leaving, the focus goes to the card control it was moving to; if that control is
+    outside the card (Shift+Tab to the heading's ✎), it stays in the Name box (2026-11-08).
   - **What's saved:** what's typed with spaces at its ends removed. It isn't checked as it's typed;
     only on saving. An unchanged name saves nothing and shows no message.
   - **Saved:** message `Renamed the randomization HySoy_dose. Its well map will be HySoy_dose well
@@ -1039,8 +1041,12 @@ From the top:
     card.
   - **Escape** in the box puts back the saved name and closes the card as Escape anywhere in the card
     does (saving nothing typed in the Name box); it isn't an inline box's cancel.
-- **The heading's name** is cut short with `…` when it doesn't fit beside the right-hand text, its
-  tooltip then giving it in full.
+- **The heading's name comes first** (from reviewing the build, 2026-11-08: at the column's usual
+  width even `Randomization1` was cut beside `4 stages · seed 1234`): the right-hand text is cut
+  short with `…` first, down to nothing; the name is cut short with `…` only when it alone is wider
+  than about two thirds of the heading (`max-width: 65%`), its tooltip then giving it in full. While
+  the randomization is out of date, the heading's own tooltip (`The plan changed since this last
+  ran: …`) shows over the name too, cut or not, so the reason it needs Update is never hidden.
 - **Two tabs**, `Sources` and `Wells to fill`, each with a count in a small gray pill; the open tab
   is blue and underlined. **The open tab is what clicks on the deck pick** (below), and only its
   contents show. A new randomization opens on Sources; one opened again opens on the tab it was
