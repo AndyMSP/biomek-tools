@@ -34,7 +34,7 @@ const [PLATE1, PLATE2] = labwareNames().filter((name) => labwareTypeOf(name) ===
 const DEEP = labwareNames().find((name) => gridOf(name) === GRID_96 && labwareTypeOf(name) !== PLATE_TYPE);
 
 // The byte order mark, the header line, and a line's ending.
-const BOM = "﻿";
+const BOM = "\uFEFF";
 const HEADER_LINE = "Plate,Well,Source\r\n";
 
 // A well, e.g. at(RESERVOIR, "9").
@@ -126,6 +126,7 @@ describe("well-maps", () => {
     assert.equal(maps.length, 1);
     assert.equal(maps[0].name, `HySoy_dose${WELL_MAP_SUFFIX}`);
     assert.ok(maps[0].text.startsWith(BOM + HEADER_LINE));
+    assert.equal(maps[0].text.charCodeAt(0), 0xfeff);
     const labeled = wellsFilledFrom(plan, id, at(RESERVOIR, "9"));
     const unlabeled = wellsFilledFrom(plan, id, at(RESERVOIR, "10"));
     assert.equal(labeled.length, 3);

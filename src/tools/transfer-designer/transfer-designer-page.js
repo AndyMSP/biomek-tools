@@ -2915,7 +2915,10 @@ function createRandomizationHeading(randomization, expanded, outOfDate) {
   });
   const name = heading.querySelector(".randomization-title");
   name.classList.add("randomization-name");
-  name.addEventListener("pointerenter", () => showNameInFullIfCut(name, randomization.name));
+  // Out of date, the heading's own tooltip (why it needs Update) shows over the name too.
+  if (!outOfDate) {
+    name.addEventListener("pointerenter", () => showNameInFullIfCut(name, randomization.name));
+  }
   return heading;
 }
 
@@ -3822,7 +3825,8 @@ function saveCardName(box, how, next = null) {
   if (renamed === false) {
     return "refused";
   }
-  const focusKey = how === "enter" ? "name" : focusKeyInCard(next);
+  // Leaving for a control outside the card (Shift+Tab to the heading's ✎) keeps the focus here.
+  const focusKey = how === "enter" ? "name" : (focusKeyInCard(next) ?? "name");
   recordCardRename(plan, renamed);
   showMessage(`Renamed the randomization ${name}. Its well map will be ${name}${WELL_MAP_SUFFIX}.`, "ok");
   focusInCard(focusKey, caret);

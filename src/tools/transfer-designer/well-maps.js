@@ -23,7 +23,7 @@ const LINE_ENDING = "\r\n";
 // The UTF-8 byte order mark that starts the text: without it Excel reads the file in the wrong
 // character set, showing "µ" as "Âµ" (2026-11-08). The zip module stores the text as UTF-8, so the
 // file starts with the bytes EF BB BF.
-const BYTE_ORDER_MARK = "﻿";
+const BYTE_ORDER_MARK = "\uFEFF";
 
 // Matches a character that makes a field need double quotes (RFC 4180): a comma, a double quote,
 // or a line break.
@@ -33,7 +33,7 @@ const NEEDS_QUOTES = /[",\r\n]/;
 // empty), in the order of the plan's randomizations; [] if none has run. A new list each time; the
 // plan isn't changed.
 // e.g. with one run randomization named "HySoy_dose" →
-//      [{ name: "HySoy_dose well map.csv", text: "﻿Plate,Well,Source\r\nCells,B2,Hy-Soy 100 g/L\r\n…" }]
+//      [{ name: "HySoy_dose well map.csv", text: "\uFEFFPlate,Well,Source\r\nCells,B2,Hy-Soy 100 g/L\r\n…" }]
 export function wellMaps(plan) {
   return plan.randomizations
     .filter((randomization) => randomization.stages.length > 0)
@@ -79,6 +79,7 @@ function sourceName(plan, end) {
 // 12, so 2 comes before 10). A new list; `entries` isn't changed.
 function sortedByDeckAndGrid(entries) {
   const deckOrder = labwareNames();
+  // An entry's place: its labware's index in the deck and its well's index in that grid.
   const placeOf = ({ labware, well }) => ({
     labware: deckOrder.indexOf(labware),
     well: gridOf(labware).wellNames().indexOf(well),
