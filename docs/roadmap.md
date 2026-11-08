@@ -481,7 +481,12 @@ Last updated: 2026-11-08
   first): `well-maps.md`, `transfer-designer.md` (`name`, `renameRandomization`), `plan-file.md`
   (format version 13), `file-writer.md` (`checkNameRule`, the rule shared), the heading, card and
   Write files (`transfer-designer-page.md`, sections 5 and 7), glossary "Randomization" and "Well
-  map". It changes plan files, but no Biomek file.
+  map". It changes plan files, but no Biomek file. **Built (#145, 2026-11-08)**: `checkNameRule`,
+  names and `renameRandomization`, plan files version 13 (versions 1 to 12 still opening),
+  `well-maps` with `WELL_MAP_SUFFIX`, REPL additions, and the page's heading, Name box and well maps
+  in Write files; from the build's review, the name keeps its room on the heading before the stage
+  count; the specifications and the build each reviewed by a separate agent, and checked in
+  headless Chrome. Still to check by Andy.
 - **Decided: the zip stays as it is** (Andy, 2026-11-08): it holds the run's folder, so Windows'
   Extract All, left to its default, puts that folder inside one of the same name. Changing the zip or
   its message was considered and declined, as either could confuse (ADR 0020).
