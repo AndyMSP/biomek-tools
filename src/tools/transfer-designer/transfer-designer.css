@@ -1622,6 +1622,19 @@ button.entry-row {
   font-weight: 600;
 }
 
+/* A randomization's name on its heading (section 7): cut short with … when it doesn't fit beside
+   the right-hand text, which keeps its room. */
+.randomization-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.randomization-own-heading .randomization-status {
+  flex: none;
+}
+
 .randomization-status {
   margin-left: auto;
   color: var(--muted-text);
@@ -2427,6 +2440,12 @@ button.source-tip-button {
 
 input.seed-box {
   width: 120px;
+}
+
+/* A randomization's Name box (section 7): 220px wide, semibold, as the name on its heading. */
+input.card-name-box {
+  width: 220px;
+  font-weight: 600;
 }
 
 /* A randomization's Volume box (section 7): like Seed's, narrower, with "µL" after it. */
