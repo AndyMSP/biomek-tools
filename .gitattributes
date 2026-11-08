@@ -3,3 +3,7 @@
 # Never change line endings in CSV files. The Biomek software reads and writes
 # these files, so they must stay byte-for-byte as they were saved.
 *.csv -text
+
+# Never change line endings in PDF files. A PDF's cross-reference table gives each object's byte
+# offset, so changing a line ending would move them all (src/shared/pdf/pdf.md).
+*.pdf -text

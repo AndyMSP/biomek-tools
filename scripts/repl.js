@@ -63,6 +63,7 @@ import {
   folderNameFor,
 } from "../src/shared/file-writer/file-writer.js";
 import { zipFiles, crc32 } from "../src/shared/zip/zip.js";
+import { writePdf, textWidth, toPdfText } from "../src/shared/pdf/pdf.js";
 import {
   findProblems,
   placeName,
@@ -473,6 +474,19 @@ const TOPICS = {
       "Buffer.from(zipBytes).toString(\"hex\").match(/../g).join(\" \")",
       'zipFiles([{ name: "Run\\\\Setup.csv", text: "" }], new Date())',
       'zipFiles([{ name: "a.csv", text: "" }, { name: "a.csv", text: "" }], new Date())',
+    ],
+  },
+  pdf: {
+    loaded: { writePdf, textWidth, toPdfText },
+    examples: [
+      'textWidth("Deep1", 10, false)',
+      'textWidth("Feeding DWP", 10, true)',
+      'toPdfText("Drug → plate")',
+      'toPdfText("50 µL at 37 °C")',
+      'const pdfText = writePdf([{ width: 612, height: 792, items: [{ kind: "box", x: 54, y: 700, width: 504, height: 18, gray: 0.92 }, { kind: "text", x: 58, y: 705, text: "Your label", size: 10, bold: true }, { kind: "line", x1: 54, y1: 690, x2: 558, y2: 690, width: 0.3 }] }])',
+      "console.log(pdfText)",
+      'writePdf([{ width: 612, height: 792, items: [{ kind: "text", x: 58, y: 705, text: "Drug → plate", size: 10, bold: false }] }])',
+      'writePdf([{ width: 612, height: 792, items: [{ kind: "circle", x: 0, y: 0 }] }])',
     ],
   },
   randomizer: {
