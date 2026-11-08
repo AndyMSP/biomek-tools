@@ -130,22 +130,42 @@ export function writeRunFiles(plan, timestamp) {
   };
 }
 
+// The words the experiment name's messages use (checkNameRule). Its character message keeps the
+// example "Exp36_repeat" it has always had (file-writer.md, section 4).
+const EXPERIMENT_NAME_WORDS = {
+  subject: "The experiment name",
+  example: "Exp36",
+  blank: 'Type an experiment name, such as "Exp36".',
+  characterExample: "Exp36_repeat",
+};
+
 // Throws if `name` isn't a valid experiment name: text, not blank, at most 40 characters, holding
 // only letters, digits, hyphens and underscores (file-writer.md, "Inputs"). Checked in that order.
 // Exported so a tool can check a name as the user types it, by the same rule,
 // e.g. checkExperimentName("Exp 36") throws 'The experiment name can't contain " " (a space). …'.
 export function checkExperimentName(name) {
+  checkNameRule(name, EXPERIMENT_NAME_WORDS);
+}
+
+// Throws if `name` breaks the experiment name's rule (as checkExperimentName), with the messages in
+// `words`: { subject, example, blank, characterExample? }, what's named, an example name, the
+// message for a blank name, and, optionally, the example the character message gives (`example`
+// otherwise). It's the one place the rule lives, so every name following it is checked alike.
+// `words` isn't checked: callers are the project's own code, passing fixed words.
+// e.g. checkNameRule("AA levels", { subject: "A randomization's name", example: "HySoy_dose", … })
+//      throws `A randomization's name can't contain " " (a space). … e.g. "HySoy_dose".`
+export function checkNameRule(name, words) {
   if (typeof name !== "string") {
     throw new Error(
-      `The experiment name must be text, like "Exp36", but got ${describeValue(name)}.`,
+      `${words.subject} must be text, like "${words.example}", but got ${describeValue(name)}.`,
     );
   }
   if (name.trim() === "") {
-    throw new Error('Type an experiment name, such as "Exp36".');
+    throw new Error(words.blank);
   }
   if (name.length > EXPERIMENT_NAME_MAX_LENGTH) {
     throw new Error(
-      `The experiment name is ${name.length} characters long; ` +
+      `${words.subject} is ${name.length} characters long; ` +
         `it can be at most ${EXPERIMENT_NAME_MAX_LENGTH}.`,
     );
   }
@@ -153,9 +173,10 @@ export function checkExperimentName(name) {
   if (forbidden !== null) {
     // A space is invisible in quotes, so it's named as well.
     const shown = forbidden[0] === " " ? '" " (a space)' : `"${forbidden[0]}"`;
+    const characterExample = words.characterExample ?? words.example;
     throw new Error(
-      `The experiment name can't contain ${shown}. ` +
-        `Use only letters, digits, hyphens (-) and underscores (_), e.g. "Exp36_repeat".`,
+      `${words.subject} can't contain ${shown}. ` +
+        `Use only letters, digits, hyphens (-) and underscores (_), e.g. "${characterExample}".`,
     );
   }
 }

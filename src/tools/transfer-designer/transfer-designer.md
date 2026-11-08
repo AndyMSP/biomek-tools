@@ -161,6 +161,14 @@
 > workflow (CLAUDE.md, "Workflows"); the choices made for Andy are listed in its pull request.
 > Still to review: every new message. It becomes Final once built and tested by Andy.
 
+> **Draft change (2026-11-08, randomization names, item 26 of v0.2.0):** each randomization has a
+> **name** (Andy, 2026-11-08), following the experiment name's rule and unique in the plan, which
+> names its well map (`well-maps.md`): `name` in section 3, "Randomizations", `addRandomization`'s
+> default, `renameRandomization`, and `setRandomizations` and pasting (sections 3 to 6). Plan files
+> go to version 13 (`plan-file.md`). Shaped in a preview on 2026-11-08 and written in the hands-off
+> workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request.
+> Still to review: every new message. It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
 and every edit that can be made to one, each checked so that a plan is always valid. A tool shows a
@@ -735,6 +743,7 @@ per source moving them. It's part of the plan, so it's undone and saved like any
 ```js
 {
   id:        "r1",                 // "r" and one more than the largest number in use (addRandomization)
+  name:      "HySoy_dose",         // unique in the plan, capitals aside (below); Randomization1 … when added
   beforeId:  "4",                  // where it sits while it has no stages (below)
   sources:   [{ labware: "Deep", well: "A1", replicates: 4, filler: false, sharesTips: false }, …],
   fill:      [{ labware: "Plate1", well: "B2" }, …],
@@ -747,6 +756,24 @@ per source moving them. It's part of the plan, so it's undone and saved like any
 }
 ```
 
+- **`name`** (Andy, 2026-11-08): what the user calls it, naming its well map (`well-maps.md`). It
+  follows **the experiment name's rule** (`checkNameRule`, `file-writer.md`, with the words
+  `{ subject: "A randomization's name", example: "HySoy_dose", blank: 'Type a name for the
+  randomization, such as "HySoy_dose".' }`: letters, digits, hyphens and underscores, 1 to 40
+  characters; Andy, 2026-11-08, so the well map's file is named exactly what's typed), and **no two
+  randomizations of a plan share a name, ignoring capitals** (`HySoy_dose` and `hysoy_dose` count as
+  the same: their well maps' files would be one file to Windows; 2026-11-08). A new one is named **`Randomization` and the
+  smallest whole number from 1 up that no randomization of the plan has**, e.g. `Randomization1`,
+  then `Randomization2`; with `Randomization1` renamed `HySoy_dose`, the next new one is
+  `Randomization1` again ("no randomization has it" ignoring capitals, as above). It changes only
+  through `renameRandomization`, which never needs a run: a name changes no stage or transfer, so it
+  never makes a randomization out of date.
+  - **It isn't one of `setRandomization`'s changes**: `setRandomization` can't rename (its "changes
+    must be an object of …" message is unchanged), and copied items don't hold it, so their format
+    stays version 5. In code, `name` joins the list of a randomization's stored properties (after
+    `id`) but not the list of `setRandomization`'s changes.
+  - **Property order:** every randomization built (by `addRandomization`, `setRandomizations` and
+    pasting) has `name` right after `id`, as above, since plan files write randomizations as stored.
 - **`sources`**: wells on the deck, each once, in the order given. `replicates` is a whole number of
   at least 1, or `null` (not given yet). Any number of sources may be **filler wells** (`filler:
   true`), each with `replicates` always `null`; together they're the **filler**, which fills the
@@ -1594,7 +1621,10 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
   does), so it usually makes overfills, shown as any others. Copies of its stages copied alone are
   ordinary stages, owned by nothing, as a randomization's are.
 - A copied randomization is a **new randomization**: the next free ID (`r` and one more than the
-  largest number in use, as `addRandomization` gives), the copied values, and the copies of its
+  largest number in use, as `addRandomization` gives), a new name as `addRandomization` gives
+  (`Randomization` and the smallest number free among the plan's randomizations and those made
+  earlier in the same paste; a copy never takes the original's name, which copied items don't
+  hold; 2026-11-08), the copied values, and the copies of its
   stages as its `stages`, each with its source's well, in the same tip groups as the original's
   (a stage that started new tips starts new tips loading the tips it had; one that shared the tips
   of the stage before it shares the copy's), each keeping its settings. A copy of a run
@@ -1905,7 +1935,7 @@ throw first if there's no component with that name.
 **Randomizations**
 | Function | Returns |
 |---|---|
-| `addRandomization(plan, beforeId, { seed, volume })` | `{ plan, id }`: the plan with a new randomization last in `randomizations`, sitting before stage `beforeId` (or last, for `null`), with no sources, wells to fill or stages, the `seed` and `volume` given (each may be `null`), and, for its first run, the settings of the nearest transfer stage and the tips in use just before its place (section 3, "Where a new randomization's settings come from"; since 2026-11-05, item 20); and its ID. Throws if `beforeId` isn't a place a randomization can sit (section 3), or `seed` or `volume` isn't valid. |
+| `addRandomization(plan, beforeId, { seed, volume })` | `{ plan, id }`: the plan with a new randomization last in `randomizations`, named `Randomization` and the smallest free number (section 3; since 2026-11-08), sitting before stage `beforeId` (or last, for `null`), with no sources, wells to fill or stages, the `seed` and `volume` given (each may be `null`), and, for its first run, the settings of the nearest transfer stage and the tips in use just before its place (section 3, "Where a new randomization's settings come from"; since 2026-11-05, item 20); and its ID. Throws if `beforeId` isn't a place a randomization can sit (section 3), or `seed` or `volume` isn't valid. |
 | `randomizationAt(plan, id)` | the randomization with ID `id`, or `null`. |
 | `randomizationOf(plan, stageId)` | the ID of the randomization that owns stage `stageId`, or `null`. |
 | `setRandomization(plan, id, changes)` | the plan with the randomization's `sources`, `fill`, `seed`, `volume`, `settings`, `tipType` and `probes` replaced by those in `changes` (any of them; the others kept), checked as section 3 says, `fill` put in deck order and `probes` smallest first. `settings`, `tipType` and `probes` can be given only while it has no stages (its first run's; section 3). Its `stages` and `beforeId` don't change. Gives back the same plan if nothing changes. Throws if there's no such randomization, or anything is invalid (section 5). |
@@ -1923,6 +1953,7 @@ throw first if there's no component with that name.
 | `runRandomization(plan, id, forAll = {})` | the plan with the randomization run (section 3, "Running"), then `forAll`'s values (any of `sourceMode`, `sourceMixes`, `destinationMode`, `destinationMixes`, `tipType`, `probes`) set on every stage it owns or every tip change starting one of its source groups (step 9), as one edit; its `settings`, `tipType` and `probes` then `null`. Throws `forAll`'s first wrong value's message (section 5), then its first problem's message if it has any, changing nothing. |
 | `removeRandomization(plan, id)` | the plan without the randomization and its stages. Throws if there's no such randomization, or its stages are all the plan's stages. |
 | `canRemoveRandomization(plan, id)` | `true` unless its stages are all the plan's stages. |
+| `renameRandomization(plan, id, name)` | the plan with randomization `id` named `name` (section 3, "Randomizations"), whether or not it has run; the same plan if it already has that name. Throws if there's no such randomization, `name` breaks the experiment name's rule, or another randomization of the plan has it (section 5). |
 | `setRandomizations(plan, randomizations)` | the plan with its randomizations replaced by `randomizations`, each in the form of section 3, `stages` included, for a list already in the plan's own form, such as one read from a plan file. Strict (order of checks below). Throws `Randomization 2: ` and the problem's message if not. |
 
 `removeTipChange` and `removeStage` follow section 3's two rules for the stage after a
@@ -2060,7 +2091,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setWellLabels`: a label isn't text | `The label for Deep A1 must be text, like "Cond 1", but got 5.` |
 | `setWellLabels`: a label is blank | `The label for Deep A1 is blank. A well without a label is left out of the well labels.` |
 | `setWellLabels`: a label has spaces at its ends | `The label for Deep A1, " Cond 1", has spaces at the start or end. Remove them.` |
-| A randomization's `id` isn't one of the plan's | `There's no randomization "r9" in the plan.` |
+| A randomization's `id` isn't one of the plan's (`renameRandomization` too) | `There's no randomization "r9" in the plan.` |
 | `addRandomization`, `placeRandomization`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a randomization before.` |
 | `addRandomization`, `placeRandomization`: `beforeId` is inside a tip group; `setRandomizations` (loading a file): a stored `beforeId` inside a tip group or inside another randomization | `A randomization sits between tip groups, so it can't go before stage 3, “Drugs”.` (A `beforeId` inside another randomization's stages, given to `addRandomization` or `placeRandomization`, gets the "stay together" message below; 2026-11-05, item 20.) |
 | `placeRandomization`: it has stages | `This randomization has run, so it sits where its stages are.` |
@@ -2087,7 +2118,9 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `removeRandomization`: its stages are all the plan's stages | `This randomization's stages are all the plan's stages, and a plan needs at least one. Add a stage outside it first.` |
 | `removeTipChange`: the tip change of a stage a randomization without stages sits before | `A randomization sits before stage 2, “Top up”, between tip groups, so these tips can't be removed.` |
 | `removeTipChange`: the tip change after a randomization | `This tip change keeps stage 7, “Media”, off the randomization's tips. A randomization never shares tips with other stages.` (`… never shares tips.` until 2026-11-05) |
-| `setRandomizations`: not a list, or a randomization isn't an object with exactly its ten properties | `The randomizations must be a list, but got 5.` / `Randomization 2 must be an object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".` |
+| `setRandomizations`: not a list, or a randomization isn't an object with exactly its eleven properties | `The randomizations must be a list, but got 5.` / `Randomization 2 must be an object with exactly "id", "name", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".` |
+| `renameRandomization`, `setRandomizations`: the name breaks the experiment name's rule (2026-11-08) | `A randomization's name must be text, like "HySoy_dose", but got 5.` / `Type a name for the randomization, such as "HySoy_dose".` (blank) / `A randomization's name is 41 characters long; it can be at most 40.` / `A randomization's name can't contain " " (a space). Use only letters, digits, hyphens (-) and underscores (_), e.g. "HySoy_dose".` (each prefixed `Randomization 2: ` by `setRandomizations`). The file writer's experiment-name check and this one are **one function**, given what's named and an example (`file-writer.md`, section 4), so the rule can't drift. |
+| `renameRandomization`: another randomization has the name, ignoring capitals; `setRandomizations`: two share one, ignoring capitals | `Another randomization is already named "HySoy_dose". Choose a different name.` (the other's name as stored) / `Randomizations 1 and 3 are both named "HySoy_dose".` (or `… are named "HySoy_dose" and "hysoy_dose", which differ only in capitals.` when they differ) |
 | `setRandomizations`: `settings`, `tipType` and `probes` not all `null` once it has stages, or any `null` while it has none (2026-11-05, item 20) | `Randomization 2 has stages, so its "settings", "tipType" and "probes" must be null: its stages hold them.` / `Randomization 2 hasn't run, so it needs "settings", "tipType" and "probes" for its first run.` |
 | `runRandomization`: `forAll` isn't an object of only `sourceMode`, `sourceMixes`, `destinationMode`, `destinationMixes`, `tipType` and `probes` | `The settings for every stage must be an object of "sourceMode", "sourceMixes", "destinationMode", "destinationMixes", "tipType" and "probes", but got "speed".` (naming the first wrong property, or the value) |
 | `runRandomization`: a mode in `forAll` isn't one for its end, or `…Mixes` isn't `true` or `false` | `modeSettings`' message for that end (e.g. `"Fastest" isn't a pipetting mode for the source. …`) / `Whether the source mixes must be true or false, but got "yes".` |
@@ -2214,12 +2247,14 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   it has stages, then `beforeId` inside another randomization's stages (the "stay together"
   message), then `beforeId` a stage, then inside a transfer table, then a place it can sit; then
   `seed`, then `volume`.
+- `renameRandomization`: the randomization, then the name's rule (text, blank, length,
+  characters), then another randomization having it.
 - `setRandomizations`: the list; then each randomization in turn: its form (exactly its
-  properties), its ID, the checks of `setRandomization` on its values (`settings`, `tipType` and
+  properties), its ID, its name's rule, the checks of `setRandomization` on its values (`settings`, `tipType` and
   `probes` only when not `null`), `fill`'s order and `probes`' order, then `stages` (form, then
   whether `settings`, `tipType` and `probes` are `null` exactly when `stages` isn't empty, each stage in the plan, not twice, no well twice,
   consecutive and in stage order, sharing no tip group with a stage outside it (its first stage,
-  then the stage after its last), not a mix step); then IDs repeated,
+  then the stage after its last), not a mix step); then IDs repeated, then names repeated,
   then stages owned by two randomizations; then, against the whole new list, each `beforeId` (a
   place it can sit, so never inside another randomization's stages).
 - `sourceGroups`, `setSourceSharesTips`, `moveSource`, `removeSources`: the list, then the index
@@ -2730,6 +2765,27 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
 - `addRandomization` before the second stage: `r1`, sitting there, with the defaults and the given
   seed and volume; a second one is `r2`; after removing `r1`, the next is `r3`. `beforeId` unknown,
   a stage inside a tip group, a seed of `0` and a volume of `-1` each throw.
+- **Names** (2026-11-08): the first randomization added is named `Randomization1` and the second
+  `Randomization2`; after renaming the first `HySoy_dose`, a third is `Randomization1`.
+  `renameRandomization` renames one that hasn't run and one that has, leaving every stage, transfer,
+  tip change and `isRandomizationOutOfDate` as they were; the same name gives back the same plan;
+  `"AA levels"`, `""`, `"   "`, 41 characters, `"Drug/A"`, `"µ"` and `5` throw the name messages;
+  another's name throws the "already named" message; an unknown ID throws. Undoing is the caller's
+  (the plan is immutable): the plan before the rename still has the old name.
+- A pasted copy of a named randomization gets `Randomization` and the smallest free number, never the
+  original's name; pasting two randomizations at once into a plan holding `Randomization1` gives
+  `Randomization2` and `Randomization3`.
+- `renameRandomization` refuses `hysoy_dose` when another is `HySoy_dose` (the "already named"
+  message, naming the other's name as stored); renaming one from `HySoy_dose` to `HYSOY_DOSE` is
+  allowed (it's its own name). `setRandomizations` refuses two named alike but for capitals.
+- **Existing tests that change** (the specification changed, not the tests' purpose): the
+  stored-randomization fixtures given to `setRandomizations` gain a `name` after `id` (e.g.
+  `Randomization1`, `Randomization2` in order); the form message lists `"name"` after `"id"`
+  (eleven properties); tests comparing a whole randomization expect its `name`. No other expected
+  result changes.
+- `setRandomizations` refuses a randomization without `name`, a name breaking the rule (prefixed
+  `Randomization 2: `), and two with one name (`Randomizations 1 and 3 are both named …`), in
+  the order of checks; it accepts `Randomization7` alongside `HySoy_dose`.
 - `setRandomization` sets sources and wells, with any number of filler wells; `fill` given in any
   order comes back in deck order; every row of section 5 it can give, with its message, leaving the
   plan unchanged; unchanged values give back the same plan; `stages` and `beforeId` never change.

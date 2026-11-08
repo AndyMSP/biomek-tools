@@ -60,6 +60,7 @@ import { COMPONENT_COLORS } from "../config/component-colors.js";
 import {
   writeRunFiles,
   checkExperimentName,
+  checkNameRule,
   folderNameFor,
 } from "../src/shared/file-writer/file-writer.js";
 import { zipFiles, crc32 } from "../src/shared/zip/zip.js";
@@ -148,6 +149,7 @@ import {
   randomizationStageValues,
   removeRandomization,
   canRemoveRandomization,
+  renameRandomization,
   setRandomizations,
   setConstituents,
   concentrationsOf,
@@ -189,6 +191,7 @@ import {
   labwareSheetPages,
   labwareSheet,
 } from "../src/tools/transfer-designer/labware-sheet.js";
+import { wellMaps } from "../src/tools/transfer-designer/well-maps.js";
 import { buildVersion, branchLabel, fileNameFor, readGitFacts } from "./build-version.js";
 
 // What the REPL loads, grouped by topic: one topic per module, named like its folder. Each topic
@@ -449,10 +452,11 @@ const TOPICS = {
     ],
   },
   "file-writer": {
-    loaded: { writeRunFiles, checkExperimentName, folderNameFor },
+    loaded: { writeRunFiles, checkExperimentName, checkNameRule, folderNameFor },
     examples: [
       'checkExperimentName("Exp36_repeat")',
       'checkExperimentName("Exp 36")',
+      `checkNameRule("AA levels", { subject: "A randomization's name", example: "HySoy_dose", blank: 'Type a name for the randomization, such as "HySoy_dose".' })`,
       'folderNameFor(new Date(2026, 0, 5, 9, 7, 2), "Exp36")',
       'let runPlan = setExperimentName(emptyPlan().plan, "Exp36")',
       'runPlan = addComponent(runPlan, "Media", "#4e79a7")',
@@ -609,6 +613,7 @@ const TOPICS = {
       randomizationStageValues,
       removeRandomization,
       canRemoveRandomization,
+      renameRandomization,
       setRandomizations,
       setConstituents,
       concentrationsOf,
@@ -717,6 +722,10 @@ const TOPICS = {
       'randomized = runRandomization(randomized, "r1")',
       "stageOrder(randomized)",
       'randomizationAt(randomized, "r1").stages',
+      'randomizationAt(randomized, "r1").name',
+      'randomized = renameRandomization(randomized, "r1", "HySoy_dose")',
+      'renameRandomization(randomized, "r1", "AA levels")',
+      'addRandomization(randomized, null).plan.randomizations.map((randomization) => randomization.name)',
       'randomizationOf(randomized, "3")',
       'transfersIn(randomized, "3")',
       "tipGroups(randomized)",
@@ -857,6 +866,22 @@ const TOPICS = {
       "sheet.name",
       "console.log(sheet.text)",
       'labwareSheet(sheetPlan, "", new Date())',
+    ],
+  },
+  "well-maps": {
+    loaded: { wellMaps },
+    examples: [
+      'let mapPlan = addComponent(emptyPlan().plan, "Hy-Soy", "#4e79a7")',
+      'mapPlan = addComponent(mapPlan, "Media", "#59a14f")',
+      'mapPlan = addToWells(mapPlan, [{ labware: "Res1", well: "9" }], "Hy-Soy", 10000)',
+      'mapPlan = addToWells(mapPlan, [{ labware: "Res1", well: "12" }], "Media", 10000)',
+      'mapPlan = setWellLabel(setLabel(mapPlan, "Plate1", "Cells"), { labware: "Res1", well: "9" }, "Hy-Soy 100 g/L")',
+      'mapPlan = addRandomization(mapPlan, null, { seed: 37, volume: 20 }).plan',
+      'mapPlan = setRandomization(mapPlan, "r1", { sources: [{ labware: "Res1", well: "9", replicates: 3, filler: false, sharesTips: false }, { labware: "Res1", well: "12", replicates: null, filler: true, sharesTips: false }], fill: [...GRID_96.wellsInBox("B2", "B7")].map((well) => ({ labware: "Plate1", well })) })',
+      "wellMaps(mapPlan)",
+      'mapPlan = renameRandomization(runRandomization(mapPlan, "r1"), "r1", "HySoy_dose")',
+      "wellMaps(mapPlan).map((file) => file.name)",
+      "console.log(wellMaps(mapPlan)[0].text)",
     ],
   },
   "plan-file": {

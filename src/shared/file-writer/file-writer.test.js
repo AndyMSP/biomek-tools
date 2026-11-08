@@ -38,7 +38,7 @@ import {
   addToWells,
 } from "../../tools/transfer-designer/transfer-designer.js";
 import { mixVolumes } from "../mix-volumes/mix-volumes.js";
-import { writeRunFiles, checkExperimentName, folderNameFor } from "./file-writer.js";
+import { writeRunFiles, checkExperimentName, checkNameRule, folderNameFor } from "./file-writer.js";
 
 // A 96-well labware, a 96-well labware of another labware type (a deep-well plate), and the
 // numbered (reservoir) labware, each found in DECK with its labware type.
@@ -215,6 +215,13 @@ function snapshot(plan) {
   });
 }
 
+// A randomization's words for checkNameRule, as the transfer designer gives them.
+const RANDOMIZATION_NAME_WORDS = {
+  subject: "A randomization's name",
+  example: "HySoy_dose",
+  blank: 'Type a name for the randomization, such as "HySoy_dose".',
+};
+
 describe("file-writer", () => {
   // --- Configuration (config/paths.js) ---
 
@@ -269,6 +276,33 @@ describe("file-writer", () => {
     assert.throws(() => checkExperimentName("Expé36"), {
       message: `The experiment name can't contain "é". ${rule}`,
     });
+  });
+
+  test("checkNameRule accepts a valid name in another's words", () => {
+    assert.doesNotThrow(() => checkNameRule("HySoy_dose", RANDOMIZATION_NAME_WORDS));
+  });
+
+  test("checkNameRule refuses each broken rule with its message in the words given", () => {
+    const words = RANDOMIZATION_NAME_WORDS;
+    assert.throws(() => checkNameRule(5, words), {
+      message: `A randomization's name must be text, like "HySoy_dose", but got 5.`,
+    });
+    assert.throws(() => checkNameRule("", words), { message: words.blank });
+    assert.throws(() => checkNameRule("R".repeat(41), words), {
+      message: "A randomization's name is 41 characters long; it can be at most 40.",
+    });
+    assert.throws(() => checkNameRule("AA levels", words), {
+      message:
+        `A randomization's name can't contain " " (a space). Use only letters, digits, ` +
+        `hyphens (-) and underscores (_), e.g. "HySoy_dose".`,
+    });
+  });
+
+  test("checkNameRule's character message gives characterExample when there is one", () => {
+    assert.throws(
+      () => checkNameRule("A/B", { ...RANDOMIZATION_NAME_WORDS, characterExample: "Other_one" }),
+      { message: /e\.g\. "Other_one"\.$/ },
+    );
   });
 
   test("folderNameFor gives the timestamp, an underscore and the name", () => {

@@ -67,3 +67,15 @@ stages, so plan files go to format version 12 and copied items to version 5, old
 a run randomization's three dropped (its stages already hold what every run gave them). Changing a
 stage's settings never makes a randomization out of date. A new randomization starts from the stage
 before it, as a new stage does.
+
+## Amendment (2026-11-08): randomizations have names
+**Decision** (Andy, 2026-11-08, item 26 of v0.2.0). Each randomization has a **name**, shown on its
+heading and naming its well map in the run's Records folder (ADR 0020), so a file in an analysis
+folder says which randomization it came from. It follows the experiment name's rule (letters,
+digits, hyphens and underscores, at most 40 characters; Andy chose this over free text, so the
+file's name is exactly what's typed), and no two randomizations of a plan share one. A new
+randomization is `Randomization` and the smallest free number; renaming never needs a run.
+
+**Consequences.** Plan files go to format version 13, older ones opening with their randomizations
+named `Randomization1`, `Randomization2` … in order. Copied items don't carry the name: a pasted
+copy gets a new default name.

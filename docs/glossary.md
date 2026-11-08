@@ -165,6 +165,8 @@ from; its **wells to fill**, the wells it fills; its **filler**, what fills the 
 sources' replicates leave over: one or more sources, its **filler wells**, which should hold one
 liquid (it's a problem otherwise), used in their order, in one stage of their own (ADR 0012; Andy,
 2026-11-02). It's **out of date** when its stages differ from what running it now would make.
+It has a **name** (Andy, 2026-11-08), by the experiment name's rule and unique in its plan
+regardless of capitals (`Randomization` and a number until renamed), which names its well map.
 
 **Records folder**
 The folder `Records` inside a run's folder in the Biomek files' zip, holding the files for people
@@ -254,6 +256,12 @@ A name the user gives a well, such as "Cond 1", so it's easy to recognize. It be
 place on the deck for the whole run, not to what the well holds; two wells may share a label. Like a
 labware label, it's for people only and never reaches the Biomek. (The transfer designer's page
 calls it the well's name; the specifications say well label, since a well name is something else.)
+
+**Well map**
+A CSV file in a run's Records folder, one per randomization that has run, named after it
+(`HySoy_dose well map.csv`): a row for each well its sources (not its filler) filled, giving the
+plate's label, the well and the source's well label, for data analysis (Andy, 2026-11-08;
+`well-maps.md`).
 
 **Well name**
 A well's place on its labware's grid, such as `A1`, or `5` on a reservoir's numbered grid.

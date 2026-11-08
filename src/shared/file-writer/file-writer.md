@@ -16,6 +16,12 @@
 > refused (ADR 0007, "Mixing"; sections 2, 3, 5 and 6). Substages come from the `substages` shared
 > module, unchanged.
 
+> **Draft change (2026-11-08, randomization names, item 26 of v0.2.0):** the experiment name's rule
+> is also the rule for a randomization's name (`transfer-designer.md`, "Randomizations"), so the
+> check is one exported function, `checkNameRule`, given what's named and an example;
+> `checkExperimentName` is it with the experiment name's words, unchanged (sections 4 to 6). Written
+> in the hands-off workflow; it becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 `file-writer.js` turns a **plan** (`docs/glossary.md`) into the files the general-purpose method
 runs (ADR 0007): a **setup worklist**, a **stage worklist**, and one **Transfer From File** file per
@@ -175,13 +181,14 @@ The files are **CSV** (comma-separated values): each row is one line, and each v
   break; both work.)
 
 ## 4. Interface
-The module exports three functions. None changes its inputs, and none reads the clock or saves
+The module exports four functions. None changes its inputs, and none reads the clock or saves
 anything (section 3).
 
 | Function | Takes | Returns | Throws |
 |---|---|---|---|
 | `writeRunFiles(plan, timestamp)` | a plan (holding its experiment name) and a timestamp (a `Date`), as in section 3, "Inputs" | `{ folderName, files }`: the folder name, and the files as a list of `{ name, text }`, in this order: `Setup.csv`, `Stages.csv`, then the Transfer From File files in the order `Stages.csv` names them | if the timestamp isn't valid, or the plan is refused, including for having no experiment name (section 5); nothing is returned then, so a refused plan gets no files |
 | `checkExperimentName(name)` | any value | nothing | if `name` isn't a valid experiment name (section 3). It's exported so a tool can check a name as the user types it, with the same rule |
+| `checkNameRule(name, words)` | any value, and the words for what's named: `{ subject, example, blank }`, e.g. `{ subject: "A randomization's name", example: "HySoy_dose", blank: 'Type a name for the randomization, such as "HySoy_dose".' }` | nothing | if `name` breaks the experiment name's rule (section 3), with section 5's messages in those words: `<subject> must be text, like "<example>", but got 5.` / `<blank>` / `<subject> is 45 characters long; it can be at most 40.` / `<subject> can't contain " " (a space). Use only letters, digits, hyphens (-) and underscores (_), e.g. "<example>".` It's the one place the rule lives (2026-11-08): `checkExperimentName` is `checkNameRule` with `{ subject: "The experiment name", example: "Exp36", blank: 'Type an experiment name, such as "Exp36".' }`, except that its last message's example stays `"Exp36_repeat"` as before, so that message is given as `{ …, characterExample: "Exp36_repeat" }` (optional; the example otherwise). |
 | `folderNameFor(timestamp, experimentName)` | a timestamp and an experiment name | the folder name, e.g. `"2026-10-28_015732_Exp36"` | if either isn't valid |
 
 `writeRunFiles` uses `folderNameFor` and `checkExperimentName` on the plan's name, so a name the
@@ -262,6 +269,11 @@ still pass when the deck changes (as `deck.test.js` does).
 - It refuses, each with its message: `5` and `null` (not text); `""` (blank); a name of 41
   characters; `"Exp 36"` (names "a space"); `"Exp36,b"`, `"Exp/36"` and `"Expé36"` (each names
   its character).
+- `checkNameRule` with a randomization's words (above) accepts `"HySoy_dose"` and refuses `"AA
+  levels"`, `""`, 41 characters and `5`, each with its message in those words; with no
+  `characterExample`, the character message's example is `example`. `checkExperimentName`'s
+  messages are unchanged: its character message still ends `e.g. "Exp36_repeat".`
+- `words` isn't checked: callers are the project's own code, passing fixed words.
 - `folderNameFor(new Date(2026, 9, 28, 1, 57, 32), "Exp36")` gives `"2026-10-28_015732_Exp36"`.
 - Leading zeros: `new Date(2026, 0, 5, 9, 7, 2)` gives `"2026-01-05_090702_…"`; and
   `new Date(2026, 11, 31, 23, 59, 59)` gives `"2026-12-31_235959_…"`.

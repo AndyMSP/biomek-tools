@@ -472,6 +472,21 @@ Last updated: 2026-11-08
   page's Biomek files box and Write files; the specifications and the build each reviewed by a
   separate agent, and checked in headless Chrome. Still to check by Andy, including the sheet in
   Edge.
+- **Decided: randomization names and well maps** (Andy, 2026-11-08; item 26, below; ADR 0012
+  amended, ADR 0020): each randomization has a name, by the experiment name's rule and unique in
+  the plan, shown on its heading and edited in its card; Write files puts each run randomization's
+  well map, `<name> well map.csv`, in the Records folder: one row per well its sources filled
+  (`Plate,Well,Source`, by labels; no filler), for data analysis. From a preview Andy approved.
+  **Specified** (Draft, 2026-11-08, in the hands-off workflow; built on #144's branch: merge #144
+  first): `well-maps.md`, `transfer-designer.md` (`name`, `renameRandomization`), `plan-file.md`
+  (format version 13), `file-writer.md` (`checkNameRule`, the rule shared), the heading, card and
+  Write files (`transfer-designer-page.md`, sections 5 and 7), glossary "Randomization" and "Well
+  map". It changes plan files, but no Biomek file. **Built (#145, 2026-11-08)**: `checkNameRule`,
+  names and `renameRandomization`, plan files version 13 (versions 1 to 12 still opening),
+  `well-maps` with `WELL_MAP_SUFFIX`, REPL additions, and the page's heading, Name box and well maps
+  in Write files; from the build's review, the name keeps its room on the heading before the stage
+  count; the specifications and the build each reviewed by a separate agent, and checked in
+  headless Chrome. Still to check by Andy.
 - **Decided: the zip stays as it is** (Andy, 2026-11-08): it holds the run's folder, so Windows'
   Extract All, left to its default, puts that folder inside one of the same name. Changing the zip or
   its message was considered and declined, as either could confuse (ADR 0020).
@@ -1080,6 +1095,22 @@ added on 2026-10-28 (Andy).
     - **Hands-off workflow** (Andy, 2026-11-08), on its own branch and pull request; the randomization
       names and well maps are a second (item 26 once merged), built on it.
 
+26. **Randomization names and well maps** (Andy, 2026-11-08): each randomization's well map, for
+    data analysis, in the Records folder (item 25), which needed randomizations to have names.
+    Decided (Andy, 2026-11-08), one question at a time, then from a preview:
+    - **A long list, not a plate grid**, since it's for analysis: one row per well, `Plate`, `Well`,
+      `Source`. **The plate by its label only** ("for now just our labels"), the source by its well
+      label. **No filler rows** ("filler is not needed"; a missing well then looks empty, accepted).
+    - **One file per randomization**, named after it, so **randomizations get names** ("we need to
+      give randomizations names then"): the experiment name's rule (letters, digits, `-`, `_`; chosen
+      over free text so the file is named exactly as typed), unique in the plan, `Randomization1` …
+      by default.
+    - **In the Records folder** with the labware sheet (item 25).
+    - Decided in the preview: the name replaces `Randomize`/`Randomized` on the heading; a rename
+      saves at once without Update.
+    - **Hands-off workflow** (Andy, 2026-11-08), its own branch and pull request, built on item
+      25's.
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
@@ -1124,7 +1155,10 @@ final Biomek runs, so they test the files as they will be:
     come before the final runs.
 19. The labware sheet (item 25), added on 2026-11-08: preview, specifications, then build. It changes
     no Biomek files and no plan files, so it needn't come before the final runs.
-20. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+20. Randomization names and well maps (item 26), added on 2026-11-08: preview, specifications, then
+    build. It changes plan files (version 13) but no Biomek files, so it needn't come before the
+    final runs.
+21. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a

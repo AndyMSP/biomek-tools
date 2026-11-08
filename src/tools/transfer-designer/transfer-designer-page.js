@@ -20,7 +20,7 @@ import { SOURCES_SHOWN } from "../../../config/randomizations.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
 import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
-import { RECORDS_FOLDER } from "../../../config/records.js";
+import { RECORDS_FOLDER, WELL_MAP_SUFFIX } from "../../../config/records.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
 import { randomSeed, MAX_SEED } from "../../shared/random-pool/random-pool.js";
@@ -37,6 +37,7 @@ import { parsePastedTable, tableToText } from "../../shared/pasted-table/pasted-
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
 import { labwareSheet } from "./labware-sheet.js";
+import { wellMaps } from "./well-maps.js";
 import {
   START,
   DEFAULT_MIX,
@@ -102,6 +103,7 @@ import {
   randomizationStageValues,
   stageNamed,
   removeRandomization,
+  renameRandomization,
   canRemoveRandomization,
   setConstituents,
   concentrationsOf,
@@ -262,8 +264,9 @@ const transferVolume = newTypedVolume(DEFAULT_TRANSFER_VOLUME);
 let source = null;
 
 // The text box editing something in place, if one is open: a labware's label or a well's name
-// (section 6), or a transfer's volume (section 7): { box, finish }, where finish("away") saves it as a click away
-// would. Null when none is open.
+// (section 6), or a transfer's volume (section 7), or the randomization card's Name box while it
+// holds a changed name (section 7, "Name"): { box, finish }, where finish("away") saves it as a
+// click away would. Null when none is open.
 let inlineBox = null;
 
 // The transfer whose volume box is open, { stage, position }, or null (section 7). While it's open,
@@ -1062,15 +1065,15 @@ function checkNameAsTyped(box) {
 
 // --- The Biomek files box (section 5) ---
 
-// The run the Biomek files box will write, { folderName, files, sheet, now }: the file writer's
-// folder name and files, the labware sheet ({ name, text }) for the Records folder, and the moment
-// the box opened, which they're named and dated by. Null while the box is closed, or open with a
-// plan the writer refused.
+// The run the Biomek files box will write, { folderName, files, sheet, maps, now }: the file
+// writer's folder name and files, the labware sheet ({ name, text }) and the well maps (wellMaps'
+// list of { name, text }) for the Records folder, and the moment the box opened, which they're named
+// and dated by. Null while the box is closed, or open with a plan the writer refused.
 let biomekRun = null;
 
 // Opens the Biomek files box under its button, or closes it if it's open. Opening it closes
-// Reset's question, and works out the run's files at once with writeRunFiles, and the labware
-// sheet with labwareSheet, the moment the box opens as their timestamp, so the zip's name it shows
+// Reset's question, and works out the run's files at once with writeRunFiles, the labware sheet
+// with labwareSheet and the well maps with wellMaps, the moment the box opens as their timestamp, so the zip's name it shows
 // is the one Write files saves, and the box never offers files it can't write. If either refuses
 // the plan, its message is shown instead, unchanged, with Write files disabled. Before that, a
 // randomization or transfer table that's out of date is named instead, as the writer never reads
@@ -1090,13 +1093,15 @@ function toggleBiomekBox() {
     checkNoRandomizationOutOfDate(currentPlan());
     const { folderName, files } = writeRunFiles(currentPlan(), now);
     const sheet = labwareSheet(currentPlan(), folderName, now);
-    biomekRun = { folderName, files, sheet, now };
+    // After the out-of-date check above, so each randomization's stages match its sources.
+    const maps = wellMaps(currentPlan());
+    biomekRun = { folderName, files, sheet, maps, now };
     summary.classList.remove("refused");
     summary.replaceChildren(
       "This saves",
       createElement("code", `${folderName}.zip`, "zip-name"),
       `holding the folder ${folderName}, with ${describeRunFiles(files)}, ` +
-        `and a ${RECORDS_FOLDER} folder with the labware sheet.`,
+        `and a ${RECORDS_FOLDER} folder with ${describeRecords(maps)}.`,
     );
     elements.writeFiles.disabled = false;
   } catch (error) {
@@ -1131,13 +1136,24 @@ function describeRunFiles(files) {
   return `Setup.csv, Stages.csv and ${countOf(transferFileCount, "Transfer From File file")}`;
 }
 
+// What the Records folder holds, for the box: "the labware sheet", or, with well maps (`maps`, as
+// wellMaps gives them), "the labware sheet and 2 well maps" ("1 well map").
+function describeRecords(maps) {
+  return maps.length === 0 ? "the labware sheet" : `the labware sheet and ${countOf(maps.length, "well map")}`;
+}
+
 // The zip's entries for `run` (as biomekRun holds it): the file writer's files under the run's
-// folder, exactly as before, then the labware sheet in its Records folder (ADR 0020),
-// e.g. "2026-11-08_134118_Exp36/Setup.csv", …, "2026-11-08_134118_Exp36/Records/Labware sheet.pdf".
-function zipEntriesFor({ folderName, files, sheet }) {
+// folder, exactly as before, then the labware sheet and each well map, in wellMaps' order, in its
+// Records folder (ADR 0020), e.g. "2026-11-08_134118_Exp36/Setup.csv", …,
+// "2026-11-08_134118_Exp36/Records/Labware sheet.pdf",
+// "2026-11-08_134118_Exp36/Records/HySoy_dose well map.csv".
+function zipEntriesFor({ folderName, files, sheet, maps }) {
   const runEntries = files.map((file) => ({ name: `${folderName}/${file.name}`, text: file.text }));
-  const sheetEntry = { name: `${folderName}/${RECORDS_FOLDER}/${sheet.name}`, text: sheet.text };
-  return [...runEntries, sheetEntry];
+  const recordsEntries = [sheet, ...maps].map((file) => ({
+    name: `${folderName}/${RECORDS_FOLDER}/${file.name}`,
+    text: file.text,
+  }));
+  return [...runEntries, ...recordsEntries];
 }
 
 // Closes the Biomek files box, forgetting the run it worked out.
@@ -2881,22 +2897,40 @@ function noteDrawnWithoutGlow(group, drawnKeys) {
 }
 
 // A randomization's heading (section 7), as a transfer table's (createBoxHeading): ▸ or ▾ once it
-// has run (`expanded`; null for one not set up yet, which has nothing to show), the dice icon,
-// "Randomize" (not set up yet) or "Randomized" (run), and, at the right, "not set up yet", "68
-// stages · seed 360310", or, when `outOfDate`, "needs update" in red. Clicking it opens or closes
-// its box, or, not set up yet, its card (clickItem).
+// has run (`expanded`; null for one not set up yet, which has nothing to show), the dice icon, its
+// name (cut short with … when it doesn't fit, its tooltip then giving it in full), and, at the
+// right, "not set up yet", "68 stages · seed 360310", or, when `outOfDate`, "needs update" in red.
+// Clicking it opens or closes its box, or, not set up yet, its card (clickItem).
 function createRandomizationHeading(randomization, expanded, outOfDate) {
   const hasRun = randomization.stages.length > 0;
-  return createBoxHeading({
+  const heading = createBoxHeading({
     className: "randomization-own-heading",
     expanded,
     icon: createDiceIcon(),
-    title: hasRun ? "Randomized" : "Randomize",
+    title: randomization.name,
     status: hasRun ? `${countOf(randomization.stages.length, "stage")} · seed ${randomization.seed}` : "not set up yet",
     outOfDate,
     outOfDateTooltip: "The plan changed since this last ran: press ✎, then Update.",
     tooltip: hasRun ? null : "Not set up yet: open it to finish setting it up.",
   });
+  const name = heading.querySelector(".randomization-title");
+  name.classList.add("randomization-name");
+  // Out of date, the heading's own tooltip (why it needs Update) shows over the name too.
+  if (!outOfDate) {
+    name.addEventListener("pointerenter", () => showNameInFullIfCut(name, randomization.name));
+  }
+  return heading;
+}
+
+// Gives a heading's name element its full name, `fullName`, as its tooltip while it's cut short
+// (its text is wider than its box), and none otherwise, so the heading's own tooltip shows. Worked
+// out when the pointer reaches it, since how much fits depends on the column's width then.
+function showNameInFullIfCut(element, fullName) {
+  if (element.scrollWidth > element.clientWidth) {
+    element.title = fullName;
+  } else {
+    element.removeAttribute("title");
+  }
 }
 
 // The ✎ on a randomization's heading (section 7): opens its card, or closes it if open (`cardOpen`)
@@ -2995,7 +3029,9 @@ function newCard(plan, id, returnTo) {
     tipType: draft.tipType,
     probes: draft.probes,
   };
-  return { id, draft, original, returnTo, element: null };
+  // nameText: what's typed in the Name box and not yet saved, or null (section 7, "Name"). It isn't
+  // part of the draft: a name is saved at once, as its own edit.
+  return { id, draft, original, returnTo, element: null, nameText: null };
 }
 
 // A randomization as its card shows it, for editing: its sources with their replicates as typed
@@ -3189,8 +3225,8 @@ function randomizeTooltip(plan) {
   return `Makes ${stages}, on ${countOf(tipSetsToMake(draftPlan(plan), card.id), "set")} of new tips.`;
 }
 
-// The open randomization's card (section 7): the tabs and the open tab's contents, Each transfer,
-// Seed, and the footer with its first problem and buttons. Escape in it closes it, as on the page.
+// The open randomization's card (section 7): its Name, the tabs and the open tab's contents, Each
+// transfer, Seed, and the footer with its first problem and buttons. Escape in it closes it, as on the page.
 function createRandomizationCard(plan, randomization) {
   const hasRun = randomization.stages.length > 0;
   const element = createElement("div", "", "randomization-card");
@@ -3204,6 +3240,7 @@ function createRandomizationCard(plan, randomization) {
     }
   });
   element.append(
+    createCardNameField(randomization),
     createCardTabs(),
     ...(card.draft.tab === "sources" ? createSourcesTab(plan) : createFillTab(plan)),
     createElement("div", "Each transfer", "field-name card-section"),
@@ -3687,6 +3724,146 @@ function mixUnderMixedBlocked(plan, randomization, end) {
     }
   }
   return null;
+}
+
+// The card's Name (section 7, "Name"): a text box, 220px wide, semibold, holding the
+// randomization's name, or what's typed and not yet saved (card.nameText) after a redraw. Unlike the
+// card's other boxes, it isn't part of the draft: a changed name is saved at once, as its own edit
+// (saveCardName), on Enter, and on leaving the box by clicking elsewhere or Tab, through the same
+// mechanism as a transfer's volume box (guardInlineBox): while it holds a changed name, it's the
+// open inline box. Escape puts back the saved name, then closes the card as Escape anywhere in the
+// card does.
+function createCardNameField(randomization) {
+  const box = document.createElement("input");
+  box.type = "text";
+  box.id = "card-name";
+  box.className = "card-name-box";
+  box.dataset.focusKey = "name";
+  box.spellcheck = false;
+  box.autocomplete = "off";
+  box.title = "Names its well map file. Letters, digits, - and _ only.";
+  box.value = card.nameText ?? randomization.name;
+  watchCardName(box);
+  box.addEventListener("input", () => {
+    card.nameText = box.value;
+    watchCardName(box);
+  });
+  box.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      saveCardName(box, "enter");
+    } else if (event.key === "Escape") {
+      // Nothing typed is saved; the card's own Escape (it bubbles there) then closes the card.
+      forgetCardName(box);
+    }
+  });
+  box.addEventListener("blur", (event) => {
+    // A box taken out of the page while it has focus (the card closing, or redrawn) saves nothing:
+    // whatever was to be saved already was, at most once.
+    if (box.isConnected) {
+      saveCardName(box, "away", event.relatedTarget);
+    }
+  });
+  const field = createElement("div", "", "card-field");
+  const label = createElement("label", "Name", "field-name");
+  label.htmlFor = box.id;
+  field.append(label, box);
+  return field;
+}
+
+// Makes the card's Name box, `box`, the open inline box while it holds a name that differs from the
+// saved one, so a press outside saves it first and passes the click on (guardInlineBox); otherwise
+// it isn't, and a press outside is an ordinary press.
+function watchCardName(box) {
+  if (cardNameChanged()) {
+    inlineBox = { box, finish: (how) => saveCardName(box, how) };
+  } else if (inlineBox !== null && inlineBox.box === box) {
+    inlineBox = null;
+  }
+}
+
+// True if the card's Name box holds a name, spaces at its ends aside, that isn't the
+// randomization's saved name.
+function cardNameChanged() {
+  return card.nameText !== null && card.nameText.trim() !== randomizationAt(currentPlan(), card.id).name;
+}
+
+// Forgets what's typed in the card's Name box, `box`, putting back the saved name; it's no longer
+// the open inline box.
+function forgetCardName(box) {
+  card.nameText = null;
+  box.value = randomizationAt(currentPlan(), card.id).name;
+  if (inlineBox !== null && inlineBox.box === box) {
+    inlineBox = null;
+  }
+}
+
+// Saves what's typed in the card's Name box, `box`, spaces at its ends removed, with
+// renameRandomization (section 7, "Name"), at most once per change: an unchanged name saves nothing
+// and shows nothing. `how` is "enter", after which the focus stays in the box, or "away" (a press
+// outside, or Tab), after which the focus goes back to `next`, the card's control it was going to,
+// if any. Refused, the logic's message shows and the box goes back to the saved name. Returns what
+// became of the box, as an inline box's saving does: "refused" (so a press outside isn't passed on
+// and the message stays in view) or "closed".
+function saveCardName(box, how, next = null) {
+  if (inlineBox !== null && inlineBox.box === box) {
+    inlineBox = null;
+  }
+  if (card === null || card.nameText === null) {
+    return "closed";
+  }
+  const changed = cardNameChanged();
+  const name = card.nameText.trim();
+  // The caret as typed, before the box goes back to the saved name.
+  const caret = how === "enter" ? [box.selectionStart, box.selectionEnd] : null;
+  forgetCardName(box);
+  if (!changed) {
+    return "closed";
+  }
+  const plan = currentPlan();
+  const renamed = tryLogic(() => renameRandomization(plan, card.id, name));
+  if (renamed === false) {
+    return "refused";
+  }
+  // Leaving for a control outside the card (Shift+Tab to the heading's ✎) keeps the focus here.
+  const focusKey = how === "enter" ? "name" : (focusKeyInCard(next) ?? "name");
+  recordCardRename(plan, renamed);
+  showMessage(`Renamed the randomization ${name}. Its well map will be ${name}${WELL_MAP_SUFFIX}.`, "ok");
+  focusInCard(focusKey, caret);
+  return "closed";
+}
+
+// Records a rename made from the open card (section 7, "Name"), as Close records the card's draft:
+// the state before it (`plan`) is rewritten to open what the card returns to, and the renamed plan
+// recorded with the card open, which Close, Randomize, Update and Remove rewrite the same way; so
+// once the card has closed, Undo takes the rename back and Redo puts it back without reopening it.
+function recordCardRename(plan, renamed) {
+  history = history.replacePresent({ plan, open: validOpen(plan, card.returnTo) });
+  recordEdit(renamed, card.id);
+}
+
+// The focus key of `element` if it's a control in the open card, e.g. "tab:fill"; otherwise
+// undefined.
+function focusKeyInCard(element) {
+  if (!(element instanceof HTMLElement) || card === null || card.element === null || !card.element.contains(element)) {
+    return undefined;
+  }
+  return element.dataset.focusKey;
+}
+
+// Puts the keyboard focus back on the open card's control with focus key `focusKey` after the card
+// was drawn afresh, and, for a text box, its caret at `caret` ([start, end]) when given. Nothing for
+// an undefined key, or one the card no longer has.
+function focusInCard(focusKey, caret) {
+  if (focusKey === undefined || card === null || card.element === null) {
+    return;
+  }
+  const again = card.element.querySelector(`[data-focus-key="${cssEscape(focusKey)}"]`);
+  again?.focus({ preventScroll: true });
+  if (again instanceof HTMLInputElement && caret !== null && caret[0] !== null) {
+    const end = again.value.length;
+    again.setSelectionRange(Math.min(caret[0], end), Math.min(caret[1], end));
+  }
 }
 
 // The card's Volume (section 7): a text box like Seed's, 80px wide, then "µL"; what's typed

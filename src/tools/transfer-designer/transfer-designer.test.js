@@ -96,6 +96,7 @@ import {
   randomizationStageValues,
   removeRandomization,
   canRemoveRandomization,
+  renameRandomization,
   setRandomizations,
   setConstituents,
   concentrationsOf,
@@ -2979,6 +2980,7 @@ describe("transfer-designer", () => {
     assert.equal(id, "r1");
     assert.deepEqual(randomizationAt(added, id), {
       id: "r1",
+      name: "Randomization1",
       beforeId: "2",
       sources: [],
       fill: [],
@@ -3511,6 +3513,132 @@ describe("transfer-designer", () => {
     assert.throws(() => removeRandomization(plan, "r9"), /no randomization "r9"/);
   });
 
+  // --- Randomization names (2026-11-08) ---
+
+  test("names: new randomizations are Randomization and the smallest free number, capitals aside", () => {
+    let { plan } = addRandomization(randomizingPlan(), "2");
+    plan = addRandomization(plan, null).plan;
+    assert.equal(randomizationAt(plan, "r1").name, "Randomization1");
+    assert.equal(randomizationAt(plan, "r2").name, "Randomization2");
+    plan = renameRandomization(plan, "r1", "HySoy_dose");
+    assert.equal(randomizationAt(addRandomization(plan, null).plan, "r3").name, "Randomization1");
+    const lowered = renameRandomization(plan, "r1", "randomization1");
+    assert.equal(randomizationAt(addRandomization(lowered, null).plan, "r3").name, "Randomization3");
+  });
+
+  test("names: a randomization's name comes right after its ID", () => {
+    const { plan, id } = addRandomization(randomizingPlan(), "2");
+    assert.deepEqual(Object.keys(randomizationAt(plan, id)).slice(0, 3), ["id", "name", "beforeId"]);
+  });
+
+  test("renameRandomization renames one that hasn't run and one that has, changing nothing else", () => {
+    const { plan: setUp, id } = setUpRandomization();
+    const renamedSetUp = renameRandomization(setUp, id, "HySoy_dose");
+    assert.equal(randomizationAt(renamedSetUp, id).name, "HySoy_dose");
+    const run = runRandomization(setUp, id);
+    const renamed = renameRandomization(run, id, "HySoy_dose");
+    assert.deepEqual(randomizationAt(renamed, id), { ...randomizationAt(run, id), name: "HySoy_dose" });
+    for (const part of ["stageList", "stageOrder", "operationList", "tipChanges"]) {
+      assert.equal(renamed[part], run[part], part);
+    }
+    assert.equal(isRandomizationOutOfDate(renamed, id), false);
+    // The plan is immutable, so undoing is the caller's: the plan before still has the old name.
+    assert.equal(randomizationAt(run, id).name, "Randomization1");
+  });
+
+  test("renameRandomization gives back the same plan for the same name", () => {
+    const { plan, id } = setUpRandomization();
+    assert.equal(renameRandomization(plan, id, "Randomization1"), plan);
+  });
+
+  test("renameRandomization refuses a name breaking the rule, with a randomization's words", () => {
+    const { plan, id } = setUpRandomization();
+    const rule = 'Use only letters, digits, hyphens (-) and underscores (_), e.g. "HySoy_dose".';
+    const cases = [
+      ["AA levels", `A randomization's name can't contain " " (a space). ${rule}`],
+      ["", 'Type a name for the randomization, such as "HySoy_dose".'],
+      ["   ", 'Type a name for the randomization, such as "HySoy_dose".'],
+      ["R".repeat(41), "A randomization's name is 41 characters long; it can be at most 40."],
+      ["Drug/A", `A randomization's name can't contain "/". ${rule}`],
+      ["µ", `A randomization's name can't contain "µ". ${rule}`],
+      [5, `A randomization's name must be text, like "HySoy_dose", but got 5.`],
+    ];
+    for (const [name, message] of cases) {
+      assert.throws(() => renameRandomization(plan, id, name), { message }, String(name));
+    }
+    assert.throws(() => renameRandomization(plan, "r9", "HySoy_dose"), {
+      message: `There's no randomization "r9" in the plan.`,
+    });
+    // The randomization is checked before the name.
+    assert.throws(() => renameRandomization(plan, "r9", "AA levels"), /no randomization "r9"/);
+  });
+
+  test("renameRandomization refuses another's name, capitals aside, but allows its own in other capitals", () => {
+    let { plan, id } = setUpRandomization();
+    plan = renameRandomization(plan, id, "HySoy_dose");
+    const second = addRandomization(plan, null);
+    plan = second.plan;
+    const message = 'Another randomization is already named "HySoy_dose". Choose a different name.';
+    assert.throws(() => renameRandomization(plan, second.id, "HySoy_dose"), { message });
+    assert.throws(() => renameRandomization(plan, second.id, "hysoy_dose"), { message });
+    assert.equal(randomizationAt(renameRandomization(plan, id, "HYSOY_DOSE"), id).name, "HYSOY_DOSE");
+  });
+
+  test("pasting: a copy of a named randomization gets a new default name, never the original's", () => {
+    let { plan, id } = setUpRandomization();
+    plan = renameRandomization(plan, id, "HySoy_dose");
+    const end = { kind: "between", index: columnBoxes(plan).length };
+    const { plan: pasted, placed } = copyItems(plan, [{ kind: "randomization", id }], end);
+    assert.equal(randomizationAt(pasted, placed[0].id).name, "Randomization1");
+    assert.equal(copyOf(plan, [{ kind: "randomization", id }]).version, 5);
+  });
+
+  test("pasting two randomizations at once into a plan holding Randomization1 gives Randomization2 and Randomization3", () => {
+    let { plan, id } = setUpRandomization();
+    const second = addRandomization(plan, null);
+    plan = renameRandomization(second.plan, second.id, "HySoy_dose");
+    const end = { kind: "between", index: columnBoxes(plan).length };
+    const items = [
+      { kind: "randomization", id },
+      { kind: "randomization", id: second.id },
+    ];
+    const { plan: pasted, placed } = copyItems(plan, items, end);
+    const names = placed.map((entry) => randomizationAt(pasted, entry.id).name);
+    assert.deepEqual(names, ["Randomization2", "Randomization3"]);
+  });
+
+  test("setRandomizations refuses a randomization without a name, a name breaking the rule, and two named alike", () => {
+    const { plan, id } = runRandomizationPlan();
+    const good = () => JSON.parse(JSON.stringify(randomizationAt(plan, id)));
+    const notRun = (name) => ({ ...asNotRun(good()), id: "r2", name, beforeId: null });
+    const { name, ...unnamed } = good();
+    assert.equal(name, "Randomization1");
+    assert.throws(() => setRandomizations(plan, [unnamed]), {
+      message: /^Randomization 1 must be an object with exactly "id", "name", "beforeId"/,
+    });
+    assert.throws(() => setRandomizations(plan, [good(), notRun("AA levels")]), {
+      message: /^Randomization 2: A randomization's name can't contain " " \(a space\)\./,
+    });
+    // The name is checked after the ID and before the values.
+    assert.throws(() => setRandomizations(plan, [good(), { ...notRun("AA levels"), id: "x" }]), /ID must be "r"/);
+    assert.throws(() => setRandomizations(plan, [good(), { ...notRun("AA levels"), seed: 0 }]), /name can't contain/);
+    const third = { ...notRun("Randomization1"), id: "r3" };
+    assert.throws(() => setRandomizations(plan, [good(), notRun("HySoy_dose"), third]), {
+      message: 'Randomizations 1 and 3 are both named "Randomization1".',
+    });
+    assert.throws(() => setRandomizations(plan, [good(), notRun("HySoy_dose"), { ...third, name: "RANDOMIZATION1" }]), {
+      message:
+        'Randomizations 1 and 3 are named "Randomization1" and "RANDOMIZATION1", which differ only in capitals.',
+    });
+    // IDs repeated are reported before names repeated.
+    assert.throws(() => setRandomizations(plan, [good(), { ...notRun("Randomization1"), id: "r1" }]), /both have the ID/);
+    const accepted = setRandomizations(plan, [{ ...good(), name: "Randomization7" }, notRun("HySoy_dose")]);
+    assert.deepEqual(
+      accepted.randomizations.map((randomization) => randomization.name),
+      ["Randomization7", "HySoy_dose"],
+    );
+  });
+
   test("setRandomizations accepts a plan's own randomizations after running", () => {
     const { plan } = runRandomizationPlan();
     const withSecond = addRandomization(plan, null, { seed: 5, volume: null }).plan;
@@ -3533,7 +3661,7 @@ describe("transfer-designer", () => {
   test("setRandomizations refuses one sitting before another's second stage, even when loading both at once", () => {
     const { plan, id } = runRandomizationPlan();
     const owner = JSON.parse(JSON.stringify(randomizationAt(plan, id)));
-    const sitting = { ...asNotRun(owner), id: "r2", beforeId: owner.stages[1].stage };
+    const sitting = { ...asNotRun(owner), id: "r2", name: "Randomization2", beforeId: owner.stages[1].stage };
     assert.throws(
       () => setRandomizations({ ...plan, randomizations: [] }, [sitting, owner]),
       { message: /^Randomization 1: A randomization sits between tip groups, so it can't go before stage / },
@@ -3544,12 +3672,15 @@ describe("transfer-designer", () => {
     const { plan, id } = runRandomizationPlan();
     const good = () => JSON.parse(JSON.stringify(randomizationAt(plan, id)));
     const stageIds = good().stages.map((owned) => owned.stage);
-    const second = (changes) => [good(), { ...asNotRun(good()), id: "r2", beforeId: null, ...changes }];
+    const second = (changes) => [
+      good(),
+      { ...asNotRun(good()), id: "r2", name: "Randomization2", beforeId: null, ...changes },
+    ];
     const cases = [
       [5, "The randomizations must be a list, but got 5."],
       [
         [good(), { ...good(), extra: 1 }],
-        'Randomization 2 must be an object with exactly "id", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".',
+        'Randomization 2 must be an object with exactly "id", "name", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".',
       ],
       [second({ id: "x" }), `Randomization 2's ID must be "r" and a whole number, like "r1", but got "x".`],
       [second({ id: "r0" }), /ID must be "r"/],
@@ -3582,10 +3713,17 @@ describe("transfer-designer", () => {
         "Randomization 1: its stages must come one after another, in stage order.",
       ],
       [
-        [good(), { ...asNotRun(good()), id: "r2", beforeId: null }, { ...asNotRun(good()), id: "r2", beforeId: null }],
+        [
+          good(),
+          { ...asNotRun(good()), id: "r2", name: "Randomization2", beforeId: null },
+          { ...asNotRun(good()), id: "r2", name: "Randomization3", beforeId: null },
+        ],
         'Randomizations 2 and 3 both have the ID "r2".',
       ],
-      [[good(), { ...good(), id: "r2" }], `Stage "${stageIds[0]}" belongs to two randomizations, 1 and 2.`],
+      [
+        [good(), { ...good(), id: "r2", name: "Randomization2" }],
+        `Stage "${stageIds[0]}" belongs to two randomizations, 1 and 2.`,
+      ],
       [second({ beforeId: "9" }), `Randomization 2: There's no stage "9" to add a randomization before.`],
       [second({ beforeId: stageIds[1] }), /^Randomization 2: A randomization sits between tip groups/],
     ];
@@ -7851,7 +7989,7 @@ describe("transfer-designer", () => {
     assert.throws(() => setRandomizations(plan, [{ ...stored(), settings: defaultSettings() }]), {
       message: 'Randomization 1 has stages, so its "settings", "tipType" and "probes" must be null: its stages hold them.',
     });
-    const notRun = { ...asNotRun(stored()), id: "r2", beforeId: null };
+    const notRun = { ...asNotRun(stored()), id: "r2", name: "Randomization2", beforeId: null };
     assert.throws(() => setRandomizations(plan, [stored(), { ...notRun, settings: null }]), {
       message: `Randomization 2 hasn't run, so it needs "settings", "tipType" and "probes" for its first run.`,
     });
