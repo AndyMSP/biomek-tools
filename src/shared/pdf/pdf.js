@@ -19,33 +19,33 @@ import { isObject, findMissingProperties, findExtraProperties } from "../input-c
 // character. Every other character the PDF can show (codes 32 to 126 and 160 to 255) has the same
 // code in WinAnsi as in Unicode.
 const WIN_ANSI_EXTRAS = new Map([
-  ["€", 128], // €
-  ["‚", 130], // ‚
-  ["ƒ", 131], // ƒ
-  ["„", 132], // „
-  ["…", 133], // …
-  ["†", 134], // †
-  ["‡", 135], // ‡
-  ["ˆ", 136], // ˆ
-  ["‰", 137], // ‰
-  ["Š", 138], // Š
-  ["‹", 139], // ‹
-  ["Œ", 140], // Œ
-  ["Ž", 142], // Ž
-  ["‘", 145], // ‘
-  ["’", 146], // ’
-  ["“", 147], // “
-  ["”", 148], // ”
-  ["•", 149], // •
-  ["–", 150], // –
-  ["—", 151], // —
-  ["˜", 152], // ˜
-  ["™", 153], // ™
-  ["š", 154], // š
-  ["›", 155], // ›
-  ["œ", 156], // œ
-  ["ž", 158], // ž
-  ["Ÿ", 159], // Ÿ
+  ["€", 128], // U+20AC
+  ["‚", 130], // U+201A
+  ["ƒ", 131], // U+0192
+  ["„", 132], // U+201E
+  ["…", 133], // U+2026
+  ["†", 134], // U+2020
+  ["‡", 135], // U+2021
+  ["ˆ", 136], // U+02C6
+  ["‰", 137], // U+2030
+  ["Š", 138], // U+0160
+  ["‹", 139], // U+2039
+  ["Œ", 140], // U+0152
+  ["Ž", 142], // U+017D
+  ["‘", 145], // U+2018
+  ["’", 146], // U+2019
+  ["“", 147], // U+201C
+  ["”", 148], // U+201D
+  ["•", 149], // U+2022
+  ["–", 150], // U+2013
+  ["—", 151], // U+2014
+  ["˜", 152], // U+02DC
+  ["™", 153], // U+2122
+  ["š", 154], // U+0161
+  ["›", 155], // U+203A
+  ["œ", 156], // U+0153
+  ["ž", 158], // U+017E
+  ["Ÿ", 159], // U+0178
 ]);
 
 // The first code the width tables below start at: the space.
@@ -102,6 +102,10 @@ const MAX_PAGE_SIDE = 14400;
 
 // The largest number PDF readers handle in practice (ISO 32000-1, Annex C), either sign.
 const MAX_NUMBER = 32767;
+
+// The smallest size, width or height: the smallest number written with 3 decimals (pdf.md,
+// "Numbers"), so nothing greater than 0 is ever written as 0.
+const MIN_LENGTH = 0.001;
 
 // How many digits a number is written with after the decimal point, at most.
 const DECIMALS = 3;
@@ -176,7 +180,7 @@ export function textWidth(text, size, bold) {
   checkShowable(text, "The text to measure");
   if (!isLength(size)) {
     throw new Error(
-      `The size to measure at must be a number greater than 0 and at most ${MAX_NUMBER}, ` +
+      `The size to measure at must be a number from ${MIN_LENGTH} to ${MAX_NUMBER}, ` +
         `but got ${describeValue(size)}.`,
     );
   }
@@ -258,10 +262,10 @@ function checkShowable(text, subject) {
 
 // --- Checking the pages ---
 
-// True if `value` is a finite number greater than 0 and at most MAX_NUMBER: a size, a line's
-// width, or a box's width or height.
+// True if `value` is a finite number from MIN_LENGTH to MAX_NUMBER: a size, a line's width, or a
+// box's width or height. Anything smaller would be written as 0 (pdf.md, "Numbers").
 function isLength(value) {
-  return Number.isFinite(value) && value > 0 && value <= MAX_NUMBER;
+  return Number.isFinite(value) && value >= MIN_LENGTH && value <= MAX_NUMBER;
 }
 
 // Throws if `pages` isn't a list of at least one valid page, at the first problem found.
@@ -295,12 +299,12 @@ function checkPage(page, pageNumber) {
   page.items.forEach((item, index) => checkItem(item, `Page ${pageNumber}, item ${index + 1}`));
 }
 
-// Throws if `value`, a page's width or height (`subject` names it), isn't a number greater than 0
-// and at most MAX_PAGE_SIDE.
+// Throws if `value`, a page's width or height (`subject` names it), isn't a number from MIN_LENGTH
+// to MAX_PAGE_SIDE.
 function checkPageSide(value, subject) {
-  if (!Number.isFinite(value) || value <= 0 || value > MAX_PAGE_SIDE) {
+  if (!Number.isFinite(value) || value < MIN_LENGTH || value > MAX_PAGE_SIDE) {
     throw new Error(
-      `${subject} must be a number of points greater than 0 and at most ${MAX_PAGE_SIDE}, ` +
+      `${subject} must be a number of points from ${MIN_LENGTH} to ${MAX_PAGE_SIDE}, ` +
         `but got ${describeValue(value)}.`,
     );
   }
@@ -309,7 +313,8 @@ function checkPageSide(value, subject) {
 // Throws if `item` isn't valid: its kind, then its properties, then each value in its properties'
 // order. `place` names it, e.g. "Page 2, item 3".
 function checkItem(item, place) {
-  if (!isObject(item) || !Object.hasOwn(ITEM_PROPERTIES, item.kind)) {
+  // The kind must be text: Object.hasOwn would turn a list such as ["text"] into "text".
+  if (!isObject(item) || typeof item.kind !== "string" || !Object.hasOwn(ITEM_PROPERTIES, item.kind)) {
     const got = isObject(item) ? item.kind : item;
     throw new Error(
       `${place}, must be an object whose kind is "text", "line" or "box", but got ${describeValue(got)}.`,
@@ -348,7 +353,7 @@ function checkItemValue(value, kind, subject) {
   } else if (kind === "length") {
     if (!isLength(value)) {
       throw new Error(
-        `${subject} must be a number greater than 0 and at most ${MAX_NUMBER}, but got ${got}.`,
+        `${subject} must be a number from ${MIN_LENGTH} to ${MAX_NUMBER}, but got ${got}.`,
       );
     }
   } else if (kind === "gray") {

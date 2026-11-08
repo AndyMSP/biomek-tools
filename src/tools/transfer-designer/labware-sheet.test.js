@@ -11,10 +11,12 @@ import {
   LABWARE_SHEET_PAGE,
 } from "../../../config/records.js";
 import { DECK } from "../../../config/deck.js";
+import { labwareNames, gridOf } from "../../shared/deck/deck.js";
 import { TIP_TYPES } from "../../../config/tip-types.js";
 import { writePdf, textWidth } from "../../shared/pdf/pdf.js";
 import {
   emptyPlan,
+  setExperimentName,
   addComponent,
   addToWells,
   addTransfer,
@@ -36,6 +38,26 @@ const MAX_LABEL_WIDTH = 122;
 const LABWARE_COLUMNS = [54, 184, 294, 424];
 const CELL_INSET = 4;
 
+// --- Labware picked from config/deck.js, never named ---
+
+// The first well of the labware called `name`, e.g. "A1" on a plate or "1" on a reservoir.
+function firstWellOf(name) {
+  return gridOf(name).wellNames()[0];
+}
+
+// The labware with a numbered grid (reservoirs) and with a lettered one (plates), in deck order.
+const RESERVOIRS = labwareNames().filter((name) => firstWellOf(name) === "1");
+const PLATES = labwareNames().filter((name) => firstWellOf(name) !== "1");
+
+// The picks the tests use: the first reservoir and the first three plates.
+const RESERVOIR = RESERVOIRS[0];
+const [PLATE_A, PLATE_B, PLATE_C] = PLATES;
+
+// `names` in the deck's order.
+function inDeckOrder(names) {
+  return labwareNames().filter((name) => names.includes(name));
+}
+
 // --- Helpers for the tests ---
 
 // A transfer of `volume` µL from `source` to `destination` (each [labware, well]) in `stage`.
@@ -54,16 +76,21 @@ function typeOf(name) {
   return DECK.find((labware) => labware.name === name).labwareType;
 }
 
-// The plan of labware-sheet.md, section 6: Media in Res1 1, a transfer from it into Deep1 A1, a
-// well label on Deep2 A1, and labels "Res A" on Res1 and "Feeding DWP" on Deep1.
+// The plan of labware-sheet.md, section 6, named Exp36-feeding: Media in the reservoir's first
+// well, a transfer from it into PLATE_A's first well, a well label on PLATE_B, and labels "Res A" on
+// the reservoir and "Feeding DWP" on PLATE_A.
 function examplePlan() {
   const { plan: empty, stageId } = emptyPlan();
-  let plan = addComponent(empty, "Media", "#4e79a7");
-  plan = addToWells(plan, [{ labware: "Res1", well: "1" }], "Media", 10000);
-  plan = addTransfer(plan, transfer(["Res1", "1"], ["Deep1", "A1"], stageId));
-  plan = setWellLabel(plan, { labware: "Deep2", well: "A1" }, "Cond 1");
-  plan = setLabel(plan, "Res1", "Res A");
-  plan = setLabel(plan, "Deep1", "Feeding DWP");
+  let plan = setExperimentName(empty, "Exp36-feeding");
+  plan = addComponent(plan, "Media", "#4e79a7");
+  plan = addToWells(plan, [{ labware: RESERVOIR, well: firstWellOf(RESERVOIR) }], "Media", 10000);
+  plan = addTransfer(
+    plan,
+    transfer([RESERVOIR, firstWellOf(RESERVOIR)], [PLATE_A, firstWellOf(PLATE_A)], stageId),
+  );
+  plan = setWellLabel(plan, { labware: PLATE_B, well: firstWellOf(PLATE_B) }, "Cond 1");
+  plan = setLabel(plan, RESERVOIR, "Res A");
+  plan = setLabel(plan, PLATE_A, "Feeding DWP");
   return plan;
 }
 
@@ -78,7 +105,7 @@ function contentWith(changes = {}) {
     experimentName: "Exp36-feeding",
     zipName: `${FOLDER}.zip`,
     made: "2026-11-08 13:41",
-    labware: [emptyEntry("Deep1", "Feeding DWP")],
+    labware: [emptyEntry(PLATE_A, "Feeding DWP")],
     unused: [],
     tips: [{ tipType: TIP_TYPES[0], count: 8 }],
     ...changes,
@@ -122,12 +149,13 @@ describe("labware-sheet", () => {
 
   test("lists the labware the plan uses in the deck's order, with labels, types and fill", () => {
     const content = labwareSheetContent(examplePlan(), FOLDER, MADE);
-    assert.deepEqual(content.labware, [
-      emptyEntry("Deep1", "Feeding DWP"),
-      emptyEntry("Deep2"),
-      { label: "Res A", name: "Res1", labwareType: typeOf("Res1"), beforeRun: "Fill first" },
-    ]);
-    const used = ["Deep1", "Deep2", "Res1"];
+    const entries = {
+      [PLATE_A]: emptyEntry(PLATE_A, "Feeding DWP"),
+      [PLATE_B]: emptyEntry(PLATE_B),
+      [RESERVOIR]: { label: "Res A", name: RESERVOIR, labwareType: typeOf(RESERVOIR), beforeRun: "Fill first" },
+    };
+    const used = inDeckOrder([PLATE_A, PLATE_B, RESERVOIR]);
+    assert.deepEqual(content.labware, used.map((name) => entries[name]));
     assert.deepEqual(
       content.unused,
       DECK.map((labware) => labware.name).filter((name) => !used.includes(name)),
@@ -135,18 +163,18 @@ describe("labware-sheet", () => {
   });
 
   test("a labware with only a labware label isn't listed", () => {
-    const plan = setLabel(examplePlan(), "Plate1", "Spare plate");
+    const plan = setLabel(examplePlan(), PLATE_C, "Spare plate");
     const content = labwareSheetContent(plan, FOLDER, MADE);
-    assert.ok(!content.labware.some((entry) => entry.name === "Plate1"));
-    assert.ok(content.unused.includes("Plate1"));
+    assert.ok(!content.labware.some((entry) => entry.name === PLATE_C));
+    assert.ok(content.unused.includes(PLATE_C));
   });
 
   test("names the zip, the plan and when the sheet was made", () => {
-    const { plan } = emptyPlan();
+    const plan = setExperimentName(emptyPlan().plan, "Exp36-feeding");
     const content = labwareSheetContent(plan, FOLDER, new Date(2026, 10, 8, 9, 5, 7));
     assert.equal(content.zipName, `${FOLDER}.zip`);
     assert.equal(content.made, "2026-11-08 09:05");
-    assert.equal(content.experimentName, plan.experimentName);
+    assert.equal(content.experimentName, "Exp36-feeding");
   });
 
   test("tips are tipsUsed's, and a plan without transfers has none", () => {
@@ -156,16 +184,21 @@ describe("labware-sheet", () => {
   });
 
   test("a label with a character the PDF can't show gets ? in its place", () => {
-    const plan = setLabel(examplePlan(), "Deep1", "Drug → plate");
-    assert.equal(labwareSheetContent(plan, FOLDER, MADE).labware[0].label, "Drug ? plate");
+    const plan = setLabel(examplePlan(), PLATE_A, "Drug → plate");
+    const content = labwareSheetContent(plan, FOLDER, MADE);
+    assert.equal(content.labware.find((entry) => entry.name === PLATE_A).label, "Drug ? plate");
+    assert.equal(labwareSheetContent(plan, "Run→1", MADE).zipName, "Run?1.zip");
   });
 
   test("the plan is unchanged afterwards, and each call gives a new object", () => {
     const plan = examplePlan();
+    // JSON.stringify writes the operation list as {}, so its transfers are compared separately.
     const before = JSON.stringify(plan);
+    const transfersBefore = JSON.stringify(plan.operationList.listOperations());
     const first = labwareSheetContent(plan, FOLDER, MADE);
     labwareSheet(plan, FOLDER, MADE);
     assert.equal(JSON.stringify(plan), before);
+    assert.equal(JSON.stringify(plan.operationList.listOperations()), transfersBefore);
     assert.notEqual(labwareSheetContent(plan, FOLDER, MADE), first);
   });
 
@@ -203,7 +236,7 @@ describe("labware-sheet", () => {
   });
 
   test("the labware table: its heading band, then rows 18 points apart, each with its line", () => {
-    const labware = [emptyEntry("Deep1", "Feeding DWP"), emptyEntry("Deep2")];
+    const labware = [emptyEntry(PLATE_A, "Feeding DWP"), emptyEntry(PLATE_B)];
     const items = itemsOf(contentWith({ labware }));
     const right = LABWARE_SHEET_PAGE.width - MARGIN;
     const tableTop = LABWARE_SHEET_PAGE.height - MARGIN - 78 - 8;
@@ -236,7 +269,7 @@ describe("labware-sheet", () => {
 
   test("a label too wide for its column is shortened with ...; one that fits isn't", () => {
     const wide = "W".repeat(40);
-    const items = itemsOf(contentWith({ labware: [emptyEntry("Deep1", wide), emptyEntry("Deep2", "Feeding DWP")] }));
+    const items = itemsOf(contentWith({ labware: [emptyEntry(PLATE_A, wide), emptyEntry(PLATE_B, "Feeding DWP")] }));
     const shown = items.find((item) => item.kind === "text" && item.text.startsWith("WWW"));
     assert.ok(shown.text.endsWith("..."));
     assert.ok(textWidth(shown.text, 10, false) <= MAX_LABEL_WIDTH);
@@ -330,11 +363,11 @@ describe("labware-sheet", () => {
     assert.ok(file.text.startsWith("%PDF-1.4"));
     const expected = [
       "(Feeding DWP)",
-      "(Deep1)",
-      `(${typeOf("Deep1")})`,
+      `(${PLATE_A})`,
+      `(${typeOf(PLATE_A)})`,
       "(Res A)",
-      "(Res1)",
-      `(${typeOf("Res1")})`,
+      `(${RESERVOIR})`,
+      `(${typeOf(RESERVOIR)})`,
       "(Fill first)",
       "(Starts empty)",
       `(${FOLDER}.zip)`,

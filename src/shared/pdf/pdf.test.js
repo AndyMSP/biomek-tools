@@ -289,16 +289,16 @@ describe("pdf", () => {
     assertThrowsMessage(() => writePdf([letterPage([]), null]), message);
   });
 
-  test("refuses a page width or height that isn't a number above 0 and at most 14400", () => {
-    for (const [width, shown] of [[0, "0"], [-1, "-1"], [14401, "14401"], ["612", '"612"']]) {
+  test("refuses a page width or height that isn't a number from 0.001 to 14400", () => {
+    for (const [width, shown] of [[0, "0"], [0.0001, "0.0001"], [-1, "-1"], [14401, "14401"], ["612", '"612"']]) {
       assertThrowsMessage(
         () => writePdf([letterPage([]), { width, height: 792, items: [] }]),
-        `Page 2's width must be a number of points greater than 0 and at most 14400, but got ${shown}.`,
+        `Page 2's width must be a number of points from 0.001 to 14400, but got ${shown}.`,
       );
     }
     assertThrowsMessage(
       () => writePdf([{ width: 612, height: NaN, items: [] }]),
-      "Page 1's height must be a number of points greater than 0 and at most 14400, but got NaN.",
+      "Page 1's height must be a number of points from 0.001 to 14400, but got NaN.",
     );
   });
 
@@ -316,6 +316,11 @@ describe("pdf", () => {
       `${start} "circle".`,
     );
     assertThrowsMessage(() => pdfOf([textItem(), textItem(), null]), `${start} null.`);
+    // A list holding the kind's name isn't text, though Object.hasOwn would read it as "text".
+    assertThrowsMessage(
+      () => pdfOf([textItem(), textItem(), { ...textItem(), kind: ["text"] }]),
+      `${start} a list.`,
+    );
   });
 
   test("refuses an item without exactly its kind's properties", () => {
@@ -358,20 +363,20 @@ describe("pdf", () => {
     );
   });
 
-  test("refuses a size, width or height that isn't a number above 0 and at most 32767", () => {
-    for (const [size, shown] of [[0, "0"], [-1, "-1"], [Infinity, "Infinity"]]) {
+  test("refuses a size, width or height that isn't a number from 0.001 to 32767", () => {
+    for (const [size, shown] of [[0, "0"], [0.0001, "0.0001"], [-1, "-1"], [Infinity, "Infinity"]]) {
       assertThrowsMessage(
         () => pdfOf([textItem({ size })]),
-        `Page 1, item 1's size must be a number greater than 0 and at most 32767, but got ${shown}.`,
+        `Page 1, item 1's size must be a number from 0.001 to 32767, but got ${shown}.`,
       );
     }
     assertThrowsMessage(
       () => pdfOf([{ ...EXAMPLE_ITEMS[2], width: 0 }]),
-      "Page 1, item 1's width must be a number greater than 0 and at most 32767, but got 0.",
+      "Page 1, item 1's width must be a number from 0.001 to 32767, but got 0.",
     );
     assertThrowsMessage(
       () => pdfOf([{ ...EXAMPLE_ITEMS[0], height: 40000 }]),
-      "Page 1, item 1's height must be a number greater than 0 and at most 32767, but got 40000.",
+      "Page 1, item 1's height must be a number from 0.001 to 32767, but got 40000.",
     );
   });
 
@@ -428,7 +433,7 @@ describe("pdf", () => {
     for (const [size, shown] of [[0, "0"], [Infinity, "Infinity"]]) {
       assertThrowsMessage(
         () => textWidth("a", size, false),
-        `The size to measure at must be a number greater than 0 and at most 32767, but got ${shown}.`,
+        `The size to measure at must be a number from 0.001 to 32767, but got ${shown}.`,
       );
     }
     assertThrowsMessage(() => textWidth("a", 10, "yes"), 'Bold must be true or false, but got "yes".');

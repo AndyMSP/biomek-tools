@@ -1155,7 +1155,7 @@ async function writeBiomekFiles() {
   if (biomekRun === null) {
     return;
   }
-  const { folderName, files, now } = biomekRun;
+  const { folderName, now } = biomekRun;
   const bytes = tryLogic(() => zipFiles(zipEntriesFor(biomekRun), now));
   if (bytes === false) {
     return;

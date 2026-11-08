@@ -73,8 +73,9 @@ export function labwareSheetContent(plan, folderName, made) {
   checkMade(made);
   const used = labwareUsed(plan);
   return {
-    experimentName: plan.experimentName,
-    zipName: `${folderName}.zip`,
+    experimentName: toPdfText(plan.experimentName),
+    // Cleaned too, so the PDF is never given text it can't show, whatever the caller passes.
+    zipName: toPdfText(`${folderName}.zip`),
     made: formatMoment(made),
     labware: used.map((name) => labwareEntry(plan, name)),
     unused: labwareNames().filter((name) => !used.includes(name)),
@@ -133,10 +134,14 @@ function checkMade(made) {
   }
 }
 
+// A whole number written with at least two digits, e.g. twoDigits(5) → "05".
+function twoDigits(number) {
+  return String(number).padStart(2, "0");
+}
+
 // A moment in local time, written YYYY-MM-DD HH:MM on the 24-hour clock with leading zeros,
 // e.g. new Date(2026, 10, 8, 9, 5, 7) → "2026-11-08 09:05".
 function formatMoment(moment) {
-  const twoDigits = (number) => String(number).padStart(2, "0");
   const date = `${moment.getFullYear()}-${twoDigits(moment.getMonth() + 1)}-${twoDigits(moment.getDate())}`;
   return `${date} ${twoDigits(moment.getHours())}:${twoDigits(moment.getMinutes())}`;
 }
