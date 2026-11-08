@@ -53,18 +53,26 @@ A US Letter page is 612 × 792 points.
     to (`x2`, `y2`), `width` points thick.
   - **A box** `{ kind: "box", x, y, width, height, gray }`: a filled rectangle with its bottom-left
     corner at (`x`, `y`), with no outline, in the gray `gray`, from 0 (black) to 1 (white).
-- Every number is finite; `size`, the line's `width` and the box's `width` and `height` are greater
-  than 0. Positions may be anywhere (off the page is allowed; it's just not seen).
+- Every number is **finite** (not `NaN` or `Infinity`) and from −32,767 to 32,767, the practical
+  limit PDF readers handle (ISO 32000-1, Annex C); `size`, the line's `width` and the box's `width`
+  and `height` are greater than 0. Positions may be off the page (it's allowed; it's just not seen).
+  So no number is ever written in exponent form (`1e+21`).
 
 **Characters a PDF can show.** The text is written in the **WinAnsi** character set (Windows'
 standard Western character set, code page 1252, which PDF names `WinAnsiEncoding`), which every
 reader supports for the standard fonts. Version 1 allows:
 - the printable ASCII characters, codes 32 (space) to 126 (`~`);
 - the characters of codes 160 to 255, which are the same in WinAnsi and in Unicode (Latin-1), among
-  them `µ` (181), `°` (176), `±` (177), `×` (215), `é` (233) and the no-break space (160).
+  them `µ` (181), `°` (176), `±` (177), `×` (215), `é` (233) and the no-break space (160);
+- the 27 characters WinAnsi has at codes 128 to 159, common in text pasted from Word or Excel
+  (2026-11-08), each written as its WinAnsi code: `€` 128, `‚` 130, `ƒ` 131, `„` 132, `…` 133, `†`
+  134, `‡` 135, `ˆ` 136, `‰` 137, `Š` 138, `‹` 139, `Œ` 140, `Ž` 142, `‘` 145, `’` 146, `“` 147,
+  `”` 148, `•` 149, `–` 150, `—` 151, `˜` 152, `™` 153, `š` 154, `›` 155, `œ` 156, `ž` 158, `Ÿ` 159
+  (Unicode U+20AC, U+201A, U+0192, U+201E, U+2026, U+2020, U+2021, U+02C6, U+2030, U+0160, U+2039,
+  U+0152, U+017D, U+2018, U+2019, U+201C, U+201D, U+2022, U+2013, U+2014, U+02DC, U+2122, U+0161,
+  U+203A, U+0153, U+017E, U+0178).
 
-Anything else (a tab, a line break, `→`, `α`, `…`, emoji) isn't allowed: WinAnsi lacks it or puts it
-at a different code. `toPdfText(text)` (section 4) gives a copy of any text with each such character
+Anything else (a tab, a line break, `→`, `α`, emoji) isn't allowed: WinAnsi lacks it. `toPdfText(text)` (section 4) gives a copy of any text with each such character
 replaced by `?`, for callers showing what users typed.
 
 ### Output
@@ -100,12 +108,15 @@ Line breaks are `\n` throughout.
 
 **The drawing instructions** of a page, one per line, for each item in order:
 - Text: `BT /F1 <size> Tf <x> <y> Td (<text>) Tj ET` (`/F2` when bold). Inside the parentheses, `\`,
-  `(` and `)` are each preceded by `\`, and every character of code 160 to 255 is written as `\`
-  and its code in three **octal** (base-8) digits, e.g. `µ` (181) as `\265`, so the file stays
-  ASCII. `""` gives no instruction.
+  `(` and `)` are each preceded by `\`, and every character outside printable ASCII is written as
+  `\` and its WinAnsi code in three **octal** (base-8) digits, e.g. `µ` (181) as `\265`, `–` (150)
+  as `\226`, so the file stays ASCII. `""` gives no instruction.
 - A line: `<width> w <x1> <y1> m <x2> <y2> l S`.
 - A box: `<gray> g <x> <y> <width> <height> re f 0 g` (the final `0 g` sets black again for what
   follows).
+
+The instructions are joined with `\n`, with none after the last, so an empty page's content stream
+has `/Length 0`.
 
 **Numbers** are written with at most 3 digits after the decimal point, without trailing zeros or a
 trailing point, and without a minus sign on zero: `612`, `12.5`, `0.333` for 1/3, `0` for -0.0001.
@@ -114,13 +125,20 @@ trailing point, and without a minus sign on zero: `612`, `12.5`, `0.333` for 1/3
 `textWidth(text, size, bold)` gives how wide `text` is in points when drawn: the sum of each
 character's **advance width** (how far the pen moves after it) in the font, in thousandths of the
 size, times `size` ÷ 1000. The widths are Helvetica's and Helvetica-Bold's published **font metrics**
-(Adobe's AFM files for the standard 14 fonts), kept in the module as data for codes 32 to 126 and
-160 to 255. Examples (thousandths): `A` 667 regular, 722 bold; `W` 944 both; `i` 222 regular, 278
+(Adobe's AFM files for the standard 14 fonts), kept in the module as data for every character the
+PDF can show. The AFM files have no entry for the no-break space (160) or the soft hyphen (173):
+they take the space's width (278) and the hyphen's (333). Examples (thousandths): `A` 667 regular, 722 bold; `W` 944 both; `i` 222 regular, 278
 bold; space 278; `0` 556; `µ` 556 regular, 611 bold; `°` 400; `×` 584. So `textWidth("Deep1", 10,
 false)` is 29.46.
 
-The builder may take the full tables from PyMuPDF (`pymupdf.get_text_length(c, fontname="helv"` or
-`"hebo", fontsize=1000)`), which carries the same metrics; the tests check the examples above.
+The builder may take the widths for codes 32 to 126 and 161 to 255 from PyMuPDF
+(`pymupdf.get_text_length(c, fontname="helv", fontsize=1000)`, `"hebo"` for bold), which carries the
+same metrics; the tests check the examples above. **PyMuPDF doesn't give the codes 128 to 159
+right** (it returns 278 for all of them), so their widths, regular / bold, are these, from the AFM
+files: `€` 556/556, `‚` 222/278, `ƒ` 556/556, `„` 333/500, `…` 1000/1000, `†` 556/556, `‡`
+556/556, `ˆ` 333/333, `‰` 1000/1000, `Š` 667/667, `‹` 333/333, `Œ` 1000/1000, `Ž` 611/611, `‘`
+222/278, `’` 222/278, `“` 333/500, `”` 333/500, `•` 350/350, `–` 556/556, `—` 1000/1000, `˜`
+333/333, `™` 1000/1000, `š` 500/556, `›` 333/333, `œ` 944/944, `ž` 500/500, `Ÿ` 667/667.
 
 ## 4. Interface
 The module exports three functions. None changes its inputs.
@@ -147,6 +165,11 @@ const text = writePdf([
 // text starts "%PDF-1.4\n" and ends "%%EOF\n".
 ```
 
+### The REPL
+`scripts/repl.js` gains a topic, `pdf` (CLAUDE.md, "Keep the REPL complete"), with `writePdf`,
+`textWidth` and `toPdfText`, and the section 4 example ready to try, e.g. `textWidth("Deep1", 10,
+false)`.
+
 ## 5. Errors
 Each message says what's wrong and how to fix it. Values are shown with `describeValue`
 (`error-messages` module). These are mistakes in the calling code, not in what a user typed: callers
@@ -160,13 +183,14 @@ pass users' text through `toPdfText` first.
 | `items` isn't a list | `Page 2's items must be a list, but got null.` |
 | An item isn't an object whose `kind` is `"text"`, `"line"` or `"box"` | `Page 2, item 3, must be an object whose kind is "text", "line" or "box", but got "circle".` |
 | An item hasn't exactly its kind's properties | `Page 2, item 3 (text), must have exactly "kind", "x", "y", "text", "size" and "bold".` |
-| A position isn't a finite number | `Page 2, item 3's x must be a number, but got "54".` |
-| A size, width, height or line width isn't a number greater than 0 | `Page 2, item 3's size must be a number greater than 0, but got 0.` |
+| A position isn't a finite number | `Page 2, item 3's x must be a number, but got "54".` (also `NaN` and `Infinity`) |
+| A position isn't from −32,767 to 32,767 | `Page 2, item 3's x must be from -32767 to 32767 points, but got 40000.` |
+| A size, width, height or line width isn't a finite number greater than 0 (and at most 32,767) | `Page 2, item 3's size must be a number greater than 0 and at most 32767, but got 0.` |
 | `gray` isn't a number from 0 to 1 | `Page 2, item 3's gray must be a number from 0 (black) to 1 (white), but got 1.5.` |
 | `bold` isn't `true` or `false` | `Page 2, item 3's bold must be true or false, but got "yes".` |
 | `text` isn't text | `Page 2, item 3's text must be text, but got 5.` |
 | `text` has a character the PDF can't show | `Page 2, item 3's text, "Drug → plate", has "→", which a PDF's standard fonts can't show here: pass it through toPdfText first.` (a tab or line break is named as `a tab` or `a line break`) |
-| `textWidth`: text, size or bold not valid | `The text to measure must be text, but got 5.` / `The text to measure, "→", has "→", which a PDF's standard fonts can't show here: pass it through toPdfText first.` / `The size to measure at must be a number greater than 0, but got 0.` / `Bold must be true or false, but got "yes".` |
+| `textWidth`: text, size or bold not valid | `The text to measure must be text, but got 5.` / `The text to measure, "→", has "→", which a PDF's standard fonts can't show here: pass it through toPdfText first.` / `The size to measure at must be a number greater than 0 and at most 32767, but got 0.` (also `Infinity`) / `Bold must be true or false, but got "yes".` |
 | `toPdfText`: not text | `The text for a PDF must be text, but got 5.` |
 
 Pages and items are numbered from 1, in the order given. The list is checked first, then each page
@@ -195,16 +219,19 @@ section 5 has at least one test.
 - `\`, `(` and `)` are escaped: `a(b)\c` → `(a\(b\)\\c)`; `µ` → `\265`, `°` → `\260`, `é` → `\351`.
 - A line gives `0.3 w 54 690 m 558 690 l S`; a box gives `0.92 g 54 700 504 18 re f 0 g`.
 - Numbers: `612` → `612`, `12.5` → `12.5`, `1/3` → `0.333`, `2/3` → `0.667`, `-0.0001` → `0`,
-  `1e-7` → `0`, `-3.25` → `-3.25`.
+  `1e-7` → `0`, `-3.25` → `-3.25`, `32767` → `32767`.
+- `–` gives `\226`, `“` `\223`, `€` `\200`; an empty page's content stream has `/Length 0`.
 - Items are written in the order given.
 
 **Measuring and cleaning text**
 - `textWidth` gives the section 3 examples: each listed character at size 1000, regular and bold,
   and `"Deep1"` at 10 regular → 29.46 (to within 0.001), `"Feeding DWP"` at 10 bold → 64.45.
 - `textWidth("", 10, false)` is 0.
-- `toPdfText` keeps `"Res A"`, `"µL"` and `"Zürich ± 5 °C"` as they are, and gives `"Drug ? plate"`
-  for `"Drug → plate"`, `"a?b"` for a tab between `a` and `b`, `"???"` for `"…α😀"` (an emoji counts
-  as one character, not two halves).
+- `toPdfText` keeps `"Res A"`, `"µL"`, `"Zürich ± 5 °C"` and `"“Drug” – 5 €"` as they are, and gives
+  `"Drug ? plate"` for `"Drug → plate"`, `"a?b"` for a tab between `a` and `b`, `"??"` for `"α😀"`
+  (an emoji counts as one character, not two halves).
+- `textWidth("–", 1000, false)` is 556 and `textWidth("“", 1000, true)` is 500 (from the table, not
+  PyMuPDF); the no-break space is 278.
 
 **A check by a reader**
 - `tests/fixtures/pdf-sample.pdf` is a **golden file** (CLAUDE.md, "Testing"): the PDF of the example
@@ -212,13 +239,17 @@ section 5 has at least one test.
   saved, it's checked with two independent readers (PyMuPDF and Poppler's `pdftotext`), each
   reading the text back exactly; its notes, `tests/fixtures/pdf-sample.md`, say who checked it and
   when, and that Andy's check in Edge (his test of the pull request) is still to come until he's
-  done it. `writePdf` with those pages must give
+  done it. If either reader isn't installed, install it (`pip install pymupdf`; Poppler's
+  `pdftotext`) or, failing that, say so in the notes and in the pull request.
+  The test reads the fixture as bytes and compares them exactly with the output's ASCII bytes.
+  **`.gitattributes` gains `*.pdf -text`**, as `*.csv` has, so Git never changes the golden file's
+  line endings on a Windows checkout (they'd move every offset). `writePdf` with those pages must give
   exactly its text. It's never regenerated or edited to make a test pass.
 
 **Refusing** (section 5)
 - Each row gives its message, with at least: `null`, `[]` and `"pages"` for the list; a page missing
   `items`; widths `0`, `-1`, `14401`, `"612"`; a kind `"circle"`; a text item missing `bold`; an x of
-  `"54"`, `NaN` and `Infinity`; sizes `0` and `-1`; gray `1.5` and `-0.1`; bold `"yes"`; text `5`,
+  `"54"`, `NaN`, `Infinity`, `40000` and `1e21`; sizes `0`, `-1` and `Infinity`; gray `1.5` and `-0.1`; bold `"yes"`; text `5`,
   `"→"`, a tab and a line break.
 - Order of checks: page 1's bad item is reported before page 2's bad width (pages in order, each
   in full); an item's kind before its properties; its properties before its values.

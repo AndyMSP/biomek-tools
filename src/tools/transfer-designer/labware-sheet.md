@@ -31,8 +31,8 @@ job is the labware's names); check boxes (tried and dropped); where each labware
   through the transfer designer's checks, so the plan isn't checked again.
 - **The folder name**: the run's folder name from the file writer (`folderNameFor`, `file-writer.md`),
   e.g. `2026-11-08_134118_Exp36-feeding`. Text, not blank.
-- **When it was made**: a valid JavaScript `Date`, the moment the files were worked out (the page
-  passes the same moment the folder is named by), shown in the computer's local time. Like the file
+- **When it was made**: a valid JavaScript `Date`, the moment the files were worked out (the caller
+  passes the moment the folder name was made from), shown in the computer's local time. Like the file
   writer, the module never reads the clock itself.
 
 ### What the sheet holds
@@ -44,8 +44,8 @@ job is the labware's names); check boxes (tried and dropped); where each labware
 - `labware`: one entry per labware the plan uses (`labwareUsed`, `transfer-designer.md`: starting
   contents, transfers and well labels), in the deck's order, each `{ label, name, labwareType,
   beforeRun }`:
-  - `label`: its labware label, or, with none, its name (`docs/glossary.md`, "Labware label"), passed
-    through `toPdfText` (`pdf.md`), so a character the PDF can't show becomes `?`;
+  - `label`: `labelOf(plan, name)` (`transfer-designer.md`: its labware label, or its name with
+    none), passed through `toPdfText` (`pdf.md`), so a character the PDF can't show becomes `?`;
   - `name`: its name in the deck description, e.g. `Deep1`;
   - `labwareType`: its labware type (`labwareTypeOf`, `deck.md`), e.g. `BCDeep96Square`;
   - `beforeRun`: `"Fill first"` if any of its wells has starting contents, otherwise
@@ -66,7 +66,8 @@ black unless a gray is given. These numbers match the preview Andy approved.
 1. `Labware sheet`, bold, 18. Then `y` down 22.
 2. `Plan: <experimentName>`, 10. Then `y` down 14.
 3. `Files:`, 10, then the zip's name, bold, 10, starting at 54 + the width of `Files: ` (with its
-   space; `textWidth`). Then `y` down 14.
+   space; `textWidth`). With a 40-character name of wide letters this can pass the right edge by a
+   few dozen points, still on the paper; real names fit, and it isn't shortened. Then `y` down 14.
 4. `Sheet made: <made>`, 10. Then `y` down 28.
 5. `Labware`, bold, 13. Then `y` down 8.
 6. **The labware table**, with columns starting at 54, 184, 294 and 424, headed `Your label`,
@@ -78,14 +79,17 @@ black unless a gray is given. These numbers match the preview Andy approved.
    - **A label too wide for its column** (its width at 10 more than 122 points, the column's 130 less
      4 on each side) is shortened: characters are dropped from its end, and `...` added, until it
      fits, e.g. a long label ending `…Plate for the drug screen` shows as `…Plate for the dru...`.
-7. `y` down 22. If `unused` isn't empty: `Not used in this plan: ` and the names separated by `, `,
-   9.5. If that's wider than the page between the edges, it continues on further lines, each
-   breaking after a comma, `y` down 13 for each further line.
+7. `y` down 22 (whether or not anything follows). If `unused` isn't empty: `Not used in this plan:
+   ` and the names separated by `, `, 9.5, at x 54. If that's wider than the page between the edges
+   (`textWidth`), it's broken into lines **greedily**: each line takes as many names as fit, breaks
+   just after a comma, dropping the space that followed it, and the next line starts at x 54, `y`
+   down 13 for each further line.
 8. `y` down 34. `Tips`, bold, 13. Then `y` down 8.
 9. **The tips table**, as the labware table, with columns starting at 54 and 184, headed `Tip type`
    and `Tips used`, a row per entry of `tips`: its tip type, bold, and its count. With no tips (a plan
    without transfers): instead of the table, `y` down 13 and `No tips: the plan has no transfers.`,
-   10.
+   10. (The page never shows this: the file writer refuses a plan without transfers first. It's here
+   so the module handles every plan.)
 
 `labwareSheet(plan, folderName, made)` gives the file: `{ name: LABWARE_SHEET_FILE_NAME, text }`,
 `text` being `writePdf(labwareSheetPages(labwareSheetContent(plan, folderName, made)))`.
@@ -110,6 +114,10 @@ This module's tests check the file (ADR 0009): `RECORDS_FOLDER` and `LABWARE_SHE
 names `zip` accepts in a path (printable ASCII, no `/` or `\`, not `.` or `..`), the file name ends
 `.pdf`, and the page's size is one `writePdf` accepts.
 
+### The REPL
+`scripts/repl.js` gains a topic, `labware-sheet`, with the three functions and a small plan ready to
+try, e.g. `labwareSheetContent(plan, "2026-11-08_134118_Exp36", new Date())`.
+
 ## 5. Errors
 These are mistakes in the calling code, not in what a user typed. Values are shown with
 `describeValue` (`error-messages` module).
@@ -132,7 +140,8 @@ counts from `config/` (CLAUDE.md, "Tests follow config/").
   order: `Feeding DWP`/`Deep1`/its type/`Starts empty`, `Deep2`/`Deep2`/its type/`Starts empty`
   (no label: its name), `Res A`/`Res1`/its type/`Fill first`; `unused` is every other labware in
   the deck's order.
-- A labware with only a label and nothing else isn't listed (`labwareUsed` doesn't count labels).
+- A labware with only a labware label and nothing else isn't listed (`labwareUsed` counts well
+  labels but not labware labels).
 - `zipName` is the folder name and `.zip`; `made` for `new Date(2026, 10, 8, 9, 5, 7)` is
   `2026-11-08 09:05`.
 - `tips` equals `tipsUsed(plan)`; a plan without transfers gives `[]`.
@@ -141,8 +150,10 @@ counts from `config/` (CLAUDE.md, "Tests follow config/").
 
 **The layout**
 - The page is `LABWARE_SHEET_PAGE`'s size.
-- The title, plan, files, made and heading lines are at the section 3 positions (e.g. on Letter, the
-  title at y 738, `Plan:` at 716, the zip's name at x 54 + `textWidth("Files: ", 10, false)`).
+- The title, plan, files, made and heading lines are at the section 3 positions, worked out from
+  `LABWARE_SHEET_PAGE` (CLAUDE.md, "Tests follow config/"): the title at its height − 54, `Plan:` 22
+  below it, the zip's name at x 54 + `textWidth("Files: ", 10, false)`, the right edge at its width −
+  54. (On Letter: 738, 716 and 558.)
 - The labware table: its heading box, then per row its values at the column starts + 4 and its line,
   each row 18 points below the last; the Biomek name bold and the others regular.
 - A label of 40 `W`s is shortened to fit 122 points and ends `...`; a label that fits isn't changed.

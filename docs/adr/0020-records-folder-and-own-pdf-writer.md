@@ -46,9 +46,10 @@ Two questions came up:
 - Text on the sheet can be selected, copied and searched, but a PDF has no table structure: a table
   copied from it pastes as text, not columns, as in most published PDFs (2026-11-08). Data meant for
   analysis goes in CSV files beside it, as the well maps do.
-- Only characters Helvetica has in the PDF's standard Windows character set can appear. A label
-  holding other characters (an arrow, Greek letters, Chinese) shows `?` in their place on the sheet;
-  the plan and the page are unaffected.
+- Only characters Helvetica has in the PDF's standard Windows character set (WinAnsi) can appear,
+  which covers `µ`, `°`, accented letters, and the dashes and curly quotes Word and Excel put in
+  pasted text. A label holding other characters (an arrow, Greek letters, Chinese) shows `?` in
+  their place on the sheet; the plan and the page are unaffected.
 - The `Records` folder is the place for any later file meant for people rather than the Biomek.
 - A PDF needing more (other fonts, images, many pages of flowing text) would mean revisiting this
   decision, probably for a library.

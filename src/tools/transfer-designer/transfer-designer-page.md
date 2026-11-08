@@ -333,7 +333,8 @@ The time is fixed when the box opens, so the name it shows is the name Write fil
 
 **Write files** builds one zip with `zipFiles` (`zip.md`): each of the file writer's files under the
 folder, as `<folder name>/<file name>`, then the labware sheet in the `Records` folder, as
-`<folder name>/<RECORDS_FOLDER>/<LABWARE_SHEET_FILE_NAME>` (`config/records.js`; e.g.
+`<folder name>/<RECORDS_FOLDER>/<name>`, the name being the one `labwareSheet` gives
+(`LABWARE_SHEET_FILE_NAME`, `config/records.js`; e.g.
 `2026-11-08_134118_Exp36-feeding/Records/Labware sheet.pdf`), all dated with the same moment. The
 Biomek's own files are exactly as before (ADR 0020). Where the browser can ask where to save
 (Edge and Chrome can), it asks, suggesting `<folder name>.zip`; message `Saved <file name>. Unzip it
@@ -2022,8 +2023,8 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
 - **`config/default-volumes.js`** exports `DEFAULT_TRANSFER_VOLUME` (`50`) and `DEFAULT_FILL_VOLUME`
   (`1000`), in µL: the volumes the next transfer and the brush start with when the page opens.
 
-- **`config/records.js`** (`labware-sheet.md`, section 4) gives `RECORDS_FOLDER` and
-  `LABWARE_SHEET_FILE_NAME`, the zip's path for the labware sheet (section 5); the page doesn't check
+- **`config/records.js`** (`labware-sheet.md`, section 4) gives `RECORDS_FOLDER`, the folder the
+  labware sheet goes in (section 5); the page doesn't check
   it (the labware sheet module's tests do).
 
 The page also uses the transfer designer's configuration (`config/pipetting-modes.js`,

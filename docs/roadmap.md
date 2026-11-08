@@ -1063,7 +1063,8 @@ added on 2026-10-28 (Andy).
       matches the files it came with. Its text can be copied; its tables don't paste as columns, as
       in most PDFs, so data for analysis goes in CSV files.
     - **In a `Records` folder** inside the run's folder, with any later files for people (the well
-      maps, item 26), so the Biomek's folder holds only its own files.
+      maps, specified on their own branch as item 26), so the Biomek's folder holds only its own
+      files.
     - **What it shows:** the experiment name, the zip's name and when it was made; each labware the
       plan uses, by its label (or its name, with none), its Biomek name, its labware type and `Fill
       first` or `Starts empty`; the deck's labware not used; the tips used of each type. **Not:**
@@ -1072,7 +1073,7 @@ added on 2026-10-28 (Andy).
     - **Our own PDF writer** (`pdf`), after Andy asked how big it would be: Helvetica only, plain
       ASCII, no dependency.
     - **Hands-off workflow** (Andy, 2026-11-08), on its own branch and pull request; the randomization
-      names and well maps (item 26) are a second, built on it.
+      names and well maps are a second (item 26 once merged), built on it.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
