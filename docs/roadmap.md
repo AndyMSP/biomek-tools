@@ -467,6 +467,11 @@ Last updated: 2026-11-08
   **Specified** (Draft, 2026-11-08, in the hands-off workflow): `pdf.md`, `labware-sheet.md`,
   `config/records.js`, the Biomek files box and Write files (`transfer-designer-page.md`, section
   5), glossary "Labware sheet" and "Records folder". It changes no Biomek file and no plan file.
+  **Built (#144, 2026-11-08)**: `pdf` (code, tests, the golden file `tests/fixtures/pdf-sample.pdf`
+  read back by PyMuPDF, Poppler and qpdf), `labware-sheet`, `config/records.js`, REPL topics, and the
+  page's Biomek files box and Write files; the specifications and the build each reviewed by a
+  separate agent, and checked in headless Chrome. Still to check by Andy, including the sheet in
+  Edge.
 - **Decided: the zip stays as it is** (Andy, 2026-11-08): it holds the run's folder, so Windows'
   Extract All, left to its default, puts that folder inside one of the same name. Changing the zip or
   its message was considered and declined, as either could confuse (ADR 0020).
