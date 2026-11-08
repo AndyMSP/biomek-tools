@@ -1518,11 +1518,16 @@ overfilling a well or drawing more than it holds.
      counting only contacts up to that point. The finest point is the end of a stage, since the
      order within a stage isn't known.
 
-  The record behind it is, for each well, which wells could have reached it and when. From that come
-  both ways of showing it: the wells (as above: hover a well) and the **possible traces**, the
-  components that could have reached a well though the plan doesn't put them there. *Open:* which
-  to show first (Claude recommends possible traces, with the wells added later), and where (the
-  contents card, highlighting on the deck, or both).
+  5. **Shown as possible traces, not as wells** (Andy, 2026-11-08, after a preview of both): the
+     components that could have reached a well though it doesn't hold them, on its contents card.
+     Outlining the wells that could have reached a well was tried and dropped: it can't tell a
+     harmless contact (water into water) from one that matters, so on a real plate it outlines
+     most of the deck.
+
+  *Being tried in a preview:* each possible trace says how it came, so the fix can be found: the
+  stage in which the well received it, and where the tip picked it up (another well in that stage,
+  tips used in an earlier stage of its tip group, or a well that may itself carry it as a trace),
+  e.g. `Stage 3, “Hy-Soy”, on tips used in stage 2, “Yeast”`.
 
 ## Open decisions
 - **Mixing** (v0.2.0, item 10; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
