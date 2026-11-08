@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-05
+Last updated: 2026-11-08
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -459,6 +459,17 @@ Last updated: 2026-11-05
   **Built (#143, 2026-11-06)**: logic, tests and REPL (`sourceWellsOf`, `hasComponentNamed`), and
   the wizard's Table, Sources and Review steps; the specifications and the build each reviewed by
   a separate agent, and checked in headless Chrome. Still to check by Andy.
+- **Decided: the labware sheet** (Andy, 2026-11-08; item 25, below; ADR 0020, Proposed): a one-page
+  PDF in a new `Records` folder of the Biomek files' zip, saying which Biomek name each labware the
+  plan uses has (its label beside its deck name), with its type, whether it's filled before the run,
+  the unused labware and the tips used, from previews Andy shaped (PDF chosen over HTML; wells and
+  check boxes tried and dropped). Written by our own shared `pdf` module, as zips are by `zip`.
+  **Specified** (Draft, 2026-11-08, in the hands-off workflow): `pdf.md`, `labware-sheet.md`,
+  `config/records.js`, the Biomek files box and Write files (`transfer-designer-page.md`, section
+  5), glossary "Labware sheet" and "Records folder". It changes no Biomek file and no plan file.
+- **Decided: the zip stays as it is** (Andy, 2026-11-08): it holds the run's folder, so Windows'
+  Extract All, left to its default, puts that folder inside one of the same name. Changing the zip or
+  its message was considered and declined, as either could confuse (ADR 0020).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1045,6 +1056,24 @@ added on 2026-10-28 (Andy).
     **Specified** (Draft, 2026-11-06, in the hands-off workflow) and **Built (#143, 2026-11-06)**:
     see "Where things stand".
 
+25. **The labware sheet** (Andy, 2026-11-08): a record in the zip of which Biomek name each labware
+    has, so the labels in a plan can be matched to the Biomek's names at the instrument.
+    Decided (Andy, 2026-11-08), from previews of the sheet with the Exp36-feeding plan:
+    - **A PDF, in the zip** (ADR 0020), not an HTML page or a separate download, so it always
+      matches the files it came with. Its text can be copied; its tables don't paste as columns, as
+      in most PDFs, so data for analysis goes in CSV files.
+    - **In a `Records` folder** inside the run's folder, with any later files for people (the well
+      maps, item 26), so the Biomek's folder holds only its own files.
+    - **What it shows:** the experiment name, the zip's name and when it was made; each labware the
+      plan uses, by its label (or its name, with none), its Biomek name, its labware type and `Fill
+      first` or `Starts empty`; the deck's labware not used; the tips used of each type. **Not:**
+      wells and their contents (dropped: "maybe this is unnecessary"), check boxes (dropped),
+      deck positions (the tool never knows them; ADR 0007).
+    - **Our own PDF writer** (`pdf`), after Andy asked how big it would be: Helvetica only, plain
+      ASCII, no dependency.
+    - **Hands-off workflow** (Andy, 2026-11-08), on its own branch and pull request; the randomization
+      names and well maps (item 26) are a second, built on it.
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
@@ -1087,7 +1116,9 @@ final Biomek runs, so they test the files as they will be:
 18. Transfer table columns named by a well label (item 24), added on 2026-11-06: specifications,
     then build. It writes ordinary stages and transfers and changes no plan files, so it needn't
     come before the final runs.
-19. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+19. The labware sheet (item 25), added on 2026-11-08: preview, specifications, then build. It changes
+    no Biomek files and no plan files, so it needn't come before the final runs.
+20. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
