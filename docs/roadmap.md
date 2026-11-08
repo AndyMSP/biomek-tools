@@ -1490,11 +1490,39 @@ overfilling a well or drawing more than it holds.
   touches to every well it enters afterwards, until it's changed. That includes aspirating from an
   empty well, and dispensing into a well when the tip touches the liquid. It works both ways: a used
   tip can contaminate the source it aspirates from. This follows tips, not liquid, so it's a separate
-  module from contents tracking, and it needs stages and their tip-change setting. Within a stage the
+  module from contents tracking, and it needs stages and the plan's tip changes. Within a stage the
   order isn't fixed and the Biomek chooses which probe does which transfer, so it must assume every
   well the stage touches could contaminate every other one. Whether a dispense touches the liquid
   depends on the technique (see "Not yet known" in `docs/domain/biomek.md`). It could spread through
   the wells the way contents tracking's `causes` do.
+
+  *Decided (Andy, 2026-11-08):*
+  1. **The unit is the tip group, not the stage.** Tips stay on until the next tip change, so a well
+     touched in an earlier stage of a tip group can contaminate the wells of later stages in the
+     same group. Within one stage, any well can contaminate any other, in any order. Across stages
+     of a tip group, only earlier reaches later. A contaminated well passes its traces on to
+     whatever it touches afterwards, in later tip groups too.
+  2. **Passing traces on and receiving them are separate.** Within the reach of rule 1:
+
+     | Well | Passes traces on to the tip | Receives traces from the tip |
+     |---|---|---|
+     | Source | Yes: the tip goes into its liquid | Yes |
+     | Destination whose dispense touches the liquid | Yes | Yes |
+     | Destination with a non-contact dispense | No | Yes: what the tip picked up earlier comes out with the liquid it dispenses |
+
+     Which pipetting modes count as non-contact is a setting in `config/` until it's verified on
+     the instrument.
+  3. **What a tip carries is what the well held when the tip touched it**, taken from contents
+     tracking at that point in the run, not what the well holds at the end.
+  4. **Shown at any point on the designer's timeline** (`transfer-designer-page.md`, section 11),
+     counting only contacts up to that point. The finest point is the end of a stage, since the
+     order within a stage isn't known.
+
+  The record behind it is, for each well, which wells could have reached it and when. From that come
+  both ways of showing it: the wells (as above: hover a well) and the **possible traces**, the
+  components that could have reached a well though the plan doesn't put them there. *Open:* which
+  to show first (Claude recommends possible traces, with the wells added later), and where (the
+  contents card, highlighting on the deck, or both).
 
 ## Open decisions
 - **Mixing** (v0.2.0, item 10; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
