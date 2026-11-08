@@ -184,6 +184,11 @@ import {
   planToText,
   planFromText,
 } from "../src/tools/transfer-designer/plan-file.js";
+import {
+  labwareSheetContent,
+  labwareSheetPages,
+  labwareSheet,
+} from "../src/tools/transfer-designer/labware-sheet.js";
 import { buildVersion, branchLabel, fileNameFor, readGitFacts } from "./build-version.js";
 
 // What the REPL loads, grouped by topic: one topic per module, named like its folder. Each topic
@@ -834,6 +839,24 @@ const TOPICS = {
       'let fromPremix = addTransferTable(premixed, { table: [["Dest Well Label", "Premix"], ["Control", "20"]], sources: { Premix: [{ labware: "Deep1", well: "A4" }] } }, null)',
       'transfersIn(fromPremix.plan, "2")',
       'isTransferTableOutOfDate(setWellLabel(fromPremix.plan, { labware: "Deep1", well: "A4" }, ""), "t1")',
+    ],
+  },
+  "labware-sheet": {
+    loaded: { labwareSheetContent, labwareSheetPages, labwareSheet },
+    examples: [
+      'let sheetPlan = setExperimentName(emptyPlan().plan, "Exp36")',
+      'sheetPlan = addToWells(addComponent(sheetPlan, "Media", "#4e79a7"), [{ labware: "Res1", well: "1" }], "Media", 10000)',
+      'sheetPlan = addTransfer(sheetPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Deep1", well: "A1" }, volume: 100, stage: "1" })',
+      'sheetPlan = setLabel(setLabel(sheetPlan, "Deep1", "Feeding DWP"), "Res1", "Media → res")',
+      'const sheetContent = labwareSheetContent(sheetPlan, "2026-11-08_134118_Exp36", new Date())',
+      "sheetContent.labware",
+      "sheetContent.unused",
+      "sheetContent.tips",
+      "labwareSheetPages(sheetContent)[0].items.slice(0, 6)",
+      'const sheet = labwareSheet(sheetPlan, "2026-11-08_134118_Exp36", new Date())',
+      "sheet.name",
+      "console.log(sheet.text)",
+      'labwareSheet(sheetPlan, "", new Date())',
     ],
   },
   "plan-file": {
