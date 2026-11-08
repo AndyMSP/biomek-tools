@@ -191,6 +191,13 @@
 > Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are
 > listed in its pull request. They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-08, randomization names and well maps, item 26 of v0.2.0):** a
+> randomization's heading shows its name, its card has a Name box at the top, and Write files puts
+> each run randomization's well map in the Records folder (sections 5, 7 and 16;
+> `transfer-designer.md`, "Randomizations"; `well-maps.md`), from a preview Andy approved on
+> 2026-11-08. Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
+> Andy are listed in its pull request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -312,9 +319,12 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
 - If the files can be written: `This saves`, the zip's name on a line of its own in monospace
   (`<folder name>.zip`, e.g. `2026-10-28_172600_Exp36.zip`), then `holding the folder <folder name>,
   with Setup.csv, Stages.csv and 3 Transfer From File files, and a Records folder with the labware
-  sheet.` (the count from the files; `Records` is `RECORDS_FOLDER`), with `Cancel` and `Write files`
+  sheet.` (the count from the files; `Records` is `RECORDS_FOLDER`), or, with run randomizations,
+  `… with the labware sheet and 2 well maps.` (`1 well map`; the count from `wellMaps`,
+  `well-maps.md`; 2026-11-08), with `Cancel` and `Write files`
   (solid blue), focused on Write files. The labware sheet is made at the same moment, with
-  `labwareSheet(plan, folderName, now)` (`labware-sheet.md`), so the box never offers files it can't
+  `labwareSheet(plan, folderName, now)` (`labware-sheet.md`), and the well maps with
+  `wellMaps(plan)`, after the out-of-date check below, so the box never offers files it can't
   write; if it throws, its message is shown as the writer's are, in red, with Write files disabled.
 - If the plan is refused, `writeRunFiles`'s message instead (for example `Name the experiment first:
   the files' folder is named after it.`, or an overdraw), in red, with Write files disabled and
@@ -335,7 +345,9 @@ The time is fixed when the box opens, so the name it shows is the name Write fil
 folder, as `<folder name>/<file name>`, then the labware sheet in the `Records` folder, as
 `<folder name>/<RECORDS_FOLDER>/<name>`, the name being the one `labwareSheet` gives
 (`LABWARE_SHEET_FILE_NAME`, `config/records.js`; e.g.
-`2026-11-08_134118_Exp36-feeding/Records/Labware sheet.pdf`), all dated with the same moment. The
+`2026-11-08_134118_Exp36-feeding/Records/Labware sheet.pdf`), then each well map there, under the
+name `wellMaps` gives, in its order (e.g. `…/Records/HySoy_dose well map.csv`), all dated with the
+same moment. The
 Biomek's own files are exactly as before (ADR 0020). Where the browser can ask where to save
 (Edge and Chrome can), it asks, suggesting `<folder name>.zip`; message `Saved <file name>. Unzip it
 into <BASE_FOLDER>, then point the method's setup worklist at <BASE_FOLDER><folder name>\Setup.csv.`
@@ -935,7 +947,9 @@ like a tip group's, with seams between tip groups above and below it as for any 
 - **Its heading**, a row the box's width, as a transfer table's: a button (most of the row) holding,
   once it has run, `▸` (closed) or `▾` (open); the **dice icon** (a small SVG of two dice, one
   tilted behind showing three, one in front showing five, in the text's color, so it's the same on
-  every PC), then `Randomize` (not set up yet) or `Randomized` (run), semibold, then at the right,
+  every PC), then **its name** (`HySoy_dose`; Andy, 2026-11-08, in place of the words `Randomize`
+  (not set up yet) or `Randomized` (run), which the dice and the right-hand text already say),
+  semibold, then at the right,
   in gray, `not set up yet` or `68 stages · seed 360310` (the stages it owns; `1 stage`), or, when
   it's out of date (`isRandomizationOutOfDate`), `needs update` in red, semibold (Andy,
   2026-11-02); then, after the button, a **✎** (as a stage's, accessible name `Edit
@@ -997,6 +1011,18 @@ first closes it as `Close` would. Its changes are a **draft**, until:
   the draft's sources and the plan's.
 
 From the top:
+- **Name** (2026-11-08): `Name` (as the card's other field names), then a text box 220px wide,
+  semibold, holding the randomization's name; spell check off; tooltip `Names its well map file.
+  Letters, digits, - and _ only.` Unlike the card's other boxes, it isn't part of the draft: a new
+  name is saved **at once, as its own undoable edit**, with `renameRandomization`, when **Enter** is
+  pressed or the box **loses focus** (clicking away, Tab), whether or not the randomization has run,
+  since a name changes no stage (Andy, 2026-11-08: no Update needed). Message `Renamed the
+  randomization HySoy_dose. Its well map will be HySoy_dose well map.csv.` (ok). An unchanged name
+  saves nothing. A refused name (the rule, or another randomization's name) isn't saved: the
+  message bar shows `renameRandomization`'s message (error) and the box goes back to the saved
+  name. The card stays open either way, with its draft as it was. Undo takes the rename back
+  (the card, if open, shows the name undone). Escape in the box closes the card as Escape anywhere
+  in it does, without saving what was typed.
 - **Two tabs**, `Sources` and `Wells to fill`, each with a count in a small gray pill; the open tab
   is blue and underlined. **The open tab is what clicks on the deck pick** (below), and only its
   contents show. A new randomization opens on Sources; one opened again opens on the tab it was
@@ -2190,6 +2216,14 @@ page's configuration (ADR 0009):
 - Biomek files: the box with no name, with an overdraw, and ready; the zip's name it shows is the one
   saved; the header boxes closing on a press outside, on Escape, and the Biomek files box on undo by
   key;
+- randomization names and well maps (2026-11-08): a new randomization's heading shows
+  `Randomization1`, the next `Randomization2`; the card's Name box renames on Enter and on clicking
+  away, before and after a run, with no Update and the card staying open; `AA levels` and another's
+  name are refused with the message and the box going back; Undo and Redo of a rename; a saved plan
+  reopens with its names, and an older plan file's randomizations open as `Randomization1` …; the
+  Biomek files box counts the well maps; the zip's `Records` folder holds `<name> well map.csv` for
+  each run randomization, opening in Excel with `µ` right, one row per well its sources filled, no
+  filler rows, the plate's label, the well and the source's label;
 - the labware sheet (2026-11-08): the Biomek files box mentions the Records folder; the saved zip
   holds `Records/Labware sheet.pdf` beside the unchanged Biomek files; the sheet opens in Edge and
   Chrome, with the plan's name, the zip's name, each used labware's label, Biomek name, type and

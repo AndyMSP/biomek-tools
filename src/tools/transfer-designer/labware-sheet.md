@@ -110,7 +110,9 @@ A new configuration file, **`config/records.js`** (data only; ADR 0009), holds t
 that go in the zip (ADR 0020):
 - `RECORDS_FOLDER`: `"Records"`, the folder inside the run's folder that holds them;
 - `LABWARE_SHEET_FILE_NAME`: `"Labware sheet.pdf"`;
-- `LABWARE_SHEET_PAGE`: `{ width: 612, height: 792 }`, US Letter in points.
+- `LABWARE_SHEET_PAGE`: `{ width: 612, height: 792 }`, US Letter in points;
+- `WELL_MAP_SUFFIX`: `" well map.csv"`, what follows a randomization's name in its well map's file
+  name (added 2026-11-08 with the well maps; `well-maps.md`, whose tests check it).
 
 This module's tests check the file (ADR 0009): `RECORDS_FOLDER` and `LABWARE_SHEET_FILE_NAME` are
 names `zip` accepts in a path (printable ASCII, no `/` or `\`, not `.` or `..`), the file name ends

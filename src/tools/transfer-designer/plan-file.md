@@ -56,6 +56,12 @@
 > Versions 6 to 11 open with a run randomization's three dropped, sections 2 to 6. Written in the
 > hands-off workflow, so the choices made for Andy are listed in its pull request. It becomes Final
 > once built and tested by Andy.
+>
+> **Draft change (2026-11-08, format version 13, randomization names, item 26):** each randomization
+> holds its `name` (`transfer-designer.md`, "Randomizations"); versions 6 to 12 open with each
+> randomization named `Randomization1`, `Randomization2` … in the file's order, sections 2 to 6.
+> Written in the hands-off workflow, so the choices made for Andy are listed in its pull request.
+> It becomes Final once built and tested by Andy.
 
 ## 1. Purpose
 `plan-file.js` turns a **plan** (`docs/glossary.md`) into the text of a **plan file**, and a plan
@@ -75,7 +81,7 @@ never quietly tidied. The tool always writes valid files, so such a file was dam
 hand, and that's better reported than changed.
 
 ## 2. Scope
-Version 1 writes format version 12, and reads versions 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2 and 1 (below). Version 2
+Version 1 writes format version 13, and reads versions 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2 and 1 (below). Version 2
 added the experiment name (Andy, 2026-10-28). Version 3 moved probes from the stages to the tip
 changes (Andy, 2026-10-30; ADR 0007, "Tip changes"). Version 4 adds each stage's mixes, `sourceMix`
 and `destinationMix` (Andy, 2026-10-30; ADR 0007, "Mixing"). Version 5 adds the well labels, and
@@ -86,7 +92,8 @@ confusing message about two fillers; its properties are those of version 7. Vers
 component's osmolality (ADR 0016; Andy, 2026-11-05). Version 10 adds whether each randomization
 source shares tips (ADR 0018; Andy, 2026-11-05). Version 11 adds the transfer tables (ADR 0019;
 Andy, 2026-11-05). Version 12 moves a run randomization's settings and tips onto its stages only
-(ADR 0012, amended 2026-11-05; Andy, 2026-11-05). Older plans still open
+(ADR 0012, amended 2026-11-05; Andy, 2026-11-05). Version 13 adds each randomization's name (Andy,
+2026-11-08). Older plans still open
 (ADR 0010, "Consequences"): version 1, with no experiment name; versions 1 and 2, with each tip
 change loading every probe its stages used, which is exactly where look-ahead loading put tips, so
 the same tips go on; versions 1 to 3, with no mixing, since plans couldn't mix before version 4;
@@ -94,11 +101,13 @@ versions 1 to 4, with no well labels; versions 1 to 5, with no randomizations; v
 components carrying no constituents; versions 1 to 8, with components having no osmolality;
 versions 6 to 9, with every randomization source on new tips (`sharesTips` `false`); versions 1 to
 10, with no transfer tables; versions 6 to 11, with a run randomization's `settings`, `tipType` and
-`probes` dropped (its stages already hold what every run gave them).
+`probes` dropped (its stages already hold what every run gave them); versions 6 to 12, with each
+randomization named `Randomization` and its place in the file's list (`Randomization1` for the
+first).
 
 Not in version 1:
-- **Upgrading files in place.** A version 1 to 11 file stays as it is; saving the plan again writes
-  version 12.
+- **Upgrading files in place.** A version 1 to 12 file stays as it is; saving the plan again writes
+  version 13.
 - **Undo history, and how a plan was being viewed** (such as which stage is open). A plan file holds
   only the plan (ADR 0010; `plan-history.md`).
 
@@ -107,7 +116,7 @@ Not in version 1:
 ### The format name and version
 - **`PLAN_FILE_FORMAT`** is `"biomek-tools transfer plan"`, so a file can be recognized as a plan
   file.
-- **`PLAN_FILE_VERSION`** is `12`, the format version written: it goes up only when what a plan file
+- **`PLAN_FILE_VERSION`** is `13`, the format version written: it goes up only when what a plan file
   holds changes, not with every release of the tools (ADR 0010).
 
 They are constants in the module, not in `config/`: changing either one means changing how files are
@@ -256,6 +265,19 @@ it has none, they're its first run's, as before (`transfer-designer.md`, "Random
 - Why a new version: a version 11 tool would refuse a randomization's `null` settings with a
   message that doesn't say the file is newer (ADR 0010).
 
+### Version 13 (randomization names, 2026-11-08)
+A version 13 file holds exactly what a version 12 file holds, with `"version": 13`, and each
+randomization holds `name`, written just after `id` (the order `transfer-designer.md` gives).
+- **Opening a version 6 to 12 file**, each randomization that is an object gets `name`:
+  `Randomization` and its place in the file's `randomizations` list, counting from 1
+  (`Randomization1`, `Randomization2` …). The places are unique, so the names are. A version 6 to 12
+  randomization that already has a `name` property is refused with `setRandomizations`' form message
+  (it has a property its version doesn't have).
+- **A version 13 file**'s names are checked by `setRandomizations` (the rule, then no two alike), its
+  messages after `randomizations: `.
+- Why a new version: a version 12 tool would refuse a randomization with `name` with a form message
+  that doesn't say the file is newer (ADR 0010).
+
 ### Checks on opening
 Opening a file checks, in this order:
 1. **The text is JSON**, and holds an object.
@@ -327,15 +349,17 @@ Opening a file checks, in this order:
     (`transfer-designer.md`), so strictly: a label with spaces at its ends, a blank one, or a
     labware listed with no wells is refused rather than tidied. A version 1 to 4 file opens with no
     well labels.
-13. **Randomizations** (versions 6 to 12), in these steps, in this order:
-    1. **Just enough form to renumber**: each is an object, and its `beforeId` is text or `null`,
+13. **Randomizations** (versions 6 to 13), in these steps, in this order:
+    1. **Just enough form to renumber**: each is an object with exactly the properties of its
+       version (version 13's `setRandomizations` takes; versions 6 to 12 without `name`; a property
+       missing or extra gives `setRandomizations`' form message, naming version 13's properties), and its `beforeId` is text or `null`,
        and its `stages` a list of objects whose `stage` is text (else `setRandomizations`' own
        message for that form, after `randomizations: `).
     2. **Every stage ID named is one of the file's stages** (`beforeId` and each of `stages`'
        `stage`).
     3. **The sources' form by version** (new in version 10; after step 2, before step 4): if a
        randomization's `sources` is a list, each entry that is an object (not `null`, not a list)
-       must, in a version 10 to 12 file, have `sharesTips`, and in a version 6 to 9 file must not.
+       must, in a version 10 to 13 file, have `sharesTips`, and in a version 6 to 9 file must not.
        Anything else about the sources is left to `setRandomizations` in step 5: `sources` that
        isn't a list, or an entry that isn't an object, is skipped here and reported there with its
        own message. Randomizations are taken in order and, within one, sources in order; the first
@@ -354,6 +378,8 @@ Opening a file checks, in this order:
        any of the three, is refused before this step, by step 1, with `setRandomizations`' form message
        (it can't reach step 4a).
        Randomizations are taken in order.
+    4b. **Names, by version** (new in version 13): in a version 6 to 12 file, each randomization
+       gets its name, `Randomization` and its place (above).
     5. **`setRandomizations`** (`transfer-designer.md`) checks and sets them all at once.
 
     So a file with both a stage ID that isn't the file's and a source with the wrong form reports
@@ -378,7 +404,7 @@ The module exports two constants and two functions.
 | Member | Description |
 |---|---|
 | `PLAN_FILE_FORMAT` | `"biomek-tools transfer plan"`. |
-| `PLAN_FILE_VERSION` | `12`, the version written. Versions 12 to 1 are read. |
+| `PLAN_FILE_VERSION` | `13`, the version written. Versions 13 to 1 are read. |
 | `planToText(plan, savedBy)` | Returns the plan file's text for `plan` (section 3). `savedBy` is text naming the tool and its version, e.g. `"transfer designer v0.2.0"`. Throws if `savedBy` isn't a name (`checkName`). |
 | `planFromText(text)` | Returns the plan in `text`, checked (section 3). Throws if anything in it is wrong, saying what and where. |
 
@@ -399,7 +425,7 @@ third). Messages from other modules (`transfer-designer`, `operation-list`, `sta
 |---|---|
 | Not JSON, or not an object | `it isn't a plan file: its contents aren't the JSON a plan file holds.` |
 | `format` isn't `PLAN_FILE_FORMAT` | `it isn't a transfer plan saved by this tool.` |
-| `version` is a whole number above `PLAN_FILE_VERSION` | `it was saved by a newer version of the tools (plan format 13). Open it with that version or a later one.` |
+| `version` is a whole number above `PLAN_FILE_VERSION` | `it was saved by a newer version of the tools (plan format 14). Open it with that version or a later one.` |
 | `version` is anything else | `its plan format version, "x", isn't one this tool knows.` |
 | A property is missing | `it's missing "stages".` With several, all are listed (`listNames`), in the order of section 3. |
 | An extra property | `it has "notes", which a plan file doesn't have.` With several, all are listed, in the order they appear. |
@@ -551,6 +577,23 @@ row of section 5 has at least one test.
     say; their messages don't change (a version 10 component has the same four properties).
   - No other test's version or message changes: tests of version 1 to 8 files keep their files'
     versions.
+
+**Version 13** (2026-11-08, randomization names, item 26)
+- A plan with two randomizations named `HySoy_dose` and `Randomization2`, one run and one not,
+  saved, is written as version 13 with each `name` just after its `id`, and opens as the same plan,
+  names included.
+- A version 12 file with three randomizations opens with them named `Randomization1`,
+  `Randomization2` and `Randomization3`, in the file's order; a version 6 file's the same way.
+- A version 12 file whose randomization has a `name` is refused with `randomizations: ` and the form
+  message; so is a version 13 file whose randomization lacks one.
+- A version 13 file with a name `"AA levels"`, and one with two randomizations named alike, are
+  refused with `randomizations: ` and `setRandomizations`' messages (`Randomization 2: A
+  randomization's name can't contain …` / `Randomizations 1 and 2 are both named …`).
+- **Existing tests whose version numbers change** (the specification changed, not the tests'
+  purpose): `PLAN_FILE_VERSION` is `13`; tests saving and checking "version 12" check version 13;
+  "a version above this one" uses version `14` and its message; tests comparing a saved
+  randomization's file whole expect its `name`. Tests of version 1 to 12 files keep their files'
+  versions, and their randomizations open with default names.
 
 **Version 12** (2026-11-05, a randomization's settings on its stages, item 20)
 - A plan with a run randomization (two sources on new tips, A1's stage then set to aspirate Slow
