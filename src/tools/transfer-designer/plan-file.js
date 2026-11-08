@@ -6,10 +6,11 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 12, which holds each component's constituents and osmolality, the
-// randomizations (whose filler may be several wells, whose sources say whether they share tips, and
-// whose settings and tips, once run, are only their stages'), the transfer tables and the well
-// labels, each stage's settings hold its mixes and each tip change its probes. It still reads
+// It writes format version 13, which holds each component's constituents and osmolality, the
+// randomizations (each with its name, whose filler may be several wells, whose sources say whether
+// they share tips, and whose settings and tips, once run, are only their stages'), the transfer
+// tables and the well labels, each stage's settings hold its mixes and each tip change its probes.
+// It still reads version 12 files (randomizations without names, opening as Randomization1 …),
 // version 11 files (a run randomization's settings and tips dropped on opening), version 10 files
 // (no transfer tables), version 9 files (sources without sharesTips, each opening on new tips), version 8 files (components
 // without osmolality), version 7 files (the same properties, written when a filler
@@ -75,10 +76,12 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // whether each randomization source shares tips (ADR 0018); version 11 (2026-11-05) added the
 // transfer tables (ADR 0019); version 12 (2026-11-05) holds a run randomization's settings, tip type
 // and probes as null, its stages holding them (ADR 0012, amended), so a version 11 tool refuses such
-// a file as newer rather than with a confusing message.
-export const PLAN_FILE_VERSION = 12;
+// a file as newer rather than with a confusing message; version 13 (2026-11-08) added each
+// randomization's name.
+export const PLAN_FILE_VERSION = 13;
 
-// The versions this module can read: the one it writes, version 11 (plans saved on 2026-11-05,
+// The versions this module can read: the one it writes, version 12 (plans saved from 2026-11-05 to
+// 2026-11-08, before randomizations had names), version 11 (plans saved on 2026-11-05,
 // before a randomization's settings lived only on its stages), version 10 (plans saved on 2026-11-05,
 // before transfer tables), version 9 (plans saved on 2026-11-05, before sources sharing tips),
 // version 8 (plans saved from 2026-11-02 to
@@ -88,7 +91,7 @@ export const PLAN_FILE_VERSION = 12;
 // version 4 (plans saved from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved
 // on 2026-10-30, before mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version
 // 1 (plans saved before 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+const VERSIONS_READ = [PLAN_FILE_VERSION, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 
 // The first version whose components hold their constituents. An older file's components are
 // { name, color } only, and open carrying nothing.
@@ -106,6 +109,14 @@ const FIRST_VERSION_WITH_SHARES_TIPS = 10;
 // older file's (versions 6 to 11) are checked, then dropped on opening (plan-file.md, check 13, step
 // 4a), since its stages already hold what every run gave them.
 const FIRST_VERSION_WITH_STAGE_SETTINGS = 12;
+
+// The first version whose randomizations hold their names. An older file's (versions 6 to 12) open
+// named DEFAULT_NAME_PREFIX and their place in the file's list (plan-file.md, check 13, step 4b).
+const FIRST_VERSION_WITH_RANDOMIZATION_NAMES = 13;
+
+// What an older file's randomization's name starts with, before its place in the list, e.g.
+// "Randomization1": the name the transfer designer gives a new randomization.
+const DEFAULT_NAME_PREFIX = "Randomization";
 
 
 // A component's properties in a file: name and color, plus constituents from version 7 on, plus
@@ -127,10 +138,10 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 // table: an older file's stages can't hold them, and get them as null.
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 11 and
-// 12 have all of them, and versions 6 to 10 all but the transfer tables: version 7's and version 9's
-// changes are inside each component, and version 8's, version 10's and version 12's inside the
-// randomizations.
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 11 to
+// 13 have all of them, and versions 6 to 10 all but the transfer tables: version 7's and version 9's
+// changes are inside each component, and version 8's, version 10's, version 12's and version 13's
+// inside the randomizations.
 const FILE_PROPERTIES = [
   "format",
   "version",
@@ -176,10 +187,12 @@ const OBJECT_PROPERTIES = ["tipChanges", "labwareLabels", "wellLabels"];
 // How every message from planFromText starts.
 const CANT_OPEN = "This file can't be opened: ";
 
-// Every property of a randomization, as setRandomizations takes them (transfer-designer.md,
-// section 3), so a randomization missing one is refused with setRandomizations' form message.
+// Every property of a randomization in a version 13 file, as setRandomizations takes them
+// (transfer-designer.md, section 3), so a randomization missing one is refused with
+// setRandomizations' form message.
 const RANDOMIZATION_PROPERTIES = [
   "id",
+  "name",
   "beforeId",
   "sources",
   "fill",
@@ -190,6 +203,11 @@ const RANDOMIZATION_PROPERTIES = [
   "probes",
   "stages",
 ];
+
+// Every property of a randomization in a version 6 to 12 file: those of version 13 but the name. A
+// file's randomizations are checked against its own version's list, so the form message names what
+// that version holds (plan-file.md, check 13, step 1).
+const RANDOMIZATION_PROPERTIES_WITHOUT_NAME = RANDOMIZATION_PROPERTIES.filter((property) => property !== "name");
 
 // Every property of a transfer table, as setTransferTables takes them (transfer-designer.md,
 // "Transfer tables"), so one missing one is refused with setTransferTables' form message.
@@ -708,7 +726,7 @@ function withRandomizations(plan, file, newIds) {
     return plan;
   }
   const randomizations = file.randomizations;
-  randomizations.forEach(checkRenumberableForm);
+  randomizations.forEach((randomization, index) => checkRenumberableForm(randomization, index, file.version));
   randomizations.forEach((randomization, index) => {
     for (const stage of stagesNamedBy(randomization)) {
       if (!newIds.has(stage)) {
@@ -729,7 +747,22 @@ function withRandomizations(plan, file, newIds) {
   const asVersion12 = renumbered.map((randomization, index) =>
     firstRunValuesAsVersion12(randomization, index, file.version),
   );
-  return withPlace("randomizations", () => setRandomizations(plan, asVersion12));
+  const asVersion13 = asVersion12.map((randomization, index) =>
+    namedAsVersion13(randomization, index, file.version),
+  );
+  return withPlace("randomizations", () => setRandomizations(plan, asVersion13));
+}
+
+// Check 13, step 4b: a file's randomization as version 13 holds it. In a version 6 to 12 file, it's
+// named DEFAULT_NAME_PREFIX and its place in the file's list counting from 1 (index 0 →
+// "Randomization1"), the name right after its ID; the places are unique, so the names are. A
+// version 13 file's is given back as it is: setRandomizations checks its name.
+function namedAsVersion13(randomization, index, version) {
+  if (version >= FIRST_VERSION_WITH_RANDOMIZATION_NAMES) {
+    return randomization;
+  }
+  const { id, ...rest } = randomization;
+  return { id, name: `${DEFAULT_NAME_PREFIX}${index + 1}`, ...rest };
 }
 
 // Check 13, step 4a: a file's randomization as version 12 holds it. In a version 6 to 11 file, one
@@ -759,17 +792,21 @@ function checkFirstRunValues(randomization) {
   }
 }
 
-// Throws if the randomization at `index` hasn't just enough form for its stage IDs to be renumbered
-// (an object with exactly its properties; its beforeId text or null; its stages a list of objects,
-// each with a stage that's text), with setRandomizations' message for that form, which it would
-// give for the file as it is.
-function checkRenumberableForm(randomization, index) {
+// Throws if the randomization at `index` of a file of `version` hasn't just enough form for its
+// stage IDs to be renumbered (an object with exactly its version's properties; its beforeId text or
+// null; its stages a list of objects, each with a stage that's text), with setRandomizations'
+// message for that form, naming the properties of the file's own version (a version 12 file's
+// randomization with a name is refused naming the ten, without "name").
+function checkRenumberableForm(randomization, index, version) {
   const number = index + 1;
-  if (!hasExactly(randomization, RANDOMIZATION_PROPERTIES)) {
+  const properties =
+    version >= FIRST_VERSION_WITH_RANDOMIZATION_NAMES
+      ? RANDOMIZATION_PROPERTIES
+      : RANDOMIZATION_PROPERTIES_WITHOUT_NAME;
+  if (!hasExactly(randomization, properties)) {
     refuse(
       `randomizations: Randomization ${number} must be an object with exactly ` +
-        `${listNames(RANDOMIZATION_PROPERTIES.slice(0, -1))} and ` +
-        `${describeValue(RANDOMIZATION_PROPERTIES.at(-1))}.`,
+        `${listNames(properties.slice(0, -1))} and ${describeValue(properties.at(-1))}.`,
     );
   }
   const { beforeId, stages } = randomization;

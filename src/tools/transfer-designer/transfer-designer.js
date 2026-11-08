@@ -42,7 +42,7 @@ import {
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
 import { labwareNames, gridOf, checkWell, growthAreaOf } from "../../shared/deck/deck.js";
 import { START, tipGroups } from "../../shared/tip-groups/tip-groups.js";
-import { checkExperimentName } from "../../shared/file-writer/file-writer.js";
+import { checkExperimentName, checkNameRule } from "../../shared/file-writer/file-writer.js";
 import {
   assignPool,
   findPoolProblems,
@@ -1681,8 +1681,22 @@ export function setWellLabels(plan, labels) {
 // The properties setRandomization can change, in the order it checks them (section 5).
 const RANDOMIZATION_CHANGES = ["sources", "fill", "seed", "volume", "settings", "tipType", "probes"];
 
-// Every property of a randomization, as setRandomizations takes them (section 3).
-const RANDOMIZATION_PROPERTIES = ["id", "beforeId", ...RANDOMIZATION_CHANGES, "stages"];
+// Every property of a randomization, as setRandomizations takes them and a plan stores them, in
+// order (section 3). The name isn't one of setRandomization's changes: only renameRandomization
+// changes it, so copied items, which hold the changes, don't carry it.
+const RANDOMIZATION_PROPERTIES = ["id", "name", "beforeId", ...RANDOMIZATION_CHANGES, "stages"];
+
+// The words a randomization's name's messages use: it follows the experiment name's rule
+// (checkNameRule, file-writer.md), so its well map's file is named exactly what's typed.
+const RANDOMIZATION_NAME_WORDS = Object.freeze({
+  subject: "A randomization's name",
+  example: "HySoy_dose",
+  blank: 'Type a name for the randomization, such as "HySoy_dose".',
+});
+
+// A new randomization's name is this and the smallest whole number no randomization has
+// (defaultRandomizationName), e.g. "Randomization1".
+const DEFAULT_RANDOMIZATION_NAME = "Randomization";
 
 // The properties of a source, and of an entry of a randomization's stages, exactly.
 const SOURCE_PROPERTIES = ["labware", "well", "replicates", "filler", "sharesTips"];
@@ -1717,6 +1731,7 @@ export function addRandomization(plan, beforeId, { seed = null, volume = null } 
   const id = nextRandomizationId(plan);
   const randomization = {
     id,
+    name: defaultRandomizationName(plan.randomizations),
     beforeId,
     sources: [],
     fill: [],
@@ -1769,6 +1784,27 @@ export function setRandomization(plan, id, changes) {
     return plan;
   }
   return withRandomizationReplaced(plan, updated);
+}
+
+// Returns the plan with randomization `id` named `name` (section 3, "Randomizations"), whether or
+// not it has run: a name changes no stage, so it never makes a randomization out of date; the same
+// plan if it already has exactly that name, e.g. renameRandomization(plan, "r1", "HySoy_dose").
+// Throws, in this order, if there's no such randomization, `name` breaks the experiment name's
+// rule, or another randomization has it, capitals aside (renaming one to its own name in other
+// capitals is allowed).
+export function renameRandomization(plan, id, name) {
+  const randomization = checkRandomizationExists(plan, id);
+  checkRandomizationName(name);
+  if (name === randomization.name) {
+    return plan;
+  }
+  const other = plan.randomizations.find(
+    (candidate) => candidate.id !== id && sameNameCapitalsAside(candidate.name, name),
+  );
+  if (other !== undefined) {
+    throw new Error(`Another randomization is already named "${other.name}". Choose a different name.`);
+  }
+  return withRandomizationReplaced(plan, { ...randomization, name });
 }
 
 // Returns the plan with randomization `id`, which hasn't run, sitting just before stage `beforeId`
@@ -2010,6 +2046,7 @@ export function setRandomizations(plan, randomizations) {
     checkedStoredRandomization(plan, randomization, index + 1),
   );
   checkRandomizationIdsUnique(copied);
+  checkRandomizationNamesUnique(copied);
   checkStagesOwnedOnce(copied);
   const updated = withParts(plan, { randomizations: copied });
   checkStoredPlaces(updated);
@@ -4255,6 +4292,9 @@ function pastedRandomization(plan, item, existing, version) {
   const id = nextRandomizationId({ randomizations: existing });
   const randomization = {
     id,
+    // Copied items don't hold the name, so a copy never takes the original's: it gets a new one, free
+    // among the plan's randomizations and those made earlier in the same paste.
+    name: defaultRandomizationName(existing),
     beforeId: null,
     ...Object.fromEntries(RANDOMIZATION_CHANGES.map((property) => [property, values[property]])),
     stages: owned,
@@ -4656,6 +4696,31 @@ function checkRandomizationExists(plan, id) {
     throw new Error(`There's no randomization ${describeValue(id)} in the plan.`);
   }
   return randomization;
+}
+
+// Throws if `name` breaks the experiment name's rule, with a randomization's words, e.g.
+// checkRandomizationName("AA levels") throws `A randomization's name can't contain " " (a space). …`.
+function checkRandomizationName(name) {
+  checkNameRule(name, RANDOMIZATION_NAME_WORDS);
+}
+
+// True if names `first` and `second` are the same, capitals aside, e.g. "HySoy_dose" and
+// "hysoy_dose": Windows would take their well maps' files for one file. Names are ASCII (the rule),
+// so toLowerCase compares them exactly as Windows does.
+function sameNameCapitalsAside(first, second) {
+  return first.toLowerCase() === second.toLowerCase();
+}
+
+// A new randomization's name among `randomizations`: DEFAULT_RANDOMIZATION_NAME and the smallest
+// whole number from 1 that none of them has, capitals aside, e.g. with "Randomization2" and
+// "HySoy_dose" → "Randomization1".
+function defaultRandomizationName(randomizations) {
+  for (let number = 1; ; number += 1) {
+    const name = `${DEFAULT_RANDOMIZATION_NAME}${number}`;
+    if (!randomizations.some((randomization) => sameNameCapitalsAside(randomization.name, name))) {
+      return name;
+    }
+  }
 }
 
 // The next randomization's ID: "r" and one more than the largest number in use, e.g. with "r1" and
@@ -5627,6 +5692,8 @@ function checkedStoredRandomization(plan, randomization, number) {
     );
   }
   const prefix = `Randomization ${number}: `;
+  const { name } = randomization;
+  withPrefix(prefix, () => checkRandomizationName(name));
   const values = withPrefix(prefix, () => {
     const checked = checkedValuesAsStored(randomization);
     checkStoredOrder(randomization, checked);
@@ -5635,7 +5702,7 @@ function checkedStoredRandomization(plan, randomization, number) {
   });
   checkFirstRunValuesAsStored(randomization, number);
   return withPrefix(prefix, () => {
-    const stored = { id, beforeId: randomization.beforeId, ...values };
+    const stored = { id, name, beforeId: randomization.beforeId, ...values };
     stored.stages = checkedOwnedStages(plan, randomization.stages);
     checkOneFillerStage(stored);
     return stored;
@@ -5776,6 +5843,27 @@ function checkRandomizationIdsUnique(randomizations) {
       );
     }
     firstById.set(id, index);
+  });
+}
+
+// Throws if two randomizations share a name, capitals aside (their well maps' files would be one
+// file to Windows), e.g. 'Randomizations 1 and 3 are both named "HySoy_dose".', or, when the two
+// differ in capitals, '… are named "HySoy_dose" and "hysoy_dose", which differ only in capitals.'
+function checkRandomizationNamesUnique(randomizations) {
+  const firstByName = new Map();
+  randomizations.forEach(({ name }, index) => {
+    const key = name.toLowerCase();
+    if (firstByName.has(key)) {
+      const firstIndex = firstByName.get(key);
+      const firstName = randomizations[firstIndex].name;
+      const which = `Randomizations ${firstIndex + 1} and ${index + 1}`;
+      throw new Error(
+        firstName === name
+          ? `${which} are both named "${name}".`
+          : `${which} are named "${firstName}" and "${name}", which differ only in capitals.`,
+      );
+    }
+    firstByName.set(key, index);
   });
 }
 
