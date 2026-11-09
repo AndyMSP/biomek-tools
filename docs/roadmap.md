@@ -515,7 +515,9 @@ Last updated: 2026-11-08
   `<run folder> plan.json`, so Open can reopen a run from its folder. **Specified** (Draft,
   2026-11-08, `transfer-designer-page.md`, sections 5, 14 and 16; `PLAN_FILE_SUFFIX` in
   `config/records.js`), built in the chat as a very small change. No Biomek file or plan file
-  format changes.
+  format changes. **Built (#150, 2026-11-08)**: `PLAN_FILE_SUFFIX` and its tests, and the page's
+  Write files and box text; checked in headless Chrome against a build of `main` (the Biomek files
+  byte for byte the same; the Records plan file reopens with Open). Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1207,6 +1209,7 @@ added on 2026-10-28 (Andy).
       plan; writing the files doesn't count as Save.
     - **Built in the chat** as a very small change (CLAUDE.md, "Who does what", the exception), on
       its own branch and pull request. No plan file format change.
+    Built (#150).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
