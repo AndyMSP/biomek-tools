@@ -128,14 +128,15 @@ functions (`emptyPlan`, `addComponent`, `addToWells`, `addTransfer`, `addStage`,
 `addStageWithNewTips`, `addTipChange`, `renameStage`, `changeStageSettings`, `modeSettings`,
 `addMixStep`, `mixWells`, `removeStage`), so they're plans the designer could make. Following CLAUDE.md, "Tests
 follow `config/`": pipetting modes are found from `PIPETTING_MODES` by `touchesLiquid` and `ends`,
-not by name, and labware are found in `DECK` (`config/deck.js`) by labware type, as
-`mix-volumes.test.js` does: below, "Res1" stands for a 12-well reservoir and "Deep1" for a deep-well
-plate.
+not by name, and labware are found in `DECK` (`config/deck.js`) by their well grid and capacity, as
+`mix-volumes.test.js` finds them by grid: below, "Res1" stands for a 12-well reservoir and "Deep1"
+for a 96-well plate with the largest capacity.
 
 The example plan (used by several tests): components in the order Water, Yeast, Hy-Soy, NaOH. Res1 1
 holds Water, 2 Yeast, 3 Hy-Soy, 4 NaOH. Stage 1,
 "Water": Water to Deep1 A1 to A4. New tips; stage 2, "Yeast": Yeast to A2 and A4. Same tips; stage
-3, "Hy-Soy": Hy-Soy to A3 and A4. New tips; stage 4, "NaOH", destinations with a mode that doesn't
+3, "Hy-Soy": Hy-Soy to A3 only (so no well stage 3 touches holds Yeast, and any Yeast A3 gets came
+on stage 2's tips). New tips; stage 4, "NaOH", destinations with a mode that doesn't
 touch the liquid: NaOH to A1 to A4. New tips; stage 5, "More Hy-Soy": Hy-Soy (Res1 3) to A5.
 
 - At 0 (the start), every well's traces are `[]`.
@@ -158,8 +159,12 @@ touch the liquid: NaOH to A1 to A4. New tips; stage 5, "More Hy-Soy": Hy-Soy (Re
   source has the other's.
 - **What a well held at the time:** a reservoir that gets yeast (by a transfer, on new tips) only
   after the last stage whose tips touched it passes no yeast to the wells those tips reached.
-- **Held components aren't traces:** after stage 3, A4 holds Water, Yeast and Hy-Soy, and its
-  traces are `[]`.
+- **Held components aren't traces:** after stage 3, A4 holds Water and Yeast, and its traces are
+  `[]`; A2 likewise.
+- **Within a stage, a destination already holding something passes it on:** in a plan like the
+  example's but with stage 3 also dispensing Hy-Soy into A4 (which holds Yeast) and stage 3 on new
+  tips, A3 still has `["Yeast"]` after stage 3, carried from A4 within the stage; with stage 3's
+  destinations in the non-touching mode, it has `[]`.
 - **A technique and liquid type that aren't any mode's count as touching:** a stage given, with
   `changeStageSettings`, a destination technique and liquid type that no mode has (the designer
   accepts it) passes its destinations' contents on, as a touching mode's does.

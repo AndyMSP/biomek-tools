@@ -2223,9 +2223,9 @@ page's configuration (ADR 0009):
 - `SOURCES_SHOWN`: a whole number of at least 1.
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
-- possible traces (section 6): with a plan whose Yeast and Hy-Soy stages share tips, pointing at a
-  Hy-Soy well after the Hy-Soy stage shows `Possible traces` with Yeast, and after the Yeast stage
-  doesn't; at Start no card has the group; a well with none has no group; the group's tooltip shows;
+- possible traces (section 6): with a plan whose Yeast and Hy-Soy stages share tips, and whose
+  Hy-Soy stage dispenses only into wells without Yeast, pointing at a Hy-Soy well after the Hy-Soy
+  stage shows `Possible traces` with Yeast, and after the Yeast stage doesn't; at Start no card has the group; a well with none has no group; the group's tooltip shows;
   adding a tip change between the two stages takes Yeast out of the Hy-Soy well's traces;
 - each item in sections 5 to 13 behaves as described;
 - copied decks (section 6): `Copy deck` at Start, after a stage and at End, then `Paste deck` in a
