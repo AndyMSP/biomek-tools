@@ -11,7 +11,8 @@
 // 1 ends with, that the real Transfer Designer's storage name is never written, and that the page
 // throws no error. At two window sizes: 1500 × 950 and 1366 × 768. It also checks that presses on
 // the panel leave what the page has open as it was, and that the Transfer Designer's own build has
-// no panel and keeps its plan under its own storage name.
+// no panel and keeps its plan under its own storage name, and that + on an automatic fold keeps the
+// panel unfolded.
 // It uses Chrome if it's installed, otherwise Playwright's own Chromium (`npx playwright install
 // chromium` once).
 //
@@ -409,6 +410,10 @@ const TUTORIAL_STEPS = [
       await editOpenStage(page, () =>
         page.selectOption('.editing-box select[aria-label="Dispense mode"]', "Non-Contact"),
       );
+      await expectRing(page, entry("end"));
+      await openEntry(page, "end");
+      await expectRing(page, well("Res1", "2"));
+      await page.hover(well("Res1", "2"));
     },
     async (page) => expectRing(page, entry("start")),
     null,
@@ -799,6 +804,30 @@ async function checkPanelPresses(browser, fileUrl, size) {
   }
 }
 
+// Pressing + on a fold that keeping clear made unfolds the panel for the rest of the step
+// (tutorial-page.md, sections 5 and 6). In a narrow window, both bottom corners cover tutorial 2
+// step 1's target, plate B2, so the panel folds by itself.
+async function checkUnfoldOverride(browser, fileUrl) {
+  const context = await freshContext(browser, { width: 420, height: 700 });
+  const page = await context.newPage();
+  page.setDefaultTimeout(5000);
+  try {
+    await page.goto(fileUrl);
+    await Promise.all([page.waitForEvent("load"), page.click(".tp-menu-row:nth-child(2) .tp-menu-start")]);
+    await page.waitForSelector(".tp-main");
+    await pressMain(page);
+    await page.evaluate(() =>
+      document.querySelector('.well[data-labware="Plate1"][data-well="B2"]').scrollIntoView({ block: "end" }),
+    );
+    await page.waitForSelector(".tutorial-panel.tp-folded", { timeout: 3000 });
+    await page.click(".tp-fold");
+    await page.waitForTimeout(3 * SETTLE);
+    check((await page.locator(".tutorial-panel.tp-folded").count()) === 0, "+ didn't keep the panel unfolded.");
+  } finally {
+    await context.close();
+  }
+}
+
 // The Transfer Designer's own build behaves as before (transfer-designer-page.md, section 17): no
 // guide panel, its own title, and its plan kept under the real storage name, saved by "transfer
 // designer v…", never under the tutorial's.
@@ -845,6 +874,7 @@ async function main() {
       for (const [label, extraCheck] of [
         ["presses on the panel", () => checkPanelPresses(browser, fileUrl, size)],
         ["the Transfer Designer's own build", () => checkDesignerBuild(browser, size)],
+        ...(size === SIZES[0] ? [["+ on an automatic fold (in its own 420 × 700 window), alongside the walks", () => checkUnfoldOverride(browser, fileUrl)]] : []),
       ]) {
         try {
           await extraCheck();

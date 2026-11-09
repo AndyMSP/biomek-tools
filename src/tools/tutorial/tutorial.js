@@ -9,7 +9,8 @@
 // tutorial-plans.js. ADR 0022 says why the tutorials run over the real page.
 // Specification: tutorial.md.
 
-import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
+import { TIP_TYPES, MIX_VOLUME_LIMITS, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
+import { DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { CELL_DENSITY_UNIT } from "../../../config/concentration-units.js";
 import { deadVolumeOf, capacityOf } from "../../shared/deck/deck.js";
@@ -37,6 +38,12 @@ const TIP = TIP_TYPES[0];
 
 // The most a TIP tip mixes, in µL.
 const MIX_LIMIT = MIX_VOLUME_LIMITS[TIP];
+
+// How many probes a new plan's tips, and a new tip change's, load.
+const PROBES = DEFAULT_PROBE_COUNT;
+
+// The mode a new stage's ends use, e.g. "Medium".
+const MODE = DEFAULT_PIPETTING_MODE;
 
 // --- Helpers (tutorial.md, section 3, "Helpers") ---
 
@@ -275,14 +282,16 @@ function tableCells(line) {
   return inner.split("|").map((cell) => parseInline(cell.trim()));
 }
 
-// A piece of text as inline runs, { kind: "text" | "bold" | "code" | "key", text }, e.g.
+// A piece of text as inline runs, { kind: "text" | "bold" | "code" | "key", text }, reading no
+// block marks, for one line such as a checklist item's text, e.g.
 // "Press [Enter]" → [{ kind: "text", text: "Press " }, { kind: "key", text: "Enter" }].
-function parseInline(text) {
+export function parseInline(text) {
+  const line = String(text);
   const runs = [];
   let last = 0;
-  for (const match of text.matchAll(INLINE_MARK)) {
+  for (const match of line.matchAll(INLINE_MARK)) {
     if (match.index > last) {
-      runs.push({ kind: "text", text: text.slice(last, match.index) });
+      runs.push({ kind: "text", text: line.slice(last, match.index) });
     }
     if (match[1] !== undefined) {
       runs.push({ kind: "bold", text: match[1] });
@@ -293,8 +302,8 @@ function parseInline(text) {
     }
     last = match.index + match[0].length;
   }
-  if (last < text.length) {
-    runs.push({ kind: "text", text: text.slice(last) });
+  if (last < line.length) {
+    runs.push({ kind: "text", text: line.slice(last) });
   }
   return runs;
 }
@@ -460,7 +469,7 @@ const PRACTICE_ZIP_WARNING = "! Practice zips are only for trying out simulation
 
 // --- Tutorial 1: Your first run ---
 
-// The plate wells tutorial 1 fills, from B2 to D5.
+// The culture plate the tutorials fill: "the plate" in tutorial.md.
 const PLATE = "Plate1";
 
 const FIRST_RUN = {
@@ -794,7 +803,12 @@ const CHECKING = {
       ),
       target: (view) =>
         dispenseMode(view.plan, 2) === "Non-Contact" ? atEndRing(view, "Res1", "2") : stagePencilRing(view, 2),
-      done: (view) => dispenseMode(view.plan, 2) === "Non-Contact",
+      sticky: true,
+      done: (view) =>
+        dispenseMode(view.plan, 2) === "Non-Contact" &&
+        isOpen(view, "end") &&
+        pointingAt(view, "Res1", "2") &&
+        tracesAtEnd(view.plan, "Res1", "2").length === 0,
     },
     {
       title: "Follow a well through the run",
@@ -992,8 +1006,7 @@ const CONDITIONS = {
     {
       title: "Name the conditions",
       body: blocks(
-        "Well names help you find things. **Right-click** a well, type a name, press [Enter]:",
-        "Then point at **A4**: its card shows its name, what it holds, and glucose and yeast extract at 5 g/L each.",
+        "Well names help you find things. **Right-click** a well, type a name and press [Enter], for each well below. Then point at **A4**: its card shows its name, what it holds, and glucose and yeast extract at 5 g/L each.",
         "> Names show in place of volumes; the **Names** button switches back. The Biomek never sees them.",
       ),
       checklist: (view) => labelChecklist(view, CONDITION_NAMES_3),
@@ -1043,7 +1056,7 @@ const CONDITIONS = {
       body: blocks(
         "Cells settle in the trough and don't like being pushed hard, so this stage draws slowly and mixes the trough before each draw.",
         "1. Add a stage with new tips above **End**, and name it `Cells`.\n2. Under **Aspirate**, set **Mode** to **Slow** and tick **Mix**.\n3. Press **Save**.",
-        "The card then reads `↑ Slow ⟳   ↓ Medium`: ↑ aspirate, ↓ dispense, ⟳ mixes.",
+        `The card then reads \`↑ Slow ⟳   ↓ ${MODE}\`: ↑ aspirate, ↓ dispense, ⟳ mixes.`,
         "> **Mode** sets how fast the tip draws and expels liquid. Non-Contact dispenses from above without touching the liquid, and can't mix.",
       ),
       target: (view) => (startsNewTips(view.plan, 5) ? stagePencilRing(view, 5) : { kind: "endSeam" }),
@@ -1065,7 +1078,7 @@ const CONDITIONS = {
     {
       title: "Choose the tips",
       body: blocks(
-        `Each tip group's heading says what tips it loads, like \`New tips · ${TIP} · 4 tips\`.`,
+        `Each tip group's heading says what tips it loads, like \`New tips · ${TIP} · ${PROBES} tips\`.`,
         "1. Click the **✎** on the Cells stage's tip heading.\n2. Under **Probes**, click **8**.\n3. Press **Save**.",
         "> More probes run faster but use more tips. **Tip type** sets the tips' size; a transfer bigger than a tip holds is split into trips for you.",
       ),
@@ -1193,7 +1206,7 @@ const TRANSFER_TABLES = {
       title: "Name the wells to fill",
       body: blocks(
         "A transfer table finds its wells by their names, so name them first.",
-        "1. Click **Deep1** in the tray to bring it out.\n2. **Right-click** each well, type its name and press [Enter]:",
+        "1. Click **Deep1** in the tray to bring it out.\n2. **Right-click** each well, type its name and press [Enter], for each name below.",
         "> Give conditions names that differ from the stocks' names, so a table can't mistake one for the other, and start them with a letter: Excel reads a cell starting with + or = as a formula. Several wells can share a name, such as three replicates all called `With glucose`: each gets the amounts in that name's row.",
       ),
       checklist: (view) => labelChecklist(view, CONDITION_NAMES_4),
@@ -1205,15 +1218,12 @@ const TRANSFER_TABLES = {
       body: blocks(
         "In Excel, a transfer table has a row per well name and a column per stock. Each cell is the µL to add. Here's one to practice with:",
         PRACTICE_TABLE_MARKUP,
-        "1. Point at the gap just above **End**. On the dashed line, click the **table** button, the one furthest right.\n2. Click the paste box and press [Ctrl]+[V].",
+        "1. Press **Copy this table**, below, to put it on the clipboard.\n2. Point at the gap just above **End**. On the dashed line, click the **table** button, the one furthest right.\n3. Click the paste box and press [Ctrl]+[V].",
         "> A blank cell, or 0, adds nothing.",
       ),
       copy: { label: "Copy this table", text: PRACTICE_TABLE_TEXT },
       target: (view) => {
-        if (view.dialog !== null && view.dialog.kind === "wizard") {
-          return view.dialog.hasTable ? { kind: "dialogMain" } : { kind: "dialog" };
-        }
-        return { kind: "endSeam" };
+        return view.dialog !== null && view.dialog.kind === "wizard" ? { kind: "dialog" } : { kind: "endSeam" };
       },
       done: (view) =>
         (view.dialog !== null && view.dialog.kind === "wizard" && view.dialog.hasTable) ||
@@ -1337,6 +1347,11 @@ function replicatesChecklist(view) {
   ]);
 }
 
+// The keep-clear list of tutorial 5's card steps: the open card, so its sources stay in view.
+function keepClearOfCard() {
+  return [{ kind: "card", part: "whole" }];
+}
+
 // The ring while the randomization's card isn't open: its ✎, or null with no randomization.
 function randomizationPencilRing(view) {
   const randomization = firstRandomization(view.plan);
@@ -1403,6 +1418,7 @@ const RANDOMIZING = {
         }
         return { kind: "cardFiller", name: pbsSource(view).name };
       },
+      keepClear: keepClearOfCard,
       done: (view) => view.randomizationCard !== null && allDone(sourcesChecklist(view)),
     },
     {
@@ -1414,6 +1430,7 @@ const RANDOMIZING = {
       ),
       checklist: replicatesChecklist,
       target: () => ({ kind: "card", part: "allReplicates" }),
+      keepClear: keepClearOfCard,
       done: (view) => view.randomizationCard !== null && allDone(replicatesChecklist(view)),
     },
     {
@@ -1429,7 +1446,7 @@ const RANDOMIZING = {
         }
         return view.randomizationCard.tab === "fill" ? wellTarget(PLATE, "B2") : { kind: "card", part: "tabFill" };
       },
-      keepClear: keepClearOf(PLATE),
+      keepClear: () => [...keepClearOf(PLATE)(), ...keepClearOfCard()],
       done: (view) => view.randomizationCard !== null && view.randomizationCard.fillCount === 60,
     },
     {

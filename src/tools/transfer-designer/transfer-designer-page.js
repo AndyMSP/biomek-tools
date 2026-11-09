@@ -9855,7 +9855,8 @@ export function tutorialView() {
     pointedWell: pointedWell === null ? null : { ...pointedWell },
     editingBox: editingBox === null ? null : { kind: editingBox.kind, key: editingBox.key },
     addingComponent: addingComponent !== null,
-    transferListsShown: [...expandedStages],
+    // Only the open stage's list is on the page (section 17).
+    transferListsShown: expandedStages.has(currentOpen()) ? [currentOpen()] : [],
     headerBox: shownHeaderBox(),
     dialog: shownDialog(),
     randomizationCard: shownCard(plan),
@@ -10080,9 +10081,15 @@ const CARD_PARTS = {
 };
 
 // A part of the open randomization's card ("name", "tabFill", "allReplicates", "volume", "seed" or
-// "run"), or null.
+// "run"), or "whole", the card itself; null with no card open.
 function cardPart(part) {
-  if (card === null || card.element === null || !Object.hasOwn(CARD_PARTS, part)) {
+  if (card === null || card.element === null) {
+    return null;
+  }
+  if (part === "whole") {
+    return card.element;
+  }
+  if (!Object.hasOwn(CARD_PARTS, part)) {
     return null;
   }
   return card.element.querySelector(`[data-focus-key="${cssEscape(CARD_PARTS[part])}"]`);

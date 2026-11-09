@@ -7,7 +7,8 @@ import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { LABWARE_TYPES } from "../../../config/labware-types.js";
 import { DECK } from "../../../config/deck.js";
-import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
+import { TIP_TYPES, MIX_VOLUME_LIMITS, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
+import { DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
 import { DEFAULT_MIX } from "../../../config/mixing.js";
 import {
@@ -44,6 +45,7 @@ import {
   tutorialById,
   stepState,
   parseMarkup,
+  parseInline,
   PRACTICE_TABLE_TEXT,
   stageAt,
   transfersFrom,
@@ -261,6 +263,22 @@ describe("tutorial", () => {
         { kind: "text", text: "." },
       ]);
       assert.deepEqual(note.runs[1], { kind: "key", text: "Escape" });
+    });
+
+    test("parseInline: the inline marks, alone and together, and no block marks", () => {
+      assert.deepEqual(parseInline("A1 `Control`"), [
+        { kind: "text", text: "A1 " },
+        { kind: "code", text: "Control" },
+      ]);
+      assert.deepEqual(parseInline("**Bold** then [Esc]"), [
+        { kind: "bold", text: "Bold" },
+        { kind: "text", text: " then " },
+        { kind: "key", text: "Esc" },
+      ]);
+      assert.deepEqual(parseInline("- not a list"), [{ kind: "text", text: "- not a list" }]);
+      assert.deepEqual(parseInline("> not a note"), [{ kind: "text", text: "> not a note" }]);
+      assert.deepEqual(parseInline("1. not numbered"), [{ kind: "text", text: "1. not numbered" }]);
+      assert.deepEqual(parseInline(""), []);
     });
 
     test("text holding < or & stays text", () => {
@@ -513,11 +531,17 @@ describe("tutorial", () => {
       assertStepDoneByEdit(id, 9, view({ open: "end" }), view({ open: "end", pointedWell: at("Res1", "2") }));
       assert.equal(stateOf(id, 9, view({ open: "end" }), true).done, true);
 
-      // 10. Non-Contact: the traces are gone.
+      // 10. Non-Contact, then looking at End: the traces are gone. Sticky, like step 9.
       assert.deepEqual(stateOf(id, 10, view()).target, { kind: "entry", key: cells });
+      const atTrough = { open: "end", pointedWell: at("Res1", "2") };
+      assert.equal(stateOf(id, 10, view(atTrough)).done, false);
       before = view();
       plan = dispensingNonContact(plan, 2);
-      assertStepDoneByEdit(id, 10, before, view());
+      assert.equal(stateOf(id, 10, view()).done, false);
+      assert.deepEqual(stateOf(id, 10, view()).target, { kind: "entry", key: "end" });
+      assert.deepEqual(stateOf(id, 10, view({ open: "end" })).target, { kind: "well", labware: "Res1", well: "2" });
+      assertStepDoneByEdit(id, 10, before, view(atTrough));
+      assert.equal(stateOf(id, 10, view({ open: "end" }), true).done, true);
       assert.deepEqual(tracesAtEnd(plan, "Res1", "2"), []);
 
       // 11. Following trough 2: 4000 at Start, 4000 after Base media, 3400 after Cells.
@@ -679,6 +703,7 @@ describe("tutorial", () => {
       const wizardEmpty = view({ dialog: { kind: "wizard", step: "table", hasTable: false } });
       const wizardFull = view({ dialog: { kind: "wizard", step: "table", hasTable: true } });
       assert.deepEqual(stateOf(id, 2, wizardEmpty).target, { kind: "dialog" });
+      assert.equal(stateOf(id, 2, wizardFull).target, null);
       assertStepDoneByEdit(id, 2, wizardEmpty, wizardFull);
       assert.deepEqual(stateOf(id, 2, view()).target, { kind: "endSeam" });
       assert.deepEqual(stepOf(id, 2).copy, { label: "Copy this table", text: PRACTICE_TABLE_TEXT });
@@ -929,13 +954,13 @@ describe("tutorial", () => {
       assert.equal(startsNewTips(sameTips, 1), true);
       plan = setTipProbes(plan, stageAt(plan, 2), probesFor(8));
       assert.equal(tipProbes(plan, 2), 8);
-      assert.equal(tipProbes(plan, 1), 4);
+      assert.equal(tipProbes(plan, 1), DEFAULT_PROBE_COUNT);
     });
 
     test("modes and mixing", () => {
       let plan = smallPlan();
-      assert.equal(aspirateMode(plan, 1), "Medium");
-      assert.equal(dispenseMode(plan, 1), "Medium");
+      assert.equal(aspirateMode(plan, 1), DEFAULT_PIPETTING_MODE);
+      assert.equal(dispenseMode(plan, 1), DEFAULT_PIPETTING_MODE);
       plan = dispensingNonContact(plan, 1);
       assert.equal(dispenseMode(plan, 1), "Non-Contact");
       assert.equal(mixesBeforeAspirating(plan, 2), false);
@@ -998,7 +1023,14 @@ describe("tutorial", () => {
           `a ${tip} tip mixes at most ${MIX_VOLUME_LIMITS[tip]} µL`,
         ),
       );
-      assert.ok(bodyText(stateOf("conditions", 12, conditionsView).body).includes(`New tips · ${tip} · 4 tips`));
+      assert.ok(
+        bodyText(stateOf("conditions", 12, conditionsView).body).includes(
+          `New tips · ${tip} · ${DEFAULT_PROBE_COUNT} tips`,
+        ),
+      );
+      assert.ok(
+        bodyText(stateOf("conditions", 10, conditionsView).body).includes(`↑ Slow ⟳   ↓ ${DEFAULT_PIPETTING_MODE}`),
+      );
     });
   });
 });

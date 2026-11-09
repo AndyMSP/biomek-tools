@@ -12,7 +12,7 @@ import {
   tutorialSavedBy,
   tutorialStartWith,
 } from "../transfer-designer/transfer-designer-page.js";
-import { TUTORIALS, tutorialById, stepState, parseMarkup } from "./tutorial.js";
+import { TUTORIALS, tutorialById, stepState, parseMarkup, parseInline } from "./tutorial.js";
 import { startingPlanText } from "./tutorial-plans.js";
 
 // --- Constants ---
@@ -46,7 +46,7 @@ const DIALOG_MIN_ROOM = 160;
 let place = readPlace();
 
 // The IDs of the tutorials whose last step has been shown.
-const finished = new Set(readStored(FINISHED_KEY, []).filter((id) => tutorialById(id) !== null));
+const finished = new Set(readFinished());
 
 // Whether the shown sticky step has been done since it was shown (section 4: kept in memory).
 let stickyDone = false;
@@ -55,15 +55,17 @@ let stickyDone = false;
 let wasDoneLastTime = false;
 
 // The reader's fold (the – button), and the fold keeping clear makes while the panel covers the
-// target (section 6), which unfolds by itself.
+// target (section 6), which unfolds by itself. `unfoldedByReader` is set when the reader presses +
+// on keeping clear's fold: it keeps the panel unfolded until the step changes (section 5).
 let foldedByReader = false;
 let foldedToKeepClear = false;
+let unfoldedByReader = false;
 
 // Which bottom corner the panel sits in until dragged: "right" (at first) or "left".
 let corner = "right";
 
 // Where the reader dragged the panel, { left, top }, or null: once dragged, keeping clear is off.
-let draggedTo = readStored(POSITION_KEY, null);
+let draggedTo = readPosition();
 
 // While a dialog makes the panel compact: whether "Show steps" shows the full body over it.
 let stepsShownOverDialog = false;
@@ -180,11 +182,26 @@ function store(key, value) {
   }
 }
 
+// The stored finished list: the IDs of tutorials that exist, or none if what's stored isn't a list.
+function readFinished() {
+  const stored = readStored(FINISHED_KEY, []);
+  return Array.isArray(stored) ? stored.filter((id) => tutorialById(id) !== null) : [];
+}
+
+// The stored position, { left, top }, or null if there's none or it doesn't hold two numbers.
+function readPosition() {
+  const stored = readStored(POSITION_KEY, null);
+  const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
+  return stored !== null && typeof stored === "object" && isNumber(stored.left) && isNumber(stored.top)
+    ? { left: stored.left, top: stored.top }
+    : null;
+}
+
 // The stored place, or the menu if there's none or it names a tutorial or step that doesn't exist.
 function readPlace() {
   const stored = readStored(STATE_KEY, null);
   const tutorial = tutorialById(stored?.tutorial);
-  if (tutorial === null || !Number.isInteger(stored.step) || stored.step < 0 || stored.step >= tutorial.steps.length) {
+  if (tutorial === null || !Number.isInteger(stored?.step) || stored.step < 0 || stored.step >= tutorial.steps.length) {
     return { tutorial: null };
   }
   return { tutorial: tutorial.id, step: stored.step };
@@ -194,6 +211,7 @@ function readPlace() {
 function setPlace(newPlace) {
   place = newPlace;
   stickyDone = false;
+  unfoldedByReader = false;
   wasDoneLastTime = false;
   store(STATE_KEY, place);
   redraw();
@@ -258,6 +276,7 @@ function toggleFold() {
   if (foldedToKeepClear) {
     foldedToKeepClear = false;
     foldedByReader = false;
+    unfoldedByReader = true;
   } else {
     foldedByReader = !foldedByReader;
   }
@@ -481,7 +500,7 @@ function createChecklist(checklist) {
   const list = createElement("div", "", checklist.inline ? "tp-checklist tp-inline" : "tp-checklist");
   for (const item of checklist.items) {
     const entry = createElement("span", "", item.done ? "tp-check tp-check-done" : "tp-check");
-    entry.append(createElement("span", item.done ? "✓" : "○", "tp-check-mark"), ...renderRuns(parseMarkup(item.text)[0]?.runs ?? []));
+    entry.append(createElement("span", item.done ? "✓" : "○", "tp-check-mark"), ...renderRuns(parseInline(item.text)));
     list.append(entry);
   }
   return list;
@@ -586,9 +605,9 @@ function placePanel(target, keepClear) {
   keepClearOf(target, keepClear);
 }
 
-// The open page dialog's element (the wizard or the stock dialog), or null.
+// The open page dialog's element (the wizard or the stock dialog), or null, from the page's hook.
 function openDialog() {
-  return document.querySelector(".wizard-backdrop:not([hidden]) > .wizard");
+  return tutorialElement({ kind: "dialog" });
 }
 
 // With a dialog open: the panel at the bottom left, in the room below the dialog if there's enough,
@@ -620,8 +639,9 @@ function keepClearOf(target, keepClear) {
     corner = other;
   }
   const coversTarget = target !== null && overlaps(cornerBox(corner, fullWidth, fullHeight), target.getBoundingClientRect());
-  if (!foldedByReader && foldedToKeepClear !== coversTarget) {
-    foldedToKeepClear = coversTarget;
+  const foldWanted = coversTarget && !unfoldedByReader;
+  if (!foldedByReader && foldedToKeepClear !== foldWanted) {
+    foldedToKeepClear = foldWanted;
     setFolded(foldedToKeepClear);
   }
   const box = cornerBox(corner, panel.offsetWidth, panel.offsetHeight);
