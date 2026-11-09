@@ -503,6 +503,13 @@ Last updated: 2026-11-08
   dispensed into a well already holding Yeast) and a test added that liquid type alone doesn't
   match a non-touching mode; the specifications and the build each reviewed by a separate agent,
   and checked in headless Chrome. Still to check by Andy.
+- **Decided: the open entry's look** (Andy, 2026-11-08; item 28, below): the open entry in the
+  Stages column has a dark border, shadow and badge and a `Shown on deck` tag, red with a problem,
+  from a preview Andy approved. **Specified** (Draft, 2026-11-08, `transfer-designer-page.md`,
+  sections 7, 15 and 16), built in the chat as a very small change. Layout only: no plan file or
+  Biomek file changes. **Built (#147, 2026-11-08)**: the CSS and the tag in the open entry's
+  heading; from the browser check, a selected open card keeps the look, and the tag is centered on
+  the card's edge to clear the ✎; checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1167,6 +1174,19 @@ added on 2026-10-28 (Andy).
     8. **Hands-off workflow** (Andy, 2026-11-08), switched to after the specifications were written
        (#146).
     Built (#146).
+
+28. **The open entry's look** (Andy, 2026-11-08): the open entry in the Stages column (Start, a
+    stage or End) was marked only in blue, its border and badge, and blue is used all over the page
+    (tip group boxes, seams, chosen sources, buttons), so it was hard to tell which stage the deck
+    shows. Decided from a preview Andy approved on 2026-11-08:
+    - **A dark 2px border, a lifted shadow and a dark badge**, in the text color, in place of the
+      blue; **red with a problem**.
+    - **A `Shown on deck` tag** on the card's top edge at the right, part of the page's text so
+      screen readers read it.
+    - **Built in the chat** as a very small change (CLAUDE.md, "Who does what", the exception), on
+      its own branch and pull request. Layout only: the plan, plan files and Biomek files don't
+      change.
+    Built (#147).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:

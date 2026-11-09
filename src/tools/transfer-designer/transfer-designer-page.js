@@ -2066,7 +2066,7 @@ function stageProblems(plan) {
 
 // Start, a stage or End as a row (closed) or a card (open), sharing one look: a number in a badge, a
 // name and a count; a card adds its contents, and a stage's card its ✎ after the name. A mix step has
-// a ⟳ after its name. A stage with
+// a ⟳ after its name, and the open entry a "Shown on deck" tag. A stage with
 // a problem (`problems`, from stageProblems) is marked, with a tooltip saying which; one with both a
 // contents problem and a mix problem has the contents problem's tooltip.
 function createEntry(plan, key, open, problems) {
@@ -2099,6 +2099,11 @@ function createEntry(plan, key, open, problems) {
     row.tabIndex = 0;
   }
   row.append(createElement("span", badge, "entry-badge"), createElement("span", name, "entry-name"));
+  // The open entry's "Shown on deck" tag (section 7): real text, just after the name, so a screen
+  // reader reads it with the card's name; the CSS sits it on the card's top edge at the right.
+  if (isOpen) {
+    row.append(createElement("span", "Shown on deck", "open-tag"));
+  }
   // A mix step has a gray ⟳ after its name (section 7), so the names line up.
   if (isStage(plan, key) && isMixStep(plan, key)) {
     row.classList.add("with-mix-mark");

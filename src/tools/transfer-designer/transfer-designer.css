@@ -1119,15 +1119,47 @@ button.entry-row {
   font-size: 14px;
 }
 
+/* The open entry stands out from the page's blues (section 7, Andy, 2026-11-08): a dark 2px
+   border and a lifted shadow. Its heading and contents have 1px less padding (and the heading 2px
+   less height), so nothing in them moves when the border grows from 1px. Its color and shadow are variables, so a problem can turn
+   them red and a selected open card can keep them (both below). */
 .entry.is-open {
-  border-color: var(--blue-border);
-  box-shadow: 0 0 0 1px var(--blue-border);
+  --open-color: var(--text);
+  --open-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  border: 2px solid var(--open-color);
+  box-shadow: var(--open-shadow);
 }
 
-/* An open card's heading: its editing box, if it has one, floats just under it (section 10). */
+/* An open card's heading: its editing box, if it has one, floats just under it (section 10), and
+   so does the Shown on deck tag. */
 .entry.is-open .entry-row {
   position: relative;
+  min-height: 38px;
+  padding: 5px 9px;
   cursor: default;
+}
+
+.entry.is-open .entry-body {
+  padding: 4px 11px 11px;
+}
+
+/* The open entry's "Shown on deck" tag, centered on the card's top edge at the right (section
+   15). It's placed in the heading, which starts inside the card's 2px border, so 11px up puts it
+   9px above the card's outer edge, clear of the ✎ and the count below. It's real text for screen
+   readers; a press on it is a press on the heading. */
+.open-tag {
+  position: absolute;
+  top: -11px;
+  right: 12px;
+  z-index: 1;
+  padding: 1px 8px;
+  border-radius: 9px;
+  background: var(--open-color);
+  color: var(--text-light);
+  font: 600 11px/16px var(--text-font);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 /* An open stage's heading holds its ✎ just after the name; the count stays at the right, so the
@@ -1154,7 +1186,7 @@ button.entry-row {
 }
 
 .entry.is-open .entry-badge {
-  background: var(--blue);
+  background: var(--text);
   color: #ffffff;
 }
 
@@ -1224,8 +1256,11 @@ button.entry-row {
   background: var(--red-tint);
 }
 
+/* An open stage with a problem: its border and tag in the problems' red (section 15). The shadow
+   is --red (#c4362a) at 22%. */
 .entry.has-overdraw.is-open {
-  box-shadow: 0 0 0 1px var(--red-border);
+  --open-color: var(--red);
+  --open-shadow: 0 4px 14px rgba(196, 54, 42, 0.22);
 }
 
 /* The stage's settings line. */
@@ -3061,6 +3096,18 @@ body.column-dragging * {
 .entry.selected .entry-badge {
   background: var(--blue);
   color: #ffffff;
+}
+
+/* A selected open card keeps the open entry's border, shadow and badge, so the stage the deck
+   shows stands out even just after a click has opened and selected it; its light blue background
+   shows it's selected (section 7). */
+.entry.selected.is-open {
+  border-color: var(--open-color);
+  box-shadow: var(--open-shadow);
+}
+
+.entry.selected.is-open .entry-badge {
+  background: var(--text);
 }
 
 /* A selected tip group or randomization: a 3px blue ring and border, its heading's text blue and
