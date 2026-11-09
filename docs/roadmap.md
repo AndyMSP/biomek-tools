@@ -494,10 +494,10 @@ Last updated: 2026-11-08
   contents card lists a well's possible traces at the point the deck shows, worked out from tips by
   a new shared module, `possible-contamination`, assuming the worst where the order isn't known.
   From previews; well outlines and routes were tried and dropped. **Specified** (Draft, 2026-11-08,
-  standard workflow, on the `possible-contamination` branch): `possible-contamination.md`, the
+  on the `possible-contamination` branch; hands-off workflow from 2026-11-08, #146): `possible-contamination.md`, the
   contents card (`transfer-designer-page.md`, section 6), `touchesLiquid` in
   `config/pipetting-modes.js` (`transfer-designer.md`, "Configuration"), glossary "Possible trace".
-  It changes no Biomek file and no plan file. Waiting for Andy's review of the specifications.
+  It changes no Biomek file and no plan file.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1159,6 +1159,8 @@ added on 2026-10-28 (Andy).
     7. **Every component counts as a trace, for now** (Andy, 2026-11-08), water and buffers included.
        Marking some components as "not a concern" was considered (it would keep harmless traces from
        hiding real ones) and left for later.
+    8. **Hands-off workflow** (Andy, 2026-11-08), switched to after the specifications were written
+       (#146).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:

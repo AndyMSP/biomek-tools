@@ -1,7 +1,9 @@
 # possible-contamination — specification
 
 > **Draft (2026-11-08).** Written for v0.2.0 (item 27), from a preview Andy shaped on 2026-11-08
-> (roadmap, item 27; ADR 0021). Still to review: the whole specification, by Andy before the build.
+> (roadmap, item 27; ADR 0021). Written in the hands-off workflow (CLAUDE.md, "Workflows"), so
+> the choices made for Andy are listed in its pull request (#146). Still to review: the whole
+> specification, by Andy's test of the build.
 
 ## 1. Purpose
 `possible-contamination.js` works out a plan's **possible traces** (`docs/glossary.md`, "Possible

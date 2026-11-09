@@ -201,8 +201,9 @@
 > **Draft changes (2026-11-08, possible traces, item 27 of v0.2.0):** the contents card lists a
 > well's possible traces, the components a tip could have carried into it though it doesn't hold
 > them, at the point the deck shows (sections 2, 6, 14, 15 and 16; `possible-contamination.md`;
-> ADR 0021), from previews Andy shaped on 2026-11-08. They become Final once built and tested by
-> Andy.
+> ADR 0021), from previews Andy shaped on 2026-11-08. Written in the hands-off workflow (CLAUDE.md,
+> "Workflows"), so the choices made for Andy are listed in its pull request (#146). They become
+> Final once built and tested by Andy.
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
