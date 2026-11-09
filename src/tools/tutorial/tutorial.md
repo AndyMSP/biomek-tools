@@ -604,7 +604,9 @@ In `tutorial.test.js`, one `describe("tutorial", …)`:
 - **No HTML in the steps:** no body, at any step, with its tutorial's starting plan's view, contains
   `<`.
 - **Each step's `done` and `target`**, for each tutorial: on a view of its starting plan, every step
-  with `done` gives `false`, except where section 6 says it's done at once; and for each such step,
+  with `done` gives `false`, except where section 6 says it's done at once, and except tutorial 2's
+  steps 5 and 8, whose `done` is the absence of what the step before them adds (no problems; no
+  transfer into Res1 5), so it holds on the starting plan; and for each such step,
   a view built by doing that step's edits with the transfer designer's logic (e.g. for tutorial 1,
   step 6, `addToWells` of 6000 µL of Base media into Res1 1 and 3000 µL of Cells into Res1 2) gives
   `true`. Steps whose `done` reads page facts (`labwareOut`, `open`, `pointedWell`,
