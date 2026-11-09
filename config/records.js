@@ -5,8 +5,11 @@
 // stay as they are. LABWARE_SHEET_FILE_NAME is the labware sheet's file name in it, and
 // LABWARE_SHEET_PAGE its page size, in points (72 to the inch): US Letter. Chosen by Andy,
 // 2026-11-08. WELL_MAP_SUFFIX is what follows a randomization's name in its well map's file name
-// (well-maps.md; 2026-11-08). Data only (ADR 0009). The labware-sheet module's tests check this
-// file (labware-sheet.md, section 4), and the well-maps module's check WELL_MAP_SUFFIX.
+// (well-maps.md; 2026-11-08). PLAN_FILE_SUFFIX is what follows the run's folder name in the name of
+// the plan file Write files puts in the Records folder, e.g. "2026-11-08_134118_Exp36 plan.json"
+// (Andy, 2026-11-08; transfer-designer-page.md, section 5). Data only (ADR 0009). The labware-sheet
+// module's tests check this file (labware-sheet.md, section 4), the well-maps module's check
+// WELL_MAP_SUFFIX, and the page's tests check PLAN_FILE_SUFFIX.
 
 export const RECORDS_FOLDER = "Records";
 
@@ -15,3 +18,5 @@ export const LABWARE_SHEET_FILE_NAME = "Labware sheet.pdf";
 export const LABWARE_SHEET_PAGE = { width: 612, height: 792 };
 
 export const WELL_MAP_SUFFIX = " well map.csv";
+
+export const PLAN_FILE_SUFFIX = " plan.json";

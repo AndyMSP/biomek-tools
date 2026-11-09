@@ -20,7 +20,7 @@ import { SOURCES_SHOWN } from "../../../config/randomizations.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
 import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
 import { BASE_FOLDER } from "../../../config/paths.js";
-import { RECORDS_FOLDER, WELL_MAP_SUFFIX } from "../../../config/records.js";
+import { RECORDS_FOLDER, WELL_MAP_SUFFIX, PLAN_FILE_SUFFIX } from "../../../config/records.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
 import { possibleTraces } from "../../shared/possible-contamination/possible-contamination.js";
@@ -1073,15 +1073,17 @@ function checkNameAsTyped(box) {
 
 // --- The Biomek files box (section 5) ---
 
-// The run the Biomek files box will write, { folderName, files, sheet, maps, now }: the file
-// writer's folder name and files, the labware sheet ({ name, text }) and the well maps (wellMaps'
-// list of { name, text }) for the Records folder, and the moment the box opened, which they're named
-// and dated by. Null while the box is closed, or open with a plan the writer refused.
+// The run the Biomek files box will write, { folderName, files, sheet, planFile, maps, now }: the
+// file writer's folder name and files, the labware sheet ({ name, text }), the plan file
+// ({ name, text }, as Save writes it) and the well maps (wellMaps' list of { name, text }) for the
+// Records folder, and the moment the box opened, which they're named and dated by. Null while the
+// box is closed, or open with a plan the writer refused.
 let biomekRun = null;
 
 // Opens the Biomek files box under its button, or closes it if it's open. Opening it closes
 // Reset's question, and works out the run's files at once with writeRunFiles, the labware sheet
-// with labwareSheet and the well maps with wellMaps, the moment the box opens as their timestamp, so the zip's name it shows
+// with labwareSheet, the plan file with recordsPlanFile and the well maps with wellMaps, the moment
+// the box opens as their timestamp, so the zip's name it shows
 // is the one Write files saves, and the box never offers files it can't write. If either refuses
 // the plan, its message is shown instead, unchanged, with Write files disabled. Before that, a
 // randomization or transfer table that's out of date is named instead, as the writer never reads
@@ -1101,9 +1103,10 @@ function toggleBiomekBox() {
     checkNoRandomizationOutOfDate(currentPlan());
     const { folderName, files } = writeRunFiles(currentPlan(), now);
     const sheet = labwareSheet(currentPlan(), folderName, now);
+    const planFile = recordsPlanFile(currentPlan(), folderName);
     // After the out-of-date check above, so each randomization's stages match its sources.
     const maps = wellMaps(currentPlan());
-    biomekRun = { folderName, files, sheet, maps, now };
+    biomekRun = { folderName, files, sheet, planFile, maps, now };
     summary.classList.remove("refused");
     summary.replaceChildren(
       "This saves",
@@ -1144,20 +1147,30 @@ function describeRunFiles(files) {
   return `Setup.csv, Stages.csv and ${countOf(transferFileCount, "Transfer From File file")}`;
 }
 
-// What the Records folder holds, for the box: "the labware sheet", or, with well maps (`maps`, as
-// wellMaps gives them), "the labware sheet and 2 well maps" ("1 well map").
+// What the Records folder holds, for the box: "the labware sheet and the plan", or, with well maps
+// (`maps`, as wellMaps gives them), "the labware sheet, the plan and 2 well maps" ("1 well map").
 function describeRecords(maps) {
-  return maps.length === 0 ? "the labware sheet" : `the labware sheet and ${countOf(maps.length, "well map")}`;
+  return maps.length === 0
+    ? "the labware sheet and the plan"
+    : `the labware sheet, the plan and ${countOf(maps.length, "well map")}`;
+}
+
+// The plan file for the Records folder (section 5): { name, text }, the text being exactly what
+// Save writes for `plan`, so Open can reopen the run from its folder, and the name the run's folder
+// name followed by PLAN_FILE_SUFFIX, e.g. "2026-11-08_134118_Exp36 plan.json".
+function recordsPlanFile(plan, folderName) {
+  return { name: `${folderName}${PLAN_FILE_SUFFIX}`, text: planToText(plan, SAVED_BY) };
 }
 
 // The zip's entries for `run` (as biomekRun holds it): the file writer's files under the run's
-// folder, exactly as before, then the labware sheet and each well map, in wellMaps' order, in its
-// Records folder (ADR 0020), e.g. "2026-11-08_134118_Exp36/Setup.csv", …,
+// folder, exactly as before, then the labware sheet, the plan file and each well map, in wellMaps'
+// order, in its Records folder (ADR 0020), e.g. "2026-11-08_134118_Exp36/Setup.csv", …,
 // "2026-11-08_134118_Exp36/Records/Labware sheet.pdf",
+// "2026-11-08_134118_Exp36/Records/2026-11-08_134118_Exp36 plan.json",
 // "2026-11-08_134118_Exp36/Records/HySoy_dose well map.csv".
-function zipEntriesFor({ folderName, files, sheet, maps }) {
+function zipEntriesFor({ folderName, files, sheet, planFile, maps }) {
   const runEntries = files.map((file) => ({ name: `${folderName}/${file.name}`, text: file.text }));
-  const recordsEntries = [sheet, ...maps].map((file) => ({
+  const recordsEntries = [sheet, planFile, ...maps].map((file) => ({
     name: `${folderName}/${RECORDS_FOLDER}/${file.name}`,
     text: file.text,
   }));
@@ -1172,7 +1185,7 @@ function closeBiomekBox() {
 }
 
 // Write files: builds one zip with zipFiles of the run's files, each under the run's folder, then
-// the labware sheet in the Records folder inside it, all dated with the moment the box opened, and
+// the labware sheet, the plan file and the well maps in the Records folder inside it, all dated with the moment the box opened, and
 // saves it through the save dialog where the browser has one, otherwise to the downloads; then the
 // box closes. If the user closes the dialog, nothing happens and the box stays open.
 async function writeBiomekFiles() {
