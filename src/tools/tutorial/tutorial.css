@@ -1,0 +1,426 @@
+/*
+  tutorial.css — the guide panel's and the ring's styling, joined after the transfer designer's own
+  stylesheet in the tutorial file (tutorial-page.md, sections 5, 6 and 8). Every class starts with
+  "tp-" or "tutorial-", so nothing here touches the page's own look.
+  Specification: tutorial-page.md, section 8.
+*/
+
+/* The panel: a floating box above everything on the page, 360px wide, at most 62% of the window's
+   height or 540px, whichever is less, placed by tutorial-page.js (16px from the bottom right at
+   first). */
+.tutorial-panel {
+  --tp-width: 360px;
+  --tp-blue: #1f5fae;
+  --tp-border: #9db7db;
+  position: fixed;
+  z-index: 2147483001;
+  display: flex;
+  flex-direction: column;
+  width: var(--tp-width);
+  max-height: min(62vh, 540px);
+  box-sizing: border-box;
+  border: 1px solid var(--tp-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(20, 40, 70, 0.22);
+  color: #1c1c1a;
+  font-family: var(--text-font);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* Folded: only the header, 220px wide. */
+.tutorial-panel.tp-folded {
+  width: 220px;
+}
+
+.tutorial-panel.tp-folded > :not(.tp-header) {
+  display: none;
+}
+
+.tutorial-panel.tp-folded .tp-header {
+  border-radius: 11px;
+}
+
+/* The header: blue with white text, the drag handle. */
+.tp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 12px;
+  border-radius: 11px 11px 0 0;
+  background: var(--tp-blue);
+  color: #fff;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.tp-header-title {
+  font-weight: 600;
+}
+
+.tp-header-where {
+  overflow: hidden;
+  flex: 1;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-fold {
+  flex: none;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 5px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tp-fold:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* The progress bar: 4px, filled to the step's place. */
+.tp-progress {
+  flex: none;
+  height: 4px;
+  background: #e3ebf6;
+}
+
+.tp-progress-fill {
+  height: 100%;
+  background: var(--tp-blue);
+  transition: width 0.2s;
+}
+
+/* The body scrolls inside the panel. */
+.tp-body {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 10px 14px 6px;
+}
+
+.tp-title {
+  margin: 2px 0 8px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.tp-content p,
+.tp-content ol,
+.tp-content ul {
+  margin: 0 0 8px;
+}
+
+.tp-content ol,
+.tp-content ul {
+  padding-left: 22px;
+}
+
+.tp-content li {
+  margin-bottom: 3px;
+}
+
+.tp-note {
+  color: #5a6878;
+  font-size: 13px;
+}
+
+.tp-warning {
+  padding: 6px 9px;
+  border: 1px solid #f1c4c4;
+  border-radius: 6px;
+  background: #fdeeee;
+  color: #8a1c1c;
+  font-size: 13px;
+}
+
+.tutorial-panel code {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #eef3fa;
+  font-size: 13px;
+}
+
+.tutorial-panel kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid #b9c6d6;
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: #f7f9fc;
+  font-family: var(--text-font);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tp-table {
+  margin: 0 0 8px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.tp-table th,
+.tp-table td {
+  padding: 2px 7px;
+  border: 1px solid #d5dde8;
+  text-align: left;
+}
+
+.tp-table th {
+  background: #eef3fa;
+  font-weight: 600;
+}
+
+/* The checklist: ✓ green, ○ gray; a row (two spaces apart) or one per line. */
+.tp-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 8px;
+}
+
+.tp-checklist.tp-inline {
+  flex-flow: row wrap;
+  column-gap: 1.2em;
+}
+
+.tp-check-mark {
+  display: inline-block;
+  width: 1.2em;
+  color: #8a96a3;
+}
+
+.tp-check-done .tp-check-mark {
+  color: #1d7a3a;
+  font-weight: 600;
+}
+
+/* The copy button: outlined blue, and what happened beside it. */
+.tp-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+
+.tp-copy {
+  padding: 4px 10px;
+  border: 1px solid var(--tp-blue);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--tp-blue);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tp-copy-outcome {
+  color: #1d7a3a;
+  font-size: 13px;
+}
+
+.tp-copy-outcome.tp-copy-failed {
+  color: #8a1c1c;
+}
+
+.tp-hidden-copy {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  opacity: 0;
+}
+
+/* The status line: gray while waiting, green and semibold once done. */
+.tp-status {
+  margin: 4px 0 4px;
+  color: #6b7480;
+  font-size: 13px;
+}
+
+.tp-status:empty {
+  display: none;
+}
+
+.tp-status.tp-status-done {
+  color: #1d7a3a;
+  font-weight: 600;
+}
+
+/* The footer: All tutorials at the left, Back and the main button at the right. */
+.tp-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 10px;
+  border-top: 1px solid #e3ebf6;
+}
+
+.tp-spacer {
+  flex: 1;
+}
+
+.tp-button {
+  padding: 5px 12px;
+  border: 1px solid var(--tp-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--tp-blue);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tp-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tp-button.tp-main {
+  border-color: var(--tp-blue);
+  background: var(--tp-blue);
+  color: #fff;
+}
+
+/* Skip: quieter, white with a gray border. */
+.tp-button.tp-main.tp-skip {
+  border-color: #c3c8ce;
+  background: #fff;
+  color: #5a6878;
+}
+
+/* Next pulses briefly, three times, once the step is done. */
+.tp-pulse {
+  animation: tp-pulse 0.5s ease-in-out 3;
+}
+
+@keyframes tp-pulse {
+  50% {
+    box-shadow: 0 0 0 5px rgba(31, 95, 174, 0.3);
+  }
+}
+
+/* The menu: no footer or progress bar. */
+.tp-on-menu .tp-footer,
+.tp-on-menu .tp-progress {
+  display: none;
+}
+
+.tp-content .tp-menu {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.tp-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.tp-menu-text {
+  flex: 1;
+}
+
+.tp-menu-done {
+  margin-left: 6px;
+  color: #1d7a3a;
+  font-size: 13px;
+}
+
+.tp-menu-summary {
+  color: #6b7480;
+  font-size: 12.5px;
+}
+
+.tp-menu-start {
+  flex: none;
+  padding: 5px 12px;
+  border: 1px solid var(--tp-blue);
+  border-radius: 6px;
+  background: var(--tp-blue);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Show steps: shown only while the panel is compact over a dialog. */
+.tp-show-steps {
+  display: none;
+  align-self: flex-start;
+  margin: 0 14px 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--tp-blue);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Compact, while a dialog leaves too little room below it: the header, the step's title, its
+   status line, Show steps and the footer only. */
+.tutorial-panel.tp-compact .tp-progress,
+.tutorial-panel.tp-compact .tp-content > :not(.tp-title) {
+  display: none;
+}
+
+.tutorial-panel.tp-compact .tp-show-steps {
+  display: block;
+}
+
+.tutorial-panel.tp-compact .tp-body {
+  overflow: hidden;
+  flex: none;
+}
+
+/* The ring: a 3px orange border, 8px corners and a soft halo that pulses gently, above the page and
+   below the panel, taking no clicks; it glides to follow its target. */
+.tutorial-ring {
+  position: fixed;
+  z-index: 2147483000;
+  box-sizing: border-box;
+  border: 3px solid #f59e0b;
+  border-radius: 8px;
+  pointer-events: none;
+  transition:
+    left 0.15s,
+    top 0.15s,
+    width 0.15s,
+    height 0.15s;
+  animation: tutorial-ring-halo 1.4s ease-in-out infinite;
+}
+
+.tutorial-ring[hidden] {
+  display: none;
+}
+
+@keyframes tutorial-ring-halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(245, 158, 11, 0.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-ring,
+  .tp-pulse {
+    animation: none;
+  }
+}

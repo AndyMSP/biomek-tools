@@ -194,6 +194,32 @@ import {
 } from "../src/tools/transfer-designer/labware-sheet.js";
 import { wellMaps } from "../src/tools/transfer-designer/well-maps.js";
 import { buildVersion, branchLabel, fileNameFor, readGitFacts } from "./build-version.js";
+import { BUILD_ENTRIES, isBuildOf, tutorialHtml } from "./build-tools.js";
+import {
+  TUTORIALS,
+  tutorialById,
+  stepState,
+  parseMarkup,
+  stageAt,
+  transfersFrom,
+  startVolume,
+  hasComponent,
+  carries,
+  stageNameHas,
+  startsNewTips,
+  tipProbes,
+  aspirateMode,
+  dispenseMode,
+  mixesBeforeAspirating,
+  mixesAfterDispensing,
+  wellLabelText,
+  tracesAtEnd,
+  totalAtEnd,
+  totalAfterStage,
+  isOut,
+  isOpen,
+} from "../src/tools/tutorial/tutorial.js";
+import { startingPlan, startingPlanText, STARTING_PLAN_NAMES } from "../src/tools/tutorial/tutorial-plans.js";
 
 // What the REPL loads, grouped by topic: one topic per module, named like its folder. Each topic
 // holds the names it loads into the session and examples to try with them. The startup message, the
@@ -950,6 +976,66 @@ const TOPICS = {
       'buildVersion({ ...facts, lastRelease: "0.2.0" })',
       'readGitFacts(".")',
       'buildVersion(readGitFacts("."))',
+    ],
+  },
+  "build-tools": {
+    loaded: { BUILD_ENTRIES, isBuildOf, tutorialHtml },
+    examples: [
+      "BUILD_ENTRIES.map((entry) => entry.name)",
+      'isBuildOf("transfer-designer", "transfer-designer-tutorial-v0.2.0.html")',
+      'tutorialHtml(\'<html lang="en"><title>Transfer Designer</title></html>\')',
+      'tutorialHtml("<html><title>Transfer Designer</title></html>")',
+    ],
+  },
+  tutorial: {
+    loaded: {
+      TUTORIALS,
+      tutorialById,
+      stepState,
+      parseMarkup,
+      stageAt,
+      transfersFrom,
+      startVolume,
+      hasComponent,
+      carries,
+      stageNameHas,
+      startsNewTips,
+      tipProbes,
+      aspirateMode,
+      dispenseMode,
+      mixesBeforeAspirating,
+      mixesAfterDispensing,
+      wellLabelText,
+      tracesAtEnd,
+      totalAtEnd,
+      totalAfterStage,
+      isOut,
+      isOpen,
+    },
+    examples: [
+      "TUTORIALS.map((tutorial) => tutorial.title)",
+      'tutorialById("first-run").steps.map((step) => step.title)',
+      'tutorialById("checking").steps.map((step) => step.title)',
+      'tutorialById("conditions").steps.map((step) => step.title)',
+      'tutorialById("transfer-tables").steps.map((step) => step.title)',
+      'tutorialById("randomizing").steps.map((step) => step.title)',
+      'const tutorialView = { plan: startingPlan("empty"), open: "start", labwareOut: ["Res1"], message: null, problemCount: 0, pointedWell: null, editingBox: null, addingComponent: false, transferListsShown: [], headerBox: null, dialog: null, randomizationCard: null }',
+      'stepState(tutorialById("first-run").steps[2], tutorialView, false)',
+      'stepState(tutorialById("first-run").steps[2], tutorialView, false).checklist',
+      'parseMarkup("Press **Next**.\\n\\n> A note with [Enter].")',
+      'tracesAtEnd(startingPlan("firstRunDone"), "Res1", "2")',
+      'totalAfterStage(startingPlan("firstRunDone"), 1, "Plate1", "B2")',
+    ],
+  },
+  "tutorial-plans": {
+    loaded: { startingPlan, startingPlanText, STARTING_PLAN_NAMES },
+    examples: [
+      "STARTING_PLAN_NAMES",
+      'const firstRunDone = startingPlan("firstRunDone")',
+      "stageOrder(firstRunDone).map((id) => firstRunDone.stageList.get(id).name)",
+      "firstRunDone.experimentName",
+      'console.log(startingPlanText("conditionMedia", "transfer designer tutorial v0.2.0"))',
+      'startingPlan("full")',
     ],
   },
 };
