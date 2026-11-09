@@ -45,6 +45,7 @@ import {
 import { START, tipGroups } from "../src/shared/tip-groups/tip-groups.js";
 import { substagesOf } from "../src/shared/substages/substages.js";
 import { mixVolumes } from "../src/shared/mix-volumes/mix-volumes.js";
+import { possibleTraces } from "../src/shared/possible-contamination/possible-contamination.js";
 import {
   checkConstituents,
   familyOf,
@@ -410,6 +411,23 @@ const TOPICS = {
       'mixPlan = addTransfer(mixPlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Plate1", well: "B1" }, volume: 1.1, stage: "1" })',
       "mixVolumes(mixPlan).stages[0].rows[0].destinationMixVolume",
       "mixVolumes(mixPlan).problems",
+    ],
+  },
+  "possible-contamination": {
+    loaded: { possibleTraces },
+    examples: [
+      'let tracePlan = addComponent(addComponent(emptyPlan().plan, "Water", "#4e79a7"), "Yeast", "#f28e2b")',
+      'tracePlan = addToWells(tracePlan, [{ labware: "Res1", well: "1" }], "Water", 10000)',
+      'tracePlan = addToWells(tracePlan, [{ labware: "Res1", well: "2" }], "Yeast", 10000)',
+      'tracePlan = addTransfer(tracePlan, { type: "transfer", source: { labware: "Res1", well: "2" }, destination: { labware: "Deep1", well: "A1" }, volume: 100, stage: "1" })',
+      "tracePlan = addStage(tracePlan, null).plan",
+      'tracePlan = addTransfer(tracePlan, { type: "transfer", source: { labware: "Res1", well: "1" }, destination: { labware: "Deep1", well: "A2" }, volume: 100, stage: "2" })',
+      "tipGroups(tracePlan)",
+      'possibleTraces(tracePlan, 1).tracesOf("Deep1", "A2")',
+      'possibleTraces(tracePlan, 2).tracesOf("Deep1", "A2")',
+      'possibleTraces(tracePlan, 2).tracesOf("Res1", "1")',
+      'possibleTraces(tracePlan, 2).tracesOf("Deep1", "A1")',
+      "possibleTraces(tracePlan)",
     ],
   },
   concentrations: {
