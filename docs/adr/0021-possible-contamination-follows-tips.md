@@ -44,7 +44,10 @@ component, a line saying how it came.
   "can't be ruled out", never "measured" or "likely". The page says so.
 - Because every component counts and the rules are generous, a big plan with shared tips will show
   many traces. Marking components as "not a concern" (such as water) was considered and left for
-  later; so were routes, in a quieter form.
+  later; so were routes, in a quieter form. Changing tips between stages isn't enough to clear
+  them: a stage that dispenses, touching the liquid, into wells already holding different things
+  (such as a randomization's later sources) carries each well's contents to the others in that
+  stage.
 - If the instrument shows a technique doesn't behave as configured (for example Non-Contact
   touching the liquid), only `config/` changes.
 - Nothing here changes the plan, plan files or the Biomek files.

@@ -574,8 +574,9 @@ card (dark, light text) shows:
   and name, nothing at the right (a trace has no amount). The group's tooltip (its `title`):
   `Possible, not measured: a tip could have carried these here, counting every contact up to this
   point.` It's not a problem (not in the problem color, not counted, doesn't stop Write files).
-  Nothing of this at Start, or for a well with none, so a plan that changes tips between unlike
-  liquids sees no change. The page works the possible traces out with `possibleTraces(plan,
+  Nothing of this at Start, or for a well with none. (Even a plan that changes tips between stages
+  shows traces where one stage dispenses, touching the liquid, into wells that already hold
+  different things, such as a randomization's later sources: ADR 0021.) The page works the possible traces out with `possibleTraces(plan,
   count)`, `count` being the operations run at the point the deck shows (section 11), **the first
   time a contents card needs them** after the deck is drawn, and keeps them until it's drawn again,
   so an edit doesn't wait for them (about 70 ms for 1,000 transfers in 50 stages, measured in the

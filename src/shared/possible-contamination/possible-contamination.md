@@ -49,9 +49,16 @@ For each stage:
    Which of them **pass traces on** to the tips:
    - every source (a tip draws from inside its liquid);
    - every destination, unless the stage's dispense doesn't touch the liquid: its
-     `destinationTechnique` is the `technique` of a destination pipetting mode whose
-     `touchesLiquid` is `false` (section 7). A technique that isn't any mode's (for example after
-     `config/` changes) counts as touching, so the module errs towards showing a trace.
+     `destinationTechnique` and `destinationLiquidType` are **both** those of a pipetting mode
+     usable at the destination (its plain `technique`, not its `mixingTechnique`, and its
+     `liquidType`) whose `touchesLiquid` is `false` (section 7). The module does this matching
+     itself, from `PIPETTING_MODES`: a shared module doesn't import a tool's code, so it can't use
+     the transfer designer's `modeOf`. Everything else counts as touching, so the module errs
+     towards showing a trace: a destination that mixes (its technique is a mode's
+     `mixingTechnique`; a mode that doesn't touch can't mix, section 7), a mix step's wells (its
+     technique, `MIX_STEP_MODE`'s in `config/mixing.js`, isn't any mode's; they're sources too,
+     since a mix step's transfers go from a well into itself), and any technique and liquid type
+     that aren't a mode's (for example after `config/` changes).
 3. **What a well passes on:** every component it holds at the stage's start or at its end
    (`contents-tracking`'s snapshots at those two points), plus what has reached it by the stage's
    start. Both ends count because the order within the stage isn't known. A well that holds
@@ -77,7 +84,7 @@ The module exports one function. It changes nothing.
 
 | Export | Takes | Returns |
 |---|---|---|
-| `possibleTraces(plan, operationCount)` | a plan, and how many operations have run: 0 (the start) or the number done at the end of a stage with transfers | a `PossibleTraces` (below) for that point |
+| `possibleTraces(plan, operationCount)` | a plan, and how many operations have run: 0 (the start) or the number done at the end of a stage with transfers. **Required:** unlike `replay`'s, leaving it out (or `undefined`, or `null`) is an error, not "every operation". | a `PossibleTraces` (below) for that point |
 
 `plan` is read for `components` (their order), `startingContents`, `operationList`, `stageList`
 (each stage's `settings.destinationTechnique`), `stageOrder` and `tipChanges` (through
@@ -109,19 +116,24 @@ methods do. Messages:
 
 | When | Message |
 |---|---|
-| `operationCount` isn't a whole number, or is out of range | as `contents-tracking`'s `replay` (`contents-tracking.md`, section 5, "Operation list and operation count"), e.g. `The operation count must be from 0 to 12, the number of operations in the list, but got 13.` The check may be left to `replay` itself, as long as it happens before anything else. |
-| `operationCount` falls part-way through a stage | `Possible traces are worked out only at the start or at a stage's end, since the order within a stage isn't known, but 5 operations is part-way through stage 2, “Yeast”. Use 4 or 6.` The stage is named by its place in the stage order (from 1) and its name, as the transfer designer's messages name stages; the module builds the text from the plan itself (a shared module doesn't import a tool's). The two counts are those at the stage's start and end. |
+| `operationCount` isn't a whole number, including left out, `undefined` or `null` | `The operation count must be a whole number, like 3, but got undefined.` (as `replay`'s wording, `contents-tracking.md`, section 5, but checked here first, since `replay` reads `undefined` as every operation) |
+| `operationCount` is out of range | as `replay`'s, e.g. `The operation count must be from 0 to 12, the number of operations in the list, but got 13.` |
+| `operationCount` falls part-way through a stage | `Possible traces are worked out only at the start or at a stage's end, since the order within a stage isn't known, but 5 operations is part-way through stage 2, “Yeast”. Use 4 or 6.` The stage is named by its place in the stage order (from 1) and its name, as the transfer designer's messages name stages in the middle of a sentence (lowercase `stage`, unlike `stageNamed`'s `Stage` at the start of one); the module builds the text from the plan itself (a shared module doesn't import a tool's). The two counts are those at the stage's start and end. |
 | `labware` or `well` isn't text, blank, or has spaces at its ends | as `contents-tracking`'s methods that take a labware and a well (`contents-tracking.md`, section 5), naming `tracesOf`, e.g. `The labware given to tracesOf is blank. Give it at least one character that isn't a space.` |
 
 ## 6. Test cases
 Each becomes at least one unit test in `possible-contamination.test.js`, inside
 `describe("possible-contamination", …)`. The tests build plans with the transfer designer's own
 functions (`emptyPlan`, `addComponent`, `addToWells`, `addTransfer`, `addStage`,
-`addStageWithNewTips`, `changeStageSettings`, `modeSettings`), so they're plans the designer could
-make. Pipetting modes are found from `PIPETTING_MODES` by `touchesLiquid`, not by name (CLAUDE.md,
-"Tests follow `config/`").
+`addStageWithNewTips`, `addTipChange`, `renameStage`, `changeStageSettings`, `modeSettings`,
+`addMixStep`, `mixWells`, `removeStage`), so they're plans the designer could make. Following CLAUDE.md, "Tests
+follow `config/`": pipetting modes are found from `PIPETTING_MODES` by `touchesLiquid` and `ends`,
+not by name, and labware are found in `DECK` (`config/deck.js`) by labware type, as
+`mix-volumes.test.js` does: below, "Res1" stands for a 12-well reservoir and "Deep1" for a deep-well
+plate.
 
-The example plan (used by several tests): Res1 1 holds Water, 2 Yeast, 3 Hy-Soy, 4 NaOH. Stage 1,
+The example plan (used by several tests): components in the order Water, Yeast, Hy-Soy, NaOH. Res1 1
+holds Water, 2 Yeast, 3 Hy-Soy, 4 NaOH. Stage 1,
 "Water": Water to Deep1 A1 to A4. New tips; stage 2, "Yeast": Yeast to A2 and A4. Same tips; stage
 3, "Hy-Soy": Hy-Soy to A3 and A4. New tips; stage 4, "NaOH", destinations with a mode that doesn't
 touch the liquid: NaOH to A1 to A4. New tips; stage 5, "More Hy-Soy": Hy-Soy (Res1 3) to A5.
@@ -146,11 +158,22 @@ touch the liquid: NaOH to A1 to A4. New tips; stage 5, "More Hy-Soy": Hy-Soy (Re
   source has the other's.
 - **What a well held at the time:** a reservoir that gets yeast (by a transfer, on new tips) only
   after the last stage whose tips touched it passes no yeast to the wells those tips reached.
-- **Held components aren't traces:** A4 holds Yeast and Hy-Soy, so neither is among its traces.
-- **A technique that isn't any mode's counts as touching:** a stage whose `destinationTechnique` is
-  set (through the stage list) to a name no mode uses passes its destinations' contents on.
-- **Stages without transfers** don't change anything, and don't end a tip group early.
-- **Mix steps:** a mix step's well (a transfer from the well into itself) passes on and receives.
+- **Held components aren't traces:** after stage 3, A4 holds Water, Yeast and Hy-Soy, and its
+  traces are `[]`.
+- **A technique and liquid type that aren't any mode's count as touching:** a stage given, with
+  `changeStageSettings`, a destination technique and liquid type that no mode has (the designer
+  accepts it) passes its destinations' contents on, as a touching mode's does.
+- **Matching needs both technique and liquid type:** a stage whose destination has the
+  non-touching mode's technique but another liquid type counts as touching.
+- **A destination that mixes touches:** a stage with a touching mode at the destination and its
+  destination mix on passes its destinations' contents on.
+- **Stages without transfers:** in the example plan, an empty stage added between stages 2 and 3
+  without a tip change of its own keeps stage 3 on stage 2's tips (A3 still has Yeast after stage
+  3); one added there with a tip change of its own (`addStageWithNewTips`) starts new tips, and A3
+  has `[]` after stage 3.
+- **Mix steps:** a plan whose only stage with transfers is a mix step mixing two wells, one
+  starting with Yeast and one with Water: after it, the Water well has `["Yeast"]` and the Yeast
+  well `["Water"]` (a mix step's wells are sources, which pass on and receive).
 - Errors: each row of section 5, including a count part-way through a stage, naming the counts
   before and after it; and `tracesOf` with blank and non-text arguments.
 - `tracesOf` returns a new list each time: changing it doesn't change the next result.
@@ -163,5 +186,15 @@ have `true` (a tip draws from inside the liquid). Non-Contact's `false` is what 
 technique say; whether a technique's dispense touches the liquid isn't verified on the instrument
 yet (`docs/domain/biomek.md`, "Not yet known"), and the config file's comment says so.
 
+A mode with `touchesLiquid` `false` can't mix (its `mixingTechnique` is `null`), since mixing
+touches the liquid. `config/pipetting-modes.js`'s header comment, which describes each property,
+gains a `touchesLiquid` line, saying Non-Contact's `false` isn't verified on the instrument yet.
 The tests of `transfer-designer.js`'s configuration check the new property (`transfer-designer.md`,
-"Configuration").
+"Configuration"); the one existing test that lists a mode's properties exactly (in
+`transfer-designer.test.js`, "each pipetting mode has exactly name, technique, mixingTechnique,
+liquidType and ends") gains `touchesLiquid`.
+
+## 8. REPL
+`scripts/repl.js` gets a `possible-contamination` topic (CLAUDE.md, "Keep the REPL complete"),
+building a small plan with two stages on shared tips and showing `possibleTraces(plan,
+count).tracesOf(…)` at each stage's end, as section 4's example does.
