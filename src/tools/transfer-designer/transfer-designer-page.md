@@ -1510,7 +1510,10 @@ editing box with unsaved changes still refuses a press outside it (section 10).
 *How it looks.* Each selected thing is marked at once, as the button goes down, before a click
 opens it or a drag takes it (Andy, 2026-11-01: in the preview's first try, nothing showed what a
 drag would take). A selected stage: light blue background (`#EEF3FA`), a 2px blue (`#2F5DA8`) ring
-and border, and its number's badge blue with white text, the open card too. A selected tip group or
+and border, and its number's badge blue with white text. A selected open card keeps the open
+entry's border, shadow and badge (dark, or red with a problem), with the light blue background
+(found in the build, 2026-11-08: a click opens a stage and selects it, so otherwise its look would
+hardly ever show). A selected tip group or
 randomization: a 3px blue ring and border, and its heading's text blue and semibold. A stage's row
 and the headings show the grab pointer, and pressing or dragging on them never selects text (Andy,
 2026-11-01: the preview highlighted text under the pointer).
@@ -2168,9 +2171,10 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **Wells:** 36px, 4px apart; an empty well white with a gray border (`#BDBDB5`), its name 10px.
   Grid headings 12px gray.
 - **The open entry** (section 7): a 2px solid border in the text color (`#1C1C1A`) in place of the
-  1px border, its contents not moving (its padding 1px less), and the shadow `0 4px 14px` at 18%
-  black; its badge `#1C1C1A` with white text. The `Shown on deck` tag: on the card's top edge, 9px
-  above its heading's top and 12px from its right; `#1C1C1A` with light text (`#F6F5F1`), the page's
+  1px border, its contents not moving (its padding 1px less, its heading 2px less tall), and the
+  shadow `0 4px 14px` at 18% black; its badge `#1C1C1A` with white text. The `Shown on deck` tag:
+  centered on the card's top edge (from 9px above it to 9px below), 12px in from the right of the
+  card's inside, so it stays clear of the ✎ and the count below it; `#1C1C1A` with light text (`#F6F5F1`), the page's
   text font, 11px semibold (600), line height 16px, letter spacing 0.02em, 1px × 8px padding, 9px
   corners; above the card's contents. With a problem, the border and the tag are the page's red
   (`#C4362A`, the problems' red above; the preview's `#B42318` was a near match), and the shadow is
