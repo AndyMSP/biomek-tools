@@ -497,7 +497,12 @@ Last updated: 2026-11-08
   on the `possible-contamination` branch; hands-off workflow from 2026-11-08, #146): `possible-contamination.md`, the
   contents card (`transfer-designer-page.md`, section 6), `touchesLiquid` in
   `config/pipetting-modes.js` (`transfer-designer.md`, "Configuration"), glossary "Possible trace".
-  It changes no Biomek file and no plan file.
+  It changes no Biomek file and no plan file. **Built (#146, 2026-11-08)**: `possible-contamination`
+  (code and tests), `touchesLiquid` in `config/pipetting-modes.js`, the REPL topic, and the contents
+  card's Possible traces group; from the build, the test cases' example plan was corrected (stage 3
+  dispensed into a well already holding Yeast) and a test added that liquid type alone doesn't
+  match a non-touching mode; the specifications and the build each reviewed by a separate agent,
+  and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1161,6 +1166,7 @@ added on 2026-10-28 (Andy).
        hiding real ones) and left for later.
     8. **Hands-off workflow** (Andy, 2026-11-08), switched to after the specifications were written
        (#146).
+    Built (#146).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
