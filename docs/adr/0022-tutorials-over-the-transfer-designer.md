@@ -24,9 +24,12 @@ Three questions had to be settled:
 from the same source, and a **guide panel** over it. So a tutorial always teaches the page as it is,
 and the lab's Transfer Designer file has no tutorial code in it at all.
 
-**The page offers the tutorial two read-only hooks** (`transfer-designer-page.md`, "The tutorial's
-hooks"): one describes what the page shows (its plan, what's open, the labware out, the open dialog
-or card), and one finds the element for a named part of the page (a well, a tray chip, a stage's ✎).
+**The page offers the tutorial a few hooks** (`transfer-designer-page.md`, section 17): two
+read-only ones, one describing what the page shows (its plan, what's open, the labware out, the open
+dialog or card) and one finding the element for a named part of the page (a well, a tray chip, a
+stage's ✎); and one that puts a starting plan in the tutorial's own browser copy before a reload,
+refusing to work in the Transfer Designer. The page also ignores presses on the guide panel, so its
+own handling of presses outside a box never blocks the panel.
 The guide reads through these only. A step is plain data and pure functions of that description,
 so steps are unit-tested in Node, and restyling the page can't silently break them: a hook that no
 longer finds its element fails a test.

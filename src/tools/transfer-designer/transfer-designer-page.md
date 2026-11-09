@@ -2565,14 +2565,16 @@ a real plan, copied items or copied deck, and the reverse. The names live togeth
 script, chosen once from the attribute. Its `savedBy` (section 5) becomes `transfer designer
 tutorial v` and the version.
 
-**The hooks.** The page script exports two functions, used only by the tutorial's page script,
-which imports the page script (so they're part of the same bundle). They never change anything.
+**The hooks.** The page script exports these, used only by the tutorial's page script, which
+imports the page script (so they're part of the same bundle). The first two never change anything.
 - `tutorialView()`: what the page shows now, as `tutorial.md`, section 3, "The view", describes it:
-  `{ plan, open, labwareOut, message, problemCount, pointedWell, editingBox, transferListsShown,
-  headerBox, dialog, randomizationCard }`, read from the page's own state at the moment of the call
+  `{ plan, open, labwareOut, message, problemCount, pointedWell, editingBox, addingComponent,
+  transferListsShown, headerBox, dialog, randomizationCard }`, read from the page's own state at the moment of the call
   (the plan being the present state of its history; `open` the open entry, or the randomization's
   ID while its card is open; `message` from the message bar; `problemCount` as the first bar counts
-  it; `pointedWell` the well whose contents card shows; `dialog` from the wizard or the stock dialog
+  it; `pointedWell` the well whose contents card shows, which the page **remembers** from now on when it
+  shows the card and forgets when it hides it (until now it drew the card straight from the well's
+  element); `addingComponent` whether the `+ New` box is open; `dialog` from the wizard or the stock dialog
   while either is open, the wizard's `step` its current step; `randomizationCard` from the open
   card's draft, its tab, and its Volume and Seed boxes' text as typed). Lists and objects returned
   are new each call, so the caller can't change the page's state through them.
@@ -2582,13 +2584,30 @@ which imports the page script (so they're part of the same bundle). They never c
   map, the open editing box, the card's parts) and otherwise by their ids, data attributes and
   accessible names as this specification gives them, never by visible text that a message or
   translation might change. `endSeam` is the seam between tip groups just above End; it exists
-  whether or not its buttons show.
+  whether or not its buttons show. An `entry` target for a stage inside a closed transfer table's or
+  randomization's box gives that box's heading (the stage's row isn't on the page then). A
+  `labware` target gives the labware's block.
+- `tutorialSavedBy`: the `savedBy` text the page writes (section 5), so the guide panel's starting
+  plans say the same build.
+- `tutorialStartWith(text)`: puts `text` (a plan file's text, or `null` to remove it) in the page's
+  browser copy under the page's plan storage name, and nothing else; the caller then reloads. It
+  refuses (throws `Only the tutorial can start a plan this way.`) unless the page is the tutorial,
+  so the Transfer Designer's real browser copy is never written through it.
+
+**Presses on the guide panel.** The page's handlers that act on any press on the document (an editing
+box with changes shaking and refusing it, a text box saving and passing the click on, the header
+boxes closing on a press outside them, a press ending a chosen source's run, and the like, sections 5,
+7 and 10) **ignore a press inside an element with the attribute `data-tutorial-panel`**, as if it
+hadn't happened: the reader can press the panel's buttons, drag it or use its copy button whatever the
+page has open, and the page stays as it was. Keys typed on the page are unaffected.
 
 Built as the Transfer Designer, the exports exist but nothing calls them; the page behaves exactly
 as before.
 
 **Tests** (section 16, by hand, and the tutorial's browser walk-throughs, `tutorial-page.md`,
 section 9): the Transfer Designer file still keeps its plan under `biomek-tools transfer designer:
-plan`; the tutorial file under its own name; each target kind finds its element in the tutorial
-file.
+plan`, and `tutorialStartWith` throws there; the tutorial file under its own name; each target kind
+the tutorials use finds its element, checked by the walk-throughs' ring check; with a stage's ✎ box
+holding unsaved changes, a press on the guide panel's Next moves the tutorial on and the box neither
+shakes nor closes; with the Biomek files box open, a press on the panel leaves it open.
 

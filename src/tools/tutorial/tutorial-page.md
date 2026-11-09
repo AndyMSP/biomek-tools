@@ -24,19 +24,18 @@ tool).
 
 ## 3. The build
 `scripts/build.js` builds a third file, `transfer-designer-tutorial-v<version>.html` (the tool name
-`transfer-designer-tutorial` in the file name, ADR 0015's rule), from:
-- **the HTML**: `src/tools/transfer-designer/transfer-designer.html`, with `<title>Transfer
-  Designer</title>` replaced by `<title>Transfer Designer Tutorial</title>` and `data-tutorial` (no
-  value) added to its `<html>` tag. Both replacements must find their text exactly once, or the
-  build stops with a message naming what it didn't find, as `single-file-html` does;
-- **the CSS**: `transfer-designer.css`, then `tutorial.css`;
-- **the script**: `src/tools/tutorial/tutorial-page.js`, bundled as the tools' scripts are.
-The build's list of tools becomes a list of entries saying, for each output, its file-name tool name,
-its HTML, its CSS files and its script, so the two existing tools are entries of the plain kind and
-the tutorial is the one built from another tool's page. Clearing earlier builds clears
-`transfer-designer-tutorial-v*.html` too, and **must not** take `transfer-designer-tutorial-v….html`
-for a build of `transfer-designer` or the other way round (today's `isBuildOf("transfer-designer",
-…)` would match it: the check must compare the whole tool name before `-v`).
+`transfer-designer-tutorial` in the file name, ADR 0015's rule), from the transfer designer's HTML
+with its title and `<html>` tag changed, both stylesheets, and `tutorial-page.js` as the script.
+What the build makes, which files in `dist/` are earlier builds, and the tutorial's HTML are
+specified in `scripts/build-tools.md`, a small module of the build's pure parts, with its tests.
+`scripts/build-version.md`, section 3 ("What the build does"), says the build makes the files
+`BUILD_ENTRIES` lists.
+
+`README.md` lists the tutorial among the tools (`**Transfer Designer Tutorial**
+(\`transfer-designer-tutorial-v….html\`): guided tutorials on the Transfer Designer's own page.`),
+says the tutorial is tried by building it (it isn't served unbuilt), and describes `npm run
+test:browser` under the tests: what it does, that it needs `npx playwright install chromium` once
+unless Chrome is installed, and that it builds first if `dist/` has no tutorial file.
 
 The page knows it's the tutorial from the `data-tutorial` attribute (`transfer-designer-page.md`,
 section 17): its storage names and hooks follow from that.
@@ -51,18 +50,19 @@ storage the panel still works, forgetting its place on reload):
 - `biomek-tools tutorial: position`: where the panel was dragged to, `{ left, top }` in px.
 
 **Starting a tutorial** (its Start or Again button in the menu, or **Next tutorial** at the end of
-the one before): the panel puts `startingPlanText(name)` (`tutorial-plans.md`) for its starting plan
-in the page's browser copy (the page's tutorial plan storage name, `transfer-designer-page.md`,
-section 17), sets the state to that tutorial's step 0, and reloads the page. The page then brings
+the one before): the panel calls the page's `tutorialStartWith(startingPlanText(name,
+tutorialSavedBy))` (`tutorial-plans.md`; `transfer-designer-page.md`, section 17), which puts the
+plan in the page's browser copy, sets the state to that tutorial's step 0, and reloads the page. The page then brings
 the plan back, as it always does on opening (message `Brought back the plan you were working on in
-this browser.`), with the labware it uses out. For the `empty` plan, the panel instead removes the
-browser copy, so the page opens with its own empty plan.
+this browser.`), with the labware it uses out. For the `empty` plan, the panel calls `tutorialStartWith(null)`,
+which removes the browser copy, so the page opens with its own empty plan.
 
 **A sticky step's** done state (`tutorial.md`, section 3) is kept in memory: set when the step is
 done while shown, cleared when the step is left.
 
 ## 5. The panel
-A floating box (360px wide, at most 62% of the window's height or 540px, whichever is less), 16px
+The panel's outermost element has the attribute `data-tutorial-panel` (the page ignores presses
+inside it, `transfer-designer-page.md`, section 17). A floating box (360px wide, at most 62% of the window's height or 540px, whichever is less), 16px
 from the window's bottom and right edges at first, above everything on the page.
 - **Header** (blue, `#1f5fae`, white text, 11px corners at the top): `Tutorial` (semibold), then, in
   a tutorial, `2. Checking your plan` and, past step 0, ` · step 3 of 12` (the step's index and the
@@ -78,7 +78,9 @@ from the window's bottom and right edges at first, above everything on the page.
   the main button at the right. `Back` is disabled at step 0. The main button reads `Start` at step
   0, `Next` once the step is done (pulsing briefly, three times), `Skip` while it isn't (quieter:
   white with a gray border), and at the last step `Next tutorial` if there's a next tutorial, else
-  `All tutorials`. Next and Skip go to the next step; Back to the one before.
+  `All tutorials`. Next and Skip go to the next step; Back to the one before. After any press on a
+  panel button, the button gives up keyboard focus (so a later Enter or Space typed for the page
+  can't press it again).
 - **The menu** (state `{ tutorial: null }`): title `Transfer Designer tutorials`; `Each tutorial
   builds on the one before, but brings its own starting plan, so you can start anywhere.`; then one
   row per tutorial, numbered, with its title (semibold), `✓ done` (green) if finished, its summary
@@ -100,7 +102,8 @@ body changes, replaces the body (so a copy button's `Copied.` and the reader's s
 between redraws while nothing changes).
 
 ## 6. The ring, and keeping clear
-**The ring**: a 3px orange border (`#f59e0b`) with 8px corners and a soft orange halo that pulses
+**The ring** marks its target element with the attribute `data-tutorial-target` (removed from the
+element it marked before), so tests can find what's ringed. A 3px orange border (`#f59e0b`) with 8px corners and a soft orange halo that pulses
 gently (1.4 s), 4px outside the target's box on every side (at least 6px tall), above the page and
 below the panel, taking no clicks. It follows the target on each redraw (with a 150 ms glide); it's
 hidden while the step is done, when the target is `null`, or when the hook finds no element or one
@@ -109,9 +112,15 @@ with no size.
 **Keeping clear.** Until the reader drags the panel, after each redraw: if the panel covers the
 target or any of the step's keep-clear elements (`tutorial.md`, section 3), it moves to the other
 bottom corner (left or right) if that covers less, counting the target as 10 and each keep-clear
-element as 1. While a page dialog is open (the transfer table wizard or the stock dialog), the panel
-instead fits under it: its greatest height becomes the room between the dialog's bottom and the
-window's bottom less 24px, at least 160px, so it covers none of the dialog.
+element as 1; if both corners cover as much, it stays, and folds to its header while it covers the
+target, unfolding when it no longer would (a fold the reader made stays theirs).
+
+**While a page dialog is open** (the transfer table wizard or the stock dialog): if the room
+between the dialog's bottom and the window's bottom, less 24px, is 160px or more, the panel fits
+there (that room is its greatest height), at the bottom left; otherwise it shows **compact**: its
+header, the step's title, its status line and its footer only, at the bottom left, with a `Show
+steps` link that shows the full body over the dialog until the next press elsewhere. Either way the
+dialog's main button (`dialogMain`) is never covered; the walk-throughs check it.
 
 **Dragging**: pressing on the header (not its button) and moving drags the panel, kept inside the
 window; letting go stores its place (section 4), and from then on keeping clear is off. A stored
@@ -142,15 +151,26 @@ tested in the browser:
 **Browser walk-throughs** (`tests/browser/tutorial.walk.js`, run by `npm run test:browser`; not by
 `npm test`, whose `node --test` runs only `*.test.js`): with Playwright (`playwright`, a development
 dependency, Andy's OK of 2026-11-08), against the built tutorial file in `dist/` (built first by
-the script if missing). For each tutorial, starting it from the menu in a fresh browser context,
-the walk-through does each step as a user would (clicks, drags, typing, right-clicks, Ctrl-clicks,
-the clipboard, the wizard and the randomization card), and checks after each that the status line
-says `✓ Done`, then presses Next. Also: **Next tutorial** from each tutorial's last step starts the
+the script if missing). Before the page loads, the walk-through removes
+`window.showSaveFilePicker` (Playwright's `addInitScript`), so Save and Write files fall back to an
+ordinary download, which it accepts; and it grants `clipboard-read` and `clipboard-write`. For each
+tutorial, starting it from the menu in a fresh browser context, the walk-through does each step as a
+user would (clicks, drags, typing, right-clicks, Ctrl-clicks, the clipboard, the wizard and the
+randomization card). **Before** doing a step with a target, it checks the element marked
+`data-tutorial-target` is the one the step names (by its kind: e.g. a well's `data-labware` and
+`data-well`) and that the ring lies over it; **after**, that the status line says `✓ Done`; then it
+presses Next. With a dialog open, it checks the dialog's main button isn't covered by the panel. Also: **Next tutorial** from each tutorial's last step starts the
 next; tutorial 2 started from the menu holds `firstRunDone`; the real Transfer Designer storage name
 is never written; no page error is thrown. At two window sizes: 1500 × 950 and 1366 × 768. It uses
 Chrome if installed (`channel: "chrome"`), else Playwright's own Chromium.
 
 **By hand**, before each release, in Edge and Chrome, opening the built file: go through each
 tutorial once; check that the ring is on the right thing at each step and that the panel never
-covers what the step needs; check the labels named in bold in the steps (`tutorial.md`, section 9)
-against the page.
+covers what the step needs; and check that these labels, which the steps name, still read the same
+on the page: `Name this experiment`, `Biomek files`, `Write files`, `Save`, `Open`, `Undo`, `Start`,
+`End`, `+ New`, `Contains`, `+ Add`, `Show transfers ▸`, `Mode`, `Mix`, `Aspirate`, `Dispense`,
+`Non-Contact`, `Slow`, `Probes`, `Remove`, `Names`, `Shown on deck`, `Possible traces`,
+`Concentrations`, `1 Table`, `Next`, `Add`, `Update`, `Name`, `Sources`, `Wells to fill`, `All
+sources`, `Filler`, `Volume`, `Seed`, `Randomize`, `needs update`, `Records`.
+
+**Unit tests of the build** are in `scripts/build-tools.test.js` (`build-tools.md`).

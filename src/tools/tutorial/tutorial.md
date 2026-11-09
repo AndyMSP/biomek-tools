@@ -6,7 +6,7 @@
 > and tested by Andy.
 
 ## 1. Purpose
-The tutorials' logic: the five **tutorials** (`docs/glossary.md`), each a list of **steps**, and for
+`tutorial.js`, the tutorials' logic: the five **tutorials** (`docs/glossary.md`), each a list of **steps**, and for
 each step its text, its checklist, what the page should ring, and when it's done. It holds no page
 code: every step is plain data and pure functions of a **view**, a plain description of what the
 transfer designer's page shows, which the guide panel gets from the page's hook
@@ -19,7 +19,7 @@ The guide panel (`tutorial-page.md`) draws the steps; the starting plans come fr
 Version 1 is five tutorials: Your first run, Checking your plan, Making conditions, Transfer
 tables, Randomizing a plate (section 6). Not in version 1: tutorials on mix steps, copying a deck,
 moving wells, moving and copying stages, osmolality or sharing tips between a randomization's
-sources (Andy, 2026-11-08: covered by the user guide; a tutorial each may follow); translations.
+sources (Andy, 2026-11-08: not now; a tutorial each may follow); translations.
 
 ## 3. Data model
 
@@ -40,14 +40,16 @@ sources (Andy, 2026-11-08: covered by the user guide; a tutorial each may follow
 - `checklist(view)` (optional): a list of `{ done, text }`, `text` in step markup's inline forms,
   drawn as a row (`inline: true`) or one per line (`inline` false or left out): `{ inline, items }`.
 - `target(view)` (optional): the **target** (below) to ring, or `null` for none. The panel rings it
-  only while the step isn't done.
+  while the step isn't done; a step without `done` keeps its ring until it's left (it points at
+  what to look at).
 - `done(view)` (optional): `true` once the step is done. A step without one is done as soon as it's
   shown (the reader reads it and presses Next).
 - `sticky` (optional, `true`): once `done` has been `true` while the step is shown, it stays done
   until the step is left, even if `done` turns `false` again. For steps done by **looking**: the
   contents card shows only while the pointer is on a well.
 - `keepClear(view)` (optional): targets the panel should avoid covering besides its target (the
-  panel's own rule, `tutorial-page.md`, section 6). Left out: every labware block that's out.
+  panel's own rule, `tutorial-page.md`, section 6). Left out: every labware block that's out
+  (`{ kind: "labware" }` for each name in `labwareOut`).
 - `copy` (optional): `{ label, text }`, a button in the step that puts `text` on the clipboard, for
   practice tables (section 6).
 
@@ -59,8 +61,17 @@ Text with a few marks, so steps say nothing about HTML:
   **paragraph**.
 - Inline: `**bold**`, `` `code` `` (code-styled, e.g. a name to type), `[Key]` (a key, drawn as a
   keyboard key, e.g. `[Ctrl]+[V]`, `[Enter]`), `✎`, `‹`, `›`, `⟳` as written.
+- In a table, an empty cell is nothing between two separators (`| Control | 1000 |  |  |`).
 - Everything else is plain text; the panel never reads markup as HTML.
-In section 6 below, a step's text is given in this markup.
+
+`parseMarkup(text)` (section 4) turns markup into a list of blocks, `{ kind: "paragraph" | "numbered"
+| "bulleted" | "note" | "warning" | "table", … }`, each list or table holding its items or rows, and
+each piece of text a list of inline runs, `{ kind: "text" | "bold" | "code" | "key", text }`. The
+panel draws blocks; it never parses.
+
+In section 6 below, each body is given as markup between backticks, its blocks separated by ` / `
+(a new block, or a new list item); inside it, \` stands for one backtick of the code mark, so
+\`Practice1\` is the markup `` `Practice1` ``.
 
 ### The view
 What the page shows, from its hook (`transfer-designer-page.md`, section 17), or `null` before the
@@ -74,6 +85,7 @@ page has drawn. Fields:
 - `pointedWell`: `{ labware, well }` whose contents card is showing, or `null`.
 - `editingBox`: `{ kind, key }` of the open editing box (`"stage"`, `"tip"`, `"component"`), or
   `null`.
+- `addingComponent`: `true` while the Start card's `+ New` box is open.
 - `transferListsShown`: the IDs of the stages whose transfer list is shown.
 - `headerBox`: `"biomek"`, `"reset"` or `null`.
 - `dialog`: `null`, or `{ kind: "wizard", step: "table" | "sources" | "review", hasTable }` for
@@ -91,48 +103,65 @@ section 17):
 
 | Target | The element |
 |---|---|
+| `{ kind: "labware", labware }` | the labware's whole block on the deck |
 | `{ kind: "well", labware, well }` | the well on the deck |
 | `{ kind: "trayChip", labware }` | the labware's chip in the tray |
 | `{ kind: "labwareHeading", labware }` | the labware's label button above its wells |
-| `{ kind: "entry", key }` | Start, a stage or End in the Stages column (`"start"`, an ID, `"end"`) |
+| `{ kind: "entry", key }` | Start, a stage or End in the Stages column (`"start"`, an ID, `"end"`); for a stage inside a closed transfer table's or randomization's box, that box's heading |
 | `{ kind: "stagePencil", id }` | an open stage's ✎ |
 | `{ kind: "tipPencil", key }` | the ✎ on a tip group's heading, by its tip change's key |
 | `{ kind: "endSeam" }` | the seam between tip groups just above End |
-| `{ kind: "componentChip", name }`, `{ kind: "componentPencil", name }` | a component's chip, or its ✎, in the Start card |
+| `{ kind: "componentPencil", name }` | a component's ✎ in the Start card |
 | `{ kind: "newComponent" }` | the Start card's `+ New` (or its box while open) |
-| `{ kind: "pasteTable" }` | the Start card's `Paste table` |
 | `{ kind: "showTransfers", id }` | an open stage's `Show transfers ▸` / `Hide transfers ▾` |
 | `{ kind: "transferVolume", id, source, destination }` | the volume button of the open stage's first transfer with that route |
 | `{ kind: "transferRemove", id, source, destination }` | that row's `×` |
 | `{ kind: "editingBox" }` | the open editing box |
-| `{ kind: "button", name }` | `"experimentName"` (the heading's name button), `"save"`, `"biomekFiles"`, `"writeFiles"`, `"undo"`, `"previousPoint"`, `"nextPoint"` |
+| `{ kind: "button", name }` | `"experimentName"` (the heading's name button), `"save"`, `"biomekFiles"`, `"writeFiles"`, `"undo"` |
 | `{ kind: "problemCount" }` | the problem count |
-| `{ kind: "dialog" }`, `{ kind: "dialogMain" }`, `{ kind: "dialogPasteZone" }` | the open dialog; its main button (`Next`, `Add`, `Update`, `Add 2 stocks`…); its paste zone |
+| `{ kind: "dialog" }`, `{ kind: "dialogMain" }` | the open dialog; its main button (`Next`, `Add`, `Update`) |
 | `{ kind: "tablePencil", id }` | the ✎ on a transfer table's heading |
 | `{ kind: "randomizationPencil", id }` | the ✎ on a randomization's heading |
-| `{ kind: "card", part }` | in the open randomization's card: `"name"`, `"tabSources"`, `"tabFill"`, `"allReplicates"`, `"volume"`, `"seed"`, `"run"` (Randomize or Update) |
+| `{ kind: "card", part }` | in the open randomization's card: `"name"`, `"tabFill"`, `"allReplicates"`, `"volume"`, `"seed"`, `"run"` (Randomize or Update) |
 | `{ kind: "cardFiller", name }` | the Filler button of the card's source of that name |
 
 ### Helpers
-The module exports the helpers steps use, each a pure function, so tests can check them alone:
-- `stageAt(plan, n)`: the plan's `n`th stage in the stage order, from 0, or `null`.
-- `transfersFrom(plan, stageId, source, destinationLabware, destinationWell?)`: that stage's
-  transfers from `source` (`{ labware, well }`) into that labware (and well, if given).
+The module exports the helpers steps use, each a pure function, so tests can check them alone.
+**Stages are numbered from 1**, as the page and the steps number them (stage 1 is the first in the
+stage order). Names compare without regard to capitals or spaces at the ends, here and in every
+check below.
+- `stageAt(plan, n)`: the ID of stage `n`, or `null` if there's no such stage.
+- `transfersFrom(plan, n, source, destinationLabware, destinationWell?)`: stage `n`'s transfers
+  from `source` (`{ labware, well }`) into that labware (and well, if given); `[]` if no stage `n`.
 - `startVolume(plan, labware, well, component)`: µL of the component the well holds at the start.
 - `hasComponent(plan, name)`, `carries(plan, component, unit)`: whether a component exists, and
-  whether it carries a constituent in that unit with an amount above 0. Names compare without
-  regard to capitals or spaces at the ends, here and in every check below.
-- `stageNamed(plan, n, word)`: whether stage `n`'s name contains `word`.
-- `startsNewTips(plan, n)`: whether stage `n` starts a tip group of its own (has a tip change).
-- `wellLabelOf(plan, labware, well)`: its well label, or `""`.
+  whether it carries a constituent in that unit with an amount above 0.
+- `stageNameHas(plan, n, word)`: whether stage `n`'s name contains `word`.
+- `startsNewTips(plan, n)`: whether stage `n` starts a tip group of its own: for stage 1, always
+  (the run starts by loading tips, under the `START` key); for any other, whether the plan has a
+  tip change under its ID (`transfer-designer.md`, "Tip changes and tip groups").
+- `tipProbes(plan, n)`: how many probes the tip change starting stage `n`'s tip group loads.
+- `aspirateMode(plan, n)`, `dispenseMode(plan, n)`: `modeOf("source", settings)` and
+  `modeOf("destination", settings)` of stage `n` (`transfer-designer.md`).
+- `mixesBeforeAspirating(plan, n)`, `mixesAfterDispensing(plan, n)`: whether stage `n`'s
+  `sourceMix`, or `destinationMix`, isn't `null`.
+- `wellLabelText(plan, labware, well)`: the well's label (`wellLabelOf`), or `""` for none.
+- `tracesAtEnd(plan, labware, well)`: the well's possible traces after the whole run:
+  `possibleTraces(plan, n).tracesOf(labware, well)` (`possible-contamination.md`), `n` the number of
+  operations in the plan.
+- `totalAtEnd(plan, labware, well)` and `totalAfterStage(plan, n, labware, well)` (with `n` 0 for the
+  start): µL the well holds then, from contents tracking (`contents-tracking.md`).
 - `isOut(view, labware)`, `isOpen(view, key)`.
+
+(The logic's own `stageNamed` and `wellLabelOf` mean something else; these names don't clash.)
 
 ## 4. Interface
 | Export | Returns |
 |---|---|
 | `TUTORIALS` | the five tutorials, in menu order (section 6), frozen |
 | `tutorialById(id)` | the tutorial, or `null` |
-| `stepState(step, view, wasDone)` | `{ done, target, checklist, body }` for drawing: `done` is `step.done(view)` (or `true` for a step without one), or `true` if `step.sticky` and `wasDone`; `target` is `step.target(view)` while not done, else `null`; any function that throws gives `done: false`, `target: null`, an empty checklist and the body `""` instead of breaking the page |
+| `stepState(step, view, wasDone)` | `{ done, target, checklist, body, keepClear }` for drawing: `done` is `step.done(view)` (or `true` for a step without one), or `true` if `step.sticky` and `wasDone`; `target` is `step.target(view)` while not done, and always for a step without `done`, else `null`; `body` is the parsed markup (`parseMarkup`); `keepClear` as section 3 says; any function that throws gives `done: false`, `target: null`, an empty checklist, an empty body and the default keep-clear instead of breaking the page |
+| `parseMarkup(text)` | the blocks of section 3, "Step markup" |
 | the helpers | section 3 |
 
 `stepState` takes `wasDone` from the panel, which remembers whether a sticky step has been done
@@ -165,15 +194,22 @@ Shared wording, used by more than one step, defined once:
   `stagePencil`.
 
 Each tutorial below gives its menu entry, then each step: its title, its body, then **Checklist**,
-**Ring**, **Done** and **Keep clear** where it has them. Counts in a body (`N so far`) are worked
-out from the view each time. "The plate" is Plate1, wherever its label.
+**Ring**, **Done** and **Keep clear** where it has them. `N` or a `{name}` in a body is a value the
+body works out from the view each time it's drawn, given after the step. Values that come from
+`config/` are named, never written as numbers (CLAUDE.md, "Tests follow `config/`"):
+- **{dead}**: the dead volume of Res1's labware type, `DeepReservoir12` (`config/labware-types.js`);
+- **{capacity}**: the capacity of Plate1's labware type, `BCFlat96`;
+- **{tip}**: the first tip type, `TIP_TYPES[0]` (`config/tip-types.js`), the tips a new plan uses;
+- **{mixLimit}**: `MIX_VOLUME_LIMITS[{tip}]`, the most a {tip} tip mixes;
+- **{folder}**: `BASE_FOLDER` (`config/paths.js`).
+"The plate" is Plate1, wherever its label.
 
 ### Tutorial 1, `first-run`
 Title `Your first run`; summary `Plan a simple run from scratch and write its Biomek files.`; 10
 minutes; starting plan `empty`.
 
 0. **Your first run.** `In this tutorial you plan a simple run from scratch and write its Biomek
-   files. About 10 minutes.` / `You'll fill a reservoir with **Base media** and **Cells**, put media
+   files.` / `You'll fill a reservoir with **Base media** and **Cells**, put media
    into 12 wells of a culture plate, then add cells on top.` / `> This is a practice copy. Nothing
    you do here touches plans in the real Transfer Designer. Follow the orange ring; the tutorial
    moves on once each step is done.`
@@ -186,9 +222,10 @@ minutes; starting plan `empty`.
    like.` / `1. Click the bold **Plate1** above its wells.` / `2. Type \`Culture plate\` and press
    [Enter].` / `> The Biomek files still use Plate1. A labware sheet in the files matches up the
    two names.` Ring: Plate1's labware heading. Done: Plate1 has a labware label.
-4. **Open Start.** `The column on the right is the run, top to bottom: **Start**, then the stages,
-   then **End**.` / `**Start** is what's in the wells before the run: the stocks you pipette in by
-   hand.` / `Click **Start**.` Ring: Start's entry. Done: Start is open.
+4. **Start.** `The column on the right is the run, top to bottom: **Start**, then the stages, then
+   **End**.` / `**Start** is open now, marked **Shown on deck**. It's what's in the wells before the
+   run: the stocks you pipette in by hand.` / `Press **Next**.` Ring: Start's entry. (No done: a new
+   plan opens with Start open, so there's nothing to do.)
 5. **Add the components.** `A **component** is a liquid you put on the deck. Each gets its own
    color.` / `1. In the Start card, click **+ New**.` / `2. Type \`Base media\`, press [Enter].` /
    `3. A new box opens: type \`Cells\`, press [Enter].` / `4. Press [Enter] on the empty box to
@@ -198,7 +235,7 @@ minutes; starting plan `empty`.
    keyboard (there's no box: it shows beside your cursor), then click the trough.` Checklist:
    `Trough 1: \`6000\` µL Base media` (Res1 1 starts with at least 5000 µL of it), `Trough 2:
    \`3000\` µL Cells` (Res1 2, at least 2500 µL). `> Enter what you'll really pipette in. A trough
-   keeps 2000 µL the tips can't reach (dead volume), and the page counts it for you. Too much?
+   keeps {dead} µL the tips can't reach (dead volume), and the page counts it for you. Too much?
    Press **Undo**.` Ring: Res1 1 until it's done, then Res1 2. Done: both checklist items.
 7. **Open and rename the first stage.** `A **stage** is a group of transfers that share pipetting
    settings. The Biomek may do a stage's transfers in any order, so anything that must happen first
@@ -229,19 +266,18 @@ minutes; starting plan `empty`.
 12. The save step.
 13. The write step.
 14. **You've planned a run.** `On a real run, you'd take the zip to the Biomek PC:` / `1. Unzip it
-    into \`C:\Users\Beckman Coulter\Desktop\Ento\\\`.` (the folder is `BASE_FOLDER`,
-    `config/paths.js`) / `2. Point the general-purpose method's setup worklist at the folder's
+    into \`{folder}\`.` / `2. Point the general-purpose method's setup worklist at the folder's
     \`Setup.csv\`.` / `3. Set up the deck using **Records/Labware sheet.pdf** from the zip.` / `4.
     Run it in **simulation** first, then for real.` / `! Practice zips are only for trying out
-    simulation. Don't run them on the instrument.` / `Next: **Checking your plan**, which carries on
-    from this plan.`
+    simulation. Don't run them on the instrument.` / `Next: **Checking your plan**, which starts
+    from a plan like this one.`
 
 ### Tutorial 2, `checking`
 Title `Checking your plan`; summary `Read a well's contents, change volumes, catch and fix
 problems, and spot possible contamination.`; 10 minutes; starting plan `firstRunDone`.
 
 0. **Checking your plan.** `This tutorial starts from the plan you made in **Your first run**: Base
-   media then Cells into 12 wells. About 10 minutes.` / `You'll see what a well holds, change a
+   media then Cells into 12 wells.` / `You'll see what a well holds, change a
    volume, meet the problems the page catches and how to fix them, and see where tips could carry
    one liquid into another.`
 1. **What a well holds.** `Point at plate well **B2** (no click). A card shows:` / `- each
@@ -266,16 +302,19 @@ problems, and spot possible contamination.`; 10 minutes; starting plan `firstRun
    plate B2 is 120 µL.
 4. **Overfill a well.** `The page catches volumes that won't work. Try one:` / `1. Click the
    **Cells** stage in the column.` / `2. Type \`300\`, click trough **2**, then click plate well
-   **B2**.` / `B2 now holds 470 µL, more than the 360 µL a plate well can hold. This is an
-   **overfill**.` / `You'll see:` / `- a **red ring and a red bar** on B2;` / `- a **red message**
+   **B2**.` / `B2 now holds N µL, more than the {capacity} µL a plate well can hold. This is an
+   **overfill**.` / (N: `totalAtEnd` of plate B2, plus 300 while stage 2 has no 300 µL transfer into
+   B2, so it reads the same before and after the transfer is added) / `You'll see:` / `- a **red ring and a red bar** on B2;` / `- a **red message**
    at the bottom of the page;` / `- **1 problem** in the count above the deck.` Ring: the problem
    count once it's above 0; else Res1 2 while stage 2 is open; else stage 2's entry. Keep clear: the
    plate. Done: the problem count is above 0.
 5. **Undo it.** `Press **Undo** (or [Ctrl]+[Z]). The count goes back to **No problems**.` / `> Undo
    works for everything, including **Remove** buttons, which act without asking.` Ring: `undo`.
    Done: the problem count is 0.
-6. **Draw into the dead volume.** `A trough keeps 2000 µL the tips can't reach. Trough 2 started
-   with 3000 µL and the cells use 600, so only 400 µL is left above the dead volume.` / `With the
+6. **Draw into the dead volume.** `A trough keeps {dead} µL the tips can't reach. Trough 2 started
+   with S µL and the cells use U µL, so only R µL is left above the dead volume.` / (S:
+   `totalAfterStage` of Res1 2 at 0; U: the total of stage 2's transfers from Res1 2 into the plate;
+   R: S − U − {dead}) / `With the
    **Cells** stage open, type \`500\`, click trough **2**, then click the empty trough **5**.` /
    `Trough 2 gets a **red ring and X**: a transfer asks for more than it can reach. Point at it to
    read how much is missing.` Ring: Res1 2. Done: the problem count is above 0 and stage 2 has a
@@ -306,7 +345,8 @@ problems, and spot possible contamination.`; 10 minutes; starting plan `firstRun
     until its dispense is Non-Contact, then Res1 2 while End is open, else End's entry. Done: stage
     2's dispense mode is Non-Contact (`modeOf`).
 11. **Follow a well through the run.** `Click **Start**, then each stage in turn, pointing at trough
-    **2** each time: 4000 µL at Start, still 4000 after Base media, 3400 after Cells.` / `Only the
+    **2** each time: A µL at Start, still B after Base media, C after Cells.` / (A, B, C:
+    `totalAfterStage` of Res1 2 at 0, 1 and 2) / `Only the
     end of each stage is shown, because within a stage the Biomek chooses its own order.` / `Press
     **Next** when you're done.` Ring: Start's entry.
 12. **Your plan checks out.** `Before writing files, check:` / `- the count says **No problems**;` /
@@ -320,7 +360,7 @@ spot contamination.`; 15 minutes; starting plan `conditionStocks`.
 
 Its conditions, used below: A1 `Control`, A2 `Glucose`, A3 `Yeast`, A4 `Both`, on Deep1.
 
-0. **Making conditions.** `This tutorial plans a fuller experiment. About 15 minutes.` / `Res1
+0. **Making conditions.** `This tutorial plans a fuller experiment.` / `Res1
    already holds four stocks: **Base media**, **Glucose** and **Yeast extract** (each 50 g/L), and
    **Cells**. You'll mix four conditions in a deep-well plate, put each into three plate wells,
    then add cells:` / `- **Control**: 1000 µL Base media` / `- **Glucose**: 800 µL Base media + 200
@@ -338,14 +378,15 @@ Its conditions, used below: A1 `Control`, A2 `Glucose`, A3 `Yeast`, A4 `Both`, o
 3. **A stage that mixes.** `1. ` NEW_STAGE_HOW ` New tips, since this is a different stock.` / `2.
    In its **✎** box, name it \`Glucose\`.` / `3. Under **Dispense**, tick **Mix**, to blend the
    glucose into the media.` / `4. Press **Save**.` / `> The mixed wells will get a **yellow ⟳**: a
-   BC230 tip mixes at most 200 µL, only part of a 1000 µL well. That's a warning, not a problem;
-   BC1070 tips would mix more.` Ring: `endSeam` until stage 2 starts new tips, then stage 2's ✎.
+   {tip} tip mixes at most {mixLimit} µL, only part of a 1000 µL well. That's a warning, not a
+   problem; a larger tip type, chosen with the ✎ on the tip heading, would mix more.` Ring: `endSeam` until stage 2 starts new tips, then stage 2's ✎.
    Done: stage 2 starts new tips, its name contains `gluc`, and it mixes after dispensing.
 4. **Add the glucose.** `1. Type \`200\`, click trough **2** (Glucose), then click **A2**.` / `2.
    Type \`100\`, click trough **2**, then click **A4**.` Checklist (inline): `A2`, `A4` (stage 2
    has a transfer from Res1 2 into each). Ring: Res1 2. Done: both.
-5. **Now yeast extract, on your own.** `1. Add a stage with new tips above **End**, name it \`Yeast
-   extract\`, tick **Mix** under **Dispense**, **Save**.` / `2. \`200\` µL from trough **3** into
+5. **Now yeast extract, on your own.** `1. Add a stage with new tips above **End** and name it
+   \`Yeast extract\`. **Mix** under **Dispense** is already ticked: a new stage copies the settings
+   of the stage before it. Press **Save**.` / `2. \`200\` µL from trough **3** into
    **A3**.` / `3. \`100\` µL from trough **3** into **A4**.` Checklist (inline): `Stage` (stage 3
    starts new tips, its name contains `yeast`, it mixes after dispensing), `A3`, `A4` (transfers
    from Res1 3). Ring: `endSeam` until stage 3 starts new tips; stage 3's ✎ until its stage item is
@@ -389,10 +430,10 @@ Its conditions, used below: A1 `Control`, A2 `Glucose`, A3 `Yeast`, A4 `Both`, o
     cells/cm².` / `> For wells that aren't in one block, hold [Ctrl] and click each one: the source
     stays chosen until you press [Escape].` Ring: Res1 4. Keep clear: the plate. Done: N is 12 or
     more.
-12. **Choose the tips.** `Each tip group's heading says what tips it loads, like \`New tips · BC230 ·
+12. **Choose the tips.** `Each tip group's heading says what tips it loads, like \`New tips · {tip} ·
     4 tips\`.` / `1. Click the **✎** on the Cells stage's tip heading.` / `2. Under **Probes**, click
-    **8**.` / `3. Press **Save**.` / `> More probes run faster but use more tips. **BC230** tips hold
-    up to 230 µL, **BC1070** up to 1070 µL; bigger transfers are split into trips for you.` Ring: the
+    **8**.` / `3. Press **Save**.` / `> More probes run faster but use more tips. **Tip type** sets the
+    tips' size; a transfer bigger than a tip holds is split into trips for you.` Ring: the
     editing box while open, else stage 5's `tipPencil`. Done: stage 5's tip change loads 8 probes.
 13. **Walk through the run.** `1. Bring out **Conditions** again, so you can see all three labware.`
     / `2. Click **Start**, then each stage in turn, pointing at a few wells: the deck shows them
@@ -427,7 +468,7 @@ media | Glucose | Yeast extract`, as text with a tab between cells and a line br
 (blank cells empty), as Excel copies a table.
 
 0. **Transfer tables.** `In **Making conditions** you built the conditions transfer by transfer. A
-   **transfer table** builds them all from one table you paste from Excel. About 10 minutes.` /
+   **transfer table** builds them all from one table you paste from Excel.` /
    `Res1 already holds **Base media**, **Glucose** and **Yeast extract**. You'll make the same four
    conditions as before, in a deep-well plate.`
 1. **Name the wells to fill.** `A transfer table finds its wells by their names, so name them
@@ -463,8 +504,9 @@ media | Glucose | Yeast extract`, as text with a tab between cells and a line br
    `2. Click the **1 Table** pill at its top.` / `3. In the **Both** row, click a cell, type the new
    amount and press [Enter].` / `4. Press **Next**, **Next**, then **Update**.` Checklist (inline):
    `Base media 700`, `Glucose 150`, `Yeast extract 150` (the volume, in the table's stage for that
-   stock, of its transfer into Deep1 A4). `> With Excel, change the sheet and paste it again:
-   **Paste a different table** on the Table step.` Ring: `dialogMain` while the wizard is open,
+   stock, of its transfer into Deep1 A4). `> The wizard takes one paste. To use a changed Excel
+   sheet instead, remove this table (**Remove** in its wizard) and paste the sheet into a new
+   transfer table.` Ring: `dialogMain` while the wizard is open,
    else the table's `tablePencil`. Done: all three.
 6. **Pipetting on a table's stages.** `A table's stages take pipetting settings like any other.` /
    `1. Open the **Glucose** stage and click the **✎** beside its name.` / `2. Under **Dispense**,
@@ -472,8 +514,8 @@ media | Glucose | Yeast extract`, as text with a tab between cells and a line br
    The tip heading's ✎ sets each stage's tip type and probes, as in **Making conditions**.` Ring:
    the Glucose stage's ✎ (the ring rule above, for the stage whose name contains `gluc`). Done: that
    stage mixes after dispensing.
-7. **That's a transfer table.** `The same table works for any number of conditions and stocks: add
-   rows and columns in Excel and paste again.` / `Next: **Randomizing a plate**.` / `> A column can
+7. **That's a transfer table.** `The same kind of table works for any number of conditions and
+   stocks: one row per well name, one column per stock.` / `Next: **Randomizing a plate**.` / `> A column can
    also be named after a well name rather than a stock, to draw from the wells with that name.
    That's useful for a premix made earlier in the run.`
 
@@ -483,7 +525,7 @@ and keep the well map.`; 10 minutes; starting plan `conditionMedia`.
 
 0. **Randomizing a plate.** `Plate position can bias results: edge wells dry faster, and a gradient
    across the deck can follow the layout. A **randomization** places each condition in random
-   wells, and records where. About 10 minutes.` / `Deep1, named Conditions, already holds four
+   wells, and records where.` / `Deep1, named Conditions, already holds four
    condition media, and Res1 trough 1 holds PBS. You'll put 12 replicates of each condition in
    random inner wells of a plate, with PBS in the 12 left over.`
 1. **Add a randomization.** `1. Click **Plate1** in the tray to bring out a culture plate.` / `2.
@@ -495,8 +537,9 @@ and keep the well map.`; 10 minutes; starting plan `conditionMedia`.
 2. **Pick the sources.** `The card's **Sources** tab is open, so clicks on the deck pick sources.` /
    `1. Drag across Conditions **A1** to **A4**: the four conditions.` / `2. Click Res1 trough **1**
    (PBS).` / `3. In PBS's row, press **Filler**. A filler fills whatever wells the replicates leave
-   over.` Checklist (inline): `4 conditions` (the card has at least 4 sources that aren't filler),
-   `PBS as filler` (a filler source whose name contains `PBS`). `> Click a source again to take it
+   over.` Checklist (inline): `4 conditions` (the card has sources named `Control`, `With glucose`, `With
+   yeast` and `Both`, none of them filler), `PBS as filler` (a filler source whose name contains
+   `PBS`). `> Click a source again to take it
    out.` Ring: the randomization's ✎ while its card isn't open; Deep1 A1 while it has fewer than 4
    non-filler sources; the PBS source's `cardFiller` while PBS isn't a filler (or Res1 1 while PBS
    isn't a source). Done: both, with the card open.
@@ -539,9 +582,11 @@ and keep the well map.`; 10 minutes; starting plan `conditionMedia`.
    order reshuffles, even with the same seed.`
 
 ## 7. Configuration
-None: the tutorials' text, numbers and names are the tutorials themselves, not settings. The
-folder named in tutorial 1's last step is `BASE_FOLDER` (`config/paths.js`), read there, not
-written out.
+The tutorials' own text, plans and numbers (volumes to type, wells, names) are the tutorials
+themselves, not settings. The values from `config/` that steps mention are read from there, never
+copied (section 6's `{dead}`, `{capacity}`, `{tip}`, `{mixLimit}`, `{folder}`): `LABWARE_TYPES`
+(`config/labware-types.js`, through `deck`), `TIP_TYPES` and `MIX_VOLUME_LIMITS`
+(`config/tip-types.js`), `BASE_FOLDER` (`config/paths.js`).
 
 ## 8. The REPL
 A `tutorial` topic in `scripts/repl.js` loads `TUTORIALS`, `stepState` and the helpers; its
@@ -550,26 +595,32 @@ examples list each tutorial's titles and show `stepState` for tutorial 1's step 
 
 ## 9. Test cases
 In `tutorial.test.js`, one `describe("tutorial", …)`:
-- **The tutorials:** five, in the order of section 6, with unique IDs; each starts with a step
-  without `done` and ends with one; each names a starting plan that `tutorial-plans` makes; every
-  step has a title and a body that renders (calling it with a view made from its starting plan
-  doesn't throw).
-- **Markup:** every body, at every step, with its tutorial's starting plan's view, uses only the
-  marks of section 3 (no `<`, no unknown block start).
-- **Each step's `done` and `target`**, for each tutorial: a view of its starting plan with nothing
-  done gives `done: false` for every step that has `done`; and for each such step, a view built by
-  doing that step's edits with the transfer designer's logic (e.g. for tutorial 1, step 6,
-  `addToWells` of 6000 µL of Base media into Res1 1 and 3000 µL of Cells into Res1 2) gives
-  `done: true`. Steps whose `done` reads page facts (`labwareOut`, `open`, `pointedWell`,
-  `dialog`, `randomizationCard`, `message`, `problemCount`) are tested with views setting those.
+- **The tutorials:** five, in the order of section 6, with unique IDs; each starts and ends with a
+  step without `done`; each names a starting plan that `tutorial-plans` makes; every step has a
+  title, and its body parses (called with a view made from its starting plan, it doesn't throw).
+- **`parseMarkup`:** each block kind and each inline mark, alone and together; a table with empty
+  cells; text holding `<` or `&` stays text; a line starting with none of the block marks is a
+  paragraph.
+- **No HTML in the steps:** no body, at any step, with its tutorial's starting plan's view, contains
+  `<`.
+- **Each step's `done` and `target`**, for each tutorial: on a view of its starting plan, every step
+  with `done` gives `false`, except where section 6 says it's done at once; and for each such step,
+  a view built by doing that step's edits with the transfer designer's logic (e.g. for tutorial 1,
+  step 6, `addToWells` of 6000 µL of Base media into Res1 1 and 3000 µL of Cells into Res1 2) gives
+  `true`. Steps whose `done` reads page facts (`labwareOut`, `open`, `pointedWell`,
+  `addingComponent`, `dialog`, `randomizationCard`, `message`, `problemCount`) are tested with views
+  setting those. A step without `done` gives its target whatever the view.
+- **Tutorial 3, step 5:** on the plan as step 4 leaves it, adding a stage with new tips at the end
+  gives a stage that already mixes after dispensing (the copying the step's text relies on).
 - **Sticky:** `stepState` with `wasDone` `true` gives `done: true` for a sticky step whose `done` is
   now `false`, and `false` for a step that isn't sticky.
 - **A throwing step:** a step whose `body`, `target` or `done` throws gives `done: false`, `target:
-  null`, body `""`.
-- **Helpers:** each, on small plans, including names compared without regard to capitals and
-  spaces.
-- **Wording that names the page:** each label a step names in bold that is a button or field on the
-  page (`Biomek files`, `Write files`, `Save`, `Undo`, `Show transfers ▸`, `Paste table`, `+ New`,
-  `Randomize`, `Update`, `All sources`, `Wells to fill`, `Filler`, `Shown on deck`) is checked
-  against the page's specification by hand when the page changes (section 10 of `tutorial-page.md`
-  lists them for the by-hand check); the browser walk-throughs check them for real.
+  null`, an empty body.
+- **Helpers:** each, on small plans, including stages counted from 1, names compared without regard
+  to capitals and spaces, `startsNewTips` for stage 1 and for a later stage with and without a tip
+  change, and `tracesAtEnd` on a plan with a known trace.
+- **Configuration:** the bodies that name `{dead}`, `{capacity}`, `{tip}`, `{mixLimit}` and
+  `{folder}` show the values from `config/` (worked out from the config files in the test, never
+  written as numbers).
+- The labels the steps name on the page are checked by the browser walk-throughs and by hand
+  (`tutorial-page.md`, section 9, which lists them).
