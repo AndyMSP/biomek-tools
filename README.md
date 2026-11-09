@@ -3,14 +3,17 @@ Tools for developing methods on the Biomek i5 with a Span-8 pod.
 - **Randomizer** (`randomizer.html`): places samples in random wells of one 96-well plate.
 - **Transfer Designer** (`transfer-designer.html`): plans transfers by clicking and dragging between
   wells, in stages, and writes the Biomek files for the general-purpose method.
+- **Transfer Designer Tutorial** (`transfer-designer-tutorial-v….html`): guided tutorials on the
+  Transfer Designer's own page.
 
 ## Setup
 Install [Node.js](https://nodejs.org/) (version 20 or later). Then, in the project folder, run
 ```
 npm ci
 ```
-once. This installs esbuild, exactly the version recorded in `package-lock.json`. esbuild is needed
-only for building (see below); the tests and the development server need nothing else. (To add or
+once. This installs esbuild and Playwright, exactly the versions recorded in `package-lock.json`.
+esbuild is needed only for building (see below), and Playwright only for the browser walk-throughs;
+the tests and the development server need nothing else. (To add or
 upgrade a dependency, use `npm install <name>` instead; see CLAUDE.md.)
 
 ## Running the tests
@@ -18,6 +21,18 @@ upgrade a dependency, use `npm install <name>` instead; see CLAUDE.md.)
 npm test
 ```
 This runs every `*.test.js` file using Node's built-in test runner.
+
+```
+npm run test:browser
+```
+This runs the tutorials' browser walk-throughs (`tests/browser/tutorial.walk.js`;
+`src/tools/tutorial/tutorial-page.md`, section 9): with Playwright, it opens the built tutorial file
+in Chrome and does every step of every tutorial as a user would, at two window sizes, checking that
+the ring is on the right thing, that each step is seen to be done, and that the page throws no
+error. It builds first if `dist/` has no tutorial file. It uses Google Chrome if it's installed;
+otherwise run `npx playwright install chromium` once, to get Playwright's own browser. Add a
+tutorial's number to walk only that one (`npm run test:browser -- 3`), and `--shots` to save a
+screenshot after each step in `dist/walk-shots/`.
 
 ## Trying out the modules
 ```
@@ -40,11 +55,16 @@ This starts a small web server on this computer. Open a page at its address in E
 Browsers won't load the pages' modules from a file opened directly, so during development the pages
 have to be served this way. Press Ctrl+C to stop the server.
 
+The tutorial isn't served unbuilt: the build joins the Transfer Designer's page and the tutorial's
+guide panel. To try it, run `npm run build` and open `dist/transfer-designer-tutorial-v….html`
+(roadmap, "Technical debt").
+
 ## Building the tools
 ```
 npm run build
 ```
-This makes one self-contained HTML file per tool in `dist/`, named by the build's version (ADR 0015;
+This makes one self-contained HTML file per tool in `dist/` (the randomizer, the Transfer Designer
+and the Transfer Designer Tutorial; `scripts/build-tools.md`), named by the build's version (ADR 0015;
 `scripts/build-version.md`): `transfer-designer-v0.2.0-dev.488.html` between releases, from `main`,
 and `transfer-designer-v0.2.0.html` for a release; the page shows the same version at the bottom
 right. Each build first clears the earlier builds out of `dist/`, so the newest is the only one
@@ -60,8 +80,8 @@ straight after each release; step 5).
 1. On a branch, add an entry to `CHANGELOG.md`. Open a pull request and merge it.
 2. On `main`, pull, then tag the release and push the tag: `git tag v0.2.0`, then
    `git push origin v0.2.0`. (The build names a release only at its tag.)
-3. Run `npm ci` and `npm run build`; it makes `dist/transfer-designer-v0.2.0.html` and
-   `dist/randomizer-v0.2.0.html`.
+3. Run `npm ci` and `npm run build`; it makes `dist/transfer-designer-v0.2.0.html`,
+   `dist/transfer-designer-tutorial-v0.2.0.html` and `dist/randomizer-v0.2.0.html`.
 4. On GitHub, under Releases, choose "Create a new release":
    - Tag: choose the tag you pushed (e.g. `v0.2.0`).
    - Title: the version. Notes: what changed, written for lab users.

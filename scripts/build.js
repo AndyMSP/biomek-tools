@@ -5,8 +5,10 @@
 // Each file is named by the build's version, worked out from git by build-version.js (ADR 0015),
 // e.g. dist/transfer-designer-v0.2.0-dev.488.html, and earlier builds of the tools are cleared out
 // of dist/ first, so only the newest is there to send.
-// For each tool, esbuild bundles the page script and every module it imports into one ordinary script,
-// and single-file-html.js puts that script and the page's CSS inside the page's HTML.
+// For each file (BUILD_ENTRIES, build-tools.js), esbuild bundles the page script and every module it
+// imports into one ordinary script, and single-file-html.js puts that script and the page's CSS
+// inside the page's HTML. Since 2026-11-08 the files include the tutorial, built from the transfer
+// designer's page with the guide panel over it (tutorial-page.md, section 3).
 
 import { build } from "esbuild";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -14,6 +16,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { singleFileHtml } from "./single-file-html.js";
 import { buildVersion, fileNameFor, readGitFacts } from "./build-version.js";
+import { BUILD_ENTRIES, isBuildOf } from "./build-tools.js";
 
 // The project's folder (the one above scripts/).
 const PROJECT_FOLDER = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -21,9 +24,8 @@ const PROJECT_FOLDER = resolve(fileURLToPath(new URL("..", import.meta.url)));
 // Where the built files go. dist/ is listed in .gitignore, so it is never committed.
 const OUTPUT_FOLDER = resolve(PROJECT_FOLDER, "dist");
 
-// The tools to build. Each tool's folder, src/tools/<name>/, holds <name>.html, <name>.css and
-// <name>-page.js. A new tool is built by adding its name here.
-const TOOLS = ["randomizer", "transfer-designer"];
+// The folder BUILD_ENTRIES' paths are relative to.
+const TOOLS_FOLDER = resolve(PROJECT_FOLDER, "src", "tools");
 
 // The version is worked out before anything is built, so a check that fails stops the build before
 // any file is written or removed.
@@ -31,8 +33,8 @@ const version = workOutVersion();
 
 await mkdir(OUTPUT_FOLDER, { recursive: true });
 await clearEarlierBuilds();
-for (const tool of TOOLS) {
-  const outputFile = await buildTool(tool);
+for (const entry of BUILD_ENTRIES) {
+  const outputFile = await buildEntry(entry);
   console.log(`Built ${outputFile}`);
 }
 
@@ -47,40 +49,33 @@ function workOutVersion() {
   }
 }
 
-// Removes every earlier build of the tools from dist/: files named <tool>.html or <tool>-v*.html.
-// Other files in dist/ are left alone.
+// Removes every earlier build from dist/: files named <name>.html or <name>-v*.html for each entry
+// of BUILD_ENTRIES. Other files in dist/ are left alone.
 async function clearEarlierBuilds() {
   for (const fileName of await readdir(OUTPUT_FOLDER)) {
-    if (TOOLS.some((tool) => isBuildOf(tool, fileName))) {
+    if (BUILD_ENTRIES.some((entry) => isBuildOf(entry.name, fileName))) {
       await rm(resolve(OUTPUT_FOLDER, fileName));
     }
   }
 }
 
-// True if a file name is a build of the tool, e.g. isBuildOf("randomizer", "randomizer-v0.1.0.html").
-function isBuildOf(tool, fileName) {
-  return (
-    fileName === `${tool}.html` ||
-    (fileName.startsWith(`${tool}-v`) && fileName.endsWith(".html"))
-  );
-}
-
-// Builds one tool into dist/ under its versioned name and returns that file's path,
-// e.g. buildTool("randomizer") → ".../dist/randomizer-v0.2.0-dev.488.html".
-async function buildTool(tool) {
-  const toolFolder = resolve(PROJECT_FOLDER, "src", "tools", tool);
-  const html = await readFile(resolve(toolFolder, `${tool}.html`), "utf8");
-  const css = await readFile(resolve(toolFolder, `${tool}.css`), "utf8");
-  const script = await bundleScript(resolve(toolFolder, `${tool}-page.js`));
+// Builds one entry of BUILD_ENTRIES into dist/ under its versioned name and returns that file's
+// path, e.g. for the randomizer's entry → ".../dist/randomizer-v0.2.0-dev.488.html". Its CSS files
+// are joined in order with a blank line, and its changeHtml, if any, is applied to the HTML first.
+async function buildEntry(entry) {
+  const rawHtml = await readFile(resolve(TOOLS_FOLDER, entry.html), "utf8");
+  const html = entry.changeHtml === null ? rawHtml : entry.changeHtml(rawHtml);
+  const cssParts = await Promise.all(entry.css.map((path) => readFile(resolve(TOOLS_FOLDER, path), "utf8")));
+  const script = await bundleScript(resolve(TOOLS_FOLDER, entry.script));
 
   const page = singleFileHtml({
     html,
-    css,
+    css: cssParts.join("\n\n"),
     script,
-    stylesheetName: `${tool}.css`,
-    scriptName: `${tool}-page.js`,
+    stylesheetName: entry.stylesheetName,
+    scriptName: entry.scriptName,
   });
-  const outputFile = resolve(OUTPUT_FOLDER, fileNameFor(tool, version));
+  const outputFile = resolve(OUTPUT_FOLDER, fileNameFor(entry.name, version));
   await writeFile(outputFile, page, "utf8");
   return outputFile;
 }

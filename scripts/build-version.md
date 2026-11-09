@@ -83,9 +83,12 @@ The build stops, with a message saying what to do (section 5), when:
 - Reads the facts once and works out the version before building anything; a check that fails stops
   the build before any file is written.
 - **Clears earlier builds**: removes every file in `dist/` named `<tool>.html` or `<tool>-v*.html`
-  for each tool in `TOOLS`, so `dist/` holds only the builds just made (Andy, 2026-11-02: the wrong
+  for each file the build makes (`BUILD_ENTRIES`, `build-tools.md`; until 2026-11-08 a list of tool
+  names, `TOOLS`), so `dist/` holds only the builds just made (Andy, 2026-11-02: the wrong
   file was sent because old and new builds sat side by side). Other files in `dist/` are left alone.
-- Writes each tool to `dist/` under `fileNameFor(tool, version)`, and prints each path, as now.
+- Writes each entry of `BUILD_ENTRIES` to `dist/` under `fileNameFor(name, version)`, and prints
+  each path, as now. Since 2026-11-08 the entries include the tutorial, built from the transfer
+  designer's page (`tutorial-page.md`, section 3).
 - Gives each page its version: the bundler replaces the name `BUILD_VERSION` in the page scripts with
   `full` as a text constant (esbuild's `define`), so the built file holds it.
 

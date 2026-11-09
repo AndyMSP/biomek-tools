@@ -510,6 +510,15 @@ Last updated: 2026-11-08
   Biomek file changes. **Built (#147, 2026-11-08)**: the CSS and the tag in the open entry's
   heading; from the browser check, a selected open card keeps the look, and the tag is centered on
   the card's edge to clear the ✎; checked in headless Chrome. Still to check by Andy.
+- **Decided: tutorials** (Andy, 2026-11-08; item 29, below): a series of five guided tutorials
+  over the transfer designer's page, in a file of their own, shaped in a preview on 2026-11-08.
+  **Specified** (Draft, 2026-11-08, hands-off workflow; ADR 0022): `tutorial.md`,
+  `tutorial-plans.md`, `tutorial-page.md` and `transfer-designer-page.md` section 17.
+  **Built (#149, 2026-11-08)**: `tutorial` and `tutorial-plans` (code, tests, REPL topics), the
+  guide panel (`tutorial-page.js`, `tutorial.css`), the page's tutorial hooks, `build-tools` and a
+  third built file, `transfer-designer-tutorial-v….html`; `npm run test:browser` walks every step of
+  every tutorial in Chrome at two window sizes. From the build, `tutorial.md`'s test list names the
+  two steps of tutorial 2 that are done on their starting plan. Still to check by Andy.
 - **Decided: the plan in the Records folder** (Andy, 2026-11-08; item 30, below; ADR 0020
   amended): Write files also puts the plan file, as Save writes it, in the zip's Records folder as
   `<run folder> plan.json`, so Open can reopen a run from its folder. **Specified** (Draft,
@@ -1195,9 +1204,31 @@ added on 2026-10-28 (Andy).
       its own branch and pull request. Layout only: the plan, plan files and Biomek files don't
       change.
     Built (#147).
-
-(29 is the tutorials, PR #149.)
-
+29. **Tutorials** (Andy, 2026-11-08; hands-off workflow): guided tutorials that walk a new user
+    through the transfer designer, step by step, on the real page. Shaped with Andy in a preview on
+    2026-11-08 (its own artifact, "Preview: Transfer Designer Tutorial"):
+    - **A tool of its own**, built into a file of its own, holding the transfer designer's page and
+      a **guide panel**: each step's text, a ring around what to use next, and a check that moves on
+      once the step is done. Practice plans are kept in browser storage of their own, so a tutorial
+      never touches a real plan.
+    - **A series that builds up** (Andy: several short tutorials, not one long one), chosen from a
+      menu, each with a starting plan of its own so any can be started first: 1. Your first run;
+      2. Checking your plan (well cards, volumes, problems, possible traces); 3. Making conditions
+      (stages that build on each other, mixing, tips, putting labware away); 4. Transfer tables;
+      5. Randomizing a plate.
+    - **Cell culture examples**, with generic stocks (Andy): Base media, Cells, Glucose, Yeast
+      extract, and conditions named Control, With glucose, With yeast and Both (names start
+      with a letter: Excel reads `+` as a formula).
+    - Practice names start with `Practice`, and the last step says a practice zip is only for
+      trying out simulation.
+    - **Browser walk-throughs** with Playwright, a development dependency (Andy's OK,
+      2026-11-08): `npm run test:browser` does every step of every tutorial in Chrome.
+    - **Specified** (Draft, 2026-11-08, hands-off workflow): ADR 0022; `tutorial.md` (the
+      tutorials and every step), `tutorial-plans.md` (the starting plans), `tutorial-page.md` (the
+      guide panel, the build, the browser walk-throughs); `transfer-designer-page.md` section 17
+      (the page's tutorial hooks and storage names); glossary terms Guide panel, Starting plan,
+      Tutorial.
+    Built (#149).
 30. **The plan in the Records folder** (Andy, 2026-11-08): Write files also puts the plan file in
     the zip's Records folder (item 25), so a run's folder holds everything about the run and the
     user doesn't have to keep the plan file separately. Decided with Andy:
@@ -1330,6 +1361,11 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **The tutorial can't run unbuilt** (2026-11-08, item 29): the build joins the transfer
+  designer's page and the guide panel, adding `data-tutorial` to the page's HTML, so `npm run serve`
+  has no tutorial page. Trying it means `npm run build` first. Doing it properly would mean a small
+  HTML file for the tutorial that the dev server serves, made from the transfer designer's at serve
+  time, without copying it into the repository.
 - **Pasted cells holding tabs or line breaks** (2026-11-05, transfer tables): Excel copies such a
   cell inside double quotes, and `parsePastedTable` (`pasted-table.md`) doesn't read quotes, so the
   cell splits into several cells or rows, and the quotes stay in the text. Transfer tables' cells

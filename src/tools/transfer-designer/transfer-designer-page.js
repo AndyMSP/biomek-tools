@@ -154,19 +154,29 @@ import { isObject } from "../../shared/input-checks/input-checks.js";
 const PAGE_VERSION =
   typeof BUILD_VERSION === "string" ? BUILD_VERSION : `${packageJson.version}-unbuilt`;
 
-// Who saved a plan file: the tool and the build's version (section 5).
-const SAVED_BY = `transfer designer v${PAGE_VERSION}`;
+// True when the page is built as the tutorial: its <html> element has the data-tutorial attribute
+// (section 17; tutorial-page.md, section 3). Read once, as the page script starts.
+const IS_TUTORIAL = document.documentElement.hasAttribute("data-tutorial");
+
+// Who saved a plan file: the tool and the build's version (section 5); the tutorial's plans say
+// they're the tutorial's (section 17).
+const SAVED_BY = `${IS_TUTORIAL ? "transfer designer tutorial" : "transfer designer"} v${PAGE_VERSION}`;
+
+// The names the page keeps things under in the browser's local storage, chosen once: built as the
+// tutorial, names of its own, so practice never reads or writes a real plan, copied items or copied
+// deck, and the reverse (section 17).
+const STORAGE_PREFIX = IS_TUTORIAL ? "biomek-tools transfer designer tutorial" : "biomek-tools transfer designer";
 
 // The key the browser copy of the plan is stored under, in the browser's local storage (section 5).
-const STORAGE_KEY = "biomek-tools transfer designer: plan";
+const STORAGE_KEY = `${STORAGE_PREFIX}: plan`;
 
 // The key the page's copy of copied items is stored under, in the browser's local storage, shared
 // by every tab of the designer (section 7, "Moving and copying").
-const COPIED_ITEMS_KEY = "biomek-tools transfer designer: copied items";
+const COPIED_ITEMS_KEY = `${STORAGE_PREFIX}: copied items`;
 
 // The key the page's deck copy is stored under, in the browser's local storage, shared by every tab
 // of the designer, as copied items are (section 6, "Copying the deck").
-const COPIED_DECK_KEY = "biomek-tools transfer designer: copied deck";
+const COPIED_DECK_KEY = `${STORAGE_PREFIX}: copied deck`;
 
 // Paste deck's tooltip when it can be pressed (section 6, "Copying the deck"). Written only here:
 // refreshMovingWellsControls sets it on every redraw, so the HTML doesn't repeat it.
@@ -333,6 +343,10 @@ let lastingMixProblems = new Map();
 
 // Each drawn well's element, by wellKey, so marks and arrows can find them.
 const wellElements = new Map();
+
+// The well whose contents card is showing, { labware, well }, or null: remembered when the card is
+// shown and forgotten when it's hidden, for the tutorial's view (section 17).
+let pointedWell = null;
 
 // The stage and tip group keys drawn last time, and the first stage of each box ("box-first:"), for
 // the glow (section 7); null before the first drawing, when nothing glows.
@@ -928,6 +942,9 @@ function connectHeaderBoxGuard() {
 
 // One press's share of the guard above.
 function closeHeaderBoxesPressedOutside(event) {
+  if (isTutorialPanelPress(event)) {
+    return;
+  }
   const pressed = (element) => element.contains(event.target);
   if (!elements.biomekBox.hidden && !pressed(elements.biomekBox) && !pressed(elements.biomekFiles)) {
     closeBiomekBox();
@@ -5588,6 +5605,9 @@ function clickItem(item, keys) {
 // Every click on the page, caught first: the click a drag ends with is ignored; a click on an
 // item's handle in the column is handled here (clickItem) instead of by the handle itself.
 function clickInColumn(event) {
+  if (isTutorialPanelPress(event)) {
+    return;
+  }
   if (swallowNextClick) {
     swallowNextClick = false;
     event.preventDefault();
@@ -6284,6 +6304,9 @@ function closeColumnMenu() {
 
 // Closes the column's menu on a press anywhere outside it.
 function closeColumnMenuPressedOutside(event) {
+  if (isTutorialPanelPress(event)) {
+    return;
+  }
   if (columnMenu !== null && !elements.columnMenu.contains(event.target)) {
     closeColumnMenu();
   }
@@ -6374,7 +6397,9 @@ function pickBrush(pick) {
 
 // The "+ New" button, which becomes a text box for a new component's name.
 function createNewComponentButton() {
-  const button = createElement("button", "+ New", "component-chip");
+  // "new-component" marks it for the tutorial's hook (section 17), which finds elements by their
+  // classes and attributes, never by their text.
+  const button = createElement("button", "+ New", "component-chip new-component");
   button.type = "button";
   button.addEventListener("click", () => {
     addingComponent = { text: "" };
@@ -7936,6 +7961,7 @@ function showContentsCard(wellElement) {
     return;
   }
   const end = endOf(wellElement);
+  pointedWell = end;
   const card = elements.contentsCard;
   card.replaceChildren(...contentsCardLines(currentPlan(), end));
   card.hidden = false;
@@ -7952,6 +7978,7 @@ function showContentsCard(wellElement) {
 // Hides the contents card.
 function hideContentsCard() {
   elements.contentsCard.hidden = true;
+  pointedWell = null;
 }
 
 // The contents card's lines for a well (section 6): its label first if it has one, then its name,
@@ -8221,6 +8248,9 @@ function connectWellNaming() {
 // Notes whether a press that isn't with the main button (a right click) found a box open as it
 // started (secondaryPress).
 function notePress(event) {
+  if (isTutorialPanelPress(event)) {
+    return;
+  }
   secondaryPress = event.button === 0 ? null : { foundOpen: somethingOpen() };
 }
 
@@ -9243,6 +9273,9 @@ let pencilJustClosed = null;
 // One press event's share of the guard above: pointerdown decides and shows the refusal, mousedown
 // and click are stopped too so nothing else acts on a refused press.
 function guardEditingBox(event) {
+  if (isTutorialPanelPress(event)) {
+    return;
+  }
   if (pencilJustClosed !== null && event.type === "click") {
     const pencil = pencilJustClosed;
     pencilJustClosed = null;
@@ -9302,6 +9335,9 @@ function endPassedOnPress() {
 // The press's pointerdown: saves an open inline box pressed outside, and passes the click on.
 function guardInlineBox(event) {
   pressPassedOn = false;
+  if (isTutorialPanelPress(event)) {
+    return;
+  }
   if (inlineBox === null || inlineBox.box.contains(event.target)) {
     return;
   }
@@ -9789,4 +9825,301 @@ function createElement(tagName, text = "", className = "") {
 // The element of transfer-designer.html with this id.
 function byId(id) {
   return document.getElementById(id);
+}
+
+// --- The tutorial's hooks (section 17) ---
+
+// True if a press (or its click) is inside the tutorial's guide panel (an element with the
+// data-tutorial-panel attribute): the page's document-wide press handling ignores it, as if it
+// hadn't happened, so the panel can be used whatever the page has open (section 17).
+function isTutorialPanelPress(event) {
+  return event.target instanceof Element && event.target.closest("[data-tutorial-panel]") !== null;
+}
+
+// The savedBy text the page writes in plan files (section 5), so the tutorial's starting plans say
+// the same build, e.g. "transfer designer tutorial v0.2.0-dev.488+3cc65a9".
+export const tutorialSavedBy = SAVED_BY;
+
+// What the page shows now, for the tutorial (tutorial.md, section 3, "The view"), read from the
+// page's own state at the moment of the call. Changes nothing; every list and object is new, so the
+// caller can't change the page's state through them, e.g.
+//   tutorialView().labwareOut → ["Res1", "Plate1"]
+export function tutorialView() {
+  const plan = currentPlan();
+  return {
+    plan,
+    open: currentOpen(),
+    labwareOut: labwareNames().filter((name) => labwareOut.has(name)),
+    message: shownMessage(),
+    problemCount: problemCount(plan),
+    pointedWell: pointedWell === null ? null : { ...pointedWell },
+    editingBox: editingBox === null ? null : { kind: editingBox.kind, key: editingBox.key },
+    addingComponent: addingComponent !== null,
+    // Only the open stage's list is on the page (section 17).
+    transferListsShown: expandedStages.has(currentOpen()) ? [currentOpen()] : [],
+    headerBox: shownHeaderBox(),
+    dialog: shownDialog(),
+    randomizationCard: shownCard(plan),
+  };
+}
+
+// The message bar's { text, kind } ("ok", "note" or "error"), or null while it's empty.
+function shownMessage() {
+  const bar = elements.messageBar;
+  if (bar.hidden || bar.textContent === "") {
+    return null;
+  }
+  const kind = ["ok", "note", "error"].find((name) => bar.classList.contains(name)) ?? null;
+  return { text: bar.textContent, kind };
+}
+
+// Which header box is open: "biomek", "reset" or null.
+function shownHeaderBox() {
+  if (!elements.biomekBox.hidden) {
+    return "biomek";
+  }
+  return elements.resetBox.hidden ? null : "reset";
+}
+
+// The open dialog, as the tutorial's view gives it: the wizard's { kind: "wizard", step, hasTable },
+// the stock dialog's { kind: "stocks", hasTable }, or null.
+function shownDialog() {
+  if (wizard !== null) {
+    return { kind: "wizard", step: wizard.step, hasTable: wizard.draft.table !== null };
+  }
+  if (stockDialog !== null) {
+    return { kind: "stocks", hasTable: stockDialog.table !== null };
+  }
+  return null;
+}
+
+// The open randomization's card, from its draft, as the tutorial's view gives it: { id, tab,
+// sources, fillCount, volumeText, seedText }, each source { name, replicatesText, filler }, named as
+// the card names it (sourceName); null with no card open.
+function shownCard(plan) {
+  if (card === null) {
+    return null;
+  }
+  const { draft } = card;
+  return {
+    id: card.id,
+    tab: draft.tab,
+    sources: draft.sources.map((entry) => ({
+      name: sourceName(plan, card.id, entry),
+      replicatesText: entry.filler ? "" : entry.replicatesText,
+      filler: entry.filler,
+    })),
+    fillCount: draft.fill.length,
+    volumeText: draft.volumeText,
+    seedText: draft.seedText,
+  };
+}
+
+// The element for a tutorial target (tutorial.md, section 3, "Targets"), or null if it isn't on the
+// page now. Found from the page's own records where it keeps them, otherwise by ids, classes and
+// data attributes, never by visible text. Changes nothing, e.g.
+//   tutorialElement({ kind: "well", labware: "Plate1", well: "B2" }) → the B2 button
+export function tutorialElement(target) {
+  const find = TARGET_FINDERS[target?.kind];
+  if (find === undefined) {
+    return null;
+  }
+  const element = find(target);
+  return element instanceof Element && element.isConnected ? element : null;
+}
+
+// How each kind of target is found (tutorialElement).
+const TARGET_FINDERS = {
+  labware: ({ labware }) => labwareBlock(labware),
+  well: ({ labware, well }) => wellElements.get(wellKey({ labware, well })) ?? null,
+  trayChip: ({ labware }) => elements.tray.querySelector(`.labware-chip[data-labware="${cssEscape(labware)}"]`),
+  // The label button, or the text box it turns into while being renamed.
+  labwareHeading: ({ labware }) => labwareBlock(labware)?.querySelector(".labware-heading > :first-child") ?? null,
+  entry: ({ key }) => entryElement(key),
+  stagePencil: ({ id }) => openEntryElement(id)?.querySelector('.edit-button[data-box-kind="stage"]') ?? null,
+  tipPencil: ({ key }) => pencilFor("tip", key),
+  endSeam: () => endSeamElement(),
+  componentPencil: ({ name }) => pencilFor("component", name),
+  newComponent: () => elements.stagesList.querySelector(".new-component-box, .new-component"),
+  showTransfers: ({ id }) => openEntryElement(id)?.querySelector(".toggle-list") ?? null,
+  // The volume button, or the text box it turns into while being changed.
+  transferVolume: (target) => transferRowElement(target)?.querySelector(".volume-button, input") ?? null,
+  transferRemove: (target) => transferRowElement(target)?.querySelector(".remove-transfer") ?? null,
+  editingBox: () => openEditingBoxElement(),
+  button: ({ name }) => headerButton(name),
+  problemCount: () => elements.problemCount,
+  dialog: () => openDialogElement(),
+  dialogMain: () => openDialogMainButton(),
+  tablePencil: ({ id }) =>
+    elements.stagesList.querySelector(`[data-item="${cssEscape(itemKey({ kind: "transferTable", id }))}"] .box-edit`),
+  randomizationPencil: ({ id }) =>
+    elements.stagesList.querySelector(`.randomization[data-entry="${cssEscape(id)}"] .box-edit`),
+  card: ({ part }) => cardPart(part),
+  cardFiller: ({ name }) => cardFillerButton(name),
+};
+
+// A labware's block on the deck, or null while it's put away.
+function labwareBlock(labware) {
+  return elements.labwareArea.querySelector(`.labware[data-labware="${cssEscape(labware)}"]`);
+}
+
+// Start, a stage or End in the Stages column; for a stage inside a closed transfer table's or
+// randomization's box, that box's heading; null if it isn't drawn.
+function entryElement(key) {
+  const entry = elements.stagesList.querySelector(`.entry[data-entry="${cssEscape(key)}"]`);
+  if (entry !== null) {
+    return entry;
+  }
+  const plan = currentPlan();
+  if (!isStage(plan, key)) {
+    return null;
+  }
+  const tableId = transferTableOf(plan, key);
+  if (tableId !== null) {
+    return elements.stagesList.querySelector(
+      `[data-item="${cssEscape(itemKey({ kind: "transferTable", id: tableId }))}"] .randomization-heading`,
+    );
+  }
+  const randomizationId = randomizationOf(plan, key);
+  if (randomizationId !== null) {
+    return elements.stagesList.querySelector(
+      `.randomization[data-entry="${cssEscape(randomizationId)}"] .randomization-heading`,
+    );
+  }
+  return null;
+}
+
+// Stage `id`'s entry while it's the open one (its card), or null.
+function openEntryElement(id) {
+  return elements.stagesList.querySelector(`.entry.is-open[data-entry="${cssEscape(id)}"]`);
+}
+
+// The ✎ that opens the editing box of `kind` for `key`, a component's name compared without regard
+// to capitals or spaces at the ends, or null.
+function pencilFor(kind, key) {
+  const wanted = normalName(key);
+  return (
+    [...elements.stagesList.querySelectorAll(`.edit-button[data-box-kind="${kind}"]`)].find(
+      (pencil) => normalName(pencil.dataset.boxKey) === wanted,
+    ) ?? null
+  );
+}
+
+// A name in lower case without spaces at its ends, for comparing names, e.g. " Cells " → "cells".
+function normalName(name) {
+  return String(name).trim().toLowerCase();
+}
+
+// The seam between tip groups just above End: the element just before End's entry.
+function endSeamElement() {
+  const end = elements.stagesList.querySelector(`.entry[data-entry="${END}"]`);
+  const seam = end?.previousElementSibling ?? null;
+  return seam !== null && seam.classList.contains("group-seam") ? seam : null;
+}
+
+// The row, in open stage `id`'s shown transfer list, of its first transfer from `source` into
+// `destination` (each { labware, well }), or null.
+function transferRowElement({ id, source, destination }) {
+  // True if two wells ({ labware, well }) are the same well.
+  const sameWell = (a, b) => a.labware === b.labware && a.well === b.well;
+  const transfer = transfersIn(currentPlan(), id).find(
+    (candidate) => sameWell(candidate.source, source) && sameWell(candidate.destination, destination),
+  );
+  if (transfer === undefined) {
+    return null;
+  }
+  return (
+    openEntryElement(id)?.querySelector(`.transfer-row[data-position="${transfer.position}"]`) ?? null
+  );
+}
+
+// The open editing box's element, or null.
+function openEditingBoxElement() {
+  if (editingBox === null) {
+    return null;
+  }
+  return editingBox.element ?? document.querySelector(".editing-box");
+}
+
+// A header or deck bar button by the tutorial's name for it: "experimentName" (the heading's name
+// button, or its text box while open), "save", "biomekFiles", "writeFiles" or "undo".
+function headerButton(name) {
+  const buttons = {
+    experimentName: () => elements.experimentHeading.firstElementChild,
+    save: () => elements.save,
+    biomekFiles: () => elements.biomekFiles,
+    writeFiles: () => elements.writeFiles,
+    undo: () => elements.undo,
+  };
+  return Object.hasOwn(buttons, name) ? buttons[name]() : null;
+}
+
+// The open dialog's element (the wizard or the stock dialog), or null.
+function openDialogElement() {
+  if (wizard !== null) {
+    return elements.wizard;
+  }
+  return stockDialog === null ? null : elements.stockDialog;
+}
+
+// The open dialog's main button (Next, Add or Update), or null.
+function openDialogMainButton() {
+  if (wizard !== null) {
+    return elements.wizard.querySelector(".wizard-main");
+  }
+  return stockDialog === null ? null : (stockDialog.mainButton ?? null);
+}
+
+// The open randomization card's elements the tutorial names, by their focus keys.
+const CARD_PARTS = {
+  name: "name",
+  tabFill: "tab:fill",
+  allReplicates: "all-sources",
+  volume: "volume",
+  seed: "seed",
+  run: "run",
+};
+
+// A part of the open randomization's card ("name", "tabFill", "allReplicates", "volume", "seed" or
+// "run"), or "whole", the card itself; null with no card open.
+function cardPart(part) {
+  if (card === null || card.element === null) {
+    return null;
+  }
+  if (part === "whole") {
+    return card.element;
+  }
+  if (!Object.hasOwn(CARD_PARTS, part)) {
+    return null;
+  }
+  return card.element.querySelector(`[data-focus-key="${cssEscape(CARD_PARTS[part])}"]`);
+}
+
+// The Filler button of the open card's source named `name` (as the card names it, compared without
+// regard to capitals or spaces at the ends), or null.
+function cardFillerButton(name) {
+  if (card === null || card.element === null) {
+    return null;
+  }
+  const plan = currentPlan();
+  const entry = card.draft.sources.find((source) => normalName(sourceName(plan, card.id, source)) === normalName(name));
+  if (entry === undefined) {
+    return null;
+  }
+  return card.element.querySelector(`[data-focus-key="${cssEscape(`filler:${wellKey(entry)}`)}"]`);
+}
+
+// Puts `text`, a plan file's text, in the tutorial's browser copy of the plan, or removes the copy
+// for null, and nothing else; the caller then reloads the page, which brings the plan back as it
+// always does (section 5). Throws unless the page is the tutorial, so the Transfer Designer's real
+// browser copy is never written through it (section 17).
+export function tutorialStartWith(text) {
+  if (!IS_TUTORIAL) {
+    throw new Error("Only the tutorial can start a plan this way.");
+  }
+  if (text === null) {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } else {
+    window.localStorage.setItem(STORAGE_KEY, text);
+  }
 }
