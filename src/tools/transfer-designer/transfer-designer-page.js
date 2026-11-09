@@ -23,6 +23,7 @@ import { BASE_FOLDER } from "../../../config/paths.js";
 import { RECORDS_FOLDER, WELL_MAP_SUFFIX } from "../../../config/records.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
+import { possibleTraces } from "../../shared/possible-contamination/possible-contamination.js";
 import { randomSeed, MAX_SEED } from "../../shared/random-pool/random-pool.js";
 import {
   labwareNames,
@@ -312,6 +313,13 @@ const sourcesShownInFull = new Set();
 // What the deck shows now (section 11), and the plates as the open stage starts (for arrow colors).
 let shownSnapshot = null;
 let stageStartSnapshot = null;
+
+// How many operations have run at the point the deck shows (section 11), set by refreshDeck, and
+// the possible traces there (possibleTraces), worked out only the first time a contents card needs
+// them after the deck is drawn and kept until it's drawn again, so an edit doesn't wait for them
+// (section 6); null until then.
+let shownOperationCount = 0;
+let shownTraces = null;
 
 // The wells the open stage mixes (section 6), keyed by wellKey, each as { share, short,
 // problemVolume, waiting } (mixedWellsOf). Empty unless a stage with transfers that mixes is open.
@@ -1232,7 +1240,9 @@ function readBrowserCopy() {
 function refreshDeck() {
   const plan = currentPlan();
   const open = currentOpen();
-  shownSnapshot = replay(plan.startingContents, plan.operationList, operationCountShown(plan, open));
+  shownOperationCount = operationCountShown(plan, open);
+  shownSnapshot = replay(plan.startingContents, plan.operationList, shownOperationCount);
+  shownTraces = null;
   stageStartSnapshot = isStage(plan, open)
     ? replay(plan.startingContents, plan.operationList, operationCountBefore(plan, open))
     : null;
@@ -7928,7 +7938,8 @@ function hideContentsCard() {
 
 // The contents card's lines for a well (section 6): its label first if it has one, then its name,
 // smaller under the label ("Empty" under it if it holds nothing), each component's swatch, name,
-// volume and share, any Concentrations group and the Osmolality line, then only problems and warnings: each contents problem of the well by its kind,
+// volume and share, any Concentrations group, the Osmolality line and any Possible traces group,
+// then only problems and warnings: each contents problem of the well by its kind,
 // whether it's off plan, and how much of it the open stage mixes; last, a hint (cardHint).
 // No total, usable-volume or capacity lines (Andy, 2026-10-31): the components add up to the total,
 // the labware's limits are the same for every well of it, and the problem lines carry the numbers.
@@ -7961,6 +7972,10 @@ function contentsCardLines(plan, end) {
   if (showsOsmolality(plan, end)) {
     lines.push(createOsmolalityLine(osmolalityOf(plan, shownSnapshot, end)));
   }
+  const traces = tracesShownFor(plan, end);
+  if (traces.length > 0) {
+    lines.push(createTracesGroup(plan, traces));
+  }
   for (const problem of shownSnapshot.listProblems()) {
     if (problem.labware === end.labware && problem.well === end.well) {
       lines.push(createElement("div", describeCardProblem(problem), "card-problem"));
@@ -7981,6 +7996,38 @@ function contentsCardLines(plan, end) {
   }
   lines.push(createElement("div", cardHint(plan, end, wellLabel), "card-hint"));
   return lines;
+}
+
+// The well `end`'s possible traces at the point the deck shows (section 6), e.g. ["Yeast"]; none at
+// Start (no operation has run, so there are none). Works them out for the whole deck the first time
+// a card needs them after the deck is drawn (shownTraces), so drawing the deck never waits for them.
+function tracesShownFor(plan, end) {
+  if (shownOperationCount === 0) {
+    return [];
+  }
+  if (shownTraces === null) {
+    shownTraces = possibleTraces(plan, shownOperationCount);
+  }
+  return shownTraces.tracesOf(end.labware, end.well);
+}
+
+// The contents card's Possible traces group (section 6) for a well's possible traces `traces`
+// (tracesOf, in its order): under a thin rule, the heading, then one line per component, its swatch
+// and name, with nothing at the right, since a trace has no amount. Not a problem: it isn't in the
+// problem color. Its tooltip says what "possible" means.
+function createTracesGroup(plan, traces) {
+  const group = createElement("div", "", "card-traces");
+  group.title =
+    "Possible, not measured: a tip could have carried these here, counting every contact up to this point.";
+  group.append(createElement("div", "Possible traces", "card-group-heading"));
+  const list = document.createElement("ul");
+  for (const name of traces) {
+    const item = document.createElement("li");
+    item.append(createSwatch(componentColor(plan, name)), createElement("span", name));
+    list.append(item);
+  }
+  group.append(list);
+  return group;
 }
 
 // The contents card's last line (section 6): what a click on the well does. While moving wells, it
