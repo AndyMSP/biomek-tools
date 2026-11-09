@@ -112,7 +112,10 @@ that go in the zip (ADR 0020):
 - `LABWARE_SHEET_FILE_NAME`: `"Labware sheet.pdf"`;
 - `LABWARE_SHEET_PAGE`: `{ width: 612, height: 792 }`, US Letter in points;
 - `WELL_MAP_SUFFIX`: `" well map.csv"`, what follows a randomization's name in its well map's file
-  name (added 2026-11-08 with the well maps; `well-maps.md`, whose tests check it).
+  name (added 2026-11-08 with the well maps; `well-maps.md`, whose tests check it);
+- `PLAN_FILE_SUFFIX`: `" plan.json"`, what follows the run's folder name in the name of the plan
+  file in the Records folder (added 2026-11-08; `transfer-designer-page.md`, sections 5 and 16,
+  whose tests check it).
 
 This module's tests check the file (ADR 0009): `RECORDS_FOLDER` and `LABWARE_SHEET_FILE_NAME` are
 names `zip` accepts in a path (printable ASCII, no `/` or `\`, not `.` or `..`), the file name ends
