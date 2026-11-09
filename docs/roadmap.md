@@ -490,6 +490,19 @@ Last updated: 2026-11-08
 - **Decided: the zip stays as it is** (Andy, 2026-11-08): it holds the run's folder, so Windows'
   Extract All, left to its default, puts that folder inside one of the same name. Changing the zip or
   its message was considered and declined, as either could confuse (ADR 0020).
+- **Decided: possible contamination** (Andy, 2026-11-08; item 27, below; ADR 0021, Proposed): the
+  contents card lists a well's possible traces at the point the deck shows, worked out from tips by
+  a new shared module, `possible-contamination`, assuming the worst where the order isn't known.
+  From previews; well outlines and routes were tried and dropped. **Specified** (Draft, 2026-11-08,
+  on the `possible-contamination` branch; hands-off workflow from 2026-11-08, #146): `possible-contamination.md`, the
+  contents card (`transfer-designer-page.md`, section 6), `touchesLiquid` in
+  `config/pipetting-modes.js` (`transfer-designer.md`, "Configuration"), glossary "Possible trace".
+  It changes no Biomek file and no plan file. **Built (#146, 2026-11-08)**: `possible-contamination`
+  (code and tests), `touchesLiquid` in `config/pipetting-modes.js`, the REPL topic, and the contents
+  card's Possible traces group; from the build, the test cases' example plan was corrected (stage 3
+  dispensed into a well already holding Yeast) and a test added that liquid type alone doesn't
+  match a non-touching mode; the specifications and the build each reviewed by a separate agent,
+  and checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1111,6 +1124,50 @@ added on 2026-10-28 (Andy).
     - **Hands-off workflow** (Andy, 2026-11-08), its own branch and pull request, built on item
       25's.
 
+27. **Possible contamination** (Andy, 2026-11-08; ADR 0021, Proposed): the contents card lists a
+    well's **possible traces**, the components a tip could have carried into it though it doesn't
+    hold them (glossary "Possible trace"). It began under "Ideas not yet planned" as hovering a well
+    to see every well that could have contaminated it, following tips, not liquid: a tip carries
+    whatever it touches to every well it enters afterwards, until it's changed, in either direction
+    (a used tip can contaminate the source it draws from). Specified in `possible-contamination.md`.
+    *Decided (Andy, 2026-11-08):*
+    1. **The unit is the tip group, not the stage.** Tips stay on until the next tip change, so a well
+       touched in an earlier stage of a tip group can contaminate the wells of later stages in the
+       same group. Within one stage, any well can contaminate any other, in any order. Across stages
+       of a tip group, only earlier reaches later. A contaminated well passes its traces on to
+       whatever it touches afterwards, in later tip groups too.
+    2. **Passing traces on and receiving them are separate.** Within the reach of rule 1:
+
+       | Well | Passes traces on to the tip | Receives traces from the tip |
+       |---|---|---|
+       | Source | Yes: the tip goes into its liquid | Yes |
+       | Destination whose dispense touches the liquid | Yes | Yes |
+       | Destination with a non-contact dispense | No | Yes: what the tip picked up earlier comes out with the liquid it dispenses |
+
+       Which pipetting modes count as non-contact is a setting in `config/` until it's verified on
+       the instrument.
+    3. **What a tip carries is what the well held when the tip touched it**, taken from contents
+       tracking at that point in the run, not what the well holds at the end.
+    4. **Shown at any point on the designer's timeline** (`transfer-designer-page.md`, section 11),
+       counting only contacts up to that point. The finest point is the end of a stage, since the
+       order within a stage isn't known.
+    5. **Shown as possible traces, not as wells** (Andy, 2026-11-08, after a preview of both): the
+       components that could have reached a well though it doesn't hold them, on its contents card.
+       Outlining the wells that could have reached a well was tried and dropped: it can't tell a
+       harmless contact (water into water) from one that matters, so on a real plate it outlines
+       most of the deck.
+
+    6. **No routes for now** (Andy, 2026-11-08, after a preview): a trace doesn't say how it came.
+       The preview gave each trace a line naming the stage that brought it and where the tip picked
+       it up (e.g. `Stage 3, “Hy-Soy”, on tips used in stage 2, “Yeast”`), but in a big experiment
+       that's an overwhelming amount of text. Might come back later in a quieter form.
+    7. **Every component counts as a trace, for now** (Andy, 2026-11-08), water and buffers included.
+       Marking some components as "not a concern" was considered (it would keep harmless traces from
+       hiding real ones) and left for later.
+    8. **Hands-off workflow** (Andy, 2026-11-08), switched to after the specifications were written
+       (#146).
+    Built (#146).
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
@@ -1158,7 +1215,9 @@ final Biomek runs, so they test the files as they will be:
 20. Randomization names and well maps (item 26), added on 2026-11-08: preview, specifications, then
     build. It changes plan files (version 13) but no Biomek files, so it needn't come before the
     final runs.
-21. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+21. Possible contamination (item 27), added on 2026-11-08: preview, specifications, then build.
+    It changes no Biomek files and no plan files, so it needn't come before the final runs.
+22. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
@@ -1485,17 +1544,6 @@ overfilling a well or drawing more than it holds.
   concentrations, and a "pipette this, then this" sheet would be one more output from the same list.
   Existing plate-map tools let you label wells, but don't calculate their contents from the planned
   steps.
-- **Possible contamination.** Hover a well to see every well that could have contaminated it.
-  "Could" means any way a well's contents could conceivably reach another: a tip carries whatever it
-  touches to every well it enters afterwards, until it's changed. That includes aspirating from an
-  empty well, and dispensing into a well when the tip touches the liquid. It works both ways: a used
-  tip can contaminate the source it aspirates from. This follows tips, not liquid, so it's a separate
-  module from contents tracking, and it needs stages and their tip-change setting. Within a stage the
-  order isn't fixed and the Biomek chooses which probe does which transfer, so it must assume every
-  well the stage touches could contaminate every other one. Whether a dispense touches the liquid
-  depends on the technique (see "Not yet known" in `docs/domain/biomek.md`). It could spread through
-  the wells the way contents tracking's `causes` do.
-
 ## Open decisions
 - **Mixing** (v0.2.0, item 10; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
   separate Mix step for the Span-8, so it has to be done another way. Options to look at: a transfer

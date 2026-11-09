@@ -9,7 +9,13 @@
 //   if the mode can't mix (transfer-designer.md, "Mixing"). Its liquid type is the same either way;
 // - liquidType: exactly as in Biomek Software. Liquid type names may contain only letters, digits
 //   and underscores, and must start with a letter (B56358AF, 9-4);
-// - ends: where the mode can be used, "source" (aspirating), "destination" (dispensing) or both.
+// - ends: where the mode can be used, "source" (aspirating), "destination" (dispensing) or both;
+// - touchesLiquid: true if pipetting in this mode touches the liquid in the well, false if not
+//   (ADR 0021). The possible-contamination module reads it: a destination whose dispense doesn't
+//   touch the liquid passes nothing on to the tips. A mode usable at the source must be true (a tip
+//   draws from inside the liquid), and a mode that's false can't mix (mixingTechnique null), since
+//   mixing touches the liquid. Non-Contact's false is what its name and technique say, but it isn't
+//   verified on the instrument yet (docs/domain/biomek.md, "Not yet known").
 // DEFAULT_PIPETTING_MODE is the mode a new plan's stage uses at both ends; it must be usable at both.
 // The menus list the modes in this order. Data only (ADR 0009). The transfer-designer module's tests
 // check this file (transfer-designer.md, "Configuration").
@@ -28,6 +34,7 @@ export const PIPETTING_MODES = [
     mixingTechnique: "OperationMix",
     liquidType: "Slow",
     ends: ["source", "destination"],
+    touchesLiquid: true,
   },
   {
     name: "Medium",
@@ -35,6 +42,7 @@ export const PIPETTING_MODES = [
     mixingTechnique: "OperationMix",
     liquidType: "Medium",
     ends: ["source", "destination"],
+    touchesLiquid: true,
   },
   {
     name: "Fast",
@@ -42,6 +50,7 @@ export const PIPETTING_MODES = [
     mixingTechnique: "OperationMix",
     liquidType: "Fast",
     ends: ["source", "destination"],
+    touchesLiquid: true,
   },
   // For dispensing only (docs/glossary.md, "Pipetting mode"); it can't mix.
   {
@@ -50,6 +59,7 @@ export const PIPETTING_MODES = [
     mixingTechnique: null,
     liquidType: "Medium",
     ends: ["destination"],
+    touchesLiquid: false,
   },
 ];
 

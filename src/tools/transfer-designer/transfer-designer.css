@@ -2976,6 +2976,14 @@ button.quiet-danger:disabled {
   gap: 12px;
 }
 
+/* The Possible traces group (sections 6 and 15): spaced, ruled and headed as the Concentrations
+   group; each line as a component's, its swatch then its name, with nothing at the right. */
+.contents-card .card-traces {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(246, 245, 241, 0.2);
+}
+
 /* The Osmolality line (sections 6 and 15): spaced and ruled as the Concentrations group;
    "Osmolality" left, the value right in the volume's monospace style, 12px between; the unknown
    line 12px at 60% opacity, wrapping within the card. */

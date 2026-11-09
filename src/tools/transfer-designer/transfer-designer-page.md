@@ -198,6 +198,13 @@
 > 2026-11-08. Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
 > Andy are listed in its pull request. They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-08, possible traces, item 27 of v0.2.0):** the contents card lists a
+> well's possible traces, the components a tip could have carried into it though it doesn't hold
+> them, at the point the deck shows (sections 2, 6, 14, 15 and 16; `possible-contamination.md`;
+> ADR 0021), from previews Andy shaped on 2026-11-08. Written in the hands-off workflow (CLAUDE.md,
+> "Workflows"), so the choices made for Andy are listed in its pull request (#146). They become
+> Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -234,6 +241,9 @@ Not in version 1 (see `docs/roadmap.md`):
   the contents card only. A toggle showing one constituent's concentration on every well may come
   with use (`docs/roadmap.md`, "Later").
 - **Osmolality on the deck.** Likewise, a well's osmolality is on the contents card only.
+- **Possible traces on the deck, and how each came.** A well's possible traces are on its contents
+  card only. Outlining the wells that could have reached a well, and a line under each trace saying
+  which stage brought it, were tried in previews and dropped (Andy, 2026-11-08; ADR 0021).
 - **Messages in the page's own terms everywhere.** Some messages from the shared modules use
   internal terms, such as "starting contents entry 3" (roadmap, "Technical debt").
 
@@ -557,6 +567,20 @@ card (dark, light text) shows:
   that doesn't use osmolality sees no change, and cards don't all say `unknown`. In a plan whose
   only osmolality is Water at 0, the line still shows: `≈ 0 mOsm/kg` for a well holding only Water,
   and `Osmolality unknown: no value for …` for a well holding anything else;
+- if the well has any **possible traces** at the point the deck shows (`possibleTraces`,
+  `possible-contamination.md`; ADR 0021): after the components, any Concentrations group and any
+  Osmolality line, under a thin rule like the group's, a group headed `Possible traces` (as the
+  Concentrations heading), then one line per component, in the order `tracesOf` gives: its swatch
+  and name, nothing at the right (a trace has no amount). The group's tooltip (its `title`):
+  `Possible, not measured: a tip could have carried these here, counting every contact up to this
+  point.` It's not a problem (not in the problem color, not counted, doesn't stop Write files).
+  Nothing of this at Start, or for a well with none. (Even a plan that changes tips between stages
+  shows traces where one stage dispenses, touching the liquid, into wells that already hold
+  different things, such as a randomization's later sources: ADR 0021.) The page works the possible traces out with `possibleTraces(plan,
+  count)`, `count` being the operations run at the point the deck shows (section 11), **the first
+  time a contents card needs them** after the deck is drawn, and keeps them until it's drawn again,
+  so an edit doesn't wait for them (about 70 ms for 1,000 transfers in 50 stages, measured in the
+  preview);
 - (Andy, 2026-10-31: no total, usable-volume or capacity lines. The components add up to the
   total, the labware's limits are the same for every well of it, and holding only dead volume is
   neither a problem nor a warning: the stripes say it. The card shows only problems and warnings
@@ -2078,7 +2102,8 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
   it (the labware sheet module's tests do).
 
 The page also uses the transfer designer's configuration (`config/pipetting-modes.js`,
-`config/tip-types.js`) through that module, and the deck description through `deck`.
+`config/tip-types.js`) through that module, and the deck description through `deck`;
+`possible-contamination` reads `config/pipetting-modes.js`'s `touchesLiquid` itself.
 
 ## 15. Visual design
 The page should look calm and be easy to scan, like the randomizer's. Its colors and sizes are
@@ -2145,6 +2170,8 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   what's above it, a 1px rule in the light text at 20% opacity, 6px under the rule); `Osmolality`
   left, the value right in the monospace volume style, 12px between; the unknown line 12px at 60%
   opacity, wrapping within the card.
+- **The Possible traces group** (section 6): spaced, ruled and headed as the `Concentrations`
+  group; each line as a component's, its swatch then its name, with nothing at the right.
 - **A component's Osmolality row** (section 8): the text box 112px (72px cut its placeholder to
   `Not mea`; found in the build review, 2026-11-05), then `mOsm/kg` 12px gray (`#5E5E58`), 6px
   apart.
@@ -2196,6 +2223,10 @@ page's configuration (ADR 0009):
 - `SOURCES_SHOWN`: a whole number of at least 1.
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
+- possible traces (section 6): with a plan whose Yeast and Hy-Soy stages share tips, and whose
+  Hy-Soy stage dispenses only into wells without Yeast, pointing at a Hy-Soy well after the Hy-Soy
+  stage shows `Possible traces` with Yeast, and after the Yeast stage doesn't; at Start no card has the group; a well with none has no group; the group's tooltip shows;
+  adding a tip change between the two stages takes Yeast out of the Hy-Soy well's traces;
 - each item in sections 5 to 13 behaves as described;
 - copied decks (section 6): `Copy deck` at Start, after a stage and at End, then `Paste deck` in a
   second tab of the designer (and after Reset in the same one) starts it from the same wells,

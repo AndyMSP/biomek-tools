@@ -169,6 +169,12 @@
 > workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request.
 > Still to review: every new message. It becomes Final once built and tested by Andy.
 
+> **Draft change (2026-11-08, possible traces, item 27 of v0.2.0):** each pipetting mode in
+> `config/pipetting-modes.js` gains `touchesLiquid`, used by `possible-contamination` ("Configuration";
+> ADR 0021). This module's behavior doesn't change. Written in the hands-off workflow (CLAUDE.md,
+> "Workflows"), so the choices made for Andy are listed in its pull request (#146). It becomes Final
+> once built and tested by Andy.
+
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
 and every edit that can be made to one, each checked so that a plan is always valid. A tool shows a
@@ -1786,8 +1792,8 @@ writer refuses the plan until they're fixed.
 ### Configuration
 Two files in `config/` (ADR 0009), which this module's tests check:
 - **`config/pipetting-modes.js`** exports `PIPETTING_MODES`: a list of
-  `{ name, technique, mixingTechnique, liquidType, ends }`, e.g.
-  `{ name: "Slow", technique: "Operation", mixingTechnique: "OperationMix", liquidType: "Slow", ends: ["source", "destination"] }`.
+  `{ name, technique, mixingTechnique, liquidType, ends, touchesLiquid }`, e.g.
+  `{ name: "Slow", technique: "Operation", mixingTechnique: "OperationMix", liquidType: "Slow", ends: ["source", "destination"], touchesLiquid: true }`.
   `name`, `technique` and `liquidType` are names; `mixingTechnique` is a name different from
   `technique`, or `null` if the mode can't mix; `liquidType` also follows Biomek's rule for liquid
   type names (letters, digits and underscores, starting with a letter; B56358AF, 9-4); `ends` is a
@@ -1796,7 +1802,10 @@ Two files in `config/` (ADR 0009), which this module's tests check:
   `mixingTechnique`s together (or reading a stage's mode back, or whether it mixes, would be
   ambiguous); and each end has at least one mode. The lab's modes: Slow, Medium and Fast mix with
   `OperationMix` (Andy's technique, which works with any liquid type; `biomek.md`), and Non-Contact
-  can't mix (`null`). It replaces `config/techniques.js` and
+  can't mix (`null`). `touchesLiquid` (added 2026-11-08, item 27; ADR 0021) is `true` if pipetting
+  in the mode touches the liquid in the well, `false` if not; a mode usable at the source must have
+  `true`, and a mode with `false` can't mix (`mixingTechnique` `null`). Slow, Medium and Fast
+  `true`, Non-Contact `false` (not verified on the instrument; `biomek.md`, "Not yet known"). This module doesn't use it; `possible-contamination` does. It replaces `config/techniques.js` and
   `config/liquid-types.js`, which are removed (Andy, 2026-10-26: each name is then written once).
   The names are the ones used in the general-purpose method (`biomek.md`, 2026-10-27).
   It also exports `DEFAULT_PIPETTING_MODE`, the name of the mode a new plan's stage uses at both
@@ -2311,7 +2320,9 @@ order of checks.
 
 **Configuration**
 - `config/pipetting-modes.js`: each mode's properties are exactly `name`, `technique`,
-  `mixingTechnique`, `liquidType`, `ends`; names valid and unique; `mixingTechnique` a valid name
+  `mixingTechnique`, `liquidType`, `ends`, `touchesLiquid`; `touchesLiquid` a boolean, `true`
+  for every mode whose `ends` include `"source"`, and a mode with `false` has `mixingTechnique`
+  `null`; names valid and unique; `mixingTechnique` a valid name
   other than `technique`, or `null`; liquid types follow Biomek's rule; `ends` valid; for each end,
   no technique-and-liquid-type pair repeated among its modes' techniques and mixing techniques; each
   end has at least one mode; `DEFAULT_PIPETTING_MODE` names a mode usable at both ends.

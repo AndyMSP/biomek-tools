@@ -395,7 +395,7 @@ function withCellsIn(plan, well, volume) {
 describe("transfer-designer", () => {
   // --- Configuration: config/pipetting-modes.js ---
 
-  test("each pipetting mode has exactly name, technique, mixingTechnique, liquidType and ends", () => {
+  test("each pipetting mode has exactly name, technique, mixingTechnique, liquidType, ends and touchesLiquid", () => {
     for (const mode of PIPETTING_MODES) {
       assert.deepEqual(Object.keys(mode).sort(), [
         "ends",
@@ -403,8 +403,33 @@ describe("transfer-designer", () => {
         "mixingTechnique",
         "name",
         "technique",
+        "touchesLiquid",
       ]);
     }
+  });
+
+  test("each mode's touchesLiquid is a boolean, true for every mode usable at the source", () => {
+    for (const mode of PIPETTING_MODES) {
+      assert.equal(typeof mode.touchesLiquid, "boolean", mode.name);
+      if (mode.ends.includes("source")) {
+        assert.equal(mode.touchesLiquid, true, mode.name);
+      }
+    }
+  });
+
+  test("a mode that doesn't touch the liquid can't mix", () => {
+    for (const mode of PIPETTING_MODES.filter((candidate) => !candidate.touchesLiquid)) {
+      assert.equal(mode.mixingTechnique, null, mode.name);
+    }
+  });
+
+  test("the lab's modes: Slow, Medium and Fast touch the liquid; Non-Contact doesn't", () => {
+    // Whether the mode called `name` touches the liquid, e.g. "Slow" → true.
+    const touchesOf = (name) => PIPETTING_MODES.find((mode) => mode.name === name).touchesLiquid;
+    for (const name of ["Slow", "Medium", "Fast"]) {
+      assert.equal(touchesOf(name), true, name);
+    }
+    assert.equal(touchesOf("Non-Contact"), false);
   });
 
   test("each mode's mixingTechnique is a valid name other than its technique, or null", () => {
