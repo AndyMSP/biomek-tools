@@ -514,6 +514,11 @@ Last updated: 2026-11-08
   over the transfer designer's page, in a file of their own, shaped in a preview on 2026-11-08.
   **Specified** (Draft, 2026-11-08, hands-off workflow; ADR 0022): `tutorial.md`,
   `tutorial-plans.md`, `tutorial-page.md` and `transfer-designer-page.md` section 17.
+  **Built (#149, 2026-11-08)**: `tutorial` and `tutorial-plans` (code, tests, REPL topics), the
+  guide panel (`tutorial-page.js`, `tutorial.css`), the page's tutorial hooks, `build-tools` and a
+  third built file, `transfer-designer-tutorial-v….html`; `npm run test:browser` walks every step of
+  every tutorial in Chrome at two window sizes. From the build, `tutorial.md`'s test list names the
+  two steps of tutorial 2 that are done on their starting plan. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1215,6 +1220,7 @@ added on 2026-10-28 (Andy).
       guide panel, the build, the browser walk-throughs); `transfer-designer-page.md` section 17
       (the page's tutorial hooks and storage names); glossary terms Guide panel, Starting plan,
       Tutorial.
+    Built (#149).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
