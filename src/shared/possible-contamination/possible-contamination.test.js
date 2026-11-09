@@ -30,8 +30,8 @@ import {
 } from "../../tools/transfer-designer/transfer-designer.js";
 import { possibleTraces } from "./possible-contamination.js";
 
-// The reservoir ("Res1" in the specification) and the 96-well labware with the largest capacity, a
-// deep-well plate ("Deep1"), found in DECK.
+// The reservoir ("Res1" in the specification) and the 96-well labware with the largest capacity
+// ("Deep1"), found in DECK by well grid and capacity.
 const RESERVOIR = DECK.find((entry) => gridOf(entry.name) === GRID_1X12_NUMBERED);
 const DEEP = DECK.filter((entry) => gridOf(entry.name) === GRID_96).reduce((largest, entry) =>
   capacityOf(entry.name) > capacityOf(largest.name) ? entry : largest,
@@ -115,8 +115,9 @@ function countAtEnd(plan, id) {
 }
 
 // The example plan of the specification, section 6, and its stage IDs: { plan, ids: [s1, …, s5] }.
-// With `stage4SharesTips`, stage 4 is on stage 3's tips instead of new ones.
-function examplePlan({ stage4SharesTips = false } = {}) {
+// With `stage4SharesTips`, stage 4 is on stage 3's tips instead of new ones. With `stage3IntoA4`,
+// stage 3 is on new tips and also dispenses into A4, in `stage3Mode` at the destination.
+function examplePlan({ stage4SharesTips = false, stage3IntoA4 = false, stage3Mode = TOUCHING } = {}) {
   let { plan, stageId: first } = planWithComponents();
   COMPONENTS.forEach(([name], place) => {
     plan = addToWells(plan, [res(String(place + 1))], name, RESERVOIR_VOLUME);
@@ -130,11 +131,10 @@ function examplePlan({ stage4SharesTips = false } = {}) {
     deep("A4"),
   ]);
 
-  const third = addStage(plan, null);
-  plan = withTransfers(renameStage(third.plan, third.id, "Hy-Soy"), third.id, res("3"), [
-    deep("A3"),
-    deep("A4"),
-  ]);
+  const third = stage3IntoA4 ? addStageWithNewTips(plan, null) : addStage(plan, null);
+  plan = withDestinationMode(renameStage(third.plan, third.id, "Hy-Soy"), third.id, stage3Mode);
+  const stage3Wells = stage3IntoA4 ? [deep("A3"), deep("A4")] : [deep("A3")];
+  plan = withTransfers(plan, third.id, res("3"), stage3Wells);
 
   const fourth = stage4SharesTips ? addStage(plan, null) : addStageWithNewTips(plan, null);
   plan = withDestinationMode(renameStage(fourth.plan, fourth.id, "NaOH"), fourth.id, NON_TOUCHING);
@@ -251,6 +251,20 @@ describe("possible-contamination", () => {
     const { plan, ids } = examplePlan();
     const traces = possibleTraces(plan, countAtEnd(plan, ids[2]));
     assert.deepEqual(tracesAt(traces, deep("A4")), []);
+    assert.deepEqual(tracesAt(traces, deep("A2")), []);
+  });
+
+  test("within a stage, a destination already holding something passes it on", () => {
+    const touching = examplePlan({ stage3IntoA4: true });
+    assert.deepEqual(
+      tracesAt(possibleTraces(touching.plan, countAtEnd(touching.plan, touching.ids[2])), deep("A3")),
+      [YEAST],
+    );
+    const nonContact = examplePlan({ stage3IntoA4: true, stage3Mode: NON_TOUCHING });
+    assert.deepEqual(
+      tracesAt(possibleTraces(nonContact.plan, countAtEnd(nonContact.plan, nonContact.ids[2])), deep("A3")),
+      [],
+    );
   });
 
   test("a technique and liquid type that aren't any mode's count as touching", () => {
@@ -290,11 +304,7 @@ describe("possible-contamination", () => {
   });
 
   test("a stage without transfers and without a tip change keeps the tips; one with a tip change starts new ones", () => {
-    // Stage 3's destinations don't touch the liquid here: with touching ones, A4 (holding Yeast)
-    // would pass Yeast to A3 within stage 3 whatever the tips, and the test would show nothing.
-    const example = examplePlan();
-    const ids = example.ids;
-    const plan = withDestinationMode(example.plan, ids[2], NON_TOUCHING);
+    const { plan, ids } = examplePlan();
     const sameTips = addStage(plan, ids[2]).plan;
     assert.deepEqual(
       tracesAt(possibleTraces(sameTips, countAtEnd(sameTips, ids[2])), deep("A3")),
