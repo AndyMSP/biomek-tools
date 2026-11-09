@@ -2609,13 +2609,20 @@ imports the page script (so they're part of the same bundle). The first two neve
   shows the card and forgets when it hides it (until now it drew the card straight from the well's
   element); `addingComponent` whether the `+ New` box is open; `dialog` from the wizard or the stock dialog
   while either is open, the wizard's `step` its current step; `randomizationCard` from the open
-  card's draft, its tab, and its Volume and Seed boxes' text as typed). Lists and objects returned
-  are new each call, so the caller can't change the page's state through them.
+  card's draft, its tab, and its Volume and Seed boxes' text as typed; `transferListsShown` the
+  open stage's ID if its transfer list is shown, else empty). Lists and objects returned are new
+  each call, so the caller can't change the page's state through them, except `plan`, which is the
+  page's own plan: plans are never changed in place (`transfer-designer.md`; every edit makes a new
+  plan, and the logic freezes them), so sharing it is safe and saves copying it four times a
+  second.
 - `tutorialElement(target)`: the element for a target (`tutorial.md`, section 3, "Targets"), or
   `null` if it isn't on the page now (e.g. the labware is put away, the stage's card isn't open, the
   list isn't shown). It finds elements from the page's own records where it keeps them (the wells'
-  map, the open editing box, the card's parts) and otherwise by their ids, data attributes and
-  accessible names as this specification gives them, never by visible text that a message or
+  map, the open editing box, the open card and its parts by their focus keys, the stock dialog's
+  main button) and otherwise by the ids, classes and data attributes the page's code gives them
+  (e.g. `.labware-chip[data-labware]`, `.entry[data-entry]`, `.edit-button[data-box-kind]`,
+  `.group-seam`, `.wizard-main`), the `+ New` button carrying the class `new-component` for this,
+  never by visible text that a message or
   translation might change. `endSeam` is the seam between tip groups just above End; it exists
   whether or not its buttons show. An `entry` target for a stage inside a closed transfer table's or
   randomization's box gives that box's heading (the stage's row isn't on the page then). A
@@ -2637,10 +2644,14 @@ page has open, and the page stays as it was. Keys typed on the page are unaffect
 Built as the Transfer Designer, the exports exist but nothing calls them; the page behaves exactly
 as before.
 
-**Tests** (section 16, by hand, and the tutorial's browser walk-throughs, `tutorial-page.md`,
-section 9): the Transfer Designer file still keeps its plan under `biomek-tools transfer designer:
-plan`, and `tutorialStartWith` throws there; the tutorial file under its own name; each target kind
-the tutorials use finds its element, checked by the walk-throughs' ring check; with a stage's ✎ box
-holding unsaved changes, a press on the guide panel's Next moves the tutorial on and the box neither
-shakes nor closes; with the Biomek files box open, a press on the panel leaves it open.
+**Tests**, all in the tutorial's browser walk-throughs (`tutorial-page.md`, section 9): the
+Transfer Designer file still keeps its plan under `biomek-tools transfer designer: plan`, has no
+guide panel and isn't marked `data-tutorial`; the tutorial file keeps its plan under its own name;
+each target kind the tutorials use finds its element, checked by the walk-throughs' ring check;
+with a stage's ✎ box holding unsaved changes, a press on the guide panel's Next moves the tutorial
+on and the box neither shakes nor closes; with the Biomek files box open, a press on the panel
+leaves it open. `tutorialStartWith`'s refusal outside the tutorial isn't tested: the page script
+needs a browser page, so it can't be unit-tested in Node, and in the Transfer Designer file nothing
+can call it (the bundle exposes nothing). The refusal guards against a later change that would; a
+review checks it.
 

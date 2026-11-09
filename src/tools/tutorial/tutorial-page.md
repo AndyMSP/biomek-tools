@@ -49,6 +49,9 @@ storage the panel still works, forgetting its place on reload):
 - `biomek-tools tutorial: finished`: the IDs of the tutorials whose last step has been shown.
 - `biomek-tools tutorial: position`: where the panel was dragged to, `{ left, top }` in px.
 
+A stored value that isn't in its form (not JSON, a finished list that isn't a list, a position
+whose `left` and `top` aren't numbers) is ignored, as if nothing were stored.
+
 **Starting a tutorial** (its Start or Again button in the menu, or **Next tutorial** at the end of
 the one before): the panel calls the page's `tutorialStartWith(startingPlanText(name,
 tutorialSavedBy))` (`tutorial-plans.md`; `transfer-designer-page.md`, section 17), which puts the
@@ -69,6 +72,7 @@ from the window's bottom and right edges at first, above everything on the page.
   last step's index); then a `–` button at the right that folds the panel to its header (220px wide),
   becoming `+` to unfold it (tooltips `Hide the steps` / `Show the steps`). The header is the handle
   to **drag** the panel (section 6).
+  Pressing `+` on a fold that keeping clear made unfolds it for the rest of the step (section 6).
 - **A progress bar** under the header, 4px, filled to the step's index over the last step's.
 - **Body**, scrolling inside the panel: the step's title (17px, semibold), its body rendered from
   step markup (`tutorial.md`, section 3), its copy button and checklist where it has them, then the
@@ -113,9 +117,12 @@ with no size.
 target or any of the step's keep-clear elements (`tutorial.md`, section 3), it moves to the other
 bottom corner (left or right) if that covers less, counting the target as 10 and each keep-clear
 element as 1; if both corners cover as much, it stays, and folds to its header while it covers the
-target, unfolding when it no longer would (a fold the reader made stays theirs).
+target, unfolding when it no longer would (a fold the reader made stays theirs). Pressing `+` on
+such an automatic fold unfolds the panel and overrides keeping clear's fold until the step changes
+(the reader chose to see the steps; they can still drag the panel aside).
 
-**While a page dialog is open** (the transfer table wizard or the stock dialog): if the room
+**While a page dialog is open** (the transfer table wizard or the stock dialog, found through the
+page's hook, `tutorialElement({ kind: "dialog" })`): if the room
 between the dialog's bottom and the window's bottom, less 24px, is 160px or more, the panel fits
 there (that room is its greatest height), at the bottom left; otherwise it shows **compact**: its
 header, the step's title, its status line and its footer only, at the bottom left, with a `Show
