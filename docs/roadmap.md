@@ -507,7 +507,9 @@ Last updated: 2026-11-08
   Stages column has a dark border, shadow and badge and a `Shown on deck` tag, red with a problem,
   from a preview Andy approved. **Specified** (Draft, 2026-11-08, `transfer-designer-page.md`,
   sections 7, 15 and 16), built in the chat as a very small change. Layout only: no plan file or
-  Biomek file changes.
+  Biomek file changes. **Built (#147, 2026-11-08)**: the CSS and the tag in the open entry's
+  heading; from the browser check, a selected open card keeps the look, and the tag is centered on
+  the card's edge to clear the ✎; checked in headless Chrome. Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1184,6 +1186,7 @@ added on 2026-10-28 (Andy).
     - **Built in the chat** as a very small change (CLAUDE.md, "Who does what", the exception), on
       its own branch and pull request. Layout only: the plan, plan files and Biomek files don't
       change.
+    Built (#147).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
