@@ -170,6 +170,10 @@ touch the liquid: NaOH to A1 to A4. New tips; stage 5, "More Hy-Soy": Hy-Soy (Re
   accepts it) passes its destinations' contents on, as a touching mode's does.
 - **Matching needs both technique and liquid type:** a stage whose destination has the
   non-touching mode's technique but another liquid type counts as touching.
+- **Liquid type alone isn't enough either:** a stage whose destination has a touching mode sharing
+  a non-touching mode's liquid type (found in `PIPETTING_MODES` by matching `liquidType`; today
+  Medium, the default, shares Non-Contact's) counts as touching. Found in the build's review: code
+  matching on liquid type alone would otherwise pass every test while hiding traces in most plans.
 - **A destination that mixes touches:** a stage with a touching mode at the destination and its
   destination mix on passes its destinations' contents on.
 - **Stages without transfers:** in the example plan, an empty stage added between stages 2 and 3
