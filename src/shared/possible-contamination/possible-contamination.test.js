@@ -295,6 +295,19 @@ describe("possible-contamination", () => {
     assert.deepEqual(tracesAt(traces, deep("A1")), [HY_SOY]);
   });
 
+  test("a touching mode sharing a non-touching mode's liquid type counts as touching", () => {
+    const sameLiquidType = PIPETTING_MODES.find(
+      (mode) =>
+        mode.touchesLiquid &&
+        mode.ends.includes("destination") &&
+        mode.liquidType === NON_TOUCHING.liquidType,
+    );
+    const { plan, stageId } = oneStagePlan(atDestination(sameLiquidType));
+    const traces = possibleTraces(plan, countAtEnd(plan, stageId));
+    assert.deepEqual(tracesAt(traces, deep("A1")), [HY_SOY]);
+    assert.deepEqual(tracesAt(traces, deep("A2")), [YEAST]);
+  });
+
   test("a destination that mixes touches the liquid", () => {
     const mixing = oneStagePlan(atDestination(TOUCHING));
     const plan = setStageMix(mixing.plan, mixing.stageId, "destination", DEFAULT_MIX);
