@@ -79,6 +79,11 @@ The area of one well's bottom that cells grow on, in cm²: one value per labware
 `config/labware-types.js`, given only for types cells are grown on. A well's labware having one is
 what gives it a seeding density.
 
+**Guide panel**
+The panel the tutorial file shows over the transfer designer's page: a tutorial's current step,
+its checklist, Back and Next, and the menu of tutorials. A ring around a part of the page shows
+what to use next (`tutorial-page.md`; ADR 0022).
+
 **Item**
 Something in the Stages column that can be selected, moved or copied: a stage (a mix step
 included), an ordinary tip group (one not belonging to a randomization or transfer table), a
@@ -202,6 +207,12 @@ divided by its growth area, **assuming every cell settles onto the bottom** (`co
 the well lowers its cell density but not its seeding density. Only for wells on labware with a
 growth area.
 
+**Starting plan**
+The plan a tutorial starts from, made with the transfer designer's own logic: an empty one for the
+first tutorial, and for the others, the plan an earlier tutorial ends with or a new experiment set
+up part of the way (`tutorial-plans.md`). Not the same as starting contents, which are what a plan's
+wells hold before its run.
+
 **Stock table**
 A table of components, usually pasted from or copied to a spreadsheet, one row each: its name, then
 its osmolality (optional), then one column per constituent, headed with the constituent's name and
@@ -250,6 +261,12 @@ type and how many probes get tips, and every stage using its tips uses all those
 A group of stages that run on the same tips: the stages after one tip change, up to the next. For
 example, with tip changes at the start and before stage 4, stages 1 to 3 are one tip group and
 stages 4 and 5 another. Every stage in the group uses all the probes its tip change loads.
+
+**Tutorial**
+One of the guided lessons in the tutorial file, such as "Your first run": a short series of steps
+done on the transfer designer's own page, each checked from what the page shows, with a starting
+plan of its own (`tutorial.md`; ADR 0022). The tutorials build on each other, but any can be
+started first.
 
 **Well in use**
 A well the plan names anywhere: in its starting contents, as a transfer's source or destination (a

@@ -512,7 +512,8 @@ Last updated: 2026-11-08
   the card's edge to clear the ✎; checked in headless Chrome. Still to check by Andy.
 - **Decided: tutorials** (Andy, 2026-11-08; item 29, below): a series of five guided tutorials
   over the transfer designer's page, in a file of their own, shaped in a preview on 2026-11-08.
-  Being specified in the hands-off workflow, on the `tutorials` branch.
+  **Specified** (Draft, 2026-11-08, hands-off workflow; ADR 0022): `tutorial.md`,
+  `tutorial-plans.md`, `tutorial-page.md` and `transfer-designer-page.md` section 17.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1207,8 +1208,13 @@ added on 2026-10-28 (Andy).
       with a letter: Excel reads `+` as a formula).
     - Practice names start with `Practice`, and the last step says a practice zip is only for
       trying out simulation.
-    - To decide with Andy: Playwright as a development dependency, for tests that walk every step
-      in Chrome.
+    - **Browser walk-throughs** with Playwright, a development dependency (Andy's OK,
+      2026-11-08): `npm run test:browser` does every step of every tutorial in Chrome.
+    - **Specified** (Draft, 2026-11-08, hands-off workflow): ADR 0022; `tutorial.md` (the
+      tutorials and every step), `tutorial-plans.md` (the starting plans), `tutorial-page.md` (the
+      guide panel, the build, the browser walk-throughs); `transfer-designer-page.md` section 17
+      (the page's tutorial hooks and storage names); glossary terms Guide panel, Starting plan,
+      Tutorial.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -1329,6 +1335,11 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **The tutorial can't run unbuilt** (2026-11-08, item 29): the build joins the transfer
+  designer's page and the guide panel, adding `data-tutorial` to the page's HTML, so `npm run serve`
+  has no tutorial page. Trying it means `npm run build` first. Doing it properly would mean a small
+  HTML file for the tutorial that the dev server serves, made from the transfer designer's at serve
+  time, without copying it into the repository.
 - **Pasted cells holding tabs or line breaks** (2026-11-05, transfer tables): Excel copies such a
   cell inside double quotes, and `parsePastedTable` (`pasted-table.md`) doesn't read quotes, so the
   cell splits into several cells or rows, and the quotes stay in the text. Transfer tables' cells
