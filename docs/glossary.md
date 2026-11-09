@@ -154,6 +154,12 @@ A plan saved as a file, so it can be kept with the experiment's records, shared,
 later or on another computer. The file says which format it is and its version, so a later version
 of the tools can still open it, or say why it can't.
 
+**Possible trace**
+A component that a tip could have carried into a well although the well doesn't hold it at that
+point in the plan: a well reached by tips that had touched a well holding (or itself carrying) that
+component, since the tips' last change (ADR 0021; `possible-contamination.md`). "Possible" means it
+can't be ruled out from the plan, not that it's likely or measured; a trace has no amount.
+
 **Randomization**
 Part of a plan that spreads replicates of several sources at random over a set of wells to fill, on
 any number of plates, with a seed, and makes one stage per source, in the sources' order, moving
