@@ -1524,10 +1524,13 @@ overfilling a well or drawing more than it holds.
      harmless contact (water into water) from one that matters, so on a real plate it outlines
      most of the deck.
 
-  *Being tried in a preview:* each possible trace says how it came, so the fix can be found: the
-  stage in which the well received it, and where the tip picked it up (another well in that stage,
-  tips used in an earlier stage of its tip group, or a well that may itself carry it as a trace),
-  e.g. `Stage 3, “Hy-Soy”, on tips used in stage 2, “Yeast”`.
+  6. **No routes for now** (Andy, 2026-11-08, after a preview): a trace doesn't say how it came.
+     The preview gave each trace a line naming the stage that brought it and where the tip picked
+     it up (e.g. `Stage 3, “Hy-Soy”, on tips used in stage 2, “Yeast”`), but in a big experiment
+     that's an overwhelming amount of text. Might come back later in a quieter form.
+
+  *Open:* whether some components (such as water) should never count as traces. In the preview, a
+  well filled from a reservoir that used tips had touched shows water as a possible trace.
 
 ## Open decisions
 - **Mixing** (v0.2.0, item 10; noted 2026-10-22): the tools will need to mix wells. Andy's Biomek Software has no
