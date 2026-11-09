@@ -14,8 +14,8 @@
 //   (ADR 0021). The possible-contamination module reads it: a destination whose dispense doesn't
 //   touch the liquid passes nothing on to the tips. A mode usable at the source must be true (a tip
 //   draws from inside the liquid), and a mode that's false can't mix (mixingTechnique null), since
-//   mixing touches the liquid. Non-Contact's false is what its name and technique say, but it isn't
-//   verified on the instrument yet (docs/domain/biomek.md, "Not yet known").
+//   mixing touches the liquid. Non-Contact's false was verified on the instrument (Andy,
+//   2026-11-08; docs/domain/biomek.md); the other modes' true is assumed ("Not yet known").
 // DEFAULT_PIPETTING_MODE is the mode a new plan's stage uses at both ends; it must be usable at both.
 // The menus list the modes in this order. Data only (ADR 0009). The transfer-designer module's tests
 // check this file (transfer-designer.md, "Configuration").

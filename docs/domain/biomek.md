@@ -290,6 +290,9 @@ simulated wasn't recorded.** "Worked" means it validated and ran as the files sa
   the worklist (`=SrcMixSpeed`, `=DestMixSpeed`) (Andy, 2026-10-29). The tools use Medium.
 - **NonContact can't mix:** it dispenses without touching the liquid (the lab's own technique,
   defined by Andy in Biomek Software; Andy, 2026-10-29).
+- **NonContact's dispense doesn't touch the liquid in the destination well** (verified on the
+  instrument by Andy, 2026-11-08). So a NonContact dispense carries nothing back on the tip, as
+  `config/pipetting-modes.js` (`touchesLiquid: false`) and possible contamination assume (ADR 0021).
 - **OperationMix works with any liquid type** (the lab's own technique, defined by Andy in Biomek
   Software; Andy, 2026-10-29).
 - **No way is shown to mix a share of each well's own volume** (from the manual, 2026-10-29; not
@@ -442,9 +445,10 @@ Questions to answer before relying on the answer:
   different plate type in a deck position means changing the general-purpose method, whatever the
   tool stores.
 - Whether **8 probes can draw from one reservoir trough** at the same time in Transfer From File.
-- Whether a technique's **dispense touches the liquid** already in the destination well, for
-  example because of its dispense height. A tip that touches the liquid can carry it to later wells
-  (roadmap, item 27, "Possible contamination"; ADR 0021).
+- Whether the **Operation and OperationMix dispenses touch the liquid** already in the
+  destination well, for example because of their dispense height. The tools assume they do. A tip
+  that touches the liquid can carry it to later wells (roadmap, item 27, "Possible contamination";
+  ADR 0021). NonContact's doesn't (verified 2026-11-08, above).
 - Whether the logs are written line by line as the run goes, so that after an Abort or a power loss
   the Span8Transfer log lists every transfer that was done. To test: abort a run part-way and
   compare the log with what happened. Also try a light-curtain break mid-run, and restarting a
