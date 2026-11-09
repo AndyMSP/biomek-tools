@@ -205,6 +205,13 @@
 > "Workflows"), so the choices made for Andy are listed in its pull request (#146). They become
 > Final once built and tested by Andy.
 
+> **Draft changes (2026-11-08, the open entry's look, item 28 of v0.2.0):** the open entry (Start, a
+> stage or End) has a dark 2px border, a lifted shadow, a dark badge and a `Shown on deck` tag on its
+> top edge, red with a problem, in place of the blue border and badge, so the stage the deck shows
+> stands out from the page's other blues (sections 7, 15 and 16), from a preview Andy approved on
+> 2026-11-08. Built in the chat as a very small change (CLAUDE.md, "Who does what"). They become
+> Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -752,8 +759,19 @@ one-line rows (or, for a randomization, its heading). Clicking a row opens it.
 
 **Rows and cards share one look.** A row shows a number in a small round badge, a name, and a count
 at the right. A card shows the same at the top, then its contents. (Until 2026-10-30 a card also
-said `Current` in blue at the right. It went to leave room for a stage's name beside its ✎: an open
-card already stands out, with a blue badge and border and its contents shown; Andy, 2026-10-30.) **An open stage's card has its ✎ just after its name**, which opens the stage's editing
+said `Current` in blue at the right. It went to leave room for a stage's name beside its ✎; Andy,
+2026-10-30.)
+
+**The open entry stands out** (Andy, 2026-11-08, from a preview: its blue border and badge were
+lost among the page's other blues, the tip group boxes, seams, chosen sources and buttons, so it was
+hard to tell which stage the deck shows). Start, a stage (a mix step and a randomization's or
+transfer table's stage included) or End, when open, has a dark border, a lifted shadow and a dark
+badge, and a small **`Shown on deck`** tag sitting on its top edge at the right, above its count;
+a stage with a problem has them in the problem red instead (sizes and colors in section 15). The
+tag is part of the page's text, not decoration, so screen readers read it: it's in the card's
+heading row, just after the name, so the heading reads e.g. `2 Yeast Shown on deck`, then the ✎ and
+the count. It's never clicked: a press on it acts as a press on the heading. A randomization's card
+isn't an entry and keeps its own look. **An open stage's card has its ✎ just after its name**, which opens the stage's editing
 box (section 10); the count stays at the right (Andy, 2026-10-30: it frees the settings line, and
 keeps the ✎ in one place on every stage).
 
@@ -2149,6 +2167,14 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
     labware's label, the seams, and the Stages column's rows.
 - **Wells:** 36px, 4px apart; an empty well white with a gray border (`#BDBDB5`), its name 10px.
   Grid headings 12px gray.
+- **The open entry** (section 7): a 2px solid border in the text color (`#1C1C1A`) in place of the
+  1px border, its contents not moving (its padding 1px less), and the shadow `0 4px 14px` at 18%
+  black; its badge `#1C1C1A` with white text. The `Shown on deck` tag: on the card's top edge, 9px
+  above its heading's top and 12px from its right; `#1C1C1A` with light text (`#F6F5F1`), the page's
+  text font, 11px semibold (600), line height 16px, letter spacing 0.02em, 1px × 8px padding, 9px
+  corners; above the card's contents. With a problem, the border and the tag are the page's red
+  (`#C4362A`, the problems' red above; the preview's `#B42318` was a near match), and the shadow is
+  that red at 22%; the badge stays dark.
 - **Tip group boxes:** 12px corners; light blue (`#EEF3FA`, border `#9DB7DB`), alternating with light
   sand (`#F5F1E8`, border `#D9D2C3`). Start, the boxes and End 18px apart, leaving room for the
   seams between tip groups (section 7).
@@ -2223,6 +2249,13 @@ page's configuration (ADR 0009):
 - `SOURCES_SHOWN`: a whole number of at least 1.
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
+- the open entry's look (section 7; 2026-11-08): Start, a stage, a mix step, a randomization's
+  stage and End, each open, show the dark border, shadow and badge and the `Shown on deck` tag, and
+  no other entry has the tag; a stage with a problem shows them red; nothing in the heading moves
+  when a card opens; the tag covers neither the name (a long name too, cut with `…`), the ✎ nor the
+  count (End's too, wrapped onto two lines in a narrow column); Start's tag isn't cut off at the
+  top of the column; the stage's editing box still floats just under the heading; a screen reader
+  reads `Shown on deck` after the open entry's name;
 - possible traces (section 6): with a plan whose Yeast and Hy-Soy stages share tips, and whose
   Hy-Soy stage dispenses only into wells without Yeast, pointing at a Hy-Soy well after the Hy-Soy
   stage shows `Possible traces` with Yeast, and after the Yeast stage doesn't; at Start no card has the group; a well with none has no group; the group's tooltip shows;
