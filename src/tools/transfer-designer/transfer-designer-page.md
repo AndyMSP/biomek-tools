@@ -219,6 +219,14 @@
 > Transfer Designer, nothing changes. Written in the hands-off workflow, so the choices made for
 > Andy are listed in its pull request. They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-08, the plan in the Records folder, item 30 of v0.2.0):** Write files
+> also puts the plan file, exactly as Save would write it at that moment, in the zip's Records
+> folder, named after the run's folder (`PLAN_FILE_SUFFIX`, `config/records.js`), so a run's folder
+> holds everything about the run and Open can reopen it from there; the Biomek files box names it
+> (sections 5, 14 and 16; ADR 0020, amended). Andy's decision, 2026-11-08. The Biomek's own files
+> don't change. Built in the chat as a very small change (CLAUDE.md, "Who does what"). They become
+> Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -343,11 +351,12 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
 - If the files can be written: `This saves`, the zip's name on a line of its own in monospace
   (`<folder name>.zip`, e.g. `2026-10-28_172600_Exp36.zip`), then `holding the folder <folder name>,
   with Setup.csv, Stages.csv and 3 Transfer From File files, and a Records folder with the labware
-  sheet.` (the count from the files; `Records` is `RECORDS_FOLDER`), or, with run randomizations,
-  `… with the labware sheet and 2 well maps.` (`1 well map`; the count from `wellMaps`,
-  `well-maps.md`; 2026-11-08), with `Cancel` and `Write files`
+  sheet and the plan.` (the count from the files; `Records` is `RECORDS_FOLDER`), or, with run
+  randomizations, `… with the labware sheet, the plan and 2 well maps.` (`1 well map`; the count
+  from `wellMaps`, `well-maps.md`; 2026-11-08), with `Cancel` and `Write files`
   (solid blue), focused on Write files. The labware sheet is made at the same moment, with
-  `labwareSheet(plan, folderName, now)` (`labware-sheet.md`), and the well maps with
+  `labwareSheet(plan, folderName, now)` (`labware-sheet.md`), the plan file with
+  `planToText(plan, savedBy)` (as Save makes it, below; 2026-11-08), and the well maps with
   `wellMaps(plan)`, after the out-of-date check below, so the box never offers files it can't
   write; if it throws, its message is shown as the writer's are, in red, with Write files disabled.
 - If the plan is refused, `writeRunFiles`'s message instead (for example `Name the experiment first:
@@ -369,10 +378,21 @@ The time is fixed when the box opens, so the name it shows is the name Write fil
 folder, as `<folder name>/<file name>`, then the labware sheet in the `Records` folder, as
 `<folder name>/<RECORDS_FOLDER>/<name>`, the name being the one `labwareSheet` gives
 (`LABWARE_SHEET_FILE_NAME`, `config/records.js`; e.g.
-`2026-11-08_134118_Exp36-feeding/Records/Labware sheet.pdf`), then each well map there, under the
+`2026-11-08_134118_Exp36-feeding/Records/Labware sheet.pdf`), then the plan file there (below),
+then each well map there, under the
 name `wellMaps` gives, in its order (e.g. `…/Records/HySoy_dose well map.csv`), all dated with the
 same moment. The
-Biomek's own files are exactly as before (ADR 0020). Where the browser can ask where to save
+Biomek's own files are exactly as before (ADR 0020).
+
+**The plan file in the Records folder** (Andy, 2026-11-08): exactly the text Save would write for
+the plan the box worked out its files from, `planToText(plan, savedBy)` with the page's own
+`savedBy` (below), so Open can reopen any past run straight from its run folder and the user
+needn't keep the plan file separately. Its name is the folder name followed by `PLAN_FILE_SUFFIX`
+(`config/records.js`), e.g. `2026-11-08_134118_Exp36/Records/2026-11-08_134118_Exp36 plan.json`,
+so a copy taken out of the folder still says which run it was. It comes after the labware sheet and
+before the well maps: the run's fixed files first, then the list that varies with the plan. Its
+name can't match the labware sheet's or a well map's, as those end differently. Writing the files
+doesn't count as Save: the browser copy and Save are unchanged. Where the browser can ask where to save
 (Edge and Chrome can), it asks, suggesting `<folder name>.zip`; message `Saved <file name>. Unzip it
 into <BASE_FOLDER>, then point the method's setup worklist at <BASE_FOLDER><folder name>\Setup.csv.`
 (ok; `BASE_FOLDER` from `config/paths.js`). If the user closes that dialog, nothing happens and the
@@ -2127,7 +2147,10 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
 
 - **`config/records.js`** (`labware-sheet.md`, section 4) gives `RECORDS_FOLDER`, the folder the
   labware sheet goes in (section 5); the page doesn't check
-  it (the labware sheet module's tests do).
+  it (the labware sheet module's tests do). It also gives `PLAN_FILE_SUFFIX` (`" plan.json"`;
+  Andy, 2026-11-08), what follows the run's folder name in the name of the plan file Write files
+  puts in the Records folder (section 5); the page's tests check it (section 16), as the page is
+  what uses it.
 
 The page also uses the transfer designer's configuration (`config/pipetting-modes.js`,
 `config/tip-types.js`) through that module, and the deck description through `deck`;
@@ -2258,8 +2281,18 @@ page's configuration (ADR 0009):
 - `COMPONENT_COLORS`: 30 entries, each `#` and six hexadecimal digits, none repeated (ignoring case).
 - `DEFAULT_TRANSFER_VOLUME` and `DEFAULT_FILL_VOLUME`: numbers above 0.
 - `SOURCES_SHOWN`: a whole number of at least 1.
+- `PLAN_FILE_SUFFIX` (2026-11-08): text ending `.json`; a 40-character experiment name's folder
+  name (`folderNameFor`) followed by it, in the Records folder, is a name `zip` accepts; and it
+  differs from `LABWARE_SHEET_FILE_NAME` and `WELL_MAP_SUFFIX`, so the plan's name never matches
+  another record's.
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
+- the plan in the Records folder (section 5; 2026-11-08): the Biomek files box says `… with the
+  labware sheet and the plan.`, or, with run randomizations, `… with the labware sheet, the plan
+  and 2 well maps.`; the saved zip holds `Records/<folder name> plan.json` after the labware sheet
+  and before the well maps; Open on that file brings back the same plan (same stages, transfers,
+  labels and randomizations); the Biomek's own files are byte for byte what the same plan wrote
+  before; writing the files leaves the browser copy and Save as they were;
 - the open entry's look (section 7; 2026-11-08): Start, a stage, a mix step, a randomization's
   stage and End, each open, show the dark border, shadow and badge and the `Shown on deck` tag, and
   no other entry has the tag; a stage with a problem shows them red; nothing in the heading moves

@@ -519,6 +519,14 @@ Last updated: 2026-11-08
   third built file, `transfer-designer-tutorial-v….html`; `npm run test:browser` walks every step of
   every tutorial in Chrome at two window sizes. From the build, `tutorial.md`'s test list names the
   two steps of tutorial 2 that are done on their starting plan. Still to check by Andy.
+- **Decided: the plan in the Records folder** (Andy, 2026-11-08; item 30, below; ADR 0020
+  amended): Write files also puts the plan file, as Save writes it, in the zip's Records folder as
+  `<run folder> plan.json`, so Open can reopen a run from its folder. **Specified** (Draft,
+  2026-11-08, `transfer-designer-page.md`, sections 5, 14 and 16; `PLAN_FILE_SUFFIX` in
+  `config/records.js`), built in the chat as a very small change. No Biomek file or plan file
+  format changes. **Built (#150, 2026-11-08)**: `PLAN_FILE_SUFFIX` and its tests, and the page's
+  Write files and box text; checked in headless Chrome against a build of `main` (the Biomek files
+  byte for byte the same; the Records plan file reopens with Open). Still to check by Andy.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1221,6 +1229,18 @@ added on 2026-10-28 (Andy).
       (the page's tutorial hooks and storage names); glossary terms Guide panel, Starting plan,
       Tutorial.
     Built (#149).
+30. **The plan in the Records folder** (Andy, 2026-11-08): Write files also puts the plan file in
+    the zip's Records folder (item 25), so a run's folder holds everything about the run and the
+    user doesn't have to keep the plan file separately. Decided with Andy:
+    - **Exactly what Save writes** for the plan at that moment (`planToText` with the page's own
+      "saved by"), so **Open** can reopen any past run straight from its run folder.
+    - **Named after the run's folder**, then `PLAN_FILE_SUFFIX` from `config/records.js`, e.g.
+      `Records/2026-11-08_134118_Exp36 plan.json`; after the labware sheet, before the well maps.
+    - **The Biomek's own files don't change** (ADR 0020, amended); the Biomek files box names the
+      plan; writing the files doesn't count as Save.
+    - **Built in the chat** as a very small change (CLAUDE.md, "Who does what", the exception), on
+      its own branch and pull request. No plan file format change.
+    Built (#150).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:

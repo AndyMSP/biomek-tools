@@ -26,7 +26,10 @@ Two questions came up:
 ## Decision
 - **Files for people go in a `Records` folder inside the run's folder** (Andy, 2026-11-08), so the
   Biomek's files stay exactly as they were, and the records can be copied elsewhere in one go:
-  `<run folder>/Records/Labware sheet.pdf`, and later the well maps.
+  `<run folder>/Records/Labware sheet.pdf`, and later the well maps. *Amended 2026-11-08 (Andy,
+  item 30 of v0.2.0):* the Records folder also holds the plan file, as Save writes it, named
+  `<run folder> plan.json`, so a run's folder holds everything about the run and Open can reopen
+  it from there (`transfer-designer-page.md`, section 5).
 - **The labware sheet is a PDF** (Andy, 2026-11-08), one page: the experiment name, the zip's name,
   when it was made, a table of each labware the plan uses (its label, Biomek name, labware type,
   and whether it's filled before the run or starts empty), the deck's labware the plan doesn't use,
