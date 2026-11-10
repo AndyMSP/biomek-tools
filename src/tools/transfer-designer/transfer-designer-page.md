@@ -465,8 +465,10 @@ the run worked out when the box opened, like the zip.
    **Any other error** from the picker (for example a remembered folder the browser can't use):
    the remembered Ento folder is forgotten (deleted from the database, and from the page), so the
    next press starts at `BASE_FOLDER_PICKER_START`, and the message is `Couldn't open the folder
-   picker: <the error's message>. Press Write files to try again, or choose Zip file.` (error); the
-   box stays open.
+   picker: <the error's message>. Press Write files to try again, or choose Zip file.` (error),
+   adding the full stop after the error's message only if it doesn't end with one, as for `failed`
+   below; the box stays open. (The error's message is the thrown value as text if it isn't an
+   error, for both.)
 4. **With a folder picked**, `writeIntoFolder(folder, entries, <the base folder's name>)`:
    - **`wrong-folder`**: message `Pick the Ento folder: <BASE_FOLDER>. Nothing was written.`
      (error), e.g. `Pick the Ento folder: C:\Users\Beckman Coulter\Desktop\Ento\. Nothing was
@@ -485,7 +487,10 @@ the run worked out when the box opened, like the zip.
      doesn't end with one; the box stays open. What was written stays (the page never deletes),
      which is why the message says to delete it: trying again would otherwise meet `exists`.
 5. **While the picker is open and the folder is being written**, Write files and the Save as choice
-   are disabled, so a second press is ignored. If the box closes meanwhile (the plan changes,
+   are disabled, so a second press is ignored. When they're enabled again with the box still open
+   (every outcome but `written`), focus goes back to Write files, as when the box opens. Anything
+   unexpected going wrong (an error the steps above don't expect) is shown as an error message, as
+   a logic module's message is, never lost. If the box closes meanwhile (the plan changes,
    Escape, a press outside), the writing still finishes with the run it started with, and its
    message still shows; the box isn't reopened. The zip's saving is unchanged.
 
@@ -494,8 +499,9 @@ the run worked out when the box opened, like the zip.
 database (IndexedDB): database `biomek-tools transfer designer: folders`, version 1, with one store,
 `folders`, made when the database is first made, with no key path; the handle is stored under the
 key `base folder`. It's read when the Biomek files box opens (so step 1 doesn't wait for it), kept
-by the page while the box is open, and written only on `written`, so a wrong folder is never
-remembered; it's deleted by step 3's "any other error". It only says where the picker opens: the
+by the page, and written only on `written`, so a wrong folder is never
+remembered; it's deleted by step 3's "any other error". A read that finishes after the folder was remembered or forgotten
+in the meantime is ignored, so it can't bring back a folder just forgotten. It only says where the picker opens: the
 page never writes through it without a new pick, and never asks for permission on it. If the
 database can't be opened, read or written (a browser without it, or one that refuses), the page
 carries on as if nothing were remembered, with no message. Built as the tutorial, nothing is read

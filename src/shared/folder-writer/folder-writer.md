@@ -57,7 +57,9 @@ entries describe, and each file holds the same bytes as the zip's.
 
 - **`lastFolderName(path)`**: the last folder name in a Windows folder path, ignoring a backslash at
   the end. E.g. `lastFolderName("C:\\Users\\Beckman Coulter\\Desktop\\Ento\\")` is `"Ento"`, and so
-  is `lastFolderName("C:\\Ento")`. Throws if the path holds no folder name (`""`, `"C:\\"`).
+  is `lastFolderName("C:\\Ento")`. Throws if the path holds no folder name after its drive (`""`,
+  `"C:\\"`, and `"Ento"`, which has no drive: the first part of the path is always taken as the
+  drive).
 - **`writeIntoFolder(folder, entries, expectedName)`**: async. Checks and writes, in this order:
   1. The entries' names, as `zip` checks them (section 5): if one is wrong, it throws before looking
      at the folder.
@@ -96,8 +98,8 @@ in-memory folder object with exactly the parts of section 3, which records what'
 told to fail on the nth file. It lives in `tests/fixtures/memory-folder.js`, so the REPL can use it
 too.
 
-- `lastFolderName`: with and without the backslash at the end; a single folder (`C:\\Ento`); `""`
-  and `C:\\` throw.
+- `lastFolderName`: with and without the backslash at the end; a single folder (`C:\\Ento`); `""`,
+  `C:\\` and `Ento` throw.
 - Writes a run's entries (a folder, files in it, a `Records` folder with files): the stand-in holds
   exactly those folders and files, with the same texts; returns `{ how: "written", count }` with
   the number of files.
