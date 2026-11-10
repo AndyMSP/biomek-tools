@@ -527,6 +527,10 @@ Last updated: 2026-11-08
   format changes. **Built (#150, 2026-11-08)**: `PLAN_FILE_SUFFIX` and its tests, and the page's
   Write files and box text; checked in headless Chrome against a build of `main` (the Biomek files
   byte for byte the same; the Records plan file reopens with Open). Still to check by Andy.
+- **Decided: BC1070 mixes at most 900 µL** (Andy, 2026-11-10): a real Exp36 run stopped when a
+  1000 µL mix on BC1070 tips needed a 1070 µL move of the 1 mL syringe (`biomek.md`, "Volumes and
+  tips"). `MIX_VOLUME_LIMITS` in `config/tip-types.js` now gives BC1070 900 µL; BC230's limit is
+  still a stand-in ("Technical debt"). A config change only: no code or file format changes.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1394,11 +1398,13 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   volumes, tip types, the experiment name's 40 characters if it moves to `config/`). The mixing
   values were fixed in #110. Properly: each module's tests follow the rule the next time it's
   changed; a quick check is to change a config value and run `npm test`.
-- **Mix volume limits are stand-ins** (2026-10-30, mixing layer (b)): `MIX_VOLUME_LIMITS` in
-  `config/tip-types.js` (BC230 200 µL, BC1070 1000 µL) is about what each tip holds in one trip
-  (`biomek.md`, "Volumes and tips"), not checked as a mix volume on the instrument. Doing it
-  properly: find the largest mix each tip type does cleanly (no air drawn, no splashing) and record
-  it in `biomek.md` with the run that showed it.
+- **The BC230 mix volume limit is a stand-in** (2026-10-30, mixing layer (b)): `MIX_VOLUME_LIMITS`
+  in `config/tip-types.js` gives BC230 200 µL, about what the tip holds in one trip (`biomek.md`,
+  "Volumes and tips"), not checked as a mix volume on the instrument; whether 200 µL plus
+  MixOnly2's air gap fits in a 230 µL tip is open. (BC1070's limit, 900 µL, came from a real run on
+  2026-11-10: a 1000 µL mix overran the 1 mL syringe; `biomek.md`.) Doing it properly: find the
+  largest mix BC230 tips do cleanly (no air drawn, no splashing) and record it in `biomek.md` with
+  the run that showed it.
 - **The method's setup worklist is pointed at each run's folder by hand** (v0.2.0, Andy,
   2026-10-28; `file-writer.md`). Each run's files go in a folder of their own, and before each run
   the method's first Worklist step is pointed at that folder's `Setup.csv` and the method saved.
