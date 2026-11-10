@@ -227,6 +227,15 @@
 > don't change. Built in the chat as a very small change (CLAUDE.md, "Who does what"). They become
 > Final once built and tested by Andy.
 
+> **Draft changes (2026-11-10, writing the run as a folder, item 31 of v0.2.0; ADR 0023):** the
+> Biomek files box has a **Save as** choice, Folder or Zip file. Folder asks for the Ento folder and
+> writes the run's folder straight into it, with the same files as the zip; the folder picker opens
+> in the Ento folder picked before, or on the Desktop (`BASE_FOLDER_PICKER_START`,
+> `config/paths.js`). Built as the tutorial, the page still writes a zip only (sections 4, 5, 14,
+> 15, 16 and 17), from a preview Andy tested on the Biomek PC on 2026-11-10. Written in the
+> hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull
+> request. They become Final once built and tested by Andy.
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -318,6 +327,10 @@ data everyone has to clear first).
 - the **open randomization's card** and its unsaved changes (section 7, "Randomizations"), which
   tab it shows, and whether each randomization's source list is shown in full;
 - the **Biomek files box**, while it's open, and the run it will write (section 5);
+- the **Save as** choice (section 5), kept in the browser's local storage, so the box opens with
+  the last one chosen; and the **Ento folder** last written into, kept in the browser's database
+  (IndexedDB), so the folder picker can open there. A private (incognito) window forgets both when
+  it closes; the page then starts from the defaults;
 - whether **moving wells** is on, and the well picked to move (section 6); off when the page opens,
   so not kept by the browser copy;
 - the **selection** in the Stages column, the last thing clicked there (for Shift-click), and the
@@ -371,10 +384,33 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
   transfer table out of date, in column order, is named: `A transfer table (at stage 3, “Media”) is
   out of date: open it and press Update.`
 
+**Save as** (Andy, 2026-11-10; ADR 0023): when the files can be written, the box shows a choice
+under its text, headed `Save as`, with two options, one per line, each a radio button, its name and
+a quieter note: `Folder` (`written straight into Ento`) and `Zip file` (`to unzip into Ento`).
+`Ento` here, and in every message below, is `BASE_FOLDER`'s last folder name (`config/paths.js`),
+worked out from it, never written into the page. When the files can't be written (the red messages
+above), the choice is hidden.
+- **Which is chosen when the box opens:** the last one chosen, kept in the browser's local storage
+  under the name `<storage prefix>: save as` (`biomek-tools transfer designer: save as`; section 17
+  for the tutorial), as the text `folder` or `zip`. With nothing kept, or anything else kept, or no
+  storage: Folder.
+- **A browser that can't write folders** (no `window.showDirectoryPicker`, e.g. Firefox): Zip file
+  is chosen whatever was kept, and Folder is disabled, its line's tooltip saying `This browser can't
+  write folders. Use Edge or Chrome.`
+- **Changing the choice** keeps it at once, and the box's text follows it at once.
+- **The text with Folder chosen:** `This writes the folder`, the folder name on a line of its own in
+  monospace (as the zip's name is), then `with Setup.csv, Stages.csv and 3 Transfer From File files,
+  and a Records folder with the labware sheet and the plan. When asked, pick the Ento folder:`, then
+  `BASE_FOLDER` on a line of its own in monospace. The middle part (the files and the Records
+  folder's contents, with any well maps) is word for word the zip's. With Zip file chosen, the text
+  is the zip's, as above.
+
 The time is fixed when the box opens, so the name it shows is the name Write files saves (Andy,
 2026-10-28: "tell you what file name it's actually generating").
 
-**Write files** builds one zip with `zipFiles` (`zip.md`): each of the file writer's files under the
+**Write files** saves the run as the Save as choice says: as a folder (below, "Writing the run as a
+folder"), or, with Zip file chosen, and always when built as the tutorial (section 17), as a zip.
+With Zip file it builds one zip with `zipFiles` (`zip.md`): each of the file writer's files under the
 folder, as `<folder name>/<file name>`, then the labware sheet in the `Records` folder, as
 `<folder name>/<RECORDS_FOLDER>/<name>`, the name being the one `labwareSheet` gives
 (`LABWARE_SHEET_FILE_NAME`, `config/records.js`; e.g.
@@ -398,6 +434,47 @@ into <BASE_FOLDER>, then point the method's setup worklist at <BASE_FOLDER><fold
 (ok; `BASE_FOLDER` from `config/paths.js`). If the user closes that dialog, nothing happens and the
 box stays open. Otherwise, or if the browser refuses, the zip goes to the downloads; message `Saved
 <file name>, in your downloads.` and the same instructions. The box then closes.
+
+**Writing the run as a folder** (Andy, 2026-11-10; ADR 0023). The run's folder holds exactly the
+zip's entries: the same files, under the same names and folders, in the same order, each written as
+UTF-8 text exactly as the zip holds it, so the folder is byte for byte what unzipping the zip gives.
+The list of entries is worked out once and used for both, so they can't drift apart.
+1. **The folder picker** opens (`window.showDirectoryPicker`, asking to read and write), so the
+   user picks the Ento folder. It opens in the **remembered Ento folder** (below) if there is one;
+   otherwise, or if the browser can't open that folder (moved or deleted), at
+   `BASE_FOLDER_PICKER_START` (`config/paths.js`, section 14). A web page can't name a path for the
+   picker or write anywhere without the user picking it, so the path itself can't be set (ADR
+   0023). The browser may also ask, the first time, whether to let the page edit files there; that
+   prompt is the browser's own.
+2. **If the user closes the picker**, nothing happens: no message, the box stays open.
+3. **If the browser won't open the picker** for any other reason (for example inside a frame that
+   blocks it, as the preview artifact does): message `This window won't let the page write to a
+   folder. Open the page's file directly in Edge or Chrome, or choose Zip file.` (error); the box
+   stays open.
+4. **If the folder picked isn't named Ento** (its name compared exactly with `BASE_FOLDER`'s last
+   folder name): message `Pick the Ento folder: <BASE_FOLDER>. Nothing was written.` (error), e.g.
+   `Pick the Ento folder: C:\Users\Beckman Coulter\Desktop\Ento\. Nothing was written.`; the box
+   stays open, and the folder isn't remembered. A page can only see a folder's name, not where it
+   is, so a folder named Ento somewhere else passes this check.
+5. **If the Ento folder already holds something of the run's folder name** (a folder or a file):
+   message `Ento already holds <folder name>. Nothing was written.` (error); the box stays open.
+   Nothing is ever overwritten.
+6. **Otherwise** the picked folder becomes the remembered Ento folder, the run's folder is made in
+   it, its files written, then its Records folder made and its files written, in the zip's order.
+   Message `Wrote <folder name> into Ento. Point the method's setup worklist at
+   <BASE_FOLDER><folder name>\Setup.csv.` (ok); the box closes.
+7. **If writing fails part-way** (a full disk, the permission refused, a file locked): message
+   `Couldn't write all of <folder name>: <the browser's message> Delete <folder name> from Ento,
+   then try again, or choose Zip file.` (error); the box stays open. What was written stays (the
+   page doesn't delete), which is why the message says to delete it: trying again would otherwise
+   meet step 5.
+
+**The remembered Ento folder** is kept in the browser's database (IndexedDB), as the browser's own
+handle to the folder (not its path, which a page can't see): database `<storage prefix>: folders`,
+store `folders`, key `base folder`. It's set only by step 6, so a wrong folder is never remembered.
+If the database can't be opened, read or written (a browser without it, or one that refuses), the
+page carries on as if nothing were remembered, with no message. Built as the tutorial, nothing is
+remembered, as the tutorial never writes a folder.
 
 **The header's two boxes**, Biomek files' and Reset's, close with Cancel, with Escape, by clicking
 their button again, by opening the other one, and with **a press anywhere outside them**: they hold
@@ -2152,6 +2229,14 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
   puts in the Records folder (section 5); the page's tests check it (section 16), as the page is
   what uses it.
 
+- **`config/paths.js`** gives `BASE_FOLDER` (`file-writer.md`, "Configuration"), whose last
+  folder name the Biomek files box calls the Ento folder (section 5), and
+  `BASE_FOLDER_PICKER_START` (`"desktop"`; Andy, 2026-11-10; ADR 0023): where the folder picker
+  opens when no Ento folder is remembered. It must be one of the starting places browsers accept
+  by name (`"desktop"`, `"documents"`, `"downloads"`, `"music"`, `"pictures"`, `"videos"`); the
+  Desktop is the nearest to `BASE_FOLDER`. The page's tests check it (section 16), as the page is
+  what uses it; the file writer's tests go on checking `BASE_FOLDER`.
+
 The page also uses the transfer designer's configuration (`config/pipetting-modes.js`,
 `config/tip-types.js`) through that module, and the deck description through `deck`;
 `possible-contamination` reads `config/pipetting-modes.js`'s `touchesLiquid` itself.
@@ -2218,6 +2303,11 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   headings and row labels look like the box's other field names (12px, semibold, gray, capitals);
   the label column is as wide as its widest label, and the two end columns share the rest equally,
   8px apart; the menus there have 4px side padding instead of 10px, so whole mode names fit.
+- **The Save as choice** (section 5; 2026-11-10): no border or background; its heading `Save as`
+  in the box's text, semibold, 4px above the options; each option on a line of its own, its radio
+  button, name and note 6px apart and lined up on the text's baseline, 2px above and below; the
+  note in the muted text color at 90% of the size; 12px between the choice and the buttons. The
+  whole line can be clicked.
 - **Contents card:** dark (`#1C1C1A`) with light text (`#F6F5F1`), problems in `#FFB4AA`, a short
   mix's line in `#FFD45C`. A labeled well's label 16px bold (line height 1.25), and the well under
   it 12px, normal weight, at 70% opacity; the last line, `Right-click to name`, 12px at 60%
@@ -2285,8 +2375,20 @@ page's configuration (ADR 0009):
   name (`folderNameFor`) followed by it, in the Records folder, is a name `zip` accepts; and it
   differs from `LABWARE_SHEET_FILE_NAME` and `WELL_MAP_SUFFIX`, so the plan's name never matches
   another record's.
+- `BASE_FOLDER_PICKER_START` (2026-11-10): one of `"desktop"`, `"documents"`, `"downloads"`,
+  `"music"`, `"pictures"` or `"videos"`.
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
+- writing the run as a folder (section 5; 2026-11-10): the box opens with Folder chosen the first
+  time, then with the last choice, after a reload too; its text follows the choice at once, and is
+  the zip's word for word with Zip file; the choice is hidden when the files can't be written;
+  Folder writes the run's folder into Ento, holding byte for byte what the zip of the same moment
+  holds; the picker opens on the Desktop the first time and in a private window, and in Ento once
+  a run has been written there, after a reload too; closing the picker does nothing; a folder not
+  named Ento gives the Pick message, writes nothing and isn't remembered; a run's folder already
+  there gives the already-holds message; inside the preview artifact Folder gives the window
+  message and Zip file still works; Firefox shows Folder disabled with its tooltip; the tutorial
+  file shows no choice and saves a zip;
 - the plan in the Records folder (section 5; 2026-11-08): the Biomek files box says `… with the
   labware sheet and the plan.`, or, with run randomizations, `… with the labware sheet, the plan
   and 2 well maps.`; the saved zip holds `Records/<folder name> plan.json` after the labware sheet
@@ -2597,6 +2699,11 @@ items` and `biomek-tools transfer designer tutorial: copied deck`. So practice n
 a real plan, copied items or copied deck, and the reverse. The names live together in the page
 script, chosen once from the attribute. Its `savedBy` (section 5) becomes `transfer designer
 tutorial v` and the version.
+
+**Saving as a zip only** (2026-11-10; section 5, "Save as"): built as the tutorial, the Biomek
+files box shows no Save as choice and Write files always saves a zip, so the tutorials' steps,
+which save and talk about a zip, stay as they are, and practice files never go into Ento. The
+tutorial neither reads nor writes the kept choice or the remembered Ento folder.
 
 **The hooks.** The page script exports these, used only by the tutorial's page script, which
 imports the page script (so they're part of the same bundle). The first two never change anything.

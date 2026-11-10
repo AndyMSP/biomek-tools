@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-08
+Last updated: 2026-11-10
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -531,6 +531,12 @@ Last updated: 2026-11-08
   1000 µL mix on BC1070 tips needed a 1070 µL move of the 1 mL syringe (`biomek.md`, "Volumes and
   tips"). `MIX_VOLUME_LIMITS` in `config/tip-types.js` now gives BC1070 900 µL; BC230's limit is
   still a stand-in ("Technical debt"). A config change only: no code or file format changes.
+- **Decided: writing the run as a folder** (Andy, 2026-11-09 and 2026-11-10; item 31, below; ADR
+  0023, Proposed): the Biomek files box offers Save as, Folder or Zip file; Folder writes the run's
+  folder straight into the Ento folder, the picker opening in the Ento folder picked before or on
+  the Desktop (`BASE_FOLDER_PICKER_START`, `config/paths.js`). From a preview Andy tested on the
+  Biomek PC. **Specified** (Draft, 2026-11-10, hands-off workflow; `transfer-designer-page.md`,
+  sections 4, 5, 14, 15, 16 and 17). The Biomek's files and plan files don't change.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1245,6 +1251,19 @@ added on 2026-10-28 (Andy).
     - **Built in the chat** as a very small change (CLAUDE.md, "Who does what", the exception), on
       its own branch and pull request. No plan file format change.
     Built (#150).
+31. **Writing the run as a folder** (Andy, 2026-11-09 and 2026-11-10; hands-off workflow; ADR
+    0023): Write files can write the run's folder straight into the Ento folder on the Biomek PC,
+    instead of a zip to find and unzip. Decided with Andy, from a preview he tested on the Biomek PC
+    on 2026-11-10:
+    - **Save as: Folder or Zip file** in the Biomek files box; both hold exactly the same files.
+      Folder is the default; the box opens with the last choice.
+    - **Only a folder named Ento** is accepted, as the files hold full paths into `BASE_FOLDER`;
+      the message names the folder to pick. Nothing is overwritten.
+    - **The picker opens in the Ento folder picked before**, kept by the browser, otherwise at
+      `BASE_FOLDER_PICKER_START` in `config/paths.js` (the Desktop). A page can't open the picker
+      at a path, so `BASE_FOLDER` itself can't be used (Andy asked; not possible).
+    - **The tutorials save a zip only** (Claude's choice, in the hands-off workflow).
+    It changes neither the Biomek's files nor plan files.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -1295,7 +1314,9 @@ final Biomek runs, so they test the files as they will be:
     final runs.
 21. Possible contamination (item 27), added on 2026-11-08: preview, specifications, then build.
     It changes no Biomek files and no plan files, so it needn't come before the final runs.
-22. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+22. Writing the run as a folder (item 31), added on 2026-11-10: preview, specifications, then
+    build. It changes no Biomek files or plan files, so it needn't come before the final runs.
+23. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
