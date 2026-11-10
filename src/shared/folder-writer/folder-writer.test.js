@@ -51,6 +51,9 @@ describe("folder-writer", () => {
     assert.throws(() => lastFolderName("C:\\"), {
       message: 'lastFolderName needs a folder path ending in a folder name, and got "C:\\".',
     });
+    assert.throws(() => lastFolderName("Ento"), {
+      message: 'lastFolderName needs a folder path ending in a folder name, and got "Ento".',
+    });
   });
 
   // --- Writing ---

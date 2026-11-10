@@ -1130,6 +1130,10 @@ let biomekRun = null;
 // open there without waiting for the database; null if none is remembered or it can't be read.
 let rememberedBaseFolder = null;
 
+// How many times the remembered Ento folder has been set or forgotten, so a database read that
+// finishes after a change made meanwhile is ignored rather than bringing back an older folder.
+let rememberedFolderChanges = 0;
+
 // True while the folder picker is open and the run's folder is being written (section 5, step 5):
 // Write files and the Save as choice are disabled meanwhile, so a second press is ignored.
 let writingFolder = false;
@@ -1399,18 +1403,25 @@ function setWritingFolder(writing) {
 // entries into it with writeIntoFolder and says what happened. The picker is asked for before
 // anything is awaited, since the browser only opens one straight after a click. If the box closes
 // meanwhile, the writing still finishes with the run it started with.
+// Anything unexpected going wrong is shown as an error message, never lost; with the box still
+// open afterwards, focus goes back to Write files.
 async function writeRunAsFolder() {
   const run = biomekRun;
-  const entries = runEntriesFor(run);
   const startIn = rememberedBaseFolder ?? BASE_FOLDER_PICKER_START;
   setWritingFolder(true);
   try {
+    const entries = runEntriesFor(run);
     const folder = await pickFolder(startIn);
     if (folder !== null) {
       await writeRunInto(folder, run, entries);
     }
+  } catch (error) {
+    showMessage(errorText(error), "error");
   } finally {
     setWritingFolder(false);
+    if (!elements.biomekBox.hidden) {
+      elements.writeFiles.focus();
+    }
   }
 }
 
@@ -1444,7 +1455,8 @@ function reportPickerError(error) {
   }
   forgetRememberedFolder();
   showMessage(
-    `Couldn't open the folder picker: ${error.message}. Press Write files to try again, or choose Zip file.`,
+    `Couldn't open the folder picker: ${withFullStop(errorText(error))} Press Write files to try ` +
+      "again, or choose Zip file.",
     "error",
   );
 }
@@ -1506,12 +1518,17 @@ function withFullStop(text) {
 
 // Reads the remembered Ento folder into rememberedBaseFolder: the handle kept in the database, or
 // null if there's none or it can't be read.
+// A read that finishes after the folder was remembered or forgotten meanwhile is ignored.
 async function readRememberedFolder() {
+  const changesBefore = rememberedFolderChanges;
+  let handle;
   try {
-    const handle = await inFoldersStore("readonly", (store) => store.get(BASE_FOLDER_KEY));
-    rememberedBaseFolder = handle ?? null;
+    handle = (await inFoldersStore("readonly", (store) => store.get(BASE_FOLDER_KEY))) ?? null;
   } catch {
-    rememberedBaseFolder = null;
+    handle = null;
+  }
+  if (rememberedFolderChanges === changesBefore) {
+    rememberedBaseFolder = handle;
   }
 }
 
@@ -1519,6 +1536,7 @@ async function readRememberedFolder() {
 // database.
 async function rememberFolder(folder) {
   rememberedBaseFolder = folder;
+  rememberedFolderChanges += 1;
   try {
     await inFoldersStore("readwrite", (store) => store.put(folder, BASE_FOLDER_KEY));
   } catch {
@@ -1529,6 +1547,7 @@ async function rememberFolder(folder) {
 // Forgets the remembered Ento folder, in the page and in the database.
 async function forgetRememberedFolder() {
   rememberedBaseFolder = null;
+  rememberedFolderChanges += 1;
   try {
     await inFoldersStore("readwrite", (store) => store.delete(BASE_FOLDER_KEY));
   } catch {
