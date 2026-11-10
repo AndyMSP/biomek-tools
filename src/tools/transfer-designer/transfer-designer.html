@@ -31,6 +31,22 @@
             <h3 id="biomek-heading">Write the Biomek files?</h3>
             <!-- What Write files will save, or the file writer's message; filled when the box opens. -->
             <p id="biomek-summary"></p>
+            <!-- Save as: Folder or Zip file (section 5). Hidden when the files can't be written, and
+                 always in the tutorial (section 17). The notes name the base folder, so the page
+                 script fills them from config/paths.js. -->
+            <div id="save-as" class="save-as" role="radiogroup" aria-labelledby="save-as-heading" hidden>
+              <div id="save-as-heading" class="save-as-heading">Save as</div>
+              <label id="save-as-folder-line" class="save-as-option">
+                <input id="save-as-folder" type="radio" name="save-as" value="folder" />
+                <span>Folder</span>
+                <span id="save-as-folder-note" class="save-as-note"></span>
+              </label>
+              <label id="save-as-zip-line" class="save-as-option">
+                <input id="save-as-zip" type="radio" name="save-as" value="zip" />
+                <span>Zip file</span>
+                <span id="save-as-zip-note" class="save-as-note"></span>
+              </label>
+            </div>
             <div class="confirm-buttons">
               <button id="biomek-cancel" class="action" type="button">Cancel</button>
               <button id="write-files" class="primary" type="button">Write files</button>

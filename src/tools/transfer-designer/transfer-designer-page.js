@@ -7,7 +7,7 @@
 // contents-tracking.js, how much each mixed well is mixed through mix-volumes.js, a randomization's
 // seed and spare wells through random-pool.js, a pasted or copied table's text through
 // pasted-table.js, and
-// the Biomek files through file-writer.js, labware-sheet.js and zip.js. When one of them
+// the Biomek files through file-writer.js, labware-sheet.js, and zip.js or folder-writer.js. When one of them
 // refuses an edit, the page shows its message and changes nothing. What this file decides is only
 // how things look and how the user does them: how typing a volume works, how numbers are shown,
 // where boxes float, and what each message says.
@@ -19,7 +19,7 @@ import { DEFAULT_TRANSFER_VOLUME, DEFAULT_FILL_VOLUME } from "../../../config/de
 import { SOURCES_SHOWN } from "../../../config/randomizations.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
 import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
-import { BASE_FOLDER } from "../../../config/paths.js";
+import { BASE_FOLDER, BASE_FOLDER_PICKER_START } from "../../../config/paths.js";
 import { RECORDS_FOLDER, WELL_MAP_SUFFIX, PLAN_FILE_SUFFIX } from "../../../config/records.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { mixVolumes } from "../../shared/mix-volumes/mix-volumes.js";
@@ -34,6 +34,7 @@ import {
 } from "../../shared/deck/deck.js";
 import { writeRunFiles, checkExperimentName } from "../../shared/file-writer/file-writer.js";
 import { zipFiles } from "../../shared/zip/zip.js";
+import { lastFolderName, writeIntoFolder } from "../../shared/folder-writer/folder-writer.js";
 import { parsePastedTable, tableToText } from "../../shared/pasted-table/pasted-table.js";
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
@@ -169,6 +170,26 @@ const STORAGE_PREFIX = IS_TUTORIAL ? "biomek-tools transfer designer tutorial" :
 
 // The key the browser copy of the plan is stored under, in the browser's local storage (section 5).
 const STORAGE_KEY = `${STORAGE_PREFIX}: plan`;
+
+// The key the Biomek files box's Save as choice is stored under, in the browser's local storage, as
+// the text "folder" or "zip" (section 5). Not used by the tutorial (section 17).
+const SAVE_AS_KEY = `${STORAGE_PREFIX}: save as`;
+
+// The Save as choice's two values, as the radio buttons and local storage hold them.
+const SAVE_AS_FOLDER = "folder";
+const SAVE_AS_ZIP = "zip";
+
+// The browser's database (IndexedDB) the remembered Ento folder is kept in: its name, version, its
+// one store and the key the folder's handle is stored under (section 5, "The remembered Ento
+// folder").
+const FOLDERS_DATABASE = "biomek-tools transfer designer: folders";
+const FOLDERS_DATABASE_VERSION = 1;
+const FOLDERS_STORE = "folders";
+const BASE_FOLDER_KEY = "base folder";
+
+// The base folder's own name, e.g. "Ento", worked out once from BASE_FOLDER (config/paths.js), so
+// the page never writes the name itself (section 5, "Save as").
+const BASE_FOLDER_NAME = lastFolderName(BASE_FOLDER);
 
 // The key the page's copy of copied items is stored under, in the browser's local storage, shared
 // by every tab of the designer (section 7, "Moving and copying").
@@ -433,6 +454,12 @@ const elements = {
   biomekBox: byId("biomek-box"),
   biomekSummary: byId("biomek-summary"),
   biomekCancel: byId("biomek-cancel"),
+  saveAs: byId("save-as"),
+  saveAsFolder: byId("save-as-folder"),
+  saveAsFolderLine: byId("save-as-folder-line"),
+  saveAsFolderNote: byId("save-as-folder-note"),
+  saveAsZip: byId("save-as-zip"),
+  saveAsZipNote: byId("save-as-zip-note"),
   writeFiles: byId("write-files"),
   save: byId("save"),
   open: byId("open"),
@@ -533,6 +560,7 @@ function connectHeader() {
   elements.biomekFiles.addEventListener("click", toggleBiomekBox);
   elements.biomekCancel.addEventListener("click", closeBiomekBox);
   elements.writeFiles.addEventListener("click", writeBiomekFiles);
+  connectSaveAsChoice();
   elements.save.addEventListener("click", savePlanFile);
   elements.open.addEventListener("click", () => {
     // An open randomization's card closes first, as Close would (section 7).
@@ -1097,14 +1125,24 @@ function checkNameAsTyped(box) {
 // box is closed, or open with a plan the writer refused.
 let biomekRun = null;
 
+// The remembered Ento folder (section 5): the browser's handle to the base folder last written
+// into, read from the browser's database when the Biomek files box opens, so the folder picker can
+// open there without waiting for the database; null if none is remembered or it can't be read.
+let rememberedBaseFolder = null;
+
+// True while the folder picker is open and the run's folder is being written (section 5, step 5):
+// Write files and the Save as choice are disabled meanwhile, so a second press is ignored.
+let writingFolder = false;
+
 // Opens the Biomek files box under its button, or closes it if it's open. Opening it closes
 // Reset's question, and works out the run's files at once with writeRunFiles, the labware sheet
 // with labwareSheet, the plan file with recordsPlanFile and the well maps with wellMaps, the moment
-// the box opens as their timestamp, so the zip's name it shows
+// the box opens as their timestamp, so the folder or zip name it shows
 // is the one Write files saves, and the box never offers files it can't write. If either refuses
-// the plan, its message is shown instead, unchanged, with Write files disabled. Before that, a
-// randomization or transfer table that's out of date is named instead, as the writer never reads
-// them.
+// the plan, its message is shown instead, unchanged, with Write files disabled and the Save as
+// choice hidden. Before that, a randomization or transfer table that's out of date is named
+// instead, as the writer never reads them. Outside the tutorial, it also reads the remembered Ento
+// folder, for the folder picker.
 function toggleBiomekBox() {
   if (!elements.biomekBox.hidden) {
     closeBiomekBox();
@@ -1125,22 +1163,43 @@ function toggleBiomekBox() {
     const maps = wellMaps(currentPlan());
     biomekRun = { folderName, files, sheet, planFile, maps, now };
     summary.classList.remove("refused");
-    summary.replaceChildren(
-      "This saves",
-      createElement("code", `${folderName}.zip`, "zip-name"),
-      `holding the folder ${folderName}, with ${describeRunFiles(files)}, ` +
-        `and a ${RECORDS_FOLDER} folder with ${describeRecords(maps)}.`,
-    );
-    elements.writeFiles.disabled = false;
+    showSaveAsChoice();
+    showBiomekSummary();
   } catch (error) {
     biomekRun = null;
     summary.classList.add("refused");
     summary.textContent = error.message;
-    elements.writeFiles.disabled = true;
+    elements.saveAs.hidden = true;
+  }
+  refreshWriteControls();
+  if (!IS_TUTORIAL) {
+    readRememberedFolder();
   }
   elements.biomekBox.hidden = false;
   elements.biomekFiles.setAttribute("aria-expanded", "true");
   (biomekRun === null ? elements.biomekCancel : elements.writeFiles).focus();
+}
+
+// The box's text for the run it will write, following the Save as choice: with Folder chosen,
+// "This writes the folder", the folder's name, what it holds and which folder to pick; otherwise
+// the zip's name and what it holds. The part saying what it holds is the same for both.
+function showBiomekSummary() {
+  const { folderName, files, maps } = biomekRun;
+  const contents = `with ${describeRunFiles(files)}, and a ${RECORDS_FOLDER} folder with ${describeRecords(maps)}.`;
+  if (saveAsChoice() === SAVE_AS_FOLDER) {
+    elements.biomekSummary.replaceChildren(
+      "This writes the folder",
+      createElement("code", folderName, "zip-name"),
+      `${contents} When asked, pick the ${BASE_FOLDER_NAME} folder:`,
+      createElement("code", BASE_FOLDER, "zip-name"),
+    );
+  } else {
+    elements.biomekSummary.replaceChildren(
+      "This saves",
+      createElement("code", `${folderName}.zip`, "zip-name"),
+      `holding the folder ${folderName}, ${contents}`,
+    );
+  }
 }
 
 // Throws if a randomization or transfer table of the plan is out of date (section 5), naming the
@@ -1179,13 +1238,14 @@ function recordsPlanFile(plan, folderName) {
   return { name: `${folderName}${PLAN_FILE_SUFFIX}`, text: planToText(plan, SAVED_BY) };
 }
 
-// The zip's entries for `run` (as biomekRun holds it): the file writer's files under the run's
-// folder, exactly as before, then the labware sheet, the plan file and each well map, in wellMaps'
-// order, in its Records folder (ADR 0020), e.g. "2026-11-08_134118_Exp36/Setup.csv", …,
+// The run's entries for `run` (as biomekRun holds it), given either to zipFiles or to
+// writeIntoFolder, so the folder holds what the zip would (section 5): the file writer's files
+// under the run's folder, exactly as before, then the labware sheet, the plan file and each well
+// map, in wellMaps' order, in its Records folder (ADR 0020), e.g. "2026-11-08_134118_Exp36/Setup.csv", …,
 // "2026-11-08_134118_Exp36/Records/Labware sheet.pdf",
 // "2026-11-08_134118_Exp36/Records/2026-11-08_134118_Exp36 plan.json",
 // "2026-11-08_134118_Exp36/Records/HySoy_dose well map.csv".
-function zipEntriesFor({ folderName, files, sheet, planFile, maps }) {
+function runEntriesFor({ folderName, files, sheet, planFile, maps }) {
   const runEntries = files.map((file) => ({ name: `${folderName}/${file.name}`, text: file.text }));
   const recordsEntries = [sheet, planFile, ...maps].map((file) => ({
     name: `${folderName}/${RECORDS_FOLDER}/${file.name}`,
@@ -1201,16 +1261,27 @@ function closeBiomekBox() {
   elements.biomekFiles.setAttribute("aria-expanded", "false");
 }
 
-// Write files: builds one zip with zipFiles of the run's files, each under the run's folder, then
+// Write files: saves the run as the Save as choice says, as a folder (writeRunAsFolder) or as a
+// zip (writeRunAsZip); always as a zip when built as the tutorial (section 17). Does nothing while
+// a folder is being written.
+function writeBiomekFiles() {
+  if (biomekRun === null || writingFolder) {
+    return;
+  }
+  if (!IS_TUTORIAL && saveAsChoice() === SAVE_AS_FOLDER) {
+    writeRunAsFolder();
+  } else {
+    writeRunAsZip();
+  }
+}
+
+// Builds one zip with zipFiles of the run's files, each under the run's folder, then
 // the labware sheet, the plan file and the well maps in the Records folder inside it, all dated with the moment the box opened, and
 // saves it through the save dialog where the browser has one, otherwise to the downloads; then the
 // box closes. If the user closes the dialog, nothing happens and the box stays open.
-async function writeBiomekFiles() {
-  if (biomekRun === null) {
-    return;
-  }
+async function writeRunAsZip() {
   const { folderName, now } = biomekRun;
-  const bytes = tryLogic(() => zipFiles(zipEntriesFor(biomekRun), now));
+  const bytes = tryLogic(() => zipFiles(runEntriesFor(biomekRun), now));
   if (bytes === false) {
     return;
   }
@@ -1230,6 +1301,269 @@ async function writeBiomekFiles() {
     "ok",
   );
   closeBiomekBox();
+}
+
+// --- Save as (section 5) ---
+
+// Connects the Save as choice: fills in its notes, which name the base folder, and keeps a choice
+// the user makes.
+function connectSaveAsChoice() {
+  elements.saveAsFolderNote.textContent = `written straight into ${BASE_FOLDER_NAME}`;
+  elements.saveAsZipNote.textContent = `to unzip into ${BASE_FOLDER_NAME}`;
+  elements.saveAsFolder.addEventListener("change", () => chooseSaveAs(SAVE_AS_FOLDER));
+  elements.saveAsZip.addEventListener("change", () => chooseSaveAs(SAVE_AS_ZIP));
+}
+
+// Shows the Save as choice as the box opens, with the last choice kept, or Folder; in a browser
+// that can't write folders, Zip file, with Folder disabled and its line's tooltip saying why (this
+// forced choice isn't kept). Built as the tutorial, the choice stays hidden (section 17).
+function showSaveAsChoice() {
+  if (IS_TUTORIAL) {
+    elements.saveAs.hidden = true;
+    return;
+  }
+  const canWrite = canWriteFolders();
+  const choice = canWrite ? readSaveAs() : SAVE_AS_ZIP;
+  elements.saveAsFolder.checked = choice === SAVE_AS_FOLDER;
+  elements.saveAsZip.checked = choice === SAVE_AS_ZIP;
+  if (canWrite) {
+    elements.saveAsFolderLine.removeAttribute("title");
+  } else {
+    elements.saveAsFolderLine.title = "This browser can't write folders. Use Edge or Chrome.";
+  }
+  elements.saveAs.hidden = false;
+}
+
+// The Save as choice shown: SAVE_AS_FOLDER or SAVE_AS_ZIP; always SAVE_AS_ZIP when built as the
+// tutorial, which saves a zip only (section 17).
+function saveAsChoice() {
+  if (IS_TUTORIAL) {
+    return SAVE_AS_ZIP;
+  }
+  return elements.saveAsFolder.checked ? SAVE_AS_FOLDER : SAVE_AS_ZIP;
+}
+
+// The user chose `choice` (SAVE_AS_FOLDER or SAVE_AS_ZIP): keeps it at once, and the box's text
+// follows it.
+function chooseSaveAs(choice) {
+  keepSaveAs(choice);
+  if (biomekRun !== null) {
+    showBiomekSummary();
+  }
+}
+
+// The Save as choice kept in local storage: SAVE_AS_ZIP if "zip" is kept, otherwise (nothing kept,
+// anything else kept, or no storage) SAVE_AS_FOLDER.
+function readSaveAs() {
+  try {
+    return window.localStorage.getItem(SAVE_AS_KEY) === SAVE_AS_ZIP ? SAVE_AS_ZIP : SAVE_AS_FOLDER;
+  } catch {
+    // No local storage: Folder.
+    return SAVE_AS_FOLDER;
+  }
+}
+
+// Keeps `choice` in local storage. A browser refusing storage is ignored, as for the browser copy.
+function keepSaveAs(choice) {
+  try {
+    window.localStorage.setItem(SAVE_AS_KEY, choice);
+  } catch {
+    // No local storage: the box opens with Folder next time.
+  }
+}
+
+// True if the browser can ask for a folder and write into it (Edge and Chrome can; Firefox can't).
+function canWriteFolders() {
+  return typeof window.showDirectoryPicker === "function";
+}
+
+// Enables or disables Write files and the Save as choice: Write files only when the box has a run
+// to write, and neither while a folder is being written; Folder only where the browser can write
+// folders.
+function refreshWriteControls() {
+  elements.writeFiles.disabled = biomekRun === null || writingFolder;
+  elements.saveAsFolder.disabled = writingFolder || !canWriteFolders();
+  elements.saveAsZip.disabled = writingFolder;
+}
+
+// Marks a folder as being written, or not (`writing`), and refreshes the controls that depend on it.
+function setWritingFolder(writing) {
+  writingFolder = writing;
+  refreshWriteControls();
+}
+
+// --- Writing the run as a folder (section 5) ---
+
+// Writes the run as a folder: asks the user for the Ento folder with the browser's folder picker,
+// opening in the remembered Ento folder or at BASE_FOLDER_PICKER_START, then writes the run's
+// entries into it with writeIntoFolder and says what happened. The picker is asked for before
+// anything is awaited, since the browser only opens one straight after a click. If the box closes
+// meanwhile, the writing still finishes with the run it started with.
+async function writeRunAsFolder() {
+  const run = biomekRun;
+  const entries = runEntriesFor(run);
+  const startIn = rememberedBaseFolder ?? BASE_FOLDER_PICKER_START;
+  setWritingFolder(true);
+  try {
+    const folder = await pickFolder(startIn);
+    if (folder !== null) {
+      await writeRunInto(folder, run, entries);
+    }
+  } finally {
+    setWritingFolder(false);
+  }
+}
+
+// The folder the user picks, with the picker opening at `startIn` (a folder's handle, or one of the
+// browser's starting places by name), or null if none was picked: the user closed the picker or
+// declined the browser's edit prompt (nothing to say), or the picker couldn't open (its message is
+// shown). The page passes no `id`, so where the picker opens follows only `startIn`.
+async function pickFolder(startIn) {
+  try {
+    return await window.showDirectoryPicker({ mode: "readwrite", startIn });
+  } catch (error) {
+    if (error.name !== "AbortError") {
+      reportPickerError(error);
+    }
+    return null;
+  }
+}
+
+// Says why the folder picker couldn't open (`error`, what it rejected with). A window that won't
+// let the page write to a folder (as in a frame that blocks it) has its own message; after any
+// other error, the remembered Ento folder is forgotten, so the next press starts at
+// BASE_FOLDER_PICKER_START.
+function reportPickerError(error) {
+  if (error.name === "SecurityError" || error.name === "NotAllowedError") {
+    showMessage(
+      "This window won't let the page write to a folder. Open the page's file directly in Edge or " +
+        "Chrome, or choose Zip file.",
+      "error",
+    );
+    return;
+  }
+  forgetRememberedFolder();
+  showMessage(
+    `Couldn't open the folder picker: ${error.message}. Press Write files to try again, or choose Zip file.`,
+    "error",
+  );
+}
+
+// Writes `entries`, the entries of `run` (as biomekRun held it when Write files was pressed), into
+// `folder`, the folder picked, and says what happened. Once written, the folder becomes the
+// remembered Ento folder, and the box closes if it's still open with the same run.
+async function writeRunInto(folder, run, entries) {
+  let result;
+  try {
+    result = await writeIntoFolder(folder, entries, BASE_FOLDER_NAME);
+  } catch (error) {
+    // Only wrong entries throw, which the page's own entries never are; shown as tryLogic shows a
+    // logic module's message.
+    showMessage(error.message, "error");
+    return;
+  }
+  const { folderName } = run;
+  if (result.how === "wrong-folder") {
+    showMessage(`Pick the ${BASE_FOLDER_NAME} folder: ${BASE_FOLDER}. Nothing was written.`, "error");
+  } else if (result.how === "exists") {
+    showMessage(`${BASE_FOLDER_NAME} already holds ${folderName}. Nothing was written.`, "error");
+  } else if (result.how === "written") {
+    rememberFolder(folder);
+    showMessage(
+      `Wrote ${folderName} into ${BASE_FOLDER_NAME}. Point the method's setup worklist at ` +
+        `${BASE_FOLDER}${folderName}\\Setup.csv.`,
+      "ok",
+    );
+    if (biomekRun === run) {
+      closeBiomekBox();
+    }
+  } else {
+    showMessage(
+      `Couldn't write all of ${folderName}: ${withFullStop(errorText(result.error))} Delete ` +
+        `${folderName} from ${BASE_FOLDER_NAME}, then press Write files again, or choose Zip file.`,
+      "error",
+    );
+  }
+}
+
+// The message of `error`, whatever was thrown: an error's message, or the thrown value as text.
+function errorText(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+// `text` with a full stop at the end, unless it already ends with one,
+// e.g. withFullStop("The disk is full") → "The disk is full.", withFullStop("Full.") → "Full.".
+function withFullStop(text) {
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
+// --- The remembered Ento folder (section 5) ---
+// The browser's own handle to the base folder last written into, kept in the browser's database
+// (IndexedDB), so the folder picker can open there. It only says where the picker opens: the page
+// never writes through it without a new pick. If the database can't be opened, read or written,
+// the page carries on as if nothing were remembered, with no message. Built as the tutorial,
+// nothing is read or remembered (section 17).
+
+// Reads the remembered Ento folder into rememberedBaseFolder: the handle kept in the database, or
+// null if there's none or it can't be read.
+async function readRememberedFolder() {
+  try {
+    const handle = await inFoldersStore("readonly", (store) => store.get(BASE_FOLDER_KEY));
+    rememberedBaseFolder = handle ?? null;
+  } catch {
+    rememberedBaseFolder = null;
+  }
+}
+
+// Makes `folder` (the handle the picker gave) the remembered Ento folder, in the page and in the
+// database.
+async function rememberFolder(folder) {
+  rememberedBaseFolder = folder;
+  try {
+    await inFoldersStore("readwrite", (store) => store.put(folder, BASE_FOLDER_KEY));
+  } catch {
+    // The database refused: the picker opens at BASE_FOLDER_PICKER_START after a reload.
+  }
+}
+
+// Forgets the remembered Ento folder, in the page and in the database.
+async function forgetRememberedFolder() {
+  rememberedBaseFolder = null;
+  try {
+    await inFoldersStore("readwrite", (store) => store.delete(BASE_FOLDER_KEY));
+  } catch {
+    // The database refused: it's forgotten by the page, which is what the next press uses.
+  }
+}
+
+// Opens the folders database, making its one store, with no key path, when the database is first
+// made. Resolves to the database; rejects if it can't be opened (or the browser has no IndexedDB).
+function openFoldersDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = window.indexedDB.open(FOLDERS_DATABASE, FOLDERS_DATABASE_VERSION);
+    request.onupgradeneeded = () => request.result.createObjectStore(FOLDERS_STORE);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Does `action` (given the folders store, returning a request) in one transaction of `mode`
+// ("readonly" or "readwrite"), and resolves to the request's result once the transaction is done,
+// e.g. inFoldersStore("readonly", (store) => store.get("base folder")) → the handle, or undefined.
+// The database is closed afterwards.
+async function inFoldersStore(mode, action) {
+  const database = await openFoldersDatabase();
+  try {
+    return await new Promise((resolve, reject) => {
+      const transaction = database.transaction(FOLDERS_STORE, mode);
+      const request = action(transaction.objectStore(FOLDERS_STORE));
+      transaction.oncomplete = () => resolve(request.result);
+      transaction.onerror = () => reject(transaction.error);
+      transaction.onabort = () => reject(transaction.error);
+    });
+  } finally {
+    database.close();
+  }
 }
 
 // --- The browser copy (section 5) ---
