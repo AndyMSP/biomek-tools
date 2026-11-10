@@ -389,6 +389,13 @@ simulated wasn't recorded.** "Worked" means it validated and ran as the files sa
 ## Volumes and tips
 *(Project training log, 2026-10-06, unless noted.)*
 - A 1 mL syringe holds about 1000 µL per draw, including air gaps.
+- **The whole stroke counts, not just the liquid** (real run, Andy, 2026-11-10): a 1000 µL mix
+  with MixOnly2 on BC1070 tips stopped the run with *"Move of Pod1 syringe #1 to 1070.000 µL
+  violates the syringe maximum of 1000.000 µL"* (reported inside "Error on Split#1"). The plunger
+  rests at 20 µL ("The Details log and the report", below), and MixOnly2 draws an air gap before
+  mixing, so 70 µL of the stroke is used before the mix: a MixOnly2 mix can take at most about
+  930 µL. (The 20/50 split of the 70 µL is read from the rest position, not checked against the
+  Technique Editor.) `MIX_VOLUME_LIMITS` in `config/tip-types.js` gives BC1070 900 µL for this.
 - BC230 tips hold about 200 µL of liquid per trip. For more, use "Split large volumes" or 1070 µL
   tips.
 - Beckman publishes no accuracy specification per syringe size. Before relying on volumes below

@@ -1,7 +1,7 @@
 # mix-volumes — specification
 
 > **Draft (2026-10-30).** Written for v0.2.0, mixing layer (b), from ADR 0007 ("Mixing") and the
-> mixing preview. Still to review: the mix volume limits are stand-ins (section 3; roadmap,
+> mixing preview. Still to review: the BC230 mix volume limit is a stand-in (section 3; roadmap,
 > "Technical debt"). It becomes Final once built and the files it feeds have run on the Biomek.
 >
 > **Draft change (2026-10-30, mixing layer (c1)):** each row also gives, for each well it mixes,
@@ -95,11 +95,13 @@ accurate, only possible, and a smaller mix wouldn't run (Andy, 2026-10-30). So t
 ### Configuration
 `config/tip-types.js` (ADR 0009) also exports `MIX_VOLUME_LIMITS`: the most each tip type can mix,
 in µL, as an object with one entry for each tip type in `TIP_TYPES`, e.g.
-`{ BC230: 200, BC1070: 1000 }`. The file's header comment says this module's tests check
-`MIX_VOLUME_LIMITS` (and the transfer designer's tests the rest). These are **stand-ins** (roadmap, "Technical debt"): about what a
-BC230 tip holds in one trip, and what a 1 mL syringe holds in one draw with air gaps (`biomek.md`,
-"Volumes and tips"), not checked as mix volumes on the instrument. This module's tests check the
-file: each tip type has exactly one limit, a number above 0, and there are no others.
+`{ BC230: 200, BC1070: 900 }`. The file's header comment says this module's tests check
+`MIX_VOLUME_LIMITS` (and the transfer designer's tests the rest). The BC230 limit is a **stand-in**
+(roadmap, "Technical debt"): about what a BC230 tip holds in one trip, not checked as a mix volume
+on the instrument. The BC1070 limit comes from a real run (2026-11-10): a 1000 µL mix needed more
+than the 1 mL syringe's stroke, so the limit leaves room for the plunger's rest position and the
+mix technique's air gap (`biomek.md`, "Volumes and tips"). This module's tests check the file: each
+tip type has exactly one limit, a number above 0, and there are no others.
 
 These two values, and `MIX_VOLUME_LIMITS`, are named only here: elsewhere, this specification and its
 tests use them by name (`MIN_MIX_VOLUME`, `SHORT_MIX_SHARE`), so changing `config/` never breaks a

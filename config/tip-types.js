@@ -16,8 +16,10 @@ export const TIP_TYPES = ["BC230", "BC1070"];
 export const DEFAULT_PROBE_COUNT = 4;
 
 // The most each tip type can mix, in µL: a row's mix volume is never more than its tip type's limit
-// (mix-volumes.md). One entry for each tip type in TIP_TYPES. STAND-INS (roadmap, "Technical
-// debt"): about what a BC230 tip holds in one trip, and what a 1 mL syringe holds in one draw with
-// air gaps (docs/domain/biomek.md, "Volumes and tips"), not checked as mix volumes on the
-// instrument.
-export const MIX_VOLUME_LIMITS = { BC230: 200, BC1070: 1000 };
+// (mix-volumes.md). One entry for each tip type in TIP_TYPES.
+// - BC230: a STAND-IN (roadmap, "Technical debt"): about what a BC230 tip holds in one trip
+//   (docs/domain/biomek.md, "Volumes and tips"), not checked as a mix volume on the instrument.
+// - BC1070: 900, from a real run (Andy, 2026-11-10; docs/domain/biomek.md, "Volumes and tips"):
+//   a 1000 µL mix with MixOnly2 needed a 1070 µL syringe move and failed, so the most a mix can
+//   take is about 930 µL; 900 leaves a margin. It's the 1 mL syringe that limits it, not the tip.
+export const MIX_VOLUME_LIMITS = { BC230: 200, BC1070: 900 };
