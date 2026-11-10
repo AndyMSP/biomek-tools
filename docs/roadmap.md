@@ -531,12 +531,14 @@ Last updated: 2026-11-10
   1000 µL mix on BC1070 tips needed a 1070 µL move of the 1 mL syringe (`biomek.md`, "Volumes and
   tips"). `MIX_VOLUME_LIMITS` in `config/tip-types.js` now gives BC1070 900 µL; BC230's limit is
   still a stand-in ("Technical debt"). A config change only: no code or file format changes.
-- **Decided: writing the run as a folder** (Andy, 2026-11-09 and 2026-11-10; item 31, below; ADR
+- **Decided: writing the run as a folder** (Andy, 2026-11-09 and 2026-11-10; item 31, below; #152; ADR
   0023, Proposed): the Biomek files box offers Save as, Folder or Zip file; Folder writes the run's
   folder straight into the Ento folder, the picker opening in the Ento folder picked before or on
   the Desktop (`BASE_FOLDER_PICKER_START`, `config/paths.js`). From a preview Andy tested on the
-  Biomek PC. **Specified** (Draft, 2026-11-10, hands-off workflow; `transfer-designer-page.md`,
-  sections 4, 5, 14, 15, 16 and 17). The Biomek's files and plan files don't change.
+  Biomek PC. **Specified** (Draft, 2026-11-10, hands-off workflow): a new shared module,
+  `folder-writer` (`folder-writer.md`), `checkEntries` exported from `zip` (`zip.md`), and the
+  page (`transfer-designer-page.md`, sections 4, 5, 14, 15, 16 and 17). The Biomek's files and plan
+  files don't change.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1263,6 +1265,8 @@ added on 2026-10-28 (Andy).
       `BASE_FOLDER_PICKER_START` in `config/paths.js` (the Desktop). A page can't open the picker
       at a path, so `BASE_FOLDER` itself can't be used (Andy asked; not possible).
     - **The tutorials save a zip only** (Claude's choice, in the hands-off workflow).
+    - **A shared module, `folder-writer`**, writes the same entries `zip` takes (Claude's choice,
+      from the specification review), so the folder and the zip can't drift apart.
     It changes neither the Biomek's files nor plan files.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the

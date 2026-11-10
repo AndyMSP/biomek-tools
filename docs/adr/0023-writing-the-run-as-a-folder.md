@@ -40,6 +40,10 @@ Access API: `showDirectoryPicker`). Three things about it shaped the decision:
   in config, and keeping the memory "so there's a chance it opens back to Ento"). Tested on the
   Biomek PC, 2026-11-10: it wrote the run and opened back in Ento after a reload.
 - **Nothing is overwritten**: a run's folder already in Ento is refused.
+- **The writing is a shared module of our own, `folder-writer`** (Claude, 2026-11-10, in the
+  hands-off workflow, from the specification review), next to `zip`: it takes the same entries as
+  `zip`, checked by `zip`'s own rules, so the folder and the zip can't drift apart, and it's tested
+  in Node with a stand-in folder.
 - **The tutorials still save a zip only** (Claude, 2026-11-10, in the hands-off workflow): their
   steps save and talk about a zip, and practice files shouldn't go into Ento.
 
@@ -49,7 +53,8 @@ Access API: `showDirectoryPicker`). Three things about it shaped the decision:
 - A folder named Ento somewhere other than the Desktop would be accepted; the message after writing
   shows the full path the method expects, and the method's own worklist path would not find it.
 - In a private window, or on a first visit, the picker opens on the Desktop and the user clicks
-  Ento once.
+  Ento once. In each new browser session the browser also asks once whether the page may edit
+  files there.
 - If writing fails part-way, the files already written stay; the message says to delete the folder
   before trying again.
 - If another tool comes to write files to the Biomek PC, it can use the same pattern.

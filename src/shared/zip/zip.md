@@ -93,14 +93,18 @@ and Ethernet all use (the "reflected" polynomial `0xEDB88320`, starting from `0x
 inverted at the end). A well-known check: the CRC-32 of the text `123456789` is `0xCBF43926`.
 
 ## 4. Interface
-The module exports two functions. Neither changes its inputs.
+The module exports three functions. None changes its inputs.
 
 | Function | Takes | Returns | Throws |
 |---|---|---|---|
 | `zipFiles(entries, date)` | the entries and the date (section 3) | the zip's bytes, a `Uint8Array` | if the entries or the date aren't valid (section 5); nothing is returned then |
 | `crc32(bytes)` | a `Uint8Array` | its CRC-32, a whole number from 0 to 4,294,967,295, e.g. of the bytes of `"123456789"` → `0xCBF43926` | never, for a `Uint8Array` |
+| `checkEntries(entries)` | the entries (section 3) | nothing | as `zipFiles` does for the entries (section 5) |
 
-`crc32` is exported so its tests can check it against the known values directly.
+`crc32` is exported so its tests can check it against the known values directly. `checkEntries`
+(2026-11-10) is exported so `folder-writer` (`folder-writer.md`), which writes the same entries into
+a folder, checks them by the same rules with the same messages, rather than repeating them; it's
+exactly the check `zipFiles` makes of the entries, and `zipFiles` keeps using it.
 
 Example:
 ```js
@@ -133,6 +137,9 @@ found is reported.
 ## 6. Test cases
 Each becomes at least one unit test in `zip.test.js`, inside `describe("zip", …)`. Each row of
 section 5 has at least one test.
+
+**`checkEntries`** (2026-11-10): a valid list passes; a name with `..` and two entries named alike
+throw exactly the messages `zipFiles` throws for the same entries.
 
 **CRC-32**
 - The CRC-32 of the bytes of `"123456789"` is `0xCBF43926`; of no bytes, `0`; of the single byte
