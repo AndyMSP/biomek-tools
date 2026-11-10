@@ -538,7 +538,14 @@ Last updated: 2026-11-10
   Biomek PC. **Specified** (Draft, 2026-11-10, hands-off workflow): a new shared module,
   `folder-writer` (`folder-writer.md`), `checkEntries` exported from `zip` (`zip.md`), and the
   page (`transfer-designer-page.md`, sections 4, 5, 14, 15, 16 and 17). The Biomek's files and plan
-  files don't change.
+  files don't change. **Built (#152, 2026-11-10)**: `folder-writer` (code, tests, the stand-in
+  folder `tests/fixtures/memory-folder.js`, REPL topic), `checkEntries` exported from `zip`,
+  `BASE_FOLDER_PICKER_START`, and the page's Save as choice and folder writing; from the build's
+  review, the picker's message adds a full stop only when needed, focus returns to Write files, and
+  a late database read can't bring back a forgotten folder; the specifications and the build each
+  reviewed by a separate agent, and checked in headless Chrome (the Biomek files byte for byte
+  main's; the tutorials' walk-throughs pass). Still to check by Andy, including the remembered
+  folder with a real folder, which headless Chrome can't read back.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1268,6 +1275,7 @@ added on 2026-10-28 (Andy).
     - **A shared module, `folder-writer`**, writes the same entries `zip` takes (Claude's choice,
       from the specification review), so the folder and the zip can't drift apart.
     It changes neither the Biomek's files nor plan files.
+    Built (#152).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
