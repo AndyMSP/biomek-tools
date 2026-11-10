@@ -100,8 +100,10 @@ export function crc32(bytes) {
 
 // Throws if `entries` isn't a list of valid entries: each an object with exactly a name and a
 // text, both text, the name following the rules of the specification's section 3, and no two
-// alike. Entries are numbered from 1 in messages.
-function checkEntries(entries) {
+// alike. Entries are numbered from 1 in messages. Exported so folder-writer checks the entries it
+// writes by the same rules, with the same messages (zip.md, section 4); zipFiles uses it too,
+// e.g. checkEntries([{ name: "Run/Setup.csv", text: "" }]) → nothing (it passes).
+export function checkEntries(entries) {
   if (!Array.isArray(entries)) {
     throw new Error(
       `The entries to zip must be a list of { name, text }, but got ${describeValue(entries)}.`,
