@@ -1679,7 +1679,11 @@ From the top:
     confirms it, the note becomes `Nothing is carried from one well to the next.`)
   - **`One tip for wells with the same contents`** (`"sameContents"`): `Wells holding the same
     things, in the same shares, share a tip.`
-  A new wizard starts on the first.
+  A new wizard starts on the first. **Pending Andy's decision C** (`transfer-designer.md`, "Its groups"): if
+  reservoir troughs are refused for `A fresh tip for every well`, the refusal shows as Make's or
+  Update's error, the wizard staying open (below), and the user switches the way or unpicks the
+  troughs; nothing else on the page changes. **Pending Andy's decision A**: if he chooses a warning
+  (option 2) rather than grouping by volume, where it shows is specified then.
 - **3 · Tips**: a menu of tip types (`TIP_TYPES`), then `on` (gray), then a menu of probe counts
   (`1 probe` … `8 probes`, choosing `probesFor`). A new wizard starts from **the tips in use at that
   point**: the tip group of the stage just before `beforeId` in the stage order, or of the plan's
