@@ -546,6 +546,19 @@ Last updated: 2026-11-10
   reviewed by a separate agent, and checked in headless Chrome (the Biomek files byte for byte
   main's; the tutorials' walk-throughs pass). Still to check by Andy, including the remembered
   folder with a real folder, which headless Chrome can't read back.
+- **Decided: deleting and the trash** (Andy, 2026-11-11; item 32, below; ADR 0024, Proposed):
+  select anything in the Stages column and press Delete (right after a click in the column),
+  choose Delete or Cut from the right-click menu, or drag it onto the trash; a short red animation
+  and an Undo button in the message; Join with the group above in place of a tip change's Remove;
+  and a trash at the bottom of the column that keeps everything deleted, to put back where it was
+  or drag anywhere. From a preview Andy shaped on 2026-11-11, where he also found that removing a
+  tip group's first stage joined the rest of the group to the tips before it (fixed: the group
+  keeps its tips). **Specified** (Draft, 2026-11-11, hands-off workflow): `transfer-designer.md`
+  ("Stages", "Deleting"), a new logic module `trash` (`trash.md`, `TRASH_LIMIT` in
+  `config/trash.js`), `transfer-designer-page.md` (sections 2, 4, 5, 7, 10, 12, 15, 16 and 17), a
+  shared test plan `tests/fixtures/delete-test-plan.js` and a browser walk-through
+  `tests/browser/delete.walk.js`; glossary term Trash. Plan files don't change; what a plan writes
+  changes only after a tip group's first stage is removed, which now keeps the group's tips.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1277,6 +1290,32 @@ added on 2026-10-28 (Andy).
     It changes neither the Biomek's files nor plan files.
     Built (#152).
 
+32. **Deleting and the trash** (Andy, 2026-11-11; hands-off workflow; ADR 0024): Andy's feature
+    ideas "Easy delete" and "Trash can". Decided with Andy, from a preview on 2026-11-11:
+    - **Delete what's selected**, any mix of stages, tip groups, randomizations and transfer tables
+      ("anything that is a stage or a container can be deleted"): the Delete key, the right-click
+      menu's `Delete` and `Cut`, and Ctrl+X. **Deleting a tip group deletes every stage in it.**
+    - **The Delete key only right after a click in the Stages column** (Andy chose this over the
+      open stage counting as selected: "you could intend to delete something on the deck and then
+      delete the entire stage"). Ctrl+X follows the same rule (Claude's choice).
+    - **Join with the group above**, on a tip group's right-click menu and in place of a tip
+      change's `Remove`, instead of deleting a tip change to join two groups.
+    - **Seeing it go:** the deleted rows flash red and shrink away, and the message has an `Undo`
+      button (Andy chose both, from three options).
+    - **The trash**, at the bottom of the Stages column: drag onto it to delete, drag out of it to
+      put something anywhere, or `Put back` to where it was. Everything deleted goes in, by any
+      route, one entry per thing (Andy, after the preview put several things back as one and got
+      their order wrong). At most 20 (`TRASH_LIMIT`), kept by the browser across reloads, not in
+      plan files and not tied to a plan; Empty trash and Reset clear it, Reset undoably.
+    - **Put back finds the same neighbors**, matched by ID and name, so it never puts something
+      into another plan by itself (found in the preview).
+    - **Removing a tip group's first stage keeps the group's tips** (Andy found the old behavior,
+      2026-11-11): a bug fix in every removal of a stage.
+    - **Very thorough tests** (Andy asked): round trips of deleting and putting back in every
+      order, in Node, and a browser walk-through.
+    It changes neither plan files nor the Biomek files' format; what a plan writes changes only
+    after a removal of a tip group's first stage.
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
@@ -1328,7 +1367,11 @@ final Biomek runs, so they test the files as they will be:
     It changes no Biomek files and no plan files, so it needn't come before the final runs.
 22. Writing the run as a folder (item 31), added on 2026-11-10: preview, specifications, then
     build. It changes no Biomek files or plan files, so it needn't come before the final runs.
-23. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+23. Deleting and the trash (item 32), added on 2026-11-11: preview, specifications, then build. It
+    changes no plan files and not the Biomek files' format; it changes what a plan writes only
+    after a tip group's first stage is removed (now keeping the group's tips), which Andy confirms
+    by merging.
+24. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
@@ -1398,6 +1441,10 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **Tabs don't follow each other's trash** (2026-11-11, item 32): each tab of the designer reads the
+  trash when it opens and writes it after every change, so with two tabs open the last to change it
+  wins, and an entry deleted in one can vanish from the other's view. Properly: listen for the
+  browser's `storage` event and merge the other tab's changes (by entry ID) into the trash shown.
 - **The tutorial can't run unbuilt** (2026-11-08, item 29): the build joins the transfer
   designer's page and the guide panel, adding `data-tutorial` to the page's HTML, so `npm run serve`
   has no tutorial page. Trying it means `npm run build` first. Doing it properly would mean a small
