@@ -175,6 +175,17 @@
 > "Workflows"), so the choices made for Andy are listed in its pull request (#146). It becomes Final
 > once built and tested by Andy.
 
+> **Draft change (2026-11-11, deleting and the trash):** several things can be deleted at once,
+> `deleteItems` (sections 3 to 6, "Deleting"), from the preview Andy shaped on 2026-11-11; and
+> removing the first stage of a tip group now **moves its tip change to the next stage of the
+> group**, so the group keeps its own tips (section 3, "Stages"; Andy found the old behavior, which
+> joined the rest of the group to the tips before it, on 2026-11-11). The trash, which keeps what's
+> deleted so it can be put back, is a module of its own (`trash.md`). Plan files don't change;
+> what a plan writes changes only after a removal of a tip group's first stage, which now keeps the
+> group's tips. Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
+> Andy are listed in its pull request. Still to review: every new message. It becomes Final once
+> built and tested by Andy.
+
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
 and every edit that can be made to one, each checked so that a plan is always valid. A tool shows a
@@ -195,8 +206,8 @@ Beside it in this tool are two other logic modules, `plan-history` (undo and red
 `plan-file` (saving and opening plans; ADR 0010), and the page (`transfer-designer-page.md`).
 
 ## 2. Scope
-Version 1 creates an empty plan; adds, removes, changes, moves and copies stages (and moves and
-copies tip groups and randomizations); adds, removes and changes transfers, tip changes,
+Version 1 creates an empty plan; adds, removes, changes, moves, copies and deletes stages (and
+moves, copies and deletes tip groups, randomizations and transfer tables, several at once); adds, removes and changes transfers, tip changes,
 components (with their constituents and osmolality), starting contents, labware labels, well
 labels and the experiment name; adds, updates and removes transfer tables; and answers questions about a plan: its stage order, its tip
 groups, the tips it uses, the stages with a contents problem or a mix problem, where each stage
@@ -206,7 +217,6 @@ cells per cm² where its labware has a growth area).
 Not in version 1 (see `docs/roadmap.md`):
 - **Moving a transfer** to another stage, or within its stage (ADR 0014). A transfer can be removed
   and added again.
-- **Cut and delete** of several things at once (ADR 0014).
 - **Smarter staging** (the tool forming stages itself).
 - **Converting between families of units** (g/L to mM needs a molecular weight): a constituent
   keeps one family (section 3, "Constituents").
@@ -330,7 +340,22 @@ without transfers isn't run.
   new stage uses the tips before that tip change (Andy, 2026-10-25: so a stage can be added at the
   top of a tip group, or at the end of the group before).
 - **Any stage can be removed unless it's the only one**, and its transfers go with it (Andy,
-  2026-10-26). A tip change keyed by it goes too.
+  2026-10-26). **A tip change keyed by it moves to the next stage in the stage order, when that
+  stage has no tip change of its own** (Andy, 2026-11-11), so the rest of its tip group keeps the
+  group's tips, as moving a group's first stage away already does (section 3, "Moving and
+  copying", the container rule). Otherwise (the stage was the only one of its tip group, or the
+  last in the stage order) the tip change goes with it. (Until 2026-11-11 the tip change always
+  went, so removing a group's first stage joined the rest of the group to the tips before it; Andy
+  found this while trying the trash, and it had been there since the first build.) For example,
+  with tip groups [1, 2] and [3, 4] (BC1070, keyed by 3), removing stage 3 leaves [1, 2] and [4],
+  stage 4 now keyed with the BC1070 tip change; removing stage 1 leaves stage 2 on the `START`
+  tips, as before. Every removal of a stage goes through this one rule, whichever edit makes it:
+  `removeStage`, `deleteItems`, and the removals inside `removeRandomization`,
+  `removeTransferTable`, `updateTransferTable` and a randomization's run. For most of those
+  nothing moves (a transfer table's stages, and the stage just after a randomization or transfer
+  table, have tip changes of their own); where it does (a randomization's run dropping the first
+  stage of a group of sources sharing tips), the rest of that group keeps its tips too, which is
+  what sharing means (section 3, "Sharing tips").
 - **A stage may mix labware types.** The file writer splits it into substages (ADR 0007, amended
   2026-10-26), so nothing here refuses it.
 
@@ -1740,6 +1765,54 @@ it that has one (or `null`), so section 3's rules about where a randomization si
 `placed` is the moved or pasted things, as items of the new plan, in column order (copies by their
 new IDs), so a tool can select them.
 
+### Deleting
+(Andy, 2026-11-11; roadmap, item 32 of v0.2.0.) **`deleteItems(plan, items)`** takes several things
+out of the plan at once, as **one edit**, for a tool's Delete and Cut: anything that can be
+selected in the column, the **items** of "Moving and copying" above (`docs/glossary.md`), in any
+mix:
+- **a stage** (a mix step included): as `removeStage` removes it, its transfers with it, and its
+  tip change moved to the next stage of its group when it was the group's first (section 3,
+  "Stages");
+- **an ordinary tip group** (`{ kind: "tipGroup", id }`, its first stage's ID): every one of its
+  stages, and its tip change with them;
+- **a randomization**: as `removeRandomization` removes it, with every stage it owns;
+- **a transfer table**: as `removeTransferTable` removes it, with every stage it owns.
+
+The list is taken as `moveItems` takes it: in column order, a stage of a listed tip group (or
+randomization, or transfer table) left out as part of it already, and an item listed twice counted
+once; checked with the same messages (`deleteItems` uses the word `delete`, as `copyOf` uses
+`copy`). Then it's refused, changing nothing:
+- **a stage of a randomization or a transfer table, without its owner** in the list (Claude's
+  choice, 2026-11-11: its stage is one source's, or one column's, so it changes only through its
+  randomization or table, as `removeStage` already refuses it): `Stage 5, “Drug A”, belongs to a
+  randomization: delete the whole randomization, or change it in its card.` / `Stage 3, “Media”,
+  belongs to a transfer table: delete the whole transfer table, or change it in its wizard.`
+  (the first such stage in column order);
+- **every stage of the plan** (a plan needs at least one; Claude's choice, 2026-11-11, as
+  `removeStage` refuses the only stage): `That's every stage in the plan, and a plan needs at least
+  one. Leave one stage, or add a new one first.` A randomization that hasn't run has no stages, so
+  it counts nothing here, and deleting only such randomizations is fine.
+
+Everything else is deleted, as these edits would do it one after another: randomizations and
+transfer tables first, in column order, then the stages left, in column order. So:
+- **Tips:** a tip group whose first stage goes but whose other stages stay keeps its tips (the
+  rule in "Stages"); a tip group whose stages all go is gone, with its tip change. When the plan's
+  first tip group goes, the first stage left takes the `START` tips set to the tips it had (section
+  3, "Tip changes and tip groups"), as it always does after stages are removed; so deleting the
+  first tip group never changes the tips of the group that becomes first.
+- **Randomizations' places:** a randomization that hasn't run and sat before a deleted stage moves
+  to the next stage, as `removeStage` moves it; the stage just after a run randomization keeps
+  tips of its own, as `removeStage` keeps them (section 3, "Randomizations").
+- **Nothing is kept** of what's deleted: it's the caller's to keep (a tool's trash, `trash.md`).
+
+It gives `{ plan, removed, deleted }`: the new plan; `removed`, how many stages were taken out (a
+randomization's and a transfer table's included; for a tool's message); and `deleted`, the items
+deleted, in column order, as the list was taken (stages of listed containers left out, repeats
+once), so a caller can keep each one (`trash.md`).
+
+**Joining a tip group to the one above** isn't a delete: it's `removeTipChange` (section 3, "Tip
+changes and tip groups"), unchanged.
+
 ### Moving wells
 (Andy, 2026-11-02; roadmap, item 12 of v0.2.0.) A reservoir warped in the autoclave in an earlier
 experiment, and some troughs couldn't be used, so different wells were used than planned. **Moving
@@ -1871,7 +1944,7 @@ given; "returns the plan with …" means a new plan.
 | `changeStageSettings(plan, id, settings)` | the plan with stage `id`'s settings replaced (the stage list checks them, then this module checks that each end's technique matches its mixing; section 3, "Mixing"). |
 | `setStageMix(plan, id, end, mix)` | the plan with stage `id` mixing at `end` (`"source"` or `"destination"`) as `mix`, a mix or `null` (`stage-list.md`), and that end's technique switched to match (section 3, "Mixing"). Throws if `id` isn't a stage, `end` isn't an end, the end's technique and liquid type aren't one of the modes, the stage list refuses the mix, or `mix` isn't `null` and the mode can't mix. |
 | `canRemoveStage(plan, id)` | `true` if `id` is a stage and not the only one. |
-| `removeStage(plan, id)` | the plan without stage `id`, its transfers or a tip change keyed by it. Throws if `canRemoveStage` is `false`. |
+| `removeStage(plan, id)` | the plan without stage `id` or its transfers; a tip change keyed by it moves to the next stage in the stage order when that stage has none (section 3, "Stages"), and otherwise goes. Throws if `canRemoveStage` is `false`. |
 | `stageEnds(plan)` | for each stage with transfers, in run order, `{ stage, transfersDone }`: how many transfers have run when it ends, e.g. `[{ stage: "1", transfersDone: 4 }, { stage: "2", transfersDone: 8 }]`. |
 | `stagesWithContentsProblem(plan)` | a `Set` of the IDs of stages with a contents problem of any kind (section 3). A problem of the starting contents (`operationIndex` `null`) names no stage. |
 | `stagesWithMixProblem(plan)` | a `Set` of the IDs of stages with a mix problem (`mix-volumes.md`). |
@@ -1996,6 +2069,11 @@ The edits refused on a transfer table's stages (section 3, "Where it sits") thro
 | `copyOf(plan, items)` | the copied items for `items` (plain data, JSON). Throws if `items` isn't a list of items of this plan. |
 | `copyItems(plan, items, place)` | `{ plan, placed }`: the plan with copies of `items` at `place`, as one edit: `pasteItems(plan, copyOf(plan, items), place)`. |
 | `pasteItems(plan, copied, place)` | `{ plan, placed }`: the plan with the copied items at `place`, each stage and randomization a new one, as one edit. Throws as section 5 says. |
+
+**Deleting** (section 3, "Deleting")
+| Function | Returns |
+|---|---|
+| `deleteItems(plan, items)` | `{ plan, removed, deleted }`: the plan without `items` (stages, tip groups, randomizations, transfer tables, in any mix), as one edit; `removed`, the number of stages taken out; `deleted`, the items deleted, in column order. Throws as section 5 says. |
 
 **Moving wells** (section 3, "Moving wells")
 | Function | Returns |
@@ -2203,6 +2281,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setTransferTables`: a stage is owned by another transfer table, or by a randomization | `Stage "5" belongs to two transfer tables, 1 and 2.` / `Stage "5" belongs to transfer table 2 and randomization 1.` |
 | `pasteItems`: a transfer table item in a version 1 to 3 copy | the form message: `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.` |
 | `pasteItems`: a transfer table's values or stages refused | `Can't paste: item 2: ` and `setTransferTables`' message without its `Transfer table 2: ` prefix, e.g. `Can't paste: item 2: its stage for Dye has no column in its table.` |
+| `deleteItems`: `items` isn't a non-empty list, or an item isn't in its form or in the plan | as for `moveItems` (above), with `delete`: `The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got 5.`, and the item messages unchanged |
+| `deleteItems`: a randomization's stage without its randomization (the first in column order) | `Stage 5, “Drug A”, belongs to a randomization: delete the whole randomization, or change it in its card.` |
+| `deleteItems`: a transfer table's stage without its transfer table (the first in column order) | `Stage 3, “Media”, belongs to a transfer table: delete the whole transfer table, or change it in its wizard.` |
+| `deleteItems`: every stage of the plan | `That's every stage in the plan, and a plan needs at least one. Leave one stage, or add a new one first.` |
 | `isWellUsed`, `isWellToFill`, `moveWell`: a well isn't on the deck | `deck.checkWell`'s messages, unchanged, e.g. `"Z99" isn't a well on Plate1. Its wells are A1 to H12.` |
 | `moveWell`: `to` is `from` | `Res1 3 is where it is already. Choose another well to move it to.` |
 | `moveWell`: `from` isn't in use | `The plan doesn't use Res1 7, so there's nothing to move.` |
@@ -2303,6 +2385,9 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   last stage).
 - `addStageWithNewTips`, `addMixStepWithNewTips`: `beforeId` a stage or `null`, then inside a
   transfer table, then inside a randomization.
+- `deleteItems`: the list, then each item in turn (as `moveItems`); then a stage of a randomization
+  or transfer table without its owner (the first such in column order, whichever kind); then
+  every stage of the plan.
 - `moveWell`: `from` on the deck, then `to` on the deck (`deck.checkWell`'s order), then the same
   well, then `from` in use, then `from` a well to fill, then `to` in use.
 - `pasteItems`: the copied items' form and version, then each item in turn, in order (its form,
@@ -2416,8 +2501,21 @@ order of checks.
 - In the table of which parts of the plan each edit may change, `addStageWithNewTips` and
   `addMixStepWithNewTips` change `stageList`, `stageOrder` and `tipChanges`.
 - `removeStage` removes a stage with transfers, and its transfers, and takes it out of the stage
-  order, leaving the others in their order; a tip change keyed by it goes; removing the only stage
-  throws.
+  order, leaving the others in their order; removing the only stage throws.
+- **Removing a tip group's first stage keeps the group's tips** (2026-11-11; this test fails on the
+  code before it, which dropped the tip change): tip groups [1, 2] on the `START` tips and [3, 4, 5]
+  on the second tip type (`TIP_TYPES[1]`, skipped with fewer than 2) on `[1, 2]`, keyed by 3;
+  `removeStage` of 3 leaves [1, 2] and [4, 5], the tip change now keyed by 4 with the same tip type
+  and probes, and `tipGroups` giving the same two groups' tips as before; stage 4 then removed too:
+  keyed by 5; then 5: the group is gone and its tip change with it ([1, 2] alone). A tip group's
+  only stage removed: its tip change goes, and the next group keeps its own. The last stage in the
+  stage order, first of its group, removed: its tip change goes. A stage in the middle of a group
+  removed: no tip change moves. The same through `deleteItems` (below) and through
+  `removeRandomization` and `removeTransferTable` (their stages' tip changes never move onto a
+  stage outside them: the stage just after them keeps its own).
+- **The rule's reach:** a randomization run again after its first source, which started a group of
+  sources sharing tips, is taken out: the next source's stage starts the group, keyed with its tips
+  (the same tip type and probes); every other test of runs, updates and moves passes unchanged.
 - Removing the first stage, when the second has its own tip change, makes that tip change the
   `START` one, with its tip type and probes.
 - `renameStage` and `changeStageSettings` change only that stage; the stage list's errors pass
@@ -3372,6 +3470,53 @@ that isn't moving); A moved to position 2: B, A, C, the tip change on B.
 **The REPL** (`scripts/repl.js`): `columnBoxes`, `moveItems`, `copyOf`, `copyItems` and
 `pasteItems` in the transfer designer's topic, with an example that moves a stage into another tip
 group and pastes a copied tip group into an empty plan.
+
+**Deleting** (2026-11-11; Andy asked for these to be thorough, as the preview showed deleting and
+putting back to be easy to get wrong). Use the **test plan with a bit of everything**,
+`tests/fixtures/delete-test-plan.js` (`trash.md`, section 6): stages named `S01` to `S11` in tip
+groups [S01, S02] (`START`), [S03, S04, S05, S06] with S06 a mix step, [S07], [S08, S09], then a
+run randomization with three stages, then [S10, S11], then a transfer table with two stages.
+- **Each kind alone**, each one edit (one `PlanHistory` record undoes it to the very same plan):
+  - a stage in the middle of a group (S04): gone with its transfers; S03's group keeps its tips;
+  - a group's first stage (S03): S04 to S06 keep the group's tip type and probes (keyed by S04);
+  - a mix step (S06): gone, its mixed wells with it;
+  - a lone group's stage (S07): the group gone, its tip change with it; S08's group unchanged;
+  - the plan's first stage (S01): S02 on the `START` tips, which keep their tip type and probes;
+  - the plan's last stage, a transfer table's (refused, below), and S11, the last ordinary stage:
+    S10 alone in its group;
+  - an ordinary tip group (S03's): S03 to S06 gone, and its tip change; the groups either side
+    unchanged;
+  - the first tip group (S01's): S01 and S02 gone; S03's group is first, on the `START` tips set to
+    its own tip type and probes;
+  - a randomization: it and its three stages gone, as `removeRandomization` gives (the same plan,
+    compared part by part); S10 keeps its own tips;
+  - a randomization that hasn't run (add one before S07): gone, nothing else changes, `removed` 0;
+  - a transfer table: it and its stages gone, as `removeTransferTable` gives.
+- **Mixed and scattered:** S02 and S05 (from two groups); S02 and S03 (either side of a group
+  boundary: S02's group keeps S01, S03's group keeps its tips on S04); S03 and S04 (a group's first
+  two); S07, S08 and S09 (a lone group and the whole next group: both groups gone); S01, S03's
+  tip group and the randomization; S06, S11 and the transfer table; S09 and S10 (either side of the
+  randomization: the randomization's `beforeId` and tips as `removeStage` leaves them, and the
+  stage after it keeps tips of its own). For each: the stages left, in order, with the tip type
+  and probes of each one's tip group, exactly as listed in the test; `removed` the number of stages
+  taken out; `deleted` the items in column order.
+- **The items:** given out of column order, `deleted` is in column order; a stage of a listed tip
+  group, randomization or transfer table is left out of `deleted` and not counted twice; an item
+  listed twice counts once.
+- **Refusals**, each with its message and the plan unchanged: a randomization's stage alone; with
+  other things; a transfer table's stage alone; both, the randomization's first in column order
+  (named first); every stage of the plan (every item listed; every tip group, the randomization
+  and the transfer table listed; and a plan of one stage); the list and item messages as for
+  `moveItems`, with `delete`; order of checks (a bad item before an owned stage; an owned stage
+  before every stage).
+- **Not refused:** a randomization's stage listed with its randomization; a plan left with one
+  stage; only an unrun randomization.
+- **Immutability:** the plan given is unchanged; in the table of which parts each edit may change,
+  `deleteItems` may change `operationList`, `stageList`, `stageOrder`, `tipChanges`,
+  `randomizations` and `transferTables`.
+
+**The REPL** (`scripts/repl.js`): `deleteItems` in the transfer designer's topic, with an example
+deleting a tip group's first stage and a whole tip group, showing the tips that stay.
 
 **Moving wells**
 - `isWellUsed`: `false` for every well of `emptyPlan()`; `true` for a well with starting contents,
