@@ -263,8 +263,8 @@ example, with tip changes at the start and before stage 4, stages 1 to 3 are one
 stages 4 and 5 another. Every stage in the group uses all the probes its tip change loads.
 
 **Trash**
-Where the transfer designer keeps what's deleted from the Stages column, so it can be put back
-where it was or dragged anywhere (`trash.md`; ADR 0024). Kept by the browser, not the plan: it
+Where the transfer designer keeps what's deleted from the Stages column, so it can be dragged out
+to any gap, in this plan or another (`trash.md`; ADR 0024). Kept by the browser, not the plan: it
 isn't in plan files and isn't tied to a plan. One entry per thing deleted.
 
 **Tutorial**

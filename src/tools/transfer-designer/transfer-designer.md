@@ -180,7 +180,7 @@
 > removing the first stage of a tip group now **moves its tip change to the next stage of the
 > group**, so the group keeps its own tips (section 3, "Stages"; Andy found the old behavior, which
 > joined the rest of the group to the tips before it, on 2026-11-11). The trash, which keeps what's
-> deleted so it can be put back, is a module of its own (`trash.md`). Plan files don't change;
+> deleted so it can be pasted again, is a module of its own (`trash.md`). Plan files don't change;
 > what a plan writes changes only after a removal of a tip group's first stage, which now keeps the
 > group's tips. Written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
 > Andy are listed in its pull request. Still to review: every new message. It becomes Final once
