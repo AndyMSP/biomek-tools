@@ -1649,7 +1649,7 @@ its tips, and the new groups are its mix steps, one for one in order, each with 
 1. **The place**: the stage just after its last mix step (or `null`); and every randomization whose
    `beforeId` is its first mix step (one not run sitting above it, or one run just above it). Noted
    first.
-2. **New mix steps** are added before the place, as in adding, steps 3.
+2. **New mix steps** are added before the place, as in adding, step 3.
 3. **Its old mix steps are removed** (`removeStage`'s rules), after the new ones are in, so the plan
    is never left without a stage.
 4. **Randomizations**: each noted in step 1 has its new first mix step as its `beforeId`, so it
