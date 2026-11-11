@@ -4,7 +4,8 @@
 // A plan holds the components (each with its constituents, ADR 0013, and osmolality, ADR 0016), the starting contents, the operation list, the stage list, the stage
 // order (a list of stage IDs; ADR 0011), the tip changes, the labware labels, the well labels, the
 // randomizations (each owning the stages it made; ADR 0012), the transfer tables (each a pasted
-// table of amounts owning one stage per component; ADR 0019) and the experiment name. A stage is a
+// table of amounts owning one stage per component; ADR 0019), the mixing boxes (each owning the mix
+// steps it made from a set of wells and a way to mix; ADR 0025) and the experiment name. A stage is a
 // transfer stage or a mix step, which only mixes its wells, each a transfer from the well into
 // itself. A plan is never changed after it's made: every edit returns a new plan that shares every
 // part the edit didn't change, so the plan history can keep many plans cheaply. The page shows a
@@ -20,6 +21,7 @@ import {
   DEFAULT_MIX as CONFIGURED_DEFAULT_MIX,
   MIX_STEP_MODE,
   MIX_STEP_VOLUME,
+  MIX_VOLUME_TOLERANCE,
 } from "../../../config/mixing.js";
 import { describeValue } from "../../shared/error-messages/error-messages.js";
 import {
@@ -33,8 +35,8 @@ import { OperationList } from "../../shared/operation-list/operation-list.js";
 import { StageList } from "../../shared/stage-list/stage-list.js";
 // NEGLIGIBLE_MICROLITERS, contents tracking's allowance for arithmetic leftovers ("Tiny amounts"),
 // is used the same way here: added to a filler well's usable volume before counting its whole
-// transfers, so exactly n transfers' worth gives n, and as the most two filler wells' shares of a
-// component may differ by and still be one liquid (section 3, "The filler's shares", "Problems").
+// transfers, so exactly n transfers' worth gives n (section 3, "The filler's shares"), and to the
+// largest volume a mixing box's mix step may hold ("About the same volume").
 import {
   replay,
   NEGLIGIBLE_MICROLITERS,
@@ -102,8 +104,8 @@ const ENDS = ["source", "destination"];
 // --- Plans ---
 
 // A new plan, and the ID of its one stage: { plan, stageId }. The plan has no components, starting
-// contents, transfers, labels, well labels, randomizations or transfer tables, and no experiment
-// name (""); its stage is called NEW_STAGE_NAME
+// contents, transfers, labels, well labels, randomizations, transfer tables or mixing boxes, and no
+// experiment name (""); its stage is called NEW_STAGE_NAME
 // and has the default settings; and its first tips are the first tip type in config/tip-types.js,
 // on the first DEFAULT_PROBE_COUNT probes (Andy, 2026-10-30).
 export function emptyPlan() {
@@ -119,6 +121,7 @@ export function emptyPlan() {
     wellLabels: {},
     randomizations: [],
     transferTables: [],
+    mixingBoxes: [],
     experimentName: "",
   });
   return { plan, stageId: id };
@@ -290,7 +293,7 @@ export function isMixStep(plan, id) {
 // mix step, `wells` isn't a list, or a well isn't on the deck (the first such well).
 // e.g. mixWells(plan, "2", [{ labware: "Plate1", well: "A1" }, { labware: "Plate1", well: "A2" }]).
 export function mixWells(plan, id, wells) {
-  checkMixStep(plan, id);
+  checkMixStepNotInMixingBox(plan, id);
   if (!Array.isArray(wells)) {
     throw new Error(
       `The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], ` +
@@ -317,7 +320,7 @@ export function mixWells(plan, id, wells) {
 // mixes that well. Throws, in this order, if `id` isn't a mix step, `well` isn't an object, or the
 // mix step doesn't mix `well`, e.g. 'Stage 2, “Mix plate”, doesn't mix Plate1 A2.'
 export function unmixWell(plan, id, well) {
-  checkMixStep(plan, id);
+  checkMixStepNotInMixingBox(plan, id);
   if (!isObject(well)) {
     throw new Error(
       `The well to stop mixing must be a well, like { labware: "Plate1", well: "A1" }, ` +
@@ -333,11 +336,15 @@ export function unmixWell(plan, id, well) {
 }
 
 // Returns the plan with stage `id` called `name`. The stage list checks both. A transfer table's
-// stage is named after its component, and a randomization's after its source, so both are refused
-// (section 3, "Transfer tables" and "It owns its stages").
+// stage is named after its component, a mixing box's mix step by its place, and a randomization's
+// stage after its source, so all three are refused (section 3, "Transfer tables", "Mixing boxes" and
+// "It owns its stages").
 export function renameStage(plan, id, name) {
   if (plan.stageList.has(id) && transferTableOf(plan, id) !== null) {
     throw new Error(`${stageNamed(plan, id)}, is part of a transfer table: it's named after its component.`);
+  }
+  if (plan.stageList.has(id) && mixingBoxOwning(plan, id) !== null) {
+    throw new Error(`${stageNamed(plan, id)}, is part of a mixing box: it's named by its place in the box.`);
   }
   if (plan.stageList.has(id) && randomizationOf(plan, id) !== null) {
     throw new Error(`${stageNamed(plan, id)}, is part of a randomization: it's named after its source.`);
@@ -350,8 +357,18 @@ export function renameStage(plan, id, name) {
 // plan file can't bring in a stage whose technique Biomek would mix with when the plan says not to,
 // or the reverse (transfer-designer.md, section 3, "Mixing"); then the mix step rules
 // (checkMixStepSettings), so a plan file can't bring in a broken mix step either
-// (transfer-designer.md, "Mix steps").
+// (transfer-designer.md, "Mix steps"). A mixing box's mix step is refused, right after the stage is
+// found: it mixes with the standard mix (section 3, "Mixing boxes").
 export function changeStageSettings(plan, id, settings) {
+  if (plan.stageList.has(id)) {
+    checkNotMixingBoxSettings(plan, id);
+  }
+  return changeStageSettingsOfAnyOwner(plan, id, settings);
+}
+
+// changeStageSettings without its refusal for a mixing box's mix step, for the mixing box's own edits
+// (section 3, "Mixing boxes"), which give its mix steps the default mix step settings.
+function changeStageSettingsOfAnyOwner(plan, id, settings) {
   const stageList = plan.stageList.changeSettings(id, settings);
   for (const end of ENDS) {
     checkMixingMatches(settings, end);
@@ -371,6 +388,7 @@ export function setStageMix(plan, id, end, mix) {
   if (!plan.stageList.has(id)) {
     throw new Error(`There's no stage ${describeValue(id)} in the plan.`);
   }
+  checkNotMixingBoxSettings(plan, id);
   if (!ENDS.includes(end)) {
     throw new Error(`The end must be "source" or "destination", but got ${describeValue(end)}.`);
   }
@@ -406,7 +424,8 @@ export function canRemoveStage(plan, id) {
 
 // Returns the plan without stage `id`, its transfers, or a tip change before it. It's taken out of
 // the stage order, which keeps the other stages in their order. Throws if canRemoveStage is false,
-// or the stage is a transfer table's or a randomization's, which change only through their owner.
+// or the stage is a transfer table's, a mixing box's or a randomization's, which change only through
+// their owner.
 export function removeStage(plan, id) {
   if (!plan.stageList.has(id)) {
     // get() throws the stage list's own message for a stage that isn't there.
@@ -416,6 +435,12 @@ export function removeStage(plan, id) {
     throw new Error(
       `${stageNamed(plan, id)}, is part of a transfer table: clear its column in the table, ` +
         "or remove the whole table.",
+    );
+  }
+  if (mixingBoxOwning(plan, id) !== null) {
+    throw new Error(
+      `${stageNamed(plan, id)}, is part of a mixing box: change its wells in the mixing box, ` +
+        "or remove the whole mixing box.",
     );
   }
   if (randomizationOf(plan, id) !== null) {
@@ -443,10 +468,13 @@ function removeStageOfAnyOwner(plan, id) {
 
   const order = plan.stageOrder;
   const nextId = order[order.indexOf(id) + 1] ?? null;
-  // Noted before removing: if it's the stage just after a randomization or a transfer table, the
-  // stage after it gets the tips it used, so their last stage never shares tips (section 3).
+  // Noted before removing: if it's the stage just after a randomization, a transfer table or a
+  // mixing box, the stage after it gets the tips it used, so their last stage never shares tips
+  // (section 3).
   const keptTips =
-    isJustAfterRandomization(plan, id) || isJustAfterTransferTable(plan, id) ? tipsInUseAt(plan, id) : null;
+    isJustAfterRandomization(plan, id) || isJustAfterTransferTable(plan, id) || isJustAfterMixingBox(plan, id)
+      ? tipsInUseAt(plan, id)
+      : null;
 
   const removed = withParts(plan, {
     operationList,
@@ -502,8 +530,8 @@ export function addTransfer(plan, transfer) {
   return addTransferChecked(plan, transfer, true);
 }
 
-// addTransfer, refusing a transfer table's or a randomization's stage only if `protect` is true:
-// their own edits fill their stages with protect false.
+// addTransfer, refusing a transfer table's, a mixing box's or a randomization's stage only if
+// `protect` is true: their own edits fill their stages with protect false.
 function addTransferChecked(plan, transfer, protect) {
   // add() runs the operation list's checks first, so a badly formed transfer never reaches the
   // later checks. Its result is the new list if the stage already has transfers.
@@ -517,6 +545,7 @@ function addTransferChecked(plan, transfer, protect) {
   }
   if (protect) {
     checkNotTransferTableAmounts(plan, transfer.stage);
+    checkNotMixingBoxWells(plan, transfer.stage);
     checkNotRandomizationTransfers(plan, transfer.stage);
   }
   if (isMixStep(plan, transfer.stage) && !isMixedWell(transfer)) {
@@ -547,6 +576,7 @@ export function changeVolume(plan, position, volume) {
   // A position that isn't one gives undefined here; replace() reports it below.
   if (operation !== undefined) {
     checkNotTransferTableAmounts(plan, operation.stage);
+    checkNotMixingBoxWells(plan, operation.stage);
     checkNotRandomizationTransfers(plan, operation.stage);
   }
   if (operation !== undefined && isMixStep(plan, operation.stage)) {
@@ -569,6 +599,7 @@ export function removeTransfer(plan, position) {
   const operation = plan.operationList.listOperations()[position];
   if (operation !== undefined) {
     checkNotTransferTableAmounts(plan, operation.stage);
+    checkNotMixingBoxWells(plan, operation.stage);
     checkNotRandomizationTransfers(plan, operation.stage);
   }
   return withParts(plan, { operationList: plan.operationList.remove(position) });
@@ -628,10 +659,11 @@ function withTipChangeAdded(plan, beforeId) {
 }
 
 // Returns the plan with the tip change at `key` loading `tipType`, keeping its probes,
-// e.g. setTipType(plan, START, "BC1070"). Throws if there's no tip change at `key`, then if
-// `tipType` isn't in TIP_TYPES.
+// e.g. setTipType(plan, START, "BC1070"). Throws if there's no tip change at `key`, then if it's a
+// mixing box's mix step's (its tips are set in the mixing box), then if `tipType` isn't in TIP_TYPES.
 export function setTipType(plan, key, tipType) {
   checkTipChangeAt(plan, key);
+  checkNotMixingBoxTips(plan, key);
   if (!TIP_TYPES.includes(tipType)) {
     throw new Error(
       `${describeValue(tipType)} isn't a tip type. Choose one of ${listNames(TIP_TYPES)}.`,
@@ -644,10 +676,11 @@ export function setTipType(plan, key, tipType) {
 // Returns the plan with the tip change at `key` loading tips on `probes`, stored smallest first,
 // keeping its tip type, e.g. setTipProbes(plan, START, [3, 1]) stores [1, 3]. Every stage using
 // those tips uses all of them (ADR 0007, "Tip changes"). Throws if there's no tip change at `key`,
-// then if `probes` isn't a list of at least one probe number, 1 to 8, each listed once
+// then if it's a mixing box's mix step's, then if `probes` isn't a list of at least one probe number, 1 to 8, each listed once
 // (checkProbes).
 export function setTipProbes(plan, key, probes) {
   checkTipChangeAt(plan, key);
+  checkNotMixingBoxTips(plan, key);
   checkProbes(probes);
   // sort() changes the list it's called on, so it sorts a copy. Without (a, b) => a - b it would
   // sort numbers as text, putting 10 before 2.
@@ -657,7 +690,7 @@ export function setTipProbes(plan, key, probes) {
 
 // Returns the plan without the tip change at `key`, so the stages after it use the tips before it.
 // Throws for START, which the run always has, if there's no tip change at `key`, if it's a transfer
-// table's or a randomization's stage's (its sources say which of its stages share tips), or if a
+// table's, a mixing box's (or keeps the stage after one off its tips) or a randomization's stage's (its sources say which of its stages share tips), or if a
 // randomization needs it: the stage just after a randomization's last stage keeps its own tips, so
 // the randomization never shares tips (section 3, "Randomizations"), and so does a stage a
 // randomization that hasn't run sits before, since it sits between tip groups.
@@ -669,6 +702,7 @@ export function removeTipChange(plan, key) {
   }
   checkTipChangeAt(plan, key);
   checkNoTransferTableNeedsTips(plan, key);
+  checkNoMixingBoxNeedsTips(plan, key);
   checkNotRandomizationTips(plan, key);
   checkNoRandomizationNeedsTips(plan, key);
   return withParts(plan, { tipChanges: withoutKey(plan.tipChanges, key) });
@@ -2929,6 +2963,7 @@ function samePlanContents(plan, updated) {
       candidate.stageList.listStages(),
       candidate.randomizations,
       candidate.transferTables,
+      candidate.mixingBoxes,
     ]);
   return contents(plan) === contents(updated);
 }
@@ -3016,17 +3051,20 @@ function checkStageAddWithNewTipsBesideTransferTables(plan, beforeId) {
 
 // Throws, in section 5's order, if addStage or addMixStep can't add a stage before `beforeId` (with
 // or without `takeTips`) beside a transfer table (checkStageAddBesideTransferTables), then beside a
-// randomization (checkStageAddBesideRandomizations).
+// mixing box (checkStageAddBesideMixingBoxes), then beside a randomization
+// (checkStageAddBesideRandomizations).
 function checkStageAddBesideOwners(plan, beforeId, takeTips) {
   checkStageAddBesideTransferTables(plan, beforeId, takeTips);
+  checkStageAddBesideMixingBoxes(plan, beforeId, takeTips);
   checkStageAddBesideRandomizations(plan, beforeId, takeTips);
 }
 
-// Throws if `beforeId` isn't a stage or null, then if it's inside a transfer table or a
-// randomization (for the edits that add a stage on new tips, which may go just before or after
-// either).
+// Throws if `beforeId` isn't a stage or null, then if it's inside a transfer table, a mixing box or
+// a randomization (for the edits that add a stage on new tips, which may go just before or after
+// any of them).
 function checkStageAddWithNewTipsBesideOwners(plan, beforeId) {
   checkStageAddWithNewTipsBesideTransferTables(plan, beforeId);
+  checkNotInsideMixingBox(plan, beforeId);
   checkNotInsideRandomization(plan, beforeId);
 }
 
@@ -3127,6 +3165,7 @@ function checkTransferTablePlace(plan, beforeId) {
   }
   checkNotInsideTransferTable(plan, beforeId);
   checkNotInsideRandomization(plan, beforeId);
+  checkNotInsideMixingBox(plan, beforeId);
   if (!isFirstOfTipGroup(plan, beforeId)) {
     throw new Error(
       `A transfer table sits between tip groups, so it can't go before ${stageNamedInText(plan, beforeId)}.`,
@@ -3380,19 +3419,764 @@ function contentsBeforeStage(plan, at) {
   return contentsBeforePlace(plan, at === null ? plan.stageOrder.length : plan.stageOrder.indexOf(at));
 }
 
+// --- Mixing boxes ---
+
+// The ways to mix (docs/glossary.md, "Way to mix"), in the order a tool offers them
+// (transfer-designer.md, section 3, "Mixing boxes"). Each is code, a grouping rule in GROUPING_RULES
+// below, so it's a constant here rather than in config/.
+export const MIXING_WAYS = Object.freeze(["freshTip", "sameContents"]);
+
+// How far two wells' shares of a component may differ and still be the same contents (section 3,
+// "Same contents"): the same allowance as contents tracking's for arithmetic leftovers, used by the
+// filler wells' one-liquid rule too, through holdSameContents.
+export const SAME_SHARE_ALLOWANCE = 0.000001;
+
+// Every property of a mixing box, as setMixingBoxes takes them, and of a mixing box's draft.
+const MIXING_BOX_PROPERTIES = ["id", "way", "stages"];
+const MIXING_DRAFT_PROPERTIES = ["way", "wells", "tipType", "probes"];
+
+// What a refusal says when an edit would put something inside a mixing box, or take its first mix
+// step's tips (section 5).
+const MIXING_BOX_STAYS_TOGETHER =
+  "A mixing box's mix steps stay together, each on its own tips: add before its first mix step or after its last.";
+
+// The grouping rule of each way to mix, keyed by the way's name (section 3, "Its groups"): each takes
+// the wells in probe order, what every well holds just before the mixing box (a ContentsSnapshot)
+// and how many probes get tips, and gives the groups, each a list of wells in probe order. A new way
+// is a new entry here and in MIXING_WAYS, and nothing else changes. The functions are declared
+// below, which JavaScript makes available before this line runs.
+const GROUPING_RULES = {
+  freshTip: freshTipGroups,
+  sameContents: sameContentsGroups,
+};
+
+// True if a labware's `grid` (a WellGrid) has one row, so its wells count as reservoir troughs for
+// the fresh-tip refusal: each column holds one well, so every probe of a mix step may enter that well
+// together (section 3, "Its groups"; Andy, 2026-11-11, decision C), e.g. GRID_1X12_NUMBERED → true,
+// GRID_96 → false.
+export function isTroughGrid(grid) {
+  return grid.rows === 1;
+}
+
+// True if two wells' shares of each component (each an object of names and shares, from contents
+// tracking's volumeFractionsOf) are the same contents: the same components, none more, each share
+// within SAME_SHARE_ALLOWANCE of the other's (section 3, "Same contents"), e.g. { Media: 0.9,
+// "Drug A": 0.1 } and { "Drug A": 0.1, Media: 0.9 } → true; { Media: 1 } and { Media: 0.99, DMSO:
+// 0.01 } → false. Two wells holding nothing ({} and {}) hold the same contents.
+export function holdSameContents(a, b) {
+  const names = Object.keys(a);
+  return (
+    names.length === Object.keys(b).length &&
+    names.every((name) => Object.hasOwn(b, name) && Math.abs(a[name] - b[name]) <= SAME_SHARE_ALLOWANCE)
+  );
+}
+
+// Which wells share a mix step, for a mixing box made from `draft` ({ way, wells, tipType, probes })
+// with its mix steps before stage `at` (null: at the end): [{ wells, components }] in order, each
+// group's wells in probe order and `components` the names its first well holds just before the box,
+// in the plan's components order, or null when the group's wells don't all hold the same contents
+// (section 3, "Its groups"); [] for no wells. Throws if the draft isn't in its form, or `at` isn't a
+// stage or null. A fresh-tip draft holding reservoir troughs isn't refused here, so a caller can
+// show its groups.
+// e.g. mixingGroups(plan, { way: "sameContents", wells: [Plate1 A1, Plate1 B1], tipType: "BC230",
+// probes: [1, 2, 3, 4] }, null) → [{ wells: [Plate1 A1, Plate1 B1], components: ["Media"] }].
+export function mixingGroups(plan, draft, at) {
+  const checked = checkedMixingDraft(draft);
+  checkAt(plan, at);
+  return groupsForDraft(plan, checked, at);
+}
+
+// Returns { plan, id }: the plan with a new mixing box made from `draft`, one mix step per group
+// (mixingGroups), each on new tips loading the draft's tips, named "Mix 1 of N" and so on, with the
+// default mix step settings, all just before stage `beforeId` (or last, for null), as one edit
+// (section 3, "Adding"); `id` is "m" and one more than the largest number in use. Throws, in section
+// 5's order, if the draft isn't in its form, `beforeId` isn't a place a mixing box can sit, the draft
+// has no wells, or it's a "freshTip" draft holding a reservoir trough.
+// e.g. addMixingBox(plan, { way: "freshTip", wells, tipType: "BC230", probes: [1, 2, 3, 4] }, "3").
+export function addMixingBox(plan, draft, beforeId) {
+  const checked = checkedMixingDraft(draft);
+  checkMixingBoxPlace(plan, beforeId);
+  checkMixingDraftCanMake(checked);
+  const groups = groupsForDraft(plan, checked, beforeId);
+  const { plan: added, stages } = withMixStepsAdded(plan, groups, checked, beforeId);
+  const id = nextMixingBoxId(plan.mixingBoxes);
+  const mixingBox = { id, way: checked.way, stages };
+  return { plan: withParts(added, { mixingBoxes: [...added.mixingBoxes, mixingBox] }), id };
+}
+
+// Returns the plan with mixing box `id` remade from `draft`, in its place, as one edit (section 3,
+// "Updating"): new mix steps added just after its old ones, the old ones removed, randomizations that
+// sat before its first mix step sitting before the new first, and its way and stages set. Gives back
+// the same plan if nothing would change: the same way and tips, the same groups as its mix steps, and
+// every mix step with the default mix step settings. Throws, in section 5's order, if there's no such
+// mixing box, the draft isn't in its form, it has no wells, or it's a "freshTip" draft holding a
+// reservoir trough (even the box's own), e.g. updateMixingBox(plan, "m1", mixingBoxDraft(plan, "m1")).
+export function updateMixingBox(plan, id, draft) {
+  const mixingBox = checkMixingBoxExists(plan, id);
+  const checked = checkedMixingDraft(draft);
+  checkMixingDraftCanMake(checked);
+  const first = mixingBox.stages[0];
+  const groups = groupsForDraft(plan, checked, first);
+  if (mixingBoxMatches(plan, mixingBox, groups) && sameDraftTips(checked, mixingBoxDraft(plan, id)) && checked.way === mixingBox.way) {
+    return plan;
+  }
+  const order = plan.stageOrder;
+  const place = order[order.indexOf(mixingBox.stages.at(-1)) + 1] ?? null;
+  const sittingAbove = new Set(
+    plan.randomizations.filter((randomization) => randomization.beforeId === first).map((randomization) => randomization.id),
+  );
+  const { plan: added, stages } = withMixStepsAdded(plan, groups, checked, place);
+  let updating = added;
+  for (const old of mixingBox.stages) {
+    updating = removeStageOfAnyOwner(updating, old);
+  }
+  updating = withParts(updating, {
+    randomizations: updating.randomizations.map((randomization) =>
+      sittingAbove.has(randomization.id) && randomization.beforeId !== stages[0]
+        ? { ...randomization, beforeId: stages[0] }
+        : randomization,
+    ),
+    mixingBoxes: updating.mixingBoxes.map((candidate) =>
+      candidate.id === id ? { ...candidate, way: checked.way, stages } : candidate,
+    ),
+  });
+  return updating;
+}
+
+// Returns the plan without mixing box `id` and every mix step it owns, as one edit. Tip changes on
+// the stage after it stay; a randomization without stages sitting before its first mix step then
+// sits before the stage just after it, as removeStage moves it. Throws if there's no such mixing box,
+// or its mix steps are all the plan's stages.
+export function removeMixingBox(plan, id) {
+  const mixingBox = checkMixingBoxExists(plan, id);
+  if (!canRemoveMixingBox(plan, id)) {
+    throw new Error(
+      "This mixing box's mix steps are all the plan's stages, and a plan needs at least one. " +
+        "Add a stage outside it first.",
+    );
+  }
+  let removed = withParts(plan, {
+    mixingBoxes: plan.mixingBoxes.filter((candidate) => candidate.id !== id),
+  });
+  for (const stage of mixingBox.stages) {
+    removed = removeStageOfAnyOwner(removed, stage);
+  }
+  return removed;
+}
+
+// True unless mixing box `id`'s mix steps are all the plan's stages. Throws if there's no such
+// mixing box.
+export function canRemoveMixingBox(plan, id) {
+  const mixingBox = checkMixingBoxExists(plan, id);
+  return mixingBox.stages.length < plan.stageOrder.length;
+}
+
+// The mixing box with ID `id`, e.g. { id: "m1", way: "freshTip", stages: ["7", "8"] }, or null.
+export function mixingBoxAt(plan, id) {
+  return plan.mixingBoxes.find((mixingBox) => mixingBox.id === id) ?? null;
+}
+
+// The ID of the mixing box owning stage `stageId`, e.g. "m1", or null if none does (or it isn't a
+// stage).
+export function mixingBoxOf(plan, stageId) {
+  const owner = mixingBoxOwning(plan, stageId);
+  return owner === null ? null : owner.id;
+}
+
+// Mixing box `id`'s draft, { way, wells, tipType, probes }, read from its mix steps (section 3, "Its
+// draft"): its way; every mixed well of its mix steps, in probe order; and the tip type and probes
+// its first mix step's tip change loads (START's when that's the plan's first stage), as new lists.
+// Throws if there's no such mixing box.
+export function mixingBoxDraft(plan, id) {
+  const mixingBox = checkMixingBoxExists(plan, id);
+  const wells = sortedInProbeOrder(mixingBox.stages.flatMap((stage) => mixedWellsOf(plan, stage)));
+  const tips = tipsInUseAt(plan, mixingBox.stages[0]);
+  return { way: mixingBox.way, wells, tipType: tips.tipType, probes: [...tips.probes] };
+}
+
+// The components a mixing box's mix step `stageId` mixes: the names its wells hold just before the
+// box, in the plan's components order ([] for nothing), when every one of its wells holds the same
+// contents as its first, or null when they differ, e.g. ["Media", "Drug A"]. Throws if `stageId`
+// isn't a stage, then if no mixing box owns it.
+export function mixedContentsOf(plan, stageId) {
+  if (!plan.stageList.has(stageId)) {
+    throw new Error(`There's no stage ${describeValue(stageId)} in the plan.`);
+  }
+  const mixingBox = mixingBoxOwning(plan, stageId);
+  if (mixingBox === null) {
+    throw new Error(`${stageNamed(plan, stageId)}, isn't part of a mixing box.`);
+  }
+  const contents = contentsBeforeStage(plan, mixingBox.stages[0]);
+  return componentsOfGroup(plan, mixedWellsOf(plan, stageId), contents);
+}
+
+// True if mixing box `id` is out of date (section 3, "Out of date"): it's a "freshTip" box holding a
+// reservoir trough; or its groups now (mixingGroups with its own draft) differ from its mix steps (a
+// different number, or different wells, compared as sets, for any mix step in order); or a mix step
+// doesn't have the default mix step settings as they now are. Throws if there's no such mixing box.
+export function isMixingBoxOutOfDate(plan, id) {
+  const mixingBox = checkMixingBoxExists(plan, id);
+  const draft = mixingBoxDraft(plan, id);
+  if (firstTroughOf(draft) !== null) {
+    return true;
+  }
+  const groups = groupsForDraft(plan, draft, mixingBox.stages[0]);
+  return !mixingBoxMatches(plan, mixingBox, groups);
+}
+
+// Returns the plan with its mixing boxes replaced by `mixingBoxes`, each in the form of section 3,
+// for a list already in the plan's own form, such as one read from a plan file. Strict: nothing is
+// tidied, and settings aren't checked beyond each stage being a mix step, so a box whose mix steps
+// mix otherwise is accepted (and out of date). Throws, in section 5's order of checks, prefixed
+// "Mixing box N: " where the message is about one mixing box's values.
+export function setMixingBoxes(plan, mixingBoxes) {
+  if (!Array.isArray(mixingBoxes)) {
+    throw new Error(`The mixing boxes must be a list, but got ${describeValue(mixingBoxes)}.`);
+  }
+  const copied = mixingBoxes.map((mixingBox, index) => checkedStoredMixingBox(plan, mixingBox, index + 1));
+  checkMixingBoxIdsUnique(copied);
+  checkMixingBoxStagesOwnedOnce(copied);
+  checkNoRandomizationInsideMixingBox(plan, copied);
+  return withParts(plan, { mixingBoxes: copied });
+}
+
+// --- Mixing boxes: helpers ---
+
+// A copy of `draft`, checked (section 5's order): an object with exactly way, wells, tipType and
+// probes; then the way; then the wells (a list, each on the deck, none twice); then the tip type;
+// then the probes. Its wells are copied as { labware, well }, in the order given; its probes
+// smallest first.
+function checkedMixingDraft(draft) {
+  if (!hasExactly(draft, MIXING_DRAFT_PROPERTIES)) {
+    throw new Error(
+      `A mixing box's draft must be an object with exactly ${listNamesWithAnd(MIXING_DRAFT_PROPERTIES)}, ` +
+        `but got ${describeValue(draft)}.`,
+    );
+  }
+  checkMixingWay(draft.way);
+  const { wells } = draft;
+  if (!Array.isArray(wells)) {
+    throw new Error(
+      `The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], ` +
+        `but got ${describeValue(wells)}.`,
+    );
+  }
+  wells.forEach((end, index) => withPrefix(`Well to mix ${index + 1}: `, () => checkWell(end)));
+  checkNoWellTwice(wells, (where) => `${where} is a well to mix twice. List each once.`);
+  checkTipType(draft.tipType);
+  checkProbes(draft.probes);
+  return {
+    way: draft.way,
+    wells: wells.map(endOf),
+    tipType: draft.tipType,
+    probes: [...draft.probes].sort((a, b) => a - b),
+  };
+}
+
+// Throws unless `way` is one of MIXING_WAYS, e.g. 'The way to mix must be one of "freshTip",
+// "sameContents", but got "byRow".'
+function checkMixingWay(way) {
+  if (!MIXING_WAYS.includes(way)) {
+    throw new Error(`The way to mix must be one of ${listNames(MIXING_WAYS)}, but got ${describeValue(way)}.`);
+  }
+}
+
+// Throws if a checked draft can't make a mixing box: it has no wells; then it's a "freshTip" draft
+// holding a reservoir trough (Andy, 2026-11-11, decision C), naming the first in probe order.
+function checkMixingDraftCanMake(draft) {
+  if (draft.wells.length === 0) {
+    throw new Error("Pick at least one well to mix.");
+  }
+  const trough = firstTroughOf(draft);
+  if (trough !== null) {
+    throw new Error(
+      `A fresh tip for every well can't mix reservoir troughs until that's checked in simulation: ${wellText(trough)}. ` +
+        "Use one tip for wells with the same contents, or leave the troughs out.",
+    );
+  }
+}
+
+// The first well of a "freshTip" draft, in probe order, that's a reservoir trough (isTroughGrid), or
+// null: null always for any other way.
+function firstTroughOf(draft) {
+  if (draft.way !== "freshTip") {
+    return null;
+  }
+  return sortedInProbeOrder(draft.wells).find((end) => isTroughGrid(gridOf(end.labware))) ?? null;
+}
+
+// Throws, in section 5's order, unless a mixing box can be added before `beforeId`: a stage or null;
+// not inside a randomization, a transfer table or another mixing box; then the first stage of a tip
+// group (the first stage of one of those boxes is allowed: the new one goes above it).
+function checkMixingBoxPlace(plan, beforeId) {
+  if (beforeId === null) {
+    return;
+  }
+  if (!plan.stageList.has(beforeId)) {
+    throw new Error(`There's no stage ${describeValue(beforeId)} to add a mixing box before.`);
+  }
+  checkNotInsideRandomization(plan, beforeId);
+  checkNotInsideTransferTable(plan, beforeId);
+  checkNotInsideMixingBox(plan, beforeId);
+  if (!isFirstOfTipGroup(plan, beforeId)) {
+    throw new Error(
+      `A mixing box sits between tip groups, so it can't go before ${stageNamedInText(plan, beforeId)}.`,
+    );
+  }
+}
+
+// The groups of a checked draft whose mix steps go before stage `at` (null: at the end): its wells
+// in probe order, grouped by its way's rule from what they hold just before `at`, each as
+// { wells, components } (mixingGroups).
+function groupsForDraft(plan, draft, at) {
+  const contents = contentsBeforeStage(plan, at);
+  const wells = sortedInProbeOrder(draft.wells);
+  const groups = GROUPING_RULES[draft.way](wells, contents, draft.probes.length);
+  return groups.map((group) => ({ wells: group, components: componentsOfGroup(plan, group, contents) }));
+}
+
+// "freshTip"'s rule (section 3, "Its groups"): `wells`, in probe order, in batches, each of wells of
+// one column of one labware, each in the row directly below the batch's last well, at most
+// `probeCount` of them, all holding about the same volume (`contents`, a ContentsSnapshot, just
+// before the box). A well starts a new batch when any of these fails, e.g. on 4 probes A1 to H1 →
+// [A1 to D1], [E1 to H1]; A1, C1 and E1 → three batches of one.
+function freshTipGroups(wells, contents, probeCount) {
+  const batches = [];
+  let last = null;
+  for (const end of wells) {
+    const { row, column } = gridOf(end.labware).wellPosition(end.well);
+    const volume = contents.totalVolumeOf(end.labware, end.well);
+    const joins =
+      last !== null &&
+      last.labware === end.labware &&
+      last.column === column &&
+      row === last.row + 1 &&
+      batches.at(-1).length < probeCount &&
+      holdAboutSameVolume([...last.volumes, volume]);
+    if (joins) {
+      batches.at(-1).push(end);
+      last = { ...last, row, volumes: [...last.volumes, volume] };
+    } else {
+      batches.push([end]);
+      last = { labware: end.labware, column, row, volumes: [volume] };
+    }
+  }
+  return batches;
+}
+
+// "sameContents"'s rule (section 3, "Its groups"): each of `wells`, in probe order, joins the first
+// group whose first well holds the same contents as it (holdSameContents) and that, with it, holds
+// about the same volume, from `contents` (a ContentsSnapshot, just before the box); otherwise it
+// starts a new group, last. Greedy in probe order on purpose, so the groups are easy to predict from
+// the deck. `probeCount` doesn't limit a group: one tip mixes several wells with the same contents.
+function sameContentsGroups(wells, contents) {
+  const groups = [];
+  for (const end of wells) {
+    const shares = contents.volumeFractionsOf(end.labware, end.well);
+    const volume = contents.totalVolumeOf(end.labware, end.well);
+    const group = groups.find(
+      (candidate) => holdSameContents(candidate.shares, shares) && holdAboutSameVolume([...candidate.volumes, volume]),
+    );
+    if (group === undefined) {
+      groups.push({ shares, volumes: [volume], wells: [end] });
+    } else {
+      group.volumes.push(volume);
+      group.wells.push(end);
+    }
+  }
+  return groups.map((group) => group.wells);
+}
+
+// True if a set of well `volumes` (µL) holds about the same volume (section 3, "About the same
+// volume"; Andy, 2026-11-11, decision A): its largest is at most its smallest times
+// 1 + MIX_VOLUME_TOLERANCE / 100, plus NEGLIGIBLE_MICROLITERS for arithmetic leftovers. Judged on the
+// whole set, so it can't drift by small steps, e.g. with a tolerance of 10, [100, 109] → true,
+// [100, 106, 112] → false.
+function holdAboutSameVolume(volumes) {
+  const smallest = Math.min(...volumes);
+  const largest = Math.max(...volumes);
+  return largest <= smallest * (1 + MIX_VOLUME_TOLERANCE / 100) + NEGLIGIBLE_MICROLITERS;
+}
+
+// The names of the components the first of `wells` holds in `contents` (a ContentsSnapshot), in the
+// plan's components order ([] for nothing), when every one of `wells` holds the same contents as it
+// (holdSameContents), else null, e.g. ["Media", "Drug A"].
+function componentsOfGroup(plan, wells, contents) {
+  const shares = wells.map((end) => contents.volumeFractionsOf(end.labware, end.well));
+  if (!shares.every((held) => holdSameContents(held, shares[0]))) {
+    return null;
+  }
+  return plan.components.map((component) => component.name).filter((name) => Object.hasOwn(shares[0], name));
+}
+
+// A well's place in probe order (docs/glossary.md, "Probe order"), as one number: its labware's
+// place in the deck, then its place going down each column of the labware's grid, one column after
+// another, e.g. on the first labware, A1 → 0, B1 → 1, A2 → 8. No grid has 10,000 wells, so the
+// labware's place always counts first.
+function probeOrderIndex({ labware, well }) {
+  const grid = gridOf(labware);
+  const { row, column } = grid.wellPosition(well);
+  return labwareNames().indexOf(labware) * 10000 + (column - 1) * grid.rows + (row - 1);
+}
+
+// `ends` (wells on the deck) sorted in probe order, as a new list of { labware, well }.
+function sortedInProbeOrder(ends) {
+  return [...ends].sort((first, second) => probeOrderIndex(first) - probeOrderIndex(second)).map(endOf);
+}
+
+// The wells mix step `stageId` mixes, in its transfers' order, each { labware, well }.
+function mixedWellsOf(plan, stageId) {
+  return transfersIn(plan, stageId).map((transfer) => endOf(transfer.source));
+}
+
+// Returns { plan, stages }: the plan with one new mix step for each of `groups` (from
+// groupsForDraft), in order, each added just before stage `beforeId` (null: last) on new tips of its
+// own, so the stage below keeps its tips; each given the default mix step settings, its name by its
+// place ("Mix 1 of 3"), the draft's tip type and probes (the START tips if it's the plan's first
+// stage) and its group's wells; and `stages`, the new mix steps' IDs in order. The mixing box isn't
+// recorded here: its own edits do that.
+function withMixStepsAdded(plan, groups, draft, beforeId) {
+  let adding = plan;
+  const stages = [];
+  groups.forEach((group, index) => {
+    const added = addMixStepWithNewTips(adding, beforeId);
+    const { id } = added;
+    adding = withParts(added.plan, {
+      stageList: added.plan.stageList.rename(id, `Mix ${index + 1} of ${groups.length}`),
+    });
+    adding = changeStageSettingsOfAnyOwner(adding, id, defaultMixStepSettings());
+    adding = withOwnTipsAt(adding, id, { tipType: draft.tipType, probes: draft.probes });
+    for (const end of group.wells) {
+      adding = addTransferChecked(adding, mixedWellTransfer(id, end), false);
+    }
+    stages.push(id);
+  });
+  return { plan: adding, stages };
+}
+
+// True if mixing box `mixingBox`'s mix steps match `groups` (from groupsForDraft): as many, each with
+// the same wells as its group (compared as sets, since the Biomek orders a stage's rows itself), and
+// every one with the default mix step settings as they now are (section 3, "Out of date").
+function mixingBoxMatches(plan, mixingBox, groups) {
+  // A list of wells as a set, as sorted text, e.g. '["[\"Plate1\",\"A1\"]"]'.
+  const asSet = (ends) => JSON.stringify(ends.map(wellKey).sort());
+  return (
+    groups.length === mixingBox.stages.length &&
+    mixingBox.stages.every(
+      (stage, index) =>
+        asSet(mixedWellsOf(plan, stage)) === asSet(groups[index].wells) &&
+        hasDefaultMixStepSettings(plan.stageList.get(stage).settings),
+    )
+  );
+}
+
+// True if a stage's `settings` are the default mix step settings, as config/mixing.js now gives them.
+function hasDefaultMixStepSettings(settings) {
+  const defaults = defaultMixStepSettings();
+  return Object.keys(defaults).every((name) =>
+    name.endsWith("Mix") ? sameMix(settings[name], defaults[name]) : settings[name] === defaults[name],
+  );
+}
+
+// True if two drafts load the same tips: the same tip type and probes.
+function sameDraftTips(first, second) {
+  return first.tipType === second.tipType && JSON.stringify(first.probes) === JSON.stringify(second.probes);
+}
+
+// The next mixing box's ID among `mixingBoxes`: "m" and one more than the largest number in use,
+// e.g. with "m1" and "m3" → "m4"; "m1" with none.
+function nextMixingBoxId(mixingBoxes) {
+  const numbers = mixingBoxes.map((mixingBox) => Number(mixingBox.id.slice(1)));
+  return `m${Math.max(0, ...numbers) + 1}`;
+}
+
+// Returns mixing box `id`, or throws 'There's no mixing box "m9" in the plan.'
+function checkMixingBoxExists(plan, id) {
+  const mixingBox = mixingBoxAt(plan, id);
+  if (mixingBox === null) {
+    throw new Error(`There's no mixing box ${describeValue(id)} in the plan.`);
+  }
+  return mixingBox;
+}
+
+// The mixing box owning stage `stageId`, or null.
+function mixingBoxOwning(plan, stageId) {
+  return plan.mixingBoxes.find((mixingBox) => mixingBox.stages.includes(stageId)) ?? null;
+}
+
+// True if stage `id` is just after a mixing box's last mix step in the stage order.
+function isJustAfterMixingBox(plan, id) {
+  const order = plan.stageOrder;
+  return plan.mixingBoxes.some((mixingBox) => {
+    const last = order.indexOf(mixingBox.stages.at(-1));
+    return last !== -1 && order[last + 1] === id;
+  });
+}
+
+// The mixing box owning the stage the tip change at `key` is before (the plan's first stage for
+// START), or null.
+function mixingBoxOfTips(plan, key) {
+  const stage = key === START ? plan.stageOrder[0] : key;
+  return plan.stageList.has(stage) ? mixingBoxOwning(plan, stage) : null;
+}
+
+// Throws if stage `stageId` is a mixing box's: its wells change only in the mixing box.
+function checkNotMixingBoxWells(plan, stageId) {
+  if (mixingBoxOwning(plan, stageId) !== null) {
+    throw new Error(`${stageNamed(plan, stageId)}, is part of a mixing box: change its wells in the mixing box.`);
+  }
+}
+
+// Throws if stage `stageId` is a mixing box's: its settings and tips are set in the mixing box.
+function checkNotMixingBoxSettings(plan, stageId) {
+  if (mixingBoxOwning(plan, stageId) !== null) {
+    throw new Error(
+      `${stageNamed(plan, stageId)}, is part of a mixing box: its tips are set in the mixing box, ` +
+        "and it mixes with the standard mix.",
+    );
+  }
+}
+
+// Throws if the tip change at `key` (START or a stage ID) is a mixing box's mix step's: its tips are
+// set in the mixing box.
+function checkNotMixingBoxTips(plan, key) {
+  const stage = key === START ? plan.stageOrder[0] : key;
+  if (mixingBoxOfTips(plan, key) !== null) {
+    checkNotMixingBoxSettings(plan, stage);
+  }
+}
+
+// Throws if `beforeId` is one of a mixing box's mix steps other than its first: something added there
+// would go inside it.
+function checkNotInsideMixingBox(plan, beforeId) {
+  const owner = beforeId === null ? null : mixingBoxOwning(plan, beforeId);
+  if (owner !== null && owner.stages[0] !== beforeId) {
+    throw new Error(MIXING_BOX_STAYS_TOGETHER);
+  }
+}
+
+// Throws if addStage or addMixStep can't add a stage before `beforeId` (with or without `takeTips`)
+// beside a mixing box: inside it; with takeTips, before its first mix step (the new stage would take
+// its tips); or joining its last mix step's tips: without takeTips before the stage just after it,
+// or at the end (null) when its last mix step is the plan's last. `beforeId` is a stage or null
+// (checked already).
+function checkStageAddBesideMixingBoxes(plan, beforeId, takeTips) {
+  checkNotInsideMixingBox(plan, beforeId);
+  if (takeTips && beforeId !== null && mixingBoxOwning(plan, beforeId) !== null) {
+    throw new Error(MIXING_BOX_STAYS_TOGETHER);
+  }
+  const joinsBoxTips =
+    beforeId === null
+      ? plan.stageOrder.length > 0 && mixingBoxOwning(plan, plan.stageOrder.at(-1)) !== null
+      : !takeTips && isJustAfterMixingBox(plan, beforeId);
+  if (joinsBoxTips) {
+    throw new Error(
+      "A stage added here would share the mixing box's tips. Add it with new tips, from the seam " +
+        "between tip groups.",
+    );
+  }
+}
+
+// Throws if the tip change at `key` belongs to a mixing box (one of its mix steps'), or keeps the
+// stage just after one off its tips (section 5).
+function checkNoMixingBoxNeedsTips(plan, key) {
+  if (mixingBoxOwning(plan, key) !== null) {
+    throw new Error("Every mix step of a mixing box starts on new tips, so these can't be removed.");
+  }
+  if (isJustAfterMixingBox(plan, key)) {
+    throw new Error(
+      `This tip change keeps ${stageNamedInText(plan, key)}, off the mixing box's tips. ` +
+        "A mixing box never shares tips with other stages.",
+    );
+  }
+}
+
+// A copy of `mixingBox` as a plan stores it, checked strictly (setMixingBoxes' order), `number` being
+// its place in the list from 1.
+function checkedStoredMixingBox(plan, mixingBox, number) {
+  if (!hasExactly(mixingBox, MIXING_BOX_PROPERTIES)) {
+    throw new Error(`Mixing box ${number} must be an object with exactly ${listNamesWithAnd(MIXING_BOX_PROPERTIES)}.`);
+  }
+  const { id } = mixingBox;
+  if (typeof id !== "string" || !/^m[1-9][0-9]*$/.test(id)) {
+    throw new Error(`Mixing box ${number}'s ID must be "m" and a whole number, like "m1", but got ${describeValue(id)}.`);
+  }
+  return withPrefix(`Mixing box ${number}: `, () => {
+    checkMixingWay(mixingBox.way);
+    const { stages } = mixingBox;
+    if (!Array.isArray(stages) || stages.length === 0 || !stages.every((stage) => typeof stage === "string")) {
+      throw new Error("its stages must be a non-empty list of stage IDs.");
+    }
+    checkMixingBoxStagesInPlan(plan, stages);
+    checkMixingBoxStages(plan, stages, null);
+    return { id, way: mixingBox.way, stages: [...stages] };
+  });
+}
+
+// Throws if a stored mixing box's stage isn't in the plan, or is listed twice.
+function checkMixingBoxStagesInPlan(plan, stages) {
+  const seen = new Set();
+  for (const stage of stages) {
+    if (!plan.stageList.has(stage)) {
+      throw new Error(`its stage ${describeValue(stage)} isn't in the plan.`);
+    }
+    if (seen.has(stage)) {
+      throw new Error(`stage ${describeValue(stage)} is listed twice.`);
+    }
+    seen.add(stage);
+  }
+}
+
+// Throws unless a mixing box's `stages` (IDs in the plan, each once) are as its mix steps must be, in
+// section 5's order: each a mix step, mixing at least one well, named by its place ("Mix 2 of 3");
+// with `tips` null (a box in place), consecutive in stage order and each the only stage of its tip
+// group; every one loading the first's tips (their tip groups', or, for a paste, `tips`, each
+// { tipType, probes } in order); no well mixed by two of them. A paste checks its stages before
+// they're placed, so it gives their copied tips.
+function checkMixingBoxStages(plan, stages, tips) {
+  for (const stage of stages) {
+    if (!isMixStep(plan, stage)) {
+      throw new Error(`stage ${describeValue(stage)} isn't a mix step.`);
+    }
+    if (transfersIn(plan, stage).length === 0) {
+      throw new Error(`stage ${describeValue(stage)} mixes no wells.`);
+    }
+  }
+  stages.forEach((stage, index) => {
+    const name = `Mix ${index + 1} of ${stages.length}`;
+    if (plan.stageList.get(stage).name !== name) {
+      throw new Error(`stage ${describeValue(stage)} must be named “${name}”, by its place.`);
+    }
+  });
+  if (tips === null) {
+    checkMixingBoxStagesPlaced(plan, stages);
+  }
+  checkSameTips(
+    stages.map((stage, index) => ({ stage, tips: tips === null ? tipsInUseAt(plan, stage) : tips[index] })),
+  );
+  checkNoWellInTwoMixSteps(plan, stages);
+}
+
+// Throws unless a stored mixing box's stages are consecutive in stage order and each is the only
+// stage of its tip group: each starts one (its first, then each after it), and so does the stage
+// just after its last.
+function checkMixingBoxStagesPlaced(plan, stages) {
+  const order = plan.stageOrder;
+  const places = stages.map((stage) => order.indexOf(stage));
+  if (places.some((place, index) => index > 0 && place !== places[index - 1] + 1)) {
+    throw new Error("its stages must come one after another, in stage order.");
+  }
+  const after = order[places.at(-1) + 1];
+  const sharing =
+    stages.find((stage) => !isFirstOfTipGroup(plan, stage)) ??
+    (after !== undefined && !isFirstOfTipGroup(plan, after) ? stages.at(-1) : undefined);
+  if (sharing !== undefined) {
+    throw new Error(
+      `stage ${describeValue(sharing)} shares tips with another stage. ` +
+        "Every mix step of a mixing box starts on new tips.",
+    );
+  }
+}
+
+// Throws unless every entry of `entries` ({ stage, tips }) loads the first one's tips, naming the
+// first that doesn't, e.g. 'its mix steps must all load the same tips, but stage "6" loads BC1070
+// on 8 probes and stage "5" BC230 on 4.'
+function checkSameTips(entries) {
+  const [first] = entries;
+  const differing = entries.find(
+    (entry) =>
+      entry.tips.tipType !== first.tips.tipType || JSON.stringify(entry.tips.probes) !== JSON.stringify(first.tips.probes),
+  );
+  if (differing !== undefined) {
+    throw new Error(
+      `its mix steps must all load the same tips, but stage ${describeValue(differing.stage)} loads ` +
+        `${differing.tips.tipType} on ${countOf(differing.tips.probes.length, "probe")} and stage ` +
+        `${describeValue(first.stage)} ${first.tips.tipType} on ${first.tips.probes.length}.`,
+    );
+  }
+}
+
+// Throws if a well is mixed by two of a mixing box's `stages`, e.g. 'Plate1 A1 is mixed by two of its
+// mix steps.'
+function checkNoWellInTwoMixSteps(plan, stages) {
+  const seen = new Set();
+  for (const stage of stages) {
+    for (const end of mixedWellsOf(plan, stage)) {
+      if (seen.has(wellKey(end))) {
+        throw new Error(`${wellText(end)} is mixed by two of its mix steps.`);
+      }
+      seen.add(wellKey(end));
+    }
+  }
+}
+
+// A count and its noun, "1 probe" or "8 probes".
+function countOf(count, noun) {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+// Throws if two mixing boxes share an ID: 'Mixing boxes 1 and 3 both have the ID "m2".'
+function checkMixingBoxIdsUnique(mixingBoxes) {
+  const firstById = new Map();
+  mixingBoxes.forEach(({ id }, index) => {
+    if (firstById.has(id)) {
+      throw new Error(`Mixing boxes ${firstById.get(id) + 1} and ${index + 1} both have the ID ${describeValue(id)}.`);
+    }
+    firstById.set(id, index);
+  });
+}
+
+// Throws if a stage is owned by two mixing boxes, e.g. 'Stage "5" belongs to two mixing boxes, 1 and
+// 2.' (A randomization's or transfer table's stage is never a mix step, which their own checks
+// refuse, so a stage owned by one of them and a mixing box is refused by the mix step check.)
+function checkMixingBoxStagesOwnedOnce(mixingBoxes) {
+  const ownerByStage = new Map();
+  mixingBoxes.forEach((mixingBox, index) => {
+    for (const stage of mixingBox.stages) {
+      if (ownerByStage.has(stage)) {
+        throw new Error(
+          `Stage ${describeValue(stage)} belongs to two mixing boxes, ${ownerByStage.get(stage) + 1} and ${index + 1}.`,
+        );
+      }
+      ownerByStage.set(stage, index);
+    }
+  });
+}
+
+// Throws if a randomization without stages sits before one of a mixing box's mix steps other than
+// its first, e.g. 'Randomization 2 sits before stage "5", inside mixing box 1. …'
+function checkNoRandomizationInsideMixingBox(plan, mixingBoxes) {
+  plan.randomizations.forEach((randomization, index) => {
+    if (randomization.stages.length > 0 || randomization.beforeId === null) {
+      return;
+    }
+    const boxIndex = mixingBoxes.findIndex((mixingBox) => mixingBox.stages.slice(1).includes(randomization.beforeId));
+    if (boxIndex !== -1) {
+      throw new Error(
+        `Randomization ${index + 1} sits before stage ${describeValue(randomization.beforeId)}, inside ` +
+          `mixing box ${boxIndex + 1}. A randomization sits between tip groups.`,
+      );
+    }
+  });
+}
+
 // --- Moving and copying ---
 
 // What copied items say they are, and the version of their form this module writes and reads
 // (transfer-designer.md, "Moving and copying"). Exported, so a tool can recognize copied items on
 // the system clipboard by the same text.
 export const COPIED_ITEMS_FORMAT = "biomek-tools copied items";
-export const COPIED_ITEMS_VERSION = 5;
+export const COPIED_ITEMS_VERSION = 6;
 
 // The versions of copied items this module reads: version 1 (before several filler wells), version
 // 2 (before sources sharing tips; section 3, "Copied items version 2"), version 3 (before transfer
 // tables, "Copied items version 3"), version 4 (before a randomization's settings lived on its
-// stages, "Copied items version 4") and the one it writes ("Copied items version 5").
-const COPIED_ITEMS_VERSIONS_READ = [1, 2, 3, 4, COPIED_ITEMS_VERSION];
+// stages, "Copied items version 4"), version 5 (before mixing boxes, "Copied items version 5") and
+// the one it writes ("Copied items version 6").
+const COPIED_ITEMS_VERSIONS_READ = [1, 2, 3, 4, 5, COPIED_ITEMS_VERSION];
+
+// The first version of copied items that may hold mixing boxes.
+const FIRST_COPIED_VERSION_WITH_MIXING_BOXES = 6;
 
 // The first version of copied items whose randomizations with stages hold null settings, tipType
 // and probes (section 3, "Copied items version 5").
@@ -3406,7 +4190,7 @@ const FIRST_COPIED_VERSION_WITH_TRANSFER_TABLES = 4;
 const FIRST_COPIED_VERSION_SHARING_TIPS = 3;
 
 // The kinds of item (docs/glossary.md, "Item"), as items name them.
-const ITEM_KINDS = ["stage", "tipGroup", "randomization", "transferTable"];
+const ITEM_KINDS = ["stage", "tipGroup", "randomization", "transferTable", "mixingBox"];
 
 // The properties of each part of copied items, exactly (section 3, "Moving and copying").
 const COPIED_ITEMS_PROPERTIES = ["format", "version", "items"];
@@ -3419,12 +4203,16 @@ const COPIED_TIPS_PROPERTIES = ["tipType", "probes"];
 const COPIED_OWNED_STAGE_PROPERTIES = ["labware", "well", "stage", "tips"];
 const COPIED_TRANSFER_TABLE_PROPERTIES = ["kind", "transferTable", "stages"];
 const COPIED_TABLE_STAGE_PROPERTIES = ["component", "stage", "tips"];
+const COPIED_MIXING_BOX_PROPERTIES = ["kind", "mixingBox", "stages"];
+const COPIED_MIXING_BOX_VALUES = ["way"];
+const COPIED_MIX_STEP_PROPERTIES = ["stage", "tips"];
 
 // The column's boxes, in order, between Start and End (section 3, "Moving and copying"): each an
 // ordinary tip group, { kind: "tipGroup", key, tipType, probes, stages }, a randomization,
 // { kind: "randomization", id, tipGroups }, with its stages' tip groups (in stage order, each holding
 // one or more of its stages, as its sources share tips; [] while it has none), or a transfer table,
 // { kind: "transferTable", id, tipGroups }, each of its tip groups holding one of its stages. A
+// mixing box, { kind: "mixingBox", id, tipGroups }, likewise, each holding one of its mix steps. A
 // randomization without stages sits just before the box whose first
 // stage is its beforeId (last for null), several at one place in the order of `randomizations`.
 // e.g. [{ kind: "tipGroup", key: "start", tipType: "BC230", probes: [1, 2, 3, 4], stages: ["1", "2"] },
@@ -3460,23 +4248,27 @@ export function columnBoxes(plan) {
   return boxes;
 }
 
-// What owns stage `stageId`: { kind: "randomization" or "transferTable", id, stages } (its owned
-// stages' entries), or null for an ordinary stage.
+// What owns stage `stageId`: { kind: "randomization", "transferTable" or "mixingBox", id, stages }
+// (its owned stages, each as { stage }), or null for an ordinary stage.
 function ownerOf(plan, stageId) {
   const randomization = randomizationOf(plan, stageId);
   if (randomization !== null) {
     return { kind: "randomization", id: randomization, stages: randomizationAt(plan, randomization).stages };
   }
   const transferTable = transferTableOwning(plan, stageId);
-  return transferTable === null
+  if (transferTable !== null) {
+    return { kind: "transferTable", id: transferTable.id, stages: transferTable.stages };
+  }
+  const mixingBox = mixingBoxOwning(plan, stageId);
+  return mixingBox === null
     ? null
-    : { kind: "transferTable", id: transferTable.id, stages: transferTable.stages };
+    : { kind: "mixingBox", id: mixingBox.id, stages: mixingBox.stages.map((stage) => ({ stage })) };
 }
 
 // Returns { plan, placed }: the plan with `items` (each { kind, id }) moved to `place`, as one edit,
 // following the container rule (section 3, "Moving and copying"). Every stage keeps its ID, name,
 // settings and transfers; only stageOrder, tipChanges, the operation list's order and the
-// randomizations change. `placed` is the moved items, in column order. If nothing would change, the
+// randomizations change (and the order of the transfer tables and mixing boxes). `placed` is the moved items, in column order. If nothing would change, the
 // same plan is given back, with `placed` the items. Throws, in section 5's order of checks, e.g.
 // moveItems(plan, [{ kind: "stage", id: "3" }], { kind: "inTipGroup", index: 0, position: 1 }).
 export function moveItems(plan, items, place) {
@@ -3504,6 +4296,7 @@ export function moveItems(plan, items, place) {
     withPiecesPlaced(remaining, pieces, place, anchor),
     plan.randomizations,
     plan.transferTables,
+    plan.mixingBoxes,
   );
   const placed = entries.map(({ kind, id }) => ({ kind, id }));
   if (sameArrangement(plan, moved)) {
@@ -3548,7 +4341,8 @@ export function copyItems(plan, items, place) {
 
 // Returns { plan, placed }: the plan with `copied` (copied items, from copyOf, perhaps of another
 // plan, perhaps through the system clipboard) at `place`, as one edit, following the container rule:
-// each stage a new stage, each randomization a new randomization (section 3, "Moving and copying").
+// each stage a new stage, each randomization, transfer table and mixing box a new one (section 3,
+// "Moving and copying").
 // `placed` is the pasted things, as items of the new plan, in column order. Everything is checked,
 // as opening a plan file is, and refused with "Can't paste: " and the reason.
 export function pasteItems(plan, copied, place) {
@@ -3557,14 +4351,18 @@ export function pasteItems(plan, copied, place) {
   const pieces = [];
   const created = [];
   const createdTables = [];
+  const createdBoxes = [];
   copiedItems.forEach((item, index) => {
     checkCopiedItemForm(item, index + 1, copied.version);
     const result = withPrefix(`Can't paste: item ${index + 1}: `, () =>
       pastedPiece(
         working,
         itemAsVersion3(item, copied.version),
-        [...plan.randomizations, ...created],
-        [...plan.transferTables, ...createdTables],
+        {
+          randomizations: [...plan.randomizations, ...created],
+          transferTables: [...plan.transferTables, ...createdTables],
+          mixingBoxes: [...plan.mixingBoxes, ...createdBoxes],
+        },
         copied.version,
       ),
     );
@@ -3576,10 +4374,13 @@ export function pasteItems(plan, copied, place) {
     if (result.transferTable !== undefined) {
       createdTables.push(result.transferTable);
     }
+    if (result.mixingBox !== undefined) {
+      createdBoxes.push(result.mixingBox);
+    }
   });
   const boxes = columnBoxes(plan);
   // Nothing pasted is a stage of a transfer table already in the plan, so a place inside one is
-  // refused.
+  // refused. (Nor is one of a mixing box: nothing is ever put inside one.)
   checkPlace(boxes, place, pieces.some((piece) => piece.kind === "box"), () => false);
   const layout = layoutOf(plan, boxes);
   const anchor = anchorOf(layout, place, new Set(), new Set());
@@ -3590,6 +4391,7 @@ export function pasteItems(plan, copied, place) {
     arranged,
     [...plan.randomizations, ...created],
     [...plan.transferTables, ...createdTables],
+    [...plan.mixingBoxes, ...createdBoxes],
   );
   return { plan: withOperationsInStageOrder(pasted), placed: pieces.map(placedItemOf) };
 }
@@ -3605,7 +4407,7 @@ function checkedItems(plan, items, verb, boxes) {
   if (!Array.isArray(items) || items.length === 0) {
     const got = Array.isArray(items) ? "an empty list" : describeValue(items);
     throw new Error(
-      `The things to ${verb} must be a list of stages, tip groups, randomizations or transfer tables, but got ${got}.`,
+      `The things to ${verb} must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got ${got}.`,
     );
   }
   const where = columnPlaces(boxes);
@@ -3623,28 +4425,27 @@ function checkedItems(plan, items, verb, boxes) {
   return kept.sort((first, second) => first.boxIndex - second.boxIndex || first.order - second.order);
 }
 
-// Where everything is in the column's `boxes`: { stages, groupStarts, randomizations,
-// transferTables }, Maps from a stage's ID to { boxIndex, order } (its place in its box), from an
-// ordinary tip group's first stage to its box's index, and from a randomization's or transfer
-// table's ID to its box's index.
+// Where everything is in the column's `boxes`: { stages, groupStarts, randomization, transferTable,
+// mixingBox }, Maps from a stage's ID to { boxIndex, order } (its place in its box), from an
+// ordinary tip group's first stage to its box's index, and from a randomization's, transfer table's
+// or mixing box's ID to its box's index (each Map named by its box's kind).
 function columnPlaces(boxes) {
   const stages = new Map();
   const groupStarts = new Map();
-  const randomizations = new Map();
-  const transferTables = new Map();
+  const owners = { randomization: new Map(), transferTable: new Map(), mixingBox: new Map() };
   boxes.forEach((box, boxIndex) => {
     if (box.kind === "tipGroup") {
       groupStarts.set(box.stages[0], boxIndex);
       box.stages.forEach((id, place) => stages.set(id, { boxIndex, order: place + 1 }));
     } else {
-      (box.kind === "randomization" ? randomizations : transferTables).set(box.id, boxIndex);
+      owners[box.kind].set(box.id, boxIndex);
       // Its tip groups may hold several stages each (sources sharing tips), so every stage is noted.
       box.tipGroups
         .flatMap((group) => group.stages)
         .forEach((id, place) => stages.set(id, { boxIndex, order: place + 1 }));
     }
   });
-  return { stages, groupStarts, randomizations, transferTables };
+  return { stages, groupStarts, ...owners };
 }
 
 // Item number `number` of a list, checked and located in the column (`where`, from columnPlaces):
@@ -3654,18 +4455,22 @@ function columnPlaces(boxes) {
 function locatedItem(plan, item, number, where) {
   if (!isObject(item) || !ITEM_KINDS.includes(item.kind)) {
     throw new Error(
-      `Item ${number} must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", ` +
+      `Item ${number} must be { kind, id }, with kind "stage", "tipGroup", "randomization", "transferTable" or "mixingBox", ` +
         `but got ${describeValue(isObject(item) ? item.kind : item)}.`,
     );
   }
   const { kind, id } = item;
   if (kind === "randomization") {
     checkRandomizationExists(plan, id);
-    return { kind, id, boxIndex: where.randomizations.get(id), order: 0 };
+    return { kind, id, boxIndex: where.randomization.get(id), order: 0 };
   }
   if (kind === "transferTable") {
     checkTransferTableExists(plan, id);
-    return { kind, id, boxIndex: where.transferTables.get(id), order: 0 };
+    return { kind, id, boxIndex: where.transferTable.get(id), order: 0 };
+  }
+  if (kind === "mixingBox") {
+    checkMixingBoxExists(plan, id);
+    return { kind, id, boxIndex: where.mixingBox.get(id), order: 0 };
   }
   if (!plan.stageList.has(id)) {
     throw new Error(`There's no stage ${describeValue(id)} in the plan.`);
@@ -3679,8 +4484,8 @@ function locatedItem(plan, item, number, where) {
   return { kind, id, boxIndex: where.groupStarts.get(id), order: 0 };
 }
 
-// True if a located item (or an entry of one) is a container: a tip group, a randomization or a
-// transfer table.
+// True if a located item (or an entry of one) is a container: a tip group, a randomization, a
+// transfer table or a mixing box.
 function isContainerEntry(entry) {
   return entry.kind !== "stage";
 }
@@ -3688,7 +4493,7 @@ function isContainerEntry(entry) {
 // Throws unless `place` is a place in the column of `boxes`, checked in section 5's order: its form
 // and range, then that a place inside names a tip group's box (or, for inTransferTable, a transfer
 // table's), then its position, then the container rule (`holdsContainer`: what goes there holds a
-// tip group, randomization or transfer table, which goes only between boxes; inside a transfer
+// tip group, randomization, transfer table or mixing box, which goes only between boxes; inside a transfer
 // table, `onlyStagesOf(id)` must say what goes there is only that transfer table's stages). The place
 // is { kind: "between", index }, { kind: "inTipGroup", index, position } or { kind:
 // "inTransferTable", index, position }.
@@ -3724,13 +4529,16 @@ function checkPlace(boxes, place, holdsContainer, onlyStagesOf) {
   if (box.kind === "randomization") {
     throw new Error(`Box ${place.index} is a randomization: nothing can be put inside it.`);
   }
+  if (box.kind === "mixingBox") {
+    throw new Error(`Box ${place.index} is a mixing box: nothing can be put inside it.`);
+  }
   if (box.kind === "transferTable") {
     throw new Error(ownStagesOnly);
   }
   checkPosition(place, box.stages.length);
   if (holdsContainer) {
     throw new Error(
-      "A tip group or randomization can't go inside another tip group: put it between tip groups.",
+      "A tip group, randomization, transfer table or mixing box can't go inside another tip group: put it between tip groups.",
     );
   }
 }
@@ -3747,7 +4555,8 @@ function checkPosition(place, count) {
 // Throws if `entries` (checked items) hold a stage a randomization owns without that randomization:
 // a randomization's stages move only with it (ADR 0014); then a transfer table's stage without its
 // transfer table, unless `place` is inside its own transfer table (checkPlace has made sure every
-// stage moved there is that table's). Owned stages are left out of `entries` already when their
+// stage moved there is that table's); then a mixing box's mix step without its mixing box, to any
+// place (its order is worked out, not chosen). Owned stages are left out of `entries` already when their
 // owner is listed.
 function checkNoOwnedStageAlone(plan, entries, place) {
   const owned = entries.find((entry) => entry.kind === "stage" && randomizationOf(plan, entry.id) !== null);
@@ -3762,6 +4571,13 @@ function checkNoOwnedStageAlone(plan, entries, place) {
     throw new Error(
       `${stageNamed(plan, tableStage.id)}, belongs to a transfer table, which moves its stages with it: ` +
         "move it within the table, move the whole transfer table, or copy the stage.",
+    );
+  }
+  const mixStep = entries.find((entry) => entry.kind === "stage" && mixingBoxOwning(plan, entry.id) !== null);
+  if (mixStep !== undefined) {
+    throw new Error(
+      `${stageNamed(plan, mixStep.id)}, belongs to a mixing box, which moves its mix steps with it: ` +
+        "move the whole mixing box, or copy the mix step.",
     );
   }
 }
@@ -3827,17 +4643,21 @@ function tableWithColumnsMoved(table, movedComponents, beforeComponent, afterCom
 
 // The column as boxes that can be rearranged, one per box of `boxes`, in order: an ordinary tip
 // group as { kind: "tipGroup", tips, stages }, a randomization as { kind: "randomization",
-// randomization, groups }, a transfer table as { kind: "transferTable", transferTable, groups }, each
-// of `groups` { tips, stages }, one of its tip groups. `tips` is { tipType, probes }.
+// randomization, groups }, a transfer table as { kind: "transferTable", transferTable, groups }, a
+// mixing box as { kind: "mixingBox", mixingBox, groups }, each of `groups` { tips, stages }, one of
+// its tip groups. `tips` is { tipType, probes }.
 function layoutOf(plan, boxes) {
   return boxes.map((box) => {
     if (box.kind === "tipGroup") {
       return { kind: "tipGroup", tips: tipsOf(box), stages: box.stages };
     }
     const groups = box.tipGroups.map((group) => ({ tips: tipsOf(group), stages: group.stages }));
-    return box.kind === "randomization"
-      ? { kind: "randomization", randomization: randomizationAt(plan, box.id), groups }
-      : { kind: "transferTable", transferTable: transferTableAt(plan, box.id), groups };
+    if (box.kind === "randomization") {
+      return { kind: "randomization", randomization: randomizationAt(plan, box.id), groups };
+    }
+    return box.kind === "transferTable"
+      ? { kind: "transferTable", transferTable: transferTableAt(plan, box.id), groups }
+      : { kind: "mixingBox", mixingBox: mixingBoxAt(plan, box.id), groups };
   });
 }
 
@@ -3939,10 +4759,10 @@ function boxesFromPieces(pieces) {
 // The plan arranged as `layout` says, from `plan`'s stages: its stage order, its tip changes (one per
 // tip group, the first the START one), its randomizations (from `randomizations`, those in the
 // layout), in column order, each sitting before the first stage of the next box below it that has
-// one, or null (section 3, "Where randomizations sit afterwards"), and its transfer tables (from
-// `transferTables`), in column order. The operation list isn't put in the new order here
+// one, or null (section 3, "Where randomizations sit afterwards"), its transfer tables (from
+// `transferTables`) and its mixing boxes (from `mixingBoxes`), in column order. The operation list isn't put in the new order here
 // (withOperationsInStageOrder).
-function planFromLayout(plan, layout, randomizations, transferTables) {
+function planFromLayout(plan, layout, randomizations, transferTables, mixingBoxes) {
   const stageOrder = [];
   const tipChanges = {};
   const groups = layout.flatMap((box) => (box.kind === "tipGroup" ? [box] : box.groups));
@@ -3963,11 +4783,15 @@ function planFromLayout(plan, layout, randomizations, transferTables) {
   const tablesPlaced = layout
     .filter((box) => box.kind === "transferTable")
     .map((box) => transferTables.find((candidate) => candidate.id === box.transferTable.id));
+  const boxesPlaced = layout
+    .filter((box) => box.kind === "mixingBox")
+    .map((box) => mixingBoxes.find((candidate) => candidate.id === box.mixingBox.id));
   return withParts(plan, {
     stageOrder: sameOrNew(plan.stageOrder, stageOrder),
     tipChanges: sameOrNew(plan.tipChanges, tipChanges),
     randomizations: sameOrNew(plan.randomizations, placed),
     transferTables: sameOrNew(plan.transferTables, tablesPlaced),
+    mixingBoxes: sameOrNew(plan.mixingBoxes, boxesPlaced),
   });
 }
 
@@ -3989,8 +4813,8 @@ function firstStageBelow(layout, index) {
 }
 
 // True if `arranged` has the same stage order, tip changes (tip types and probes by key),
-// randomizations and transfer tables as `plan`: a move that changes nothing. `plan`'s randomizations
-// and transfer tables are compared in column order, since a move puts the lists in column order: a
+// randomizations, transfer tables and mixing boxes as `plan`: a move that changes nothing. `plan`'s
+// randomizations, transfer tables and mixing boxes are compared in column order, since a move puts the lists in column order: a
 // list that was in another order isn't a different column.
 function sameArrangement(plan, arranged) {
   // The tip changes as text, by key in sorted order, so two tables with the same entries in a
@@ -4004,11 +4828,15 @@ function sameArrangement(plan, arranged) {
   const tablesInColumnOrder = boxes
     .filter((box) => box.kind === "transferTable")
     .map((box) => transferTableAt(plan, box.id));
+  const mixingBoxesInColumnOrder = boxes
+    .filter((box) => box.kind === "mixingBox")
+    .map((box) => mixingBoxAt(plan, box.id));
   return (
     JSON.stringify(plan.stageOrder) === JSON.stringify(arranged.stageOrder) &&
     tipsByKey(plan.tipChanges) === tipsByKey(arranged.tipChanges) &&
     JSON.stringify(inColumnOrder) === JSON.stringify(arranged.randomizations) &&
-    JSON.stringify(tablesInColumnOrder) === JSON.stringify(arranged.transferTables)
+    JSON.stringify(tablesInColumnOrder) === JSON.stringify(arranged.transferTables) &&
+    JSON.stringify(mixingBoxesInColumnOrder) === JSON.stringify(arranged.mixingBoxes)
   );
 }
 
@@ -4039,7 +4867,8 @@ function tipGroupKeyOf(plan, id) {
 
 // One copied item for a checked item `entry` (section 3, "Copied items"): a stage with the tips of
 // its tip group, a tip group with its tips and stages, a transfer table with its table, sources and
-// stages, each with its component and tips, or a randomization with its values and its
+// stages, each with its component and tips, a mixing box with its way and its mix steps, each with
+// its tips, or a randomization with its values and its
 // stages, each with its source's well and the tips of the tip group it starts, or null for one that
 // shares the tips of the stage before it.
 function copiedItem(plan, boxes, entry) {
@@ -4049,6 +4878,14 @@ function copiedItem(plan, boxes, entry) {
   if (entry.kind === "tipGroup") {
     const box = boxes[entry.boxIndex];
     return { kind: "tipGroup", tips: tipsOf(box), stages: box.stages.map((id) => copiedStage(plan, id)) };
+  }
+  if (entry.kind === "mixingBox") {
+    const mixingBox = mixingBoxAt(plan, entry.id);
+    return {
+      kind: "mixingBox",
+      mixingBox: { way: mixingBox.way },
+      stages: mixingBox.stages.map((stage) => ({ stage: copiedStage(plan, stage), tips: tipsInUseAt(plan, stage) })),
+    };
   }
   if (entry.kind === "transferTable") {
     const transferTable = transferTableAt(plan, entry.id);
@@ -4090,7 +4927,7 @@ function copiedStage(plan, id) {
 // (COPIED_ITEMS_VERSIONS_READ), or a message saying a newer version copied them.
 function checkCopiedForm(copied) {
   const notCopiedItems = new Error(
-    "Can't paste: this isn't stages, tip groups, randomizations or transfer tables copied from the transfer designer.",
+    "Can't paste: this isn't stages, tip groups, randomizations, transfer tables or mixing boxes copied from the transfer designer.",
   );
   if (!hasExactly(copied, COPIED_ITEMS_PROPERTIES) || copied.format !== COPIED_ITEMS_FORMAT) {
     throw notCopiedItems;
@@ -4111,8 +4948,8 @@ function checkCopiedForm(copied) {
 }
 
 // Throws unless copied item number `number`, of copied items `version`, is in its form (section 3,
-// "Copied items"): a stage, a tip group (at least one stage), a randomization, or, from version 4, a
-// transfer table, each part with exactly its properties. In versions 1 and 2, a randomization's sources that are objects have no
+// "Copied items"): a stage, a tip group (at least one stage), a randomization, from version 4 a
+// transfer table, or, from version 6, a mixing box, each part with exactly its properties. In versions 1 and 2, a randomization's sources that are objects have no
 // sharesTips, and every owned stage has tips; from version 3, an owned stage's tips may be null,
 // except the first's; from version 5, a randomization's settings, tipType and probes are null
 // exactly when it has stages. Values (and sources that aren't objects) are checked later, by the edits that
@@ -4172,6 +5009,15 @@ function checkCopiedItemForm(item, number, version) {
       item.stages.every(
         (owned) => hasExactly(owned, COPIED_TABLE_STAGE_PROPERTIES) && isStage(owned.stage) && isTips(owned.tips),
       );
+  } else if (isObject(item) && item.kind === "mixingBox") {
+    inForm =
+      version >= FIRST_COPIED_VERSION_WITH_MIXING_BOXES &&
+      hasExactly(item, COPIED_MIXING_BOX_PROPERTIES) &&
+      hasExactly(item.mixingBox, COPIED_MIXING_BOX_VALUES) &&
+      Array.isArray(item.stages) &&
+      item.stages.every(
+        (owned) => hasExactly(owned, COPIED_MIX_STEP_PROPERTIES) && isStage(owned.stage) && isTips(owned.tips),
+      );
   }
   if (!inForm) {
     throw new Error(
@@ -4198,9 +5044,10 @@ function itemAsVersion3(item, version) {
 // Pastes one copied `item` (in its form) into `plan`, its stages added as new stages, last in the
 // stage order for now: { plan, piece, randomization, transferTable }, `piece` being what goes at the
 // place (as withPiecesPlaced takes it) and `randomization` or `transferTable` a new one, if it is
-// one. Its values are checked in the order its edits check them; `existing` and `existingTables` are
-// the randomizations and transfer tables so far, for a new ID; `version` is the copied items'.
-function pastedPiece(plan, item, existing, existingTables, version) {
+// one (or `mixingBox`). Its values are checked in the order its edits check them; `existing` holds
+// the randomizations, transfer tables and mixing boxes so far, for a new ID ({ randomizations,
+// transferTables, mixingBoxes }); `version` is the copied items'.
+function pastedPiece(plan, item, existing, version) {
   if (item.kind === "stage") {
     const added = withCopiedStage(plan, item.stage);
     const tips = checkedTips(item.tips);
@@ -4219,9 +5066,36 @@ function pastedPiece(plan, item, existing, existingTables, version) {
     return { plan: pasting, piece: { kind: "box", box: { kind: "tipGroup", tips, stages } } };
   }
   if (item.kind === "transferTable") {
-    return pastedTransferTable(plan, item, existingTables);
+    return pastedTransferTable(plan, item, existing.transferTables);
   }
-  return pastedRandomization(plan, item, existing, version);
+  if (item.kind === "mixingBox") {
+    return pastedMixingBox(plan, item, existing.mixingBoxes);
+  }
+  return pastedRandomization(plan, item, existing.randomizations, version);
+}
+
+// Pastes a copied mixing box (pastedPiece): its way; its mix steps as new stages, each a tip group of
+// its own loading its copied tips; then its mix steps checked as setMixingBoxes checks a plan
+// file's, but for their places, which the paste sets (section 3, "Copied items version 6"). It gets
+// the next free ID among `existing`. Whether its mix steps match what it would make isn't checked: it
+// may be out of date.
+function pastedMixingBox(plan, item, existing) {
+  checkMixingWay(item.mixingBox.way);
+  let pasting = plan;
+  const groups = [];
+  const stages = [];
+  for (const entry of item.stages) {
+    const added = withCopiedStage(pasting, entry.stage);
+    pasting = added.plan;
+    groups.push({ tips: checkedTips(entry.tips), stages: [added.id] });
+    stages.push(added.id);
+  }
+  if (stages.length === 0) {
+    throw new Error("its stages must be a non-empty list of stage IDs.");
+  }
+  checkMixingBoxStages(pasting, stages, groups.map((group) => group.tips));
+  const mixingBox = { id: nextMixingBoxId(existing), way: item.mixingBox.way, stages };
+  return { plan: pasting, piece: { kind: "box", box: { kind: "mixingBox", mixingBox, groups } }, mixingBox };
 }
 
 // Pastes a copied transfer table (pastedPiece): its table's form, then its sources' form, keeping
@@ -4350,7 +5224,7 @@ function checkedTips(tips) {
 }
 
 // What a pasted piece is, as an item of the new plan: a stage by its ID, a tip group by its first
-// stage's ID, a randomization by its ID.
+// stage's ID, a randomization, transfer table or mixing box by its ID.
 function placedItemOf(piece) {
   if (piece.kind === "stage") {
     return { kind: "stage", id: piece.id };
@@ -4359,9 +5233,12 @@ function placedItemOf(piece) {
   if (box.kind === "tipGroup") {
     return { kind: "tipGroup", id: box.stages[0] };
   }
-  return box.kind === "randomization"
-    ? { kind: "randomization", id: box.randomization.id }
-    : { kind: "transferTable", id: box.transferTable.id };
+  if (box.kind === "randomization") {
+    return { kind: "randomization", id: box.randomization.id };
+  }
+  return box.kind === "transferTable"
+    ? { kind: "transferTable", id: box.transferTable.id }
+    : { kind: "mixingBox", id: box.mixingBox.id };
 }
 
 // --- Moving wells ---
@@ -4407,8 +5284,8 @@ export function isWellToFill(plan, well) {
 // Returns the plan with well `from` replaced by well `to` (each { labware, well }) wherever the
 // plan names it, as one edit (section 3, "Moving wells"): its starting contents entry, every
 // transfer from or into it, its well label, a randomization's sources and stage entries, and a
-// transfer table's source wells. Parts
-// the move doesn't touch are shared with `plan`.
+// transfer table's source wells. A mixing box stores no wells: its mix steps' mixed wells move as any
+// transfers do. Parts the move doesn't touch are shared with `plan`.
 // e.g. moveWell(plan, { labware: "Res1", well: "3" }, { labware: "Res1", well: "7" }).
 // Throws, in this order (section 5): `from` or `to` isn't on the deck, `to` is `from`, `from` isn't
 // in use, `from` is a randomization's well to fill, `to` is in use.
@@ -4746,6 +5623,7 @@ function checkRandomizationPlace(plan, beforeId, ownId) {
     throw new Error(`There's no stage ${describeValue(beforeId)} to add a randomization before.`);
   }
   checkNotInsideTransferTable(plan, beforeId);
+  checkNotInsideMixingBox(plan, beforeId);
   const owner = plan.randomizations.find(
     (randomization) =>
       randomization.id !== ownId &&
@@ -5041,7 +5919,7 @@ function sharesOf(randomization, contentsOf) {
 
 // True unless two filler wells that hold something just before the randomization hold different
 // liquids: different components, or a component's share of the well differing by more than
-// NEGLIGIBLE_MICROLITERS (section 3, "Problems"). Filler wells holding nothing are left out.
+// SAME_SHARE_ALLOWANCE (holdSameContents, the mixing boxes' rule too; section 3, "Problems"). Filler wells holding nothing are left out.
 // `contentsOf` gives what every well holds then, and is called only with two or more filler wells.
 function fillerWellsHoldOneLiquid(randomization, contentsOf) {
   const indexes = fillerIndexes(randomization);
@@ -5055,28 +5933,13 @@ function fillerWellsHoldOneLiquid(randomization, contentsOf) {
       return contents.volumeFractionsOf(labware, well);
     })
     .filter((shares) => Object.keys(shares).length > 0);
-  return liquids.every((shares) => sameLiquid(shares, liquids[0]));
+  return liquids.every((shares) => holdSameContents(shares, liquids[0]));
 }
 
 // The components a well holds in `contents` (a ContentsSnapshot), as [name, µL] pairs in the well's
 // component order, leaving out any it holds none of, e.g. [["Media", 990], ["DMSO", 10]].
 function heldComponents(contents, { labware, well }) {
   return Object.entries(contents.componentsOf(labware, well)).filter(([, volume]) => volume > 0);
-}
-
-// True if two wells' shares of each component (volumeFractionsOf) are one liquid: the same
-// components, each share within NEGLIGIBLE_MICROLITERS of the other, e.g. { Media: 1 } and
-// { Media: 1 } → true.
-function sameLiquid(first, second) {
-  const names = Object.keys(first);
-  return (
-    names.length === Object.keys(second).length &&
-    names.every(
-      (name) =>
-        Object.hasOwn(second, name) &&
-        Math.abs(first[name] - second[name]) <= NEGLIGIBLE_MICROLITERS,
-    )
-  );
 }
 
 // A pool problem in the designer's words (section 3), or null for one it never has (an invalid
@@ -6053,6 +6916,15 @@ function mixedWellTransfer(id, well) {
     volume: MIX_STEP_VOLUME,
     stage: id,
   };
+}
+
+// Throws as checkMixStep does, refusing first, right after the stage is found, a mixing box's mix
+// step, whose wells change only in the mixing box (section 5's order of checks).
+function checkMixStepNotInMixingBox(plan, id) {
+  if (plan.stageList.has(id)) {
+    checkNotMixingBoxWells(plan, id);
+  }
+  checkMixStep(plan, id);
 }
 
 // Throws unless stage `id` is a mix step: 'There's no stage "9" in the plan.' for an ID that isn't a
