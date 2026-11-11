@@ -85,7 +85,7 @@ its checklist, Back and Next, and the menu of tutorials. A ring around a part of
 what to use next (`tutorial-page.md`; ADR 0022).
 
 **Item**
-Something in the Stages column that can be selected, moved or copied: a stage (a mix step
+Something in the Stages column that can be selected, moved, copied or deleted: a stage (a mix step
 included), an ordinary tip group (one not belonging to a randomization or transfer table), a
 randomization or a transfer table.
 
@@ -261,6 +261,11 @@ type and how many probes get tips, and every stage using its tips uses all those
 A group of stages that run on the same tips: the stages after one tip change, up to the next. For
 example, with tip changes at the start and before stage 4, stages 1 to 3 are one tip group and
 stages 4 and 5 another. Every stage in the group uses all the probes its tip change loads.
+
+**Trash**
+Where the transfer designer keeps what's deleted from the Stages column, so it can be put back
+where it was or dragged anywhere (`trash.md`; ADR 0024). Kept by the browser, not the plan: it
+isn't in plan files and isn't tied to a plan. One entry per thing deleted.
 
 **Tutorial**
 One of the guided lessons in the tutorial file, such as "Your first run": a short series of steps
