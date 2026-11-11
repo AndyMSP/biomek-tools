@@ -240,10 +240,10 @@
 > 5, 7, 10, 12, 15, 16 and 17):** **Delete** and **Cut** (the Delete key, Ctrl+X and the right-click
 > menu) of what's selected in the Stages column, with a short red animation and an **Undo** button
 > in the message; **Join with the group above** in place of a tip change's Remove; and **the trash**
-> at the bottom of the Stages column, which keeps everything deleted, so it can be put back or
-> dragged anywhere (`trash.md`). From the preview Andy shaped on 2026-11-11. Plan files and the
-> Biomek's files don't change (removing a tip group's first stage now keeps the group's tips,
-> `transfer-designer.md`, "Stages"). Written in the hands-off workflow (CLAUDE.md, "Workflows"),
+> at the bottom of the Stages column, which keeps everything deleted, so it can be dragged out to
+> any gap (`trash.md`; ADR 0024). From the preview Andy shaped on 2026-11-11. Plan files don't
+> change; what a plan writes for the Biomek changes only after a tip group's first stage is
+> removed, which now keeps the group's tips (`transfer-designer.md`, "Stages"). Written in the hands-off workflow (CLAUDE.md, "Workflows"),
 > so the choices made for Andy are listed in its pull request. They become Final once built and
 > tested by Andy.
 
@@ -1828,62 +1828,63 @@ with `Save or discard your changes first.`, and nothing happens). An open random
 closes first as `Close` would; if it can't (it has run, with changes), it shakes, the message bar
 says `Update or discard your changes first.`, and nothing moves or is pasted.
 
-**The trash** (Andy, 2026-11-11; `trash.md`; ADR 0024). Everything deleted from the plan is kept, so
-it can be put back, even after other edits (which Undo can't do without undoing them too).
+**The trash** (Andy, 2026-11-11; `trash.md`; ADR 0024). Everything deleted from the plan is kept in
+the trash, from where it can be **dragged out** to any gap, in this plan or another. It doesn't put
+anything back where it was by itself (Andy, 2026-11-11: dropped after two reviews showed it couldn't
+be made reliable); Undo is the exact way to bring back a recent delete.
 - **Where.** Pinned at the bottom of the Stages column, so it's always in view, also while
-  dragging: a band the column's width, under a 1px border (`#E2E0D8`), white, above the column's
-  contents as they scroll under it. Closed, it's one line: a 🗑, then `Trash` and, at the right, `Drag
-  here to delete` (gray, 12px) while it's empty; or `Trash (3)` and `▴` once it holds something.
-  Clicking it opens and closes its **list**, which opens above that line, inside the band (`▾`
-  while open), at most 260px tall, scrolling.
+  dragging: a band the column's width, under a 1px border, above the column's contents as they
+  scroll under it. Closed, it's one line: a 🗑, then `Trash` and, at the right, `Drag here to delete`
+  (gray, 12px) while it's empty; or `Trash (3)` and `▴` once it holds something. Clicking it opens
+  and closes its **list**, which opens above that line, inside the band (`▾` while open), at most
+  260px tall, scrolling.
 - **What goes in.** Everything deleted, by any route (Andy, 2026-11-11): the Delete key, the menu's
   `Delete`, Ctrl+X and the menu's `Cut`, dropping on the trash, a stage's or mix step's box's
   `Remove`, a randomization's card's `Remove` and a transfer table's wizard's `Remove`: **one entry
-  per thing deleted** (`addDeleted`, with the plan before the edit; Andy,
-  2026-11-11, after the preview put several things back as one and got the order wrong). Joining a
-  tip group to the one above deletes nothing, so nothing goes in. Undo of the edit takes its entries
-  out again, and Redo puts them back (`undoTrashChange`, `redoTrashChange`). At most `TRASH_LIMIT`
+  per thing deleted** (`addDeleted`, with the plan before the edit), as part of the same edit.
+  Joining a tip group to the one above deletes nothing, so nothing goes in. At most `TRASH_LIMIT`
   entries; older ones drop off.
 - **The list**, newest first (`trash.md`, "Order"), one row per entry: its **name** in semibold
   14px (a stage: its name in quotes, `“S03 Drug A”`; a randomization: `Randomization` and its
   name, `Randomization “Randomization1”`; a tip group: `Tip group`; a transfer table: `Transfer
-  table`); under it in 12px gray, `3 transfers · deleted 12:28 AM` for a stage (a mix step's mixed wells counted as
-  transfers, as `trash.md` counts them), or `2 stages · 5 transfers · deleted 12:28 AM` for the others (the time in the
-  browser's own short form, hours and minutes); and at its right a **`Put back`** button. Below the
-  rows: `Drag one to a gap to put it there` (12px gray) and **`Empty trash`** (danger). Empty, the
-  list says `The trash is empty. Deleted stages and tip groups come here.` (12px gray).
-- **`Put back`** puts the entry back where it was (`putBack` with no place; `trash.md`, "Putting
-  back"), as one edit: the message `Put back “S03 Drug A”.` (ok; as for a paste: the things
-  described as in a drag's label), and what's put back is selected, glows, scrolls into view, and
-  its first stage opens, as after a paste (section 7, "After a move, copy or paste"). When it has
-  no place in this plan (`putBackPlace` gives `null`: none of the stages the trash remembers is
-  in this plan with the same ID and name, as in another plan opened since), the button is disabled, and a line under the entry's details says, in
-  red 12px, `Its place isn't in this plan: drag it where it should go.` (Andy, 2026-11-11). The
-  buttons are worked out again whenever the plan changes.
-- **Dragging an entry out**: a press on an entry's row (not its button) and a 5px move
-  (`DRAG_START_DISTANCE`) starts a drag, as for the column's items: the label reads `Put back
-  “S03 Drug A”`, and the nearest seam is marked with the drop line, as a paste's would be (only
-  seams between tip groups for a tip group, randomization or transfer table). Dropped on a marked
-  seam, it's put back there (`putBack` with that place), with the same message and selection as
-  `Put back`; dropped with nothing marked, or back on the trash, nothing happens. The column scrolls
-  near its edges, and Escape cancels, as for any drag. This is how something goes into another plan
-  (Andy, 2026-11-11).
+  table`); under it, in 12px gray, `3 transfers · deleted 12:28 AM` for a stage (a mix step's
+  mixed wells counted as transfers, as `trash.md` counts them), or `2 stages · 5 transfers ·
+  deleted 12:28 AM` for the others (the time in the browser's own short form, hours and minutes).
+  Below the rows: `Drag one to a gap to put it there` (12px gray) and **`Empty trash`** (danger).
+  Empty, the list says `The trash is empty. Deleted stages and tip groups come here.` (12px gray).
+- **Dragging an entry out.** A press on an entry's row and a 5px move (`DRAG_START_DISTANCE`)
+  starts a drag, as for the column's items: the label reads `Paste “S03 Drug A”` (the thing
+  described as in a drag's label, section 7, "Dragging"), and the nearest seam is marked with the
+  drop line, as for any drag (only seams between tip groups for a tip group, randomization or
+  transfer table). Dropped on a marked seam, the entry is pasted there (`pasteEntry`, with that
+  place), as one edit, and leaves the trash; the message `Pasted “S03 Drug A” from the trash.` (ok),
+  and what was pasted is selected, glows, scrolls into view and its first stage opens, as after a
+  paste (section 7, "After a move, copy or paste"). If the logic refuses (`pasteItems`' message,
+  such as a tip group dropped inside one, or an entry whose stored copy is damaged), its message
+  is shown (error), nothing changes, and the entry stays in the trash. Dropped with nothing
+  marked, or back on the trash, nothing happens. The column scrolls near its edges, and Escape
+  cancels, as for any drag. An open editing box or randomization card is handled as for a paste:
+  one without changes closes first; one with changes refuses the press, as for any drag (section
+  7, "Dragging").
 - **Dragging onto the trash deletes.** While a drag from the column is over the trash, the trash
   turns red (section 15), no seam is marked, and the label reads `Delete “S04 Drug B”` on red.
   Dropping there deletes the dragged things, exactly as Delete does (the same refusals, animation,
   message and Undo). With Ctrl held, it still deletes (Claude's choice: a copy dropped on the trash
   would do nothing).
+- **Undo and Redo.** Each edit that changed the trash (a delete adds entries, a drag-out takes one
+  out, Reset empties it) keeps its change (`trash.md`, "Undo and redo"), and Undo and Redo apply
+  it: undoing a delete takes its entries out of the trash, undoing a drag-out puts the entry back
+  in the trash, and undoing Reset brings back the trash with the plan.
 - **`Empty trash`** empties it at once (`clearTrash`), with no question and no message; it isn't
   an edit of the plan, so Undo doesn't bring it back (Claude's choice: it's the trash's own button,
   like emptying a computer's recycle bin). Reset empties it too, as part of its edit, so Undo of
   Reset does bring it back (section 5).
 - **Not tied to a plan.** Opening a plan file keeps the trash as it is (Andy, 2026-11-11, asked and
-  kept it): its entries' `Put back` is then disabled, unless the plan opened has
-  stages the trash remembers (the same plan saved and reopened does), and they can be dragged into the plan
-  that's open.
+  kept it); dragging an entry into the plan that's open is pasting into it.
+- **Delete with the focus on an entry or `Empty trash`** does nothing.
 - **While a randomization's card or the transfer table wizard is open**, the trash works as the
-  rest of the column does then (a drag or Put back closes the card as a paste does, or is refused
-  with the card's message).
+  rest of the column does then (a drag closes the card as a paste does, or is refused with the
+  card's message).
 
 **Keeping things in view.** When a different entry opens, the column scrolls just enough to show
 all of it; when an editing box opens, it scrolls just enough to show the box. When `Show
@@ -1903,9 +1904,9 @@ nothing. An undo or redo that would open a randomization's card while moving wel
 the point it sits at (its first stage, or the stage it sits before, or End), so no card opens. A
 transfer table's or run randomization's heading opens and closes its box as usual (it only shows or
 hides); its ✎ is hidden with the others. Selecting, dragging, the right-click menu (and the menu key), Ctrl+C, Ctrl+V,
-Ctrl+X and the Delete key are off, and so is the trash: its list can be opened and read, but `Put
-back`, dragging out, `Empty trash` and dropping on it don't work (a click on `Put back` or `Empty
-trash` says `Stages can't be changed while moving wells. Press Done first.`).
+Ctrl+X and the Delete key are off, and so is the trash: its list can be opened and read, but
+dragging out, `Empty trash` and dropping on it don't work (a click on `Empty trash` or a press on
+an entry says `Stages can't be changed while moving wells. Press Done first.`).
 
 ## 8. Starting contents (Start open)
 While Start is open, clicking a well fills it, and dragging from one well to another across one
@@ -2568,8 +2569,7 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   column's edges (under its padding), stuck to the column's bottom; its line 14px gray (`Trash`
   semibold), darker on hover; the list's rows on the page background (`#F6F5F1`) with a 1px
   `#E2E0D8` border, 8px corners, 8px by 10px padding, 6px apart, the grab pointer, no text
-  selected while pressing; `Put back` an action button made small (13px, 4px by 10px), disabled
-  as any; `Empty trash` small danger. **While a drag is over it** (to delete): pale red
+  selected while pressing; `Empty trash` a danger button made small (13px, 4px by 10px). **While a drag is over it** (to delete): pale red
   (`#FBE3E0`) with a 2px red (`#C4362A`) ring inside, its text red; the drag's label red
   (`#B3261E`) in place of blue.
 - **Motion:** with the system's "reduce motion" setting, no fades, glows, smooth scrolling or
@@ -2620,21 +2620,26 @@ group's tip type and probes from its heading), with what's expected. It checks:
   they're gone at once; Ctrl+Z pressed during the animation: the note, nothing deleted.
 - **The message's Undo**: brings back what was deleted, the trash losing its entries.
 - **The trash**: its closed line empty and with entries (`Trash (2)`); opening it; one entry per
-  thing deleted, newest first, column order within a delete, each row's name and details; `Put
-  back` of each, in every order, for the round trips of `trash.md` section 6, cases 1, 2, 4, 7, 8,
-  11, 13, 15, 17, 19 and 23 (the column compared with the test plan's after the last); `Put back`
-  disabled with its red line after opening another plan; dragging a stage onto the trash (red
-  trash, red label, deleted); dragging an entry out to a gap (the drop line, put there); Escape
-  canceling that drag;
-  `Empty trash`; Reset emptying it and Undo bringing it back; Undo and Redo of a delete and of a put
-  back moving entries in and out; the trash after a reload; a stage's box's `Remove`, a
-  randomization's card's `Remove` and the wizard's `Remove` each adding an entry; the trash off
-  while moving wells (its message); Delete with the focus on a trash entry (nothing).
-- **Edits around the trash**: `Put back` with a stage's editing box with changes open (refused,
-  shaking, `Save or discard your changes first.`, the trash unchanged); Ctrl+Z pressed during the
-  animation, then Delete again (the note, then deleted once, with one entry); the message's `Undo`
-  pressed after a later edit (it undoes the later edit, as Ctrl+Z would); a second tab changing the
-  trash, then this tab deleting: both tabs' entries kept.
+  thing deleted, newest first, column order within a delete, each row's name and details, and no
+  button on a row; a stage's box's `Remove`, a randomization's card's `Remove` and the wizard's
+  `Remove` each adding an entry; dragging a stage onto the trash (red trash, red label, deleted);
+  the trash after a reload; `Empty trash`; Reset emptying it and Undo bringing it back; the trash
+  off while moving wells (its message); Delete with the focus on a trash entry (nothing).
+- **Dragging out**: an entry dragged to a gap (the drop line, the label, pasted there, the entry
+  gone from the trash, the message, the pasted thing selected); dragged back to where it was, for
+  S03 (into group 2 at its top) and S07 with S08 deleted separately (each to its own gap, in
+  reverse order): the column equal to the test plan's; a tip group dropped where only seams
+  between tip groups are marked; a refused paste (an entry whose `copied` was damaged in local
+  storage before the page opened, which reading back keeps, `trash.md`): the logic's message,
+  nothing changed, the entry still in the trash; dropped with
+  nothing marked: nothing; Escape canceling; an entry dragged into another plan opened from a
+  file.
+- **Edits around the trash**: Undo and Redo of a delete and of a drag-out moving entries in and
+  out; a drag-out with a stage's editing box with changes open (refused, shaking, `Save or
+  discard your changes first.`, the trash unchanged); Ctrl+Z pressed during the animation, then
+  Delete again (the note, then deleted once, with one entry); the message's `Undo` pressed after a
+  later edit (it undoes the later edit, as Ctrl+Z would); a second tab changing the trash, then
+  this tab deleting: both tabs' entries kept.
 - **No errors** on the page throughout (Playwright's `pageerror`).
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
