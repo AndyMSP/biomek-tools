@@ -424,7 +424,7 @@ describe("trash", () => {
       message: "That's every stage in the plan, and a plan needs at least one. Leave one stage, or add a new one first.",
     });
     assert.throws(() => addDeleted(trash, plan, 5, NOW), {
-      message: "The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got 5.",
+      message: "The things to delete must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got 5.",
     });
     assert.equal(snapshot(trash), before);
   });
@@ -437,7 +437,7 @@ describe("trash", () => {
       });
     }
     assert.throws(() => addDeleted(emptyTrash(), plan, [], 5), {
-      message: "The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got an empty list.",
+      message: "The things to delete must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got an empty list.",
     });
     const given = "2026-11-10T23:59:00-05:00";
     assert.equal(addDeleted(emptyTrash(), plan, [st(plan, "S04")], given).trash.entries[0].deletedAt, given);

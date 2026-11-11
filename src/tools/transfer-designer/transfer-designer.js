@@ -4469,9 +4469,10 @@ export function deleteItems(plan, items) {
   const entries = checkedItemsToDelete(plan, items);
   let deleting = plan;
   // Randomizations and transfer tables first, together, in column order (entries are in it).
-  for (const entry of entries.filter((candidate) => candidate.kind === "randomization" || candidate.kind === "transferTable")) {
-    deleting =
-      entry.kind === "randomization" ? removeRandomization(deleting, entry.id) : removeTransferTable(deleting, entry.id);
+  // (Combined preview: mixing boxes too, as the mixing boxes' spec asks once deleting exists.)
+  const removers = { randomization: removeRandomization, transferTable: removeTransferTable, mixingBox: removeMixingBox };
+  for (const entry of entries.filter((candidate) => candidate.kind in removers)) {
+    deleting = removers[entry.kind](deleting, entry.id);
   }
   for (const id of ordinaryStagesOf(plan, entries)) {
     deleting = removeStage(deleting, id);
@@ -4510,6 +4511,9 @@ function checkedItemsToDelete(plan, items) {
 function ownedStageDeleteMessage(plan, id) {
   if (ownerOf(plan, id).kind === "randomization") {
     return `${stageNamed(plan, id)}, belongs to a randomization: delete the whole randomization, or change it in its card.`;
+  }
+  if (ownerOf(plan, id).kind === "mixingBox") {
+    return `${stageNamed(plan, id)}, belongs to a mixing box: delete the whole mixing box, or change it in its wizard.`;
   }
   return `${stageNamed(plan, id)}, belongs to a transfer table: delete the whole transfer table, or change it in its wizard.`;
 }
