@@ -636,6 +636,11 @@ row of section 5 has at least one test.
   mix steps' names, wells and tips, not out of date.
 - A plan with a mixing box out of date (a well's contents changed before it after adding), saved and
   opened, is still out of date.
+- **A mixing box saved with another mix:** a version 14 file whose mixing box's mix steps have a
+  destination mix other than the default mix step settings' (e.g. `DEFAULT_MIX`'s share plus 10,
+  worked out from it, as after `DEFAULT_MIX` changes in `config/`) opens (`setMixingBoxes` doesn't
+  check settings beyond being a mix step's), its mixing box out of date; `updateMixingBox` with
+  `mixingBoxDraft` then gives its mix steps the default mix step settings, and it's up to date.
 - A version 13 file opens with `mixingBoxes` `[]`; a version 13 file *with* `mixingBoxes` is refused
   as having an extra property; a version 14 file without it as missing it, and one whose
   `mixingBoxes` is an object with the wrong-kind message.
