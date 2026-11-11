@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -546,6 +546,13 @@ Last updated: 2026-11-10
   reviewed by a separate agent, and checked in headless Chrome (the Biomek files byte for byte
   main's; the tutorials' walk-throughs pass). Still to check by Andy, including the remembered
   folder with a real folder, which headless Chrome can't read back.
+- **Decided: every transfer's volume at once** (Andy, 2026-11-11; item 33, below): a transfer
+  stage's shown transfer list starts with an **All transfers** box, showing the volume its
+  transfers share, or `Mixed` when they differ ("just like randomizer sources"), which sets them
+  all as one edit. From a preview Andy approved on 2026-11-11. **Specified** (Draft, 2026-11-11,
+  hands-off workflow): `changeStageVolumes` (`transfer-designer.md`, sections 3 to 6) and the
+  page (`transfer-designer-page.md`, sections 7, 12, 15 and 16). Plan files and the Biomek files
+  don't change.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1277,6 +1284,19 @@ added on 2026-10-28 (Andy).
     It changes neither the Biomek's files nor plan files.
     Built (#152).
 
+33. **Every transfer's volume at once** (Andy, 2026-11-11; hands-off workflow): Andy's feature idea
+    "Change all volumes at once in a stage". Decided with Andy, from a preview on 2026-11-11:
+    - **An All transfers box** at the top of a stage's shown transfer list: the volume all its
+      transfers share, or blank with `Mixed` when they differ, following any change to a single
+      transfer ("just like randomizer sources").
+    - **Enter or leaving the box sets every transfer** of the stage to the volume typed, as one
+      edit (one Undo); Escape puts the shown value back.
+    - **Not for a randomization's or a transfer table's stage**, whose volumes come from their
+      owner, nor for a mix step (Claude's choice, in the hands-off workflow: as `changeVolume`
+      already refuses them).
+    It changes neither plan files nor the Biomek files' format; what a plan writes changes only
+    through the volumes the user sets.
+
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
 1. Finish the Biomek files button (item 7): Claude Code builds the page. Then **one simulation run**
@@ -1328,7 +1348,9 @@ final Biomek runs, so they test the files as they will be:
     It changes no Biomek files and no plan files, so it needn't come before the final runs.
 22. Writing the run as a folder (item 31), added on 2026-11-10: preview, specifications, then
     build. It changes no Biomek files or plan files, so it needn't come before the final runs.
-23. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+23. Every transfer's volume at once (item 33), added on 2026-11-11: preview, specifications, then
+    build. It changes no Biomek files or plan files, so it needn't come before the final runs.
+24. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
