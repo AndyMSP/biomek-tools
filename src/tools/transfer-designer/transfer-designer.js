@@ -3623,11 +3623,10 @@ export function pasteItems(plan, copied, place) {
 export function deleteItems(plan, items) {
   const entries = checkedItemsToDelete(plan, items);
   let deleting = plan;
-  for (const entry of entries.filter((candidate) => candidate.kind === "randomization")) {
-    deleting = removeRandomization(deleting, entry.id);
-  }
-  for (const entry of entries.filter((candidate) => candidate.kind === "transferTable")) {
-    deleting = removeTransferTable(deleting, entry.id);
+  // Randomizations and transfer tables first, together, in column order (entries are in it).
+  for (const entry of entries.filter((candidate) => candidate.kind === "randomization" || candidate.kind === "transferTable")) {
+    deleting =
+      entry.kind === "randomization" ? removeRandomization(deleting, entry.id) : removeTransferTable(deleting, entry.id);
   }
   for (const id of ordinaryStagesOf(plan, entries)) {
     deleting = removeStage(deleting, id);

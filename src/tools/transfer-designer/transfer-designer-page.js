@@ -795,7 +795,10 @@ function undo() {
   clearSourceOutsideTransferStage();
   afterPlanChange();
   showMessage("Undone.", "note");
-  showTrashStorageNote();
+  // The storage note follows only a change to the trash (section 4).
+  if (leaving !== null) {
+    showTrashStorageNote();
+  }
 }
 
 // Redoes the last undone edit (section 6), the trash's change with it. Not while a randomization's
@@ -812,7 +815,9 @@ function redo() {
   clearSourceOutsideTransferStage();
   afterPlanChange();
   showMessage("Redone.", "note");
-  showTrashStorageNote();
+  if (entering !== null) {
+    showTrashStorageNote();
+  }
 }
 
 // After an Undo or Redo, clears a chosen source if what's open is no longer a transfer stage (a
@@ -6832,13 +6837,23 @@ function closeColumnMenuPressedOutside(event) {
 // --- Deleting and cutting (section 7, "Deleting and cutting") ---
 
 // Connects the Delete key's condition (a press in the Stages column, or the keyboard focus moved
-// into it) and Ctrl+X (the cut event, so the copy reaches the system clipboard as Ctrl+C's does).
+// into it; ended by a press elsewhere or the focus leaving it) and Ctrl+X (the cut event, so the
+// copy reaches the system clipboard as Ctrl+C's does).
 function connectDeleting() {
   document.addEventListener("pointerdown", noteWherePressed, true);
   elements.stagesColumn.addEventListener("focusin", (event) => {
     // The trash's own buttons and entries never arm Delete (section 7).
     if (!elements.trash.contains(event.target)) {
       deleteKeyArmed = true;
+    }
+  });
+  elements.stagesColumn.addEventListener("focusout", (event) => {
+    // The focus moving to another part of the page ends it, as a press there does (section 7).
+    // Focus lost to nothing (a redrawn row, or a press on something that takes no focus) leaves
+    // it to the press; the column's own right-click menu, which floats outside it, counts as in it.
+    const to = event.relatedTarget;
+    if (to instanceof Element && !elements.stagesColumn.contains(to) && !elements.columnMenu.contains(to)) {
+      deleteKeyArmed = false;
     }
   });
   document.addEventListener("cut", cutFromClipboardEvent);
@@ -7181,8 +7196,8 @@ function connectTrash() {
   document.addEventListener("pointercancel", cancelTrashDrag);
 }
 
-// A click in the trash's list: Empty trash empties it at once (clearTrash), with no question and no
-// message, and isn't an edit of the plan (section 7); a click on an entry is handled by its press.
+// A click in the trash's list: Empty trash empties it at once (clearTrash), with no question, and
+// says so; it isn't an edit of the plan (section 7). A click on an entry is handled by its press.
 function clickInTrashList(event) {
   if (!(event.target instanceof Element) || event.target.closest(".trash-empty") === null) {
     return;
@@ -7192,6 +7207,7 @@ function clickInTrashList(event) {
     return;
   }
   changeTrash((trash) => clearTrash(trash).trash);
+  showMessage("Emptied the trash.", "note");
   showTrashStorageNote();
 }
 
@@ -7403,6 +7419,7 @@ function pasteFromTrash(entryId, place) {
     showMessage("That item has left the trash (another tab used it).", "note");
     return;
   }
+  const before = history;
   placeItems(
     (plan) => {
       const pasted = pasteEntry(plan, trash, entryId, place);
@@ -7411,7 +7428,10 @@ function pasteFromTrash(entryId, place) {
     "Pasted",
     " from the trash",
   );
-  showTrashStorageNote();
+  // The storage note follows only a paste that happened, which changed the trash (section 4).
+  if (history !== before) {
+    showTrashStorageNote();
+  }
 }
 
 // --- Starting contents: the palette (section 8) ---

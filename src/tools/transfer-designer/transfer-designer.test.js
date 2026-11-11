@@ -6283,23 +6283,32 @@ describe("transfer-designer", () => {
     ];
   }
 
-  // Items of the test plan, by stage name (or first word): a stage, the tip group it starts, the
-  // run randomization Randomization1, the transfer table, and owned stages by their place.
+  // The item of the stage called `name` (or whose name starts with it), e.g. st(plan, "S04").
   function st(plan, name) {
     return { kind: "stage", id: stageIdOf(plan, name) };
   }
+
+  // The item of the ordinary tip group whose first stage is called `name`, e.g. tg(plan, "S03").
   function tg(plan, name) {
     return { kind: "tipGroup", id: stageIdOf(plan, name) };
   }
+
+  // The item of the randomization called `name` (the run Randomization1 by default).
   function rz(plan, name = "Randomization1") {
     return { kind: "randomization", id: plan.randomizations.find((entry) => entry.name === name).id };
   }
+
+  // The item of the plan's (only) transfer table.
   function tt(plan) {
     return { kind: "transferTable", id: plan.transferTables[0].id };
   }
+
+  // The item of Randomization1's stage at `index` (from 0, in its order), e.g. 0 for Drug A's.
   function randomizationStage(plan, index) {
     return { kind: "stage", id: randomizationAt(plan, rz(plan).id).stages[index].stage };
   }
+
+  // The item of the transfer table's stage at `index` (from 0), e.g. 0 for Media's.
   function tableStage(plan, index) {
     return { kind: "stage", id: plan.transferTables[0].stages[index].stage };
   }
@@ -6518,13 +6527,18 @@ describe("transfer-designer", () => {
   // The plan after `items` are removed one edit at a time, as section 3, "Deleting", says:
   // randomizations and transfer tables first, in column order, then the stages left, in column
   // order (a tip group's stages each), with removeRandomization, removeTransferTable and removeStage.
+  // The containers' column order is worked out here, from columnBoxes of the plan before, not taken
+  // from deleteItems.
   function removedOneByOne(plan, items) {
     let removing = plan;
-    for (const item of items.filter((entry) => entry.kind === "randomization")) {
-      removing = removeRandomization(removing, item.id);
-    }
-    for (const item of items.filter((entry) => entry.kind === "transferTable")) {
-      removing = removeTransferTable(removing, item.id);
+    const boxIndex = (item) =>
+      columnBoxes(plan).findIndex((box) => box.kind === item.kind && box.id === item.id);
+    const containers = items
+      .filter((entry) => entry.kind === "randomization" || entry.kind === "transferTable")
+      .sort((first, second) => boxIndex(first) - boxIndex(second));
+    for (const item of containers) {
+      removing =
+        item.kind === "randomization" ? removeRandomization(removing, item.id) : removeTransferTable(removing, item.id);
     }
     const groups = tipGroups(plan);
     const stages = items.flatMap((item) => {
@@ -6560,6 +6574,53 @@ describe("transfer-designer", () => {
       assert.deepEqual(biomekOutput(after), biomekOutput(oneByOne));
     });
   }
+
+  // The test plan with the transfer table moved to the top (the first box), so it comes before the
+  // randomization in column order.
+  function tableFirstPlan() {
+    const plan = deleteTestPlan();
+    return moveItems(plan, [tt(plan)], between(0)).plan;
+  }
+
+  test("deleteItems, mixed and scattered: the transfer table at the top and the randomization, listed randomization first: the stages and tips left", () => {
+    const plan = tableFirstPlan();
+    assert.deepEqual(deleteGroupsOf(plan).slice(0, 2), TABLE_GROUPS);
+    const items = [rz(plan), tt(plan)];
+    const { plan: after, removed, deleted } = deleteItems(plan, items);
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"), g(T6, "S10", "S11"),
+    ]);
+    assert.equal(removed, 5);
+    assert.deepEqual(deleted, [tt(plan), rz(plan)]);
+  });
+
+  test("deleteItems: the transfer table at the top and the randomization give the same outline and Biomek output as removing them in column order, the table first", () => {
+    const plan = tableFirstPlan();
+    const items = [rz(plan), tt(plan)];
+    const after = deleteItems(plan, items).plan;
+    const tableFirst = removeRandomization(removeTransferTable(plan, tt(plan).id), rz(plan).id);
+    assertSamePlan(after, tableFirst);
+    assert.deepEqual(planOutline(after), planOutline(removedOneByOne(plan, items)));
+    assert.deepEqual(biomekOutput(after), biomekOutput(removedOneByOne(plan, items)));
+  });
+
+  test("a transfer table followed by an ordinary stage: removing it leaves that stage's own tip change as it was; none of the table's moves onto it", () => {
+    const plan = deleteTestPlan();
+    // Box 5 is S10's tip group: the table goes just before it.
+    const moved = moveItems(plan, [tt(plan)], between(5)).plan;
+    const s10 = stageIdOf(moved, "S10");
+    assert.deepEqual(tipChangeAt(moved, s10), T6);
+    const tableStages = moved.transferTables[0].stages.map((owned) => owned.stage);
+    for (const after of [removeTransferTable(moved, tt(moved).id), deleteItems(moved, [tt(moved)]).plan]) {
+      assert.deepEqual(tipChangeAt(after, s10), T6);
+      const keysLeft = Object.keys(after.tipChanges);
+      assert.equal(tableStages.some((id) => keysLeft.includes(id)), false);
+      assert.deepEqual(
+        after.tipChanges,
+        Object.fromEntries(Object.entries(moved.tipChanges).filter(([key]) => !tableStages.includes(key))),
+      );
+    }
+  });
 
   test("deleteItems: S09 and S10 either side of the randomization leave its place and tips as removeStage does, the stage after it on tips of its own", () => {
     const plan = deleteTestPlan();

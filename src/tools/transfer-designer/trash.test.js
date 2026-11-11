@@ -58,25 +58,33 @@ function needsLimit(count) {
   return TRASH_LIMIT < count && `needs TRASH_LIMIT ≥ ${count}`;
 }
 
-// Places in the column: between boxes, and inside a tip group's box.
+// The place between boxes just before box `index`, e.g. between(0) → above the first box.
 function between(index) {
   return { kind: "between", index };
 }
+
+// The place inside tip group box `index`, before its stage at `position`, e.g. inGroup(1, 0) → at
+// the top of the second box.
 function inGroup(index, position) {
   return { kind: "inTipGroup", index, position };
 }
 
-// Items of a plan made from the test plan, by stage name (or first word): a stage, the tip group it
-// starts, a randomization by name (Randomization1, the run one, by default), and the transfer table.
+// The item of the stage called `name` (or whose name starts with it), e.g. st(plan, "S04").
 function st(plan, name) {
   return { kind: "stage", id: stageIdOf(plan, name) };
 }
+
+// The item of the ordinary tip group whose first stage is called `name`, e.g. tg(plan, "S03").
 function tg(plan, name) {
   return { kind: "tipGroup", id: stageIdOf(plan, name) };
 }
+
+// The item of the randomization called `name` (the run Randomization1 by default).
 function rz(plan, name = "Randomization1") {
   return { kind: "randomization", id: plan.randomizations.find((entry) => entry.name === name).id };
 }
+
+// The item of the plan's (only) transfer table.
 function tt(plan) {
   return { kind: "transferTable", id: plan.transferTables[0].id };
 }

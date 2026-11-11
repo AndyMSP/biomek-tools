@@ -139,9 +139,11 @@ function expectedColumn(plan) {
   });
 }
 
-// The test plan's column, and the column after `items` (from the test plan, by a function given it)
-// are deleted, by the logic.
+// The test plan's column, by the logic.
 const FULL_COLUMN = expectedColumn(deleteTestPlan());
+
+// The column the logic gives after deleting, from the test plan, the items `itemsOf` gives for it,
+// e.g. columnAfterDeleting((plan) => [stageItem(plan, "S04")]).
 function columnAfterDeleting(itemsOf) {
   const plan = deleteTestPlan();
   return expectedColumn(deleteItems(plan, itemsOf(plan)).plan);
@@ -408,6 +410,26 @@ async function checkDeleteKey(page) {
   await checkColumn(page, columnAfterDeleting((plan) => [stageItem(plan, "S03")]), "Delete with the focus moved into the column");
 }
 
+// The focus tabbed into the column and back out to the deck ends the Delete key's condition: a
+// stage's row clicked, a well clicked, Tab until the focus is in the column, Shift+Tab back out,
+// then Delete: nothing.
+async function checkFocusInAndOut(page) {
+  await page.click(stageRow("S04 Drug B row B"));
+  await page.click(`.well[data-labware="${PLATE}"][data-well="H12"]`);
+  const focusInColumn = () => page.evaluate(() => document.getElementById("stages-column").contains(document.activeElement));
+  let presses = 0;
+  while (!(await focusInColumn())) {
+    check(presses < 400, "Tab never reached the Stages column.");
+    await page.keyboard.press("Tab");
+    presses += 1;
+  }
+  await page.keyboard.press("Shift+Tab");
+  check(!(await focusInColumn()), "Shift+Tab didn't leave the column.");
+  await page.keyboard.press("Delete");
+  await page.waitForTimeout(AFTER_ANIMATION);
+  await checkColumn(page, FULL_COLUMN, "Delete after the focus went into the column and back out");
+}
+
 // Delete before any press does nothing.
 async function checkDeleteBeforeAnyPress(page) {
   await page.keyboard.press("Delete");
@@ -652,8 +674,29 @@ async function checkLastPressAndMessageUndo(page) {
   await checkColumn(page, columnAfterDeleting((plan) => [stageItem(plan, "S04")]), "the message's Undo");
   checkSame((await trashRows(page)).map((row) => row.name), ["“S04 Drug B row B”"], "the trash after the message's Undo");
 
-  // Every edit shows a message of its own, so a message's Undo is only ever pressed after a later
-  // edit as a newer message's Undo: above, the second delete's Undo undid only the latest edit.
+  // The message's Undo after a later edit that shows no message of its own: closing the card of a
+  // randomization that hasn't run, after changing its seed, saves its draft silently. The Undo
+  // undoes that, as Ctrl+Z would, and S05 stays deleted.
+  await page.hover(seamAt({ kind: "between", index: 2 }));
+  await page.click(`${seamAt({ kind: "between", index: 2 })} .add-randomization`);
+  await page.waitForTimeout(150);
+  await deleteStage(page, "S05 Dye row B");
+  check((await message(page)).undo, "The delete's message has no Undo.");
+  await page.click("#stages-list > .randomization.not-set-up .randomization-heading");
+  await page.fill("#card-seed", "4242");
+  await page.click('.randomization-card button.action:text-is("Close")');
+  await page.waitForTimeout(150);
+  const shown = await message(page);
+  checkSame([shown.text, shown.undo], ["Deleted “S05 Dye row B”.", true], "the message after the card's silent save");
+  await page.click(".message-undo");
+  check((await message(page)).text === "Undone.", "The message's Undo didn't undo.");
+  check(!(await shownColumn(page)).some((box) => box.stages?.includes("S05 Dye row B")), "The message's Undo brought S05 back, not the later edit.");
+  await page.click("#stages-list > .randomization.not-set-up .randomization-heading");
+  const seed = await page.inputValue("#card-seed");
+  check(seed !== "4242", "The message's Undo didn't undo the card's save.");
+  await page.click('.randomization-card button.action:text-is("Close")');
+  await page.keyboard.press("Control+Z");
+  check((await shownColumn(page)).some((box) => box.stages?.includes("S05 Dye row B")), "Ctrl+Z after that didn't bring S05 back.");
 }
 
 // The trash's line, list, the Removes, Reset's question, dragging onto it, after a reload, Empty
@@ -731,11 +774,10 @@ async function checkTrash(page) {
   check((await message(page)).text === "Drag it to a gap to put it there.", "A click on an entry didn't give its note.");
   check((await shownColumn(page)).some((box) => box.stages?.includes("S04 Drug B row B")), "Delete with the focus on an entry deleted.");
 
-  // Empty trash: at once, no message.
-  const before = await message(page);
+  // Empty trash: at once, with its note.
   await page.click("#trash-list .trash-empty");
   checkSame(await trashRows(page), [], "the trash after Empty trash");
-  checkSame(await message(page), before, "the message after Empty trash");
+  checkSame(await message(page), { text: "Emptied the trash.", kind: "note", undo: false, lines: [], hidden: false }, "the message after Empty trash");
 }
 
 // Dragging a stage onto the trash deletes it (the trash and label red), Ctrl held too.
@@ -928,20 +970,32 @@ async function checkEditsAroundTrash(page) {
   checkSame(await trashRows(page), [], "Redo of a drag-out");
   await checkColumn(page, FULL_COLUMN, "Redo of a drag-out");
 
-  // A drag-out with a stage's editing box with changes open: refused, shaking, the trash unchanged.
+  // A drag-out with a stage's editing box with changes open: the list opened first, then the box
+  // changed, then an entry dragged: refused, shaking, its message, the trash and plan unchanged.
   await deleteStage(page, "S04 Drug B row B");
-  if (await page.isVisible("#trash-list")) {
+  if (await page.isHidden("#trash-list")) {
     await page.click("#trash-line");
   }
   await page.click(stageRow("S05 Dye row B"));
   await page.click(`#stages-list .entry.is-open .edit-button`);
   await page.fill(".editing-box input[type='text']", "Changed name");
-  check(await page.isHidden("#trash-list"), "The trash's list was open before the press.");
-  await page.click("#trash-line");
-  await page.waitForTimeout(100);
+  const columnBefore = await shownColumn(page);
+  const trashBefore = await storedTrash(page);
+  check(await page.isVisible("#trash-list .trash-entry"), "The trash's list closed when the box opened.");
+  const entry = await centerOf(page, "#trash-list .trash-entry >> nth=0");
+  const target = await centerOf(page, seamAt({ kind: "between", index: 0 }));
+  await page.mouse.move(entry.x, entry.y);
+  await page.mouse.down();
+  const shaking = await page.evaluate(() => document.querySelector(".editing-box").classList.contains("shake"));
+  await page.mouse.move(target.x, target.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
   const refused = await message(page);
-  check(refused.text === "Save or discard your changes first.", `A press on the trash with changes open said "${refused.text}".`);
-  check(await page.isHidden("#trash-list"), "The trash's list opened past an editing box with changes.");
+  check(refused.text === "Save or discard your changes first.", `A drag out with changes open said "${refused.text}".`);
+  check(shaking, "The editing box didn't shake.");
+  checkSame(await shownColumn(page), columnBefore, "the column after a refused drag out");
+  checkSame(await storedTrash(page), trashBefore, "the trash after a refused drag out");
+  check(await page.isVisible(".editing-box"), "The editing box with changes closed.");
   await page.click(".editing-box .discard");
 
   // A delete, then a change of what's open, then Undo: the delete's entries leave the trash.
@@ -983,6 +1037,24 @@ async function checkTwoTabs(browser, url, errors) {
     check((await message(first)).text === "That item has left the trash (another tab used it).", `A used entry gave "${(await message(first)).text}".`);
     checkSame(await shownColumn(first), before, "nothing pasted from a used entry");
     checkSame((await trashRows(first)).map((row) => row.name), ["“S07 Media row C”"], "the list redrawn without the used entry");
+
+    // In the order section 16 gives: this tab deletes, the second tab deletes, then this tab's Undo
+    // and Redo move only this tab's entry, the second tab's kept.
+    await first.evaluate((key) => localStorage.removeItem(key), TRASH_KEY);
+    await first.reload();
+    await openPlanFile(first);
+    await second.reload();
+    await openPlanFile(second);
+    await deleteStage(first, "S03 Drug A row A");
+    await deleteStage(second, "S10 Media row G");
+    stored = await storedTrash(first);
+    checkSame(stored.entries.map((entry) => entry.name), ["S10 Media row G", "S03 Drug A row A"], "this tab's delete, then the other's");
+    await first.keyboard.press("Control+Z");
+    stored = await storedTrash(first);
+    checkSame(stored.entries.map((entry) => entry.name), ["S10 Media row G"], "this tab's Undo after the other tab's delete");
+    await first.keyboard.press("Control+Y");
+    stored = await storedTrash(first);
+    checkSame(stored.entries.map((entry) => entry.name), ["S10 Media row G", "S03 Drug A row A"], "this tab's Redo after the other tab's delete");
   } finally {
     await context.close();
   }
@@ -1097,6 +1169,7 @@ function withFreshPage(run) {
 const CHECKS = [
   ["the Delete key", withTestPlan(checkDeleteKey)],
   ["Delete before any press", withFreshPage(checkDeleteBeforeAnyPress)],
+  ["the focus tabbed into the column and back out", withTestPlan(checkFocusInAndOut)],
   ["Ctrl+X", withTestPlan(checkCut)],
   ["the menu", withTestPlan(checkMenu)],
   ["the tip change's box", withTestPlan(checkTipBoxJoin)],
