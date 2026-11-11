@@ -12,7 +12,8 @@ Mixing many wells means building mix steps by hand: deciding which wells can sha
 adding a mix step for each group, clicking its wells, and giving each its tips. Done carelessly, a
 tip carries one well's liquid into the next. Andy wanted a way to pick the wells and say how to mix
 them, and have the mix steps made for him. Two ways for now:
-- **A fresh tip for every well**: nothing is carried from one well to the next;
+- **A fresh tip for every well**: meant to carry nothing from one well to the next, each well
+  mixed by a tip of its own (not verified: see "Consequences" and `biomek.md`, "Not yet known");
 - **One tip for wells with the same contents**: wells holding the same components in the same
   shares share a tip, using fewer tips without carrying anything that matters.
 More ways may come.
@@ -32,16 +33,23 @@ decided for transfer tables).
 - **A fresh tip for every well** batches the wells in **probe order** (down each column, as the
   Span-8's probes sit) in batches of as many wells as there are probes, starting a new batch at
   each labware, so a mix step never reaches into two labware types (the file writer would split it
-  into substages on the same tips).
+  into substages on the same tips). **Pending Andy's decision B** (before the build): a new batch at
+  each labware, or only at each labware type, which is all the substage split needs. Which wells
+  it may take is **pending Andy's decision C**: reservoir troughs, where every probe may enter one
+  trough, refused until checked in simulation, or allowed.
 - **One tip for wells with the same contents** groups wells by what they hold just before the box,
   the same components in shares within 0.000001 of each other (the filler wells' rule, one function
-  for both), in probe order of first appearance.
+  for both), in probe order of first appearance. **Pending Andy's decision A** (before the build):
+  grouping ignores volume, but a mix step mixes one volume worked out from its emptiest well
+  (`mix-volumes.md`), so a full well grouped with a half-full one is under-mixed without a warning;
+  the options are grouping by volume too, a warning, or splitting rows by well volume.
 - **Its mix steps change only through it**, enforced in the logic: their wells, names, mix and tips
   included, since the grouping depends on the probes and a tip group changed alone would break "a
   fresh tip for every well". Every mix step uses the standard mix (`DEFAULT_MIX`, `MIX_STEP_MODE`)
   and is named by its place, `Mix 1 of 12`.
 - **Out of date is flagged, never fixed by itself**, as for randomizations and transfer tables: when
-  what its wells hold, or where they are, would group them differently, it's a problem, and the
+  what its wells hold, or where they are, would group them differently, or its mix steps aren't on
+  the standard mix as it now is (after `DEFAULT_MIX` changes), it's a problem, and the
   Biomek files wait for Update, which remakes it in place as one edit.
 - **It moves, copies, pastes and is removed as a whole**, by the container rule (ADR 0014).
 - **Made and edited in a wizard in the Stages column**, not a dialog over the page, since its wells
