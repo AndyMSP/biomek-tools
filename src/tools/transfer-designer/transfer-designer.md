@@ -187,11 +187,11 @@
 > Andy are listed in its pull request. **Not verified:** "a fresh tip for every well" assumes the
 > Biomek mixes each well of a mix step with its own probe when the mix step has no more wells than
 > probes (`biomek.md`, "Not yet known"); a simulation run must check it before any real run.
-> **Waiting for Andy's decisions before the build** (section 3, "Its groups"; roadmap, item 34):
-> A, grouping ignores well volume; B, a fresh-tip batch restarts at each labware or each labware
-> type; C, reservoir troughs with a fresh tip; and whether empty wells can be picked. The text
-> depending on each is marked pending. Still to review: every new message. It becomes Final once built, tested by Andy and checked in
-> simulation.
+> **Decided by Andy** (2026-11-11; section 3, "Its groups"; roadmap, item 34): wells share a mix
+> step only if they also hold about the same volume (`MIX_VOLUME_TOLERANCE`); a fresh-tip batch
+> holds wells of one column of one labware; reservoir troughs are refused for a fresh tip until
+> checked in simulation; empty wells can be picked. Still to review: every new message. It becomes
+> Final once built, tested by Andy and checked in simulation.
 
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
@@ -1540,11 +1540,12 @@ transfer table. Each is:
 - **`way`**: the **way to mix** (`docs/glossary.md`), one of **`MIXING_WAYS`**, a constant of this
   module (not `config/`: each way is code), in the order a tool offers them:
   - **`"freshTip"`**, a fresh tip for every well: meant to carry nothing from one well to the next.
-    It puts no more wells in a mix step than there are probes; that the Biomek then mixes each well
-    with its own probe is **not verified**, and is to be checked in simulation (`docs/domain/biomek.md`,
-    "Not yet known", "How Transfer From File gives a file's rows to the probes");
+    It puts in a mix step only wells of one column of one labware, no more than there are probes;
+    that the Biomek then mixes each well with its own probe, in one pass, is **not verified**, and
+    is to be checked in simulation (`docs/domain/biomek.md`, "Not yet known", "How Transfer From
+    File gives a file's rows to the probes");
   - **`"sameContents"`**, one tip for wells with the same contents: wells holding the same
-    components in the same shares share a tip.
+    components in the same shares, and about the same volume, share a tip.
   More ways may come (Andy, 2026-11-11). Each way is one grouping rule ("Its groups", below), kept
   as one entry in a table of rules keyed by the way's name, so a way is added by adding its name to
   `MIXING_WAYS` and its rule to the table, and nothing else here changes (CLAUDE.md, "Extensible
@@ -1580,6 +1581,19 @@ allowance applies only to a component both wells hold. So `{ Media: 1 }` and `{ 
 DMSO: 0.0000005 }` differ, though DMSO's share is below the allowance. (`volumeFractionsOf` lists
 only components a well holds, so a component there is in the well.)
 
+**About the same volume** (Andy, 2026-11-11, decision A; roadmap, item 34): a set of wells holds
+about the same volume when its **largest** volume is at most its **smallest** volume times
+`1 + MIX_VOLUME_TOLERANCE / 100` (`config/mixing.js`, section 3, "Configuration"), each well's
+volume being what it holds just before the mixing box (contents tracking's `totalVolumeOf`). It's
+judged on the **whole set**, not on a well and its neighbor, so a set can't drift by small steps
+(**no chaining**, as for shares): with a tolerance of `t`%, wells of `100`, `100 + 0.6t` and
+`100 + 1.2t` µL don't all hold about the same volume, though each is within `t`% of the next. A set
+with an empty well holds about the same volume only if every well in it is empty (its smallest is
+`0`). The reason: a mix step mixes every well with one volume, worked out from its **emptiest**
+well (`mix-volumes.md`, "A row's mix volume"), so a fuller well in the same mix step would mix
+less than its share without a warning; keeping a mix step's volumes close keeps every well's mix
+close to its share. Both ways use it ("Its groups", below).
+
 **Its groups** (`mixingGroups(plan, draft, at)`): which wells share a mix step, for a caller to show
 before adding or updating. `at` is where its mix steps go, as for a transfer table: for a mixing box
 in the plan, its first mix step; for a new one, the stage it's added before, or `null` for the end
@@ -1587,60 +1601,59 @@ of the run. What a well holds **just before the mixing box** is the starting con
 transfers of the stages before `at` in the stage order replayed (contents tracking's `replay`, as
 for a transfer table); for `null`, after every stage. The draft's wells are taken in **probe order**,
 then grouped by its way's rule:
-- **`"freshTip"`**: in **batches** of at most `probes.length` wells, meant to give each well a tip
-  of its own (Andy, 2026-11-11; whether the Biomek does is to be checked in simulation,
-  `docs/domain/biomek.md`, "Not yet known"): a new
-  batch starts at the first well, after every `probes.length` wells, and **at the first well of each
-  labware**. E.g. 10 wells on Plate1 (A1 to B2 in probe order) and 4 on Plate2, on 4 probes: Plate1
-  A1 to D1, Plate1 E1 to H1, Plate1 A2 and B2, then the 4 on Plate2. What the wells hold doesn't
-  matter.
-  **Pending Andy's decision B, before the build** (roadmap, item 34): where a new batch starts. The
-  reason for a new batch is that the file writer splits a stage into substages by **labware type**
-  (`substages.md`), and every substage of a mix step runs on the same tips, so a batch spanning two
-  labware types would take a tip into a second well. That needs a new batch only where the labware
-  type changes (between two wells next to each other in probe order); a new batch at each
-  **labware** is stricter than needed. Options: (1) at each labware, as written above
-  (recommended: the simplest to check by eye on the deck, at the cost of a few more tips when two
-  plates of one type are mixed); (2) at each labware type. With (2), Plate1 and Plate2 above (both
-  96-well) give A1 to D1, E1 to H1, then A2, B2 and Plate2's first two, then Plate2's last two;
-  the "Fresh tip, batches" test follows the choice. (A batch isn't kept to one column either way:
-  on 3 probes, Plate1 G1, H1 and A2 are one batch.)
-  **Pending Andy's decision C, before the build**: reservoir troughs. On a labware whose grid has
-  one well per column, such as `DeepReservoir12`'s troughs, every probe of a batch may enter the
-  same trough together, and whether 8 probes can draw from one trough in Transfer From File is
+- **`"freshTip"`**: in **batches**, meant to give each well a tip of its own (Andy, 2026-11-11;
+  whether the Biomek does is to be checked in simulation, `docs/domain/biomek.md`, "Not yet
+  known"). **A batch holds wells of one column of one labware** (Andy, 2026-11-11, decision B:
+  "make sure batches are vertical lines as well — it does them all at once that way"), at most
+  `probes.length` of them, all holding **about the same volume** (above). Taking the wells in probe
+  order, a well **starts a new batch** when it's the first well; when it's on another labware, or in
+  another column of its labware's grid, than the batch's wells; when the batch already holds
+  `probes.length` wells; or when the batch, with it, wouldn't hold about the same volume (decision
+  A). Otherwise it joins the batch. So a batch's wells sit one above the next in a column, as the
+  probes do, and batches are in probe order. What the wells hold doesn't matter, only how much. E.g.
+  on 4 probes, all wells holding the same volume:
+  - Plate1 A1 to H1: two batches, A1 to D1 and E1 to H1;
+  - Plate1 A1 to C1, and A2 to C2: two batches, A1 to C1 and A2 to C2 (not A1 to C1 with A2);
+  - Plate1 A1 to A12 (one row): 12 batches of one well;
+  - 10 wells on Plate1 (A1 to H1, A2, B2) and 4 on Plate2 (A1 to D1): Plate1 A1 to D1, E1 to H1, A2
+    and B2, then Plate2 A1 to D1 (a new batch at each labware, even of the same labware type);
+  - Plate1 A1 to D1 holding 100 µL, except C1 holding twice that: A1 and B1, then C1, then D1 (a
+    batch starts again at C1, out of tolerance, and again at D1, out of tolerance with C1).
+  (A new batch at each labware also keeps a mix step from spanning two labware types, which the
+  file writer would split into substages on the same tips, `substages.md`. The old rule, batches of
+  `probes.length` wells across columns within a labware, is gone: a batch never takes a well of a
+  second column.) Whether the Span-8 mixes a column batch in one pass, each well with its own probe,
+  is part of the simulation test (`biomek.md`, "Not yet known"), not a known fact.
+  **Reservoir troughs are refused for `"freshTip"`** (Andy, 2026-11-11, decision C) until the
+  simulation test has checked several probes in one trough: on a labware whose grid has one well per
+  column (a numbered grid, such as `DeepReservoir12`'s troughs), every probe of a mix step may enter
+  the same trough together, and whether 8 probes can draw from one trough in Transfer From File is
   itself unknown (`docs/domain/biomek.md`, "Not yet known"), so a fresh tip might not be fresh.
-  Options: (1) refuse, until checked in simulation, a `"freshTip"` draft holding a well on such a
-  labware (recommended): `addMixingBox` and `updateMixingBox` refuse it after "at least one well"
-  (section 5's order of checks), with `A fresh tip for every well can't mix reservoir troughs until
-  that's checked in simulation: Res1 1. Use one tip for wells with the same contents, or leave the
-  troughs out.` (naming the first such well in probe order), while `mixingGroups` still gives its
-  groups (the probe order tests stand); (2) allow them, as written above. A reservoir case is in
-  `biomek.md`'s simulation test either way.
+  `addMixingBox` and `updateMixingBox` refuse a `"freshTip"` draft holding a well on such a labware,
+  after "at least one well" (section 5's order of checks), with `A fresh tip for every well can't
+  mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip for wells with the
+  same contents, or leave the troughs out.` (naming the first such well in probe order).
+  `mixingGroups` still gives its groups for such a draft (each trough a batch of its own, being a
+  column of its own), so a caller can show them; `"sameContents"` takes troughs like any wells.
+  `setMixingBoxes` doesn't check for troughs: a fresh-tip box holding troughs can't be made in the
+  tool, and if a plan file holds one, Update refuses it as above.
 - **`"sameContents"`**: each well, in probe order, joins the **first group whose first well holds
   the same contents** as it just before the mixing box (`holdSameContents`; comparing with each
-  group's first well, so a group can't drift by small steps), or else starts a new group, last. So
-  groups are in the probe order of their first wells, and each group's wells in probe order. A group
-  may hold more wells than there are probes: one tip then mixes several wells with the same contents
-  (that's what this way is for). Wells holding nothing just before it form one group of their own,
-  like any contents (a mix step's mixed well holding less than `MIX_STEP_VOLUME` is an overdraw, a
-  contents problem as any other: section 3, "Mix steps"). **Waiting for Andy's decision too, before
-  the build**: allowing empty wells to be picked changes the tip changes written (one more mix step,
-  and set of tips, for the empty wells); recommended: allow them, as written, since the overdraw
-  already stops the Biomek files until it's fixed.
-  **Pending Andy's decision A, before the build** (roadmap, item 34): **grouping ignores well
-  volume**, but a mix step mixes every well with one volume, worked out from its **emptiest** well
-  (`mix-volumes.md`, "A row's mix volume"). So a 200 µL well grouped with a 100 µL well of the same
-  contents mixes only the 100 µL well's share, under-mixing the fuller one with no warning; and with
-  `"freshTip"`, a nearly empty well shrinks its whole batch's mix. Options: (1) **also group by
-  volume**: a well joins a group only if what it holds just before the box is within a tolerance
-  of the group's first well (a value in `config/mixing.js`, its number for Andy), and with
-  `"freshTip"` a new batch also starts at a well outside that tolerance (recommended: it fixes the
-  cause, and costs only more mix steps and tips); (2) keep the grouping, and **warn** (a contents
-  problem or a note) when the volumes in one mix step differ by more than a tolerance; (3) bring
-  forward **splitting a stage's rows by well volume** from the roadmap's Later list, in the file
-  writer, which would fix every mix step, not only a mixing box's, but changes the file writer. The
-  examples and tests here (B2 holding twice A1's volume and sharing its group) follow option 2 or
-  3, and change with option 1.
+  group's first well, so a group can't drift by small steps) **and that, with it, holds about the
+  same volume** (above; Andy, 2026-11-11, decision A), or else starts a new group, last. So groups
+  are in the probe order of their first wells, each group's wells in probe order, and wells of the
+  same contents but different volumes are **split by volume** into groups of their own (two groups
+  may then hold the same contents). E.g. Plate1 A1 to D1 holding 100 µL of 90% Media and 10% Drug A,
+  and B2 200 µL of the same shares: two groups, A1 to D1, then B2. A group may hold more wells than
+  there are probes, and wells of several labware and columns: one tip then mixes several wells with
+  the same contents (that's what this way is for).
+- **Empty wells can be picked** (Andy, 2026-11-11, decision D), with either way: nothing refuses
+  them here. A well holding nothing just before the mixing box holds about the same volume only as
+  other empty wells, so with `"sameContents"` the empty wells form a group of their own (the same
+  contents, `{}`, and the same volume, `0`), and with `"freshTip"` an empty well is batched only
+  with empty wells next to it in its column. Their mix step is caught by the existing problems: a
+  mixed well holding less than `MIX_STEP_VOLUME` is an overdraw, a contents problem as any other
+  (section 3, "Mix steps"), so the Biomek files wait until it's fixed.
 
 It gives `[{ wells, components }]`, one per group, in order: `wells` its wells (`{ labware, well }`,
 in probe order); `components` the names of the components its first well holds just before the
@@ -1648,7 +1661,7 @@ mixing box, in the plan's `components` order (`[]` for a well holding nothing), 
 the group holds the same contents as its first (always, for `"sameContents"`), or `null` when they
 don't (only possible for `"freshTip"`). `[]` for a draft with no wells. E.g. on 4 probes with
 `"sameContents"`, Plate1 A1, B1 and C1 holding Media and Drug A (90% and 10%) and D1 and E1 holding
-Media alone: `[{ wells: [A1, B1, C1], components: ["Media", "Drug A"] }, { wells: [D1, E1],
+Media alone, all 100 µL: `[{ wells: [A1, B1, C1], components: ["Media", "Drug A"] }, { wells: [D1, E1],
 components: ["Media"] }]` (with Media before Drug A in `components`).
 
 **Its mix steps.** Each group becomes one mix step (section 3, "Mix steps"):
@@ -1731,11 +1744,15 @@ number, and its tips are part of what's compared from, so neither is compared. I
 as Update's "nothing changes" with `mixingBoxDraft`, so one function serves both. So:
 - with `"sameContents"`, an edit before it that changes what one of its wells holds so the wells
   group differently (a well topped up with another component, a stage before it removed, a well
-  emptied at Start) makes it out of date; one that changes only volumes, or changes every well of a
-  group alike, doesn't;
-- with either way, a well moved (`moveWell`, below) so the probe order changes which wells go
-  together makes it out of date;
-- with `"freshTip"`, what the wells hold never makes it out of date;
+  emptied at Start) makes it out of date; one that changes every well of a group alike, or changes
+  volumes but leaves every group holding about the same volume, doesn't;
+- with either way, an edit before it that changes its wells' volumes so they group differently (a
+  well topped up past `MIX_VOLUME_TOLERANCE` of the others in its mix step, or two wells' volumes
+  brought within it) makes it out of date (decision A);
+- with either way, a well moved (`moveWell`, below) so the probe order, or which column it's in,
+  changes which wells go together makes it out of date;
+- with `"freshTip"`, which components the wells hold never makes it out of date, only their
+  volumes;
 - with either way, mix steps whose settings aren't the default mix step settings make it out of date
   (no edit can do this to them: only a plan file or a copy from before a change to `DEFAULT_MIX` or
   `MIX_STEP_MODE`).
@@ -2158,8 +2175,11 @@ Two files in `config/` (ADR 0009), which this module's tests check:
   doesn't matter, since every mix speed comes from the worklist; Andy, 2026-10-29): names, the
   liquid type following Biomek's rule, and the technique none of the pipetting modes' techniques or
   mixing techniques, so a mix step is never read as a mode; and `MIX_STEP_VOLUME`, a mixed well's
-  placeholder transfer volume in µL, `1` (Andy, 2026-10-30), a number above 0. (The file also holds
-  `SHORT_MIX_SHARE`, which the `mix-volumes` module's tests check; `mix-volumes.md`.)
+  placeholder transfer volume in µL, `1` (Andy, 2026-10-30), a number above 0; and
+  `MIX_VOLUME_TOLERANCE` (new, 2026-11-11, item 34, decision A), how far apart, in percent of the
+  smallest, the volumes in one mixing box mix step may be: `10` (Andy, 2026-11-11), a number above
+  0 (section 3, "About the same volume"). (The file also holds `SHORT_MIX_SHARE`, which the
+  `mix-volumes` module's tests check; `mix-volumes.md`.)
 - **`config/tip-types.js`** also exports `DEFAULT_PROBE_COUNT`: how many probes a new plan's first
   tips go on, the first that many (`probesFor`). A whole number from 1 to 8; `4` (Andy, 2026-10-30).
   It's in `config/` because it may change (CLAUDE.md, "No hard-coded configuration").
@@ -2567,7 +2587,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | the draft's `wells` isn't a list, a well isn't on the deck, or a well is listed twice | `The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], but got null.` (as `mixWells`) / `Well to mix 3: ` and `deck.checkWell`'s message / `Plate1 A1 is a well to mix twice. List each once.` |
 | the draft's `tipType` or `probes` | `setTipType`'s or `setTipProbes`' message, unchanged |
 | `addMixingBox`, `updateMixingBox`: the draft has no wells | `Pick at least one well to mix.` |
-| **Pending Andy's decision C** (only with option 1, section 3, "Its groups"): `addMixingBox`, `updateMixingBox`: a `"freshTip"` draft with a well on a labware whose grid has one well per column | `A fresh tip for every well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip for wells with the same contents, or leave the troughs out.` (the first such well in probe order) |
+| `addMixingBox`, `updateMixingBox`: a `"freshTip"` draft with a well on a labware whose grid has one well per column (a reservoir trough; Andy, 2026-11-11, decision C; section 3, "Its groups") | `A fresh tip for every well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip for wells with the same contents, or leave the troughs out.` (the first such well in probe order) |
 | `mixingGroups`: `at` isn't a stage or `null` | `There's no stage "9" in the plan.` |
 | `addMixingBox`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a mixing box before.` |
 | `addMixingBox`: `beforeId` is inside a tip group | `A mixing box sits between tip groups, so it can't go before stage 3, “Drugs”.` (Inside a randomization, a transfer table or another mixing box: each one's "stay together" message.) |
@@ -2692,8 +2712,8 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   then `wells`: the list, then each well on the deck, then repeats; then `tipType`, then `probes` in
   `setTipProbes`' order); then `at` (or `beforeId`: a stage or `null`, then, for adding, the "stay
   together" refusals of randomizations, transfer tables and mixing boxes, then a place it can sit);
-  then, for adding and updating, at least one well; then (pending Andy's decision C) no reservoir
-  trough in a `"freshTip"` draft.
+  then, for adding and updating, at least one well; then no reservoir trough in a `"freshTip"`
+  draft (`mixingGroups` doesn't check this one).
 - `mixedContentsOf`: the stage, then whether a mixing box owns it.
 - `setMixingBoxes`: the list; then each mixing box in turn: its form (exactly its properties), its
   ID, `way`, then `stages` (form, each stage in the plan, not twice, each a mix step, mixing at
@@ -2801,7 +2821,8 @@ order of checks.
   only `operationList`.
 - `config/mixing.js`: `MIX_STEP_MODE`'s technique and liquid type are names, the liquid type
   follows Biomek's rule, and the technique isn't any pipetting mode's technique or mixing technique;
-  `MIX_STEP_VOLUME` is a number above 0.
+  `MIX_STEP_VOLUME` is a number above 0; `MIX_VOLUME_TOLERANCE` (2026-11-11, item 34) is a number
+  above 0.
 - `addStage` with `takeTips` before a stage with a tip change moves the tip change to the new stage;
   without it, the new stage joins the tip group before.
 - `addStage` before the first stage keeps the `START` tips first.
@@ -3708,30 +3729,61 @@ table on the real deck (`Res1`, `Deep1`, `Plate1`).
 Res1 1 holding Media and Deep1 A1 holding Drug A, plenty of each; one transfer stage, `Fill`, on the
 `START` tips, filling Plate1 A1 to D1 with 90 µL of Media and 10 µL of Drug A each, Plate1 E1 to H1
 and A2 with 100 µL of Media, and Plate1 B2 with 180 µL of Media and 20 µL of Drug A (the same
-shares as A1, twice the volume); then a stage `Wash` on tips of its own. Tip types and probe counts
+shares as A1, twice the volume, so out of `MIX_VOLUME_TOLERANCE` with every other well, whatever its
+value up to 100); then a stage `Wash` on tips of its own. Tip types and probe counts
 are taken from `TIP_TYPES` and `probesFor`, never named where a test doesn't need a particular one,
 and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests follow config/").
 - **`MIXING_WAYS`** is `["freshTip", "sameContents"]` and frozen.
 - **Probe order:** `mixingGroups` with `"freshTip"` on 8 probes for Plate1 A2, B1, A1, H1 (given in
-  that order) gives one group A1, B1, H1, A2: down each column, then the next; wells on Deep1 and
+  that order) gives A1, B1 and H1, then A2: down each column, then the next; wells on Deep1 and
   Plate1 together come in the deck's labware order (whichever `config/deck.js` lists first, worked
-  out from it); Res1 5, 1 and 3 give Res1 1, 3, 5.
-- **Fresh tip, batches:** 10 wells on Plate1 (A1 to H1, A2, B2) on 4 probes: batches A1 to D1, E1 to
-  H1, then A2 and B2; on 8 probes: A1 to H1, then A2 and B2; on 1 probe: 10 groups of one. With 10
-  on Plate1 and 4 on another 96-well labware on 4 probes: Plate1's three batches, then one of 4,
-  never a batch with wells on both labware (a batch restarts at each labware, even when the first
-  labware's last batch isn't full). `components` on 4 probes: `["Media", "Drug A"]` for A1 to D1
-  (all hold the same; Media before Drug A, the plan's `components` order), `["Media"]` for E1 to H1,
-  and `null` for A2 and B2 (Media alone, and Media with Drug A); on 8 probes, `null` for A1 to H1.
-- **Fresh tip ignores contents:** the same wells give the same batches whatever they hold, and
-  after an edit before it that changes what they hold.
-- **Same contents, grouping:** Plate1 A1 to H1, A2 and B2, on 4 probes: two groups, A1 to D1 with B2
-  (`["Media", "Drug A"]`: B2 holds twice the volume, the same shares) then E1 to H1 with A2
-  (`["Media"]`); groups in the probe order of their first wells; each group's wells in probe order
-  (B2 last in the first group). A group of 5 wells on 4 probes is kept whole (more wells than
-  probes).
+  out from it); Res1 5, 1 and 3 give Res1 1, 3, 5 (each a group of its own, a trough being a column
+  of its own).
+- **Fresh tip, column batches** (decision B; wells of one volume, so volume plays no part): on 4
+  probes, Plate1 A1 to H1 gives A1 to D1, then E1 to H1; Plate1 A1 to C1 and A2 to C2 give A1 to C1,
+  then A2 to C2 (never A1 to C1 with A2); Plate1 A1 to A12 gives 12 groups of one, in column order.
+  On 3 probes, Plate1 G1, H1 and A2 give G1 and H1, then A2 (a new column starts a batch even when
+  the last isn't full). On 1 probe, any wells give groups of one.
+- **Fresh tip, restart at labware:** Plate1 A1 to C1 and another 96-well labware's A1 to C1 (the
+  same labware type), on 8 probes: two batches, one per labware, never a batch with wells on both.
+- **Fresh tip, the test plan:** its 10 wells on Plate1 (A1 to H1, A2, B2) on 4 probes: A1 to D1, E1
+  to H1, then A2, then B2 (B2 holds twice A2's volume: a volume break, below); on 8 probes: A1 to
+  H1, A2, then B2. `components` on 4 probes: `["Media", "Drug A"]` for A1 to D1 (all hold the same;
+  Media before Drug A, the plan's `components` order), `["Media"]` for E1 to H1 and for A2, and
+  `["Media", "Drug A"]` for B2; on 8 probes, `null` for A1 to H1 (Media alone, and Media with Drug
+  A).
+- **Fresh tip ignores contents:** the same wells, holding the same volumes, give the same batches
+  whatever they hold, and after an edit before it that changes what they hold but not how much.
+- **Volume tolerance** (decision A; the numbers worked out from `MIX_VOLUME_TOLERANCE`, called `t`
+  here, never naming its value: CLAUDE.md, "Tests follow config/"), with wells of the same contents,
+  in one column, on 8 probes, the first holding 100 µL; for each way:
+  - a second well holding `100 × (1 + 0.9 t / 100)` µL shares the first's group; one holding
+    `100 × (1 + 1.1 t / 100)` µL doesn't (with `"sameContents"`, it starts a second group; with
+    `"freshTip"`, a new batch);
+  - a smaller second well likewise: `100 / (1 + 0.9 t / 100)` µL shares the group (the tolerance is
+    of the smallest, so the first, the larger, is then within it), `100 / (1 + 1.1 t / 100)` µL
+    doesn't;
+  - **no chaining:** three wells of `100`, `100 × (1 + 0.6 t / 100)` and `100 × (1 + 1.2 t / 100)`
+    µL: the first two share a group, the third doesn't, though it's within `t`% of the second
+    (judged on the group's smallest volume, not its last well's); with `"sameContents"` the third
+    starts a group of its own;
+  - with `"freshTip"`, wells of `100`, `200` and `100` µL in one column: three batches (a batch
+    starts again at the 200 µL well, and again at the next, out of tolerance with it), not a batch
+    of the first and third;
+  - with `"sameContents"`, the same three wells: two groups, the first and third together (the
+    third joins the first group it fits), then the 200 µL well; groups in the probe order of their
+    first wells;
+  - the volumes are what the wells hold just before the box: wells filled to one volume at Start,
+    one of them topped up past the tolerance by a stage before `at`, are two groups; with `at`
+    before that stage, one.
+- **Same contents, grouping:** the test plan's Plate1 A1 to H1, A2 and B2, on 4 probes: three
+  groups, A1 to D1 (`["Media", "Drug A"]`), E1 to H1 with A2 (`["Media"]`), then B2 (`["Media",
+  "Drug A"]`: the same contents as A1, twice the volume, so split by volume); groups in the probe
+  order of their first wells; each group's wells in probe order (A2 last in the second group). A
+  group of 5 wells on 4 probes is kept whole (more wells than probes), as is a group of wells in
+  two columns.
 - **Same contents, order of first appearance:** with Plate1 A1 holding Media alone and B1 to D1
-  Media and Drug A, the Media group comes first, then the Media and Drug A group.
+  Media and Drug A (all one volume), the Media group comes first, then the Media and Drug A group.
 - **Same contents, precision** (`SAME_SHARE_ALLOWANCE` is `0.000001`; the other numbers are worked
   out from it): `holdSameContents` is `true` for `{ Media: 0.9, "Drug A": 0.1 }` and the same with
   each share moved by half the allowance (one up, one down); `false` with each moved by ten times
@@ -3742,32 +3794,44 @@ and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests f
   well only, below the allowance, still differs, as in the filler wells' rule). In `mixingGroups`, wells 0.1% apart in
   Drug A's share are two groups; wells holding the same shares through different routes (one filled
   at Start, one by transfers) are one.
-- **No chaining:** three wells whose Drug A shares are `x`, `x + 0.8 × SAME_SHARE_ALLOWANCE` and
+- **No chaining (shares):** three wells whose Drug A shares are `x`, `x + 0.8 × SAME_SHARE_ALLOWANCE` and
   `x + 1.6 × SAME_SHARE_ALLOWANCE` (Media's shares moving the other way): the second joins the
   first's group, the third doesn't (compared with the group's first well, not its last).
-- **Empty wells:** with `"sameContents"`, Plate1 C3 and D3 holding nothing just before it form one
-  group with `components` `[]`, placed by probe order of its first well like any group; after
-  adding, the mix step mixing them has a contents problem (`stagesWithContentsProblem`: each mixed
-  well draws `MIX_STEP_VOLUME` from nothing), as any mix step of an empty well. With `"freshTip"` an
-  empty well is batched like any other.
-- **Contents just before it:** `at` before `Fill` sees Plate1 empty (one group of all, `[]`); `at`
-  `Wash` (after `Fill`) sees `Fill`'s contents; `at` `null` sees every stage; a stage after `at`
-  changes nothing.
-- **Many labware:** wells on Plate1, Plate2 and Deep1 together, with `"sameContents"`: a group may
-  hold wells of several labware (wells of the same contents on two plates share a mix step), in
-  probe order; with `"freshTip"`, batches never span two.
+- **Empty wells** (decision D): with `"sameContents"`, Plate1 C3 and D3 holding nothing just before
+  it, picked with A1 to D1, form one group with `components` `[]`, placed by probe order of its
+  first well like any group, never joining a group of wells that hold something; after adding, the
+  mix step mixing them has a contents problem (`stagesWithContentsProblem`: each mixed well draws
+  `MIX_STEP_VOLUME` from nothing), as any mix step of an empty well, and nothing refuses the pick.
+  With `"freshTip"` on 8 probes, Plate1 A3 holding 100 µL and B3 and C3 empty: A3, then B3 and C3
+  (empty wells batch only with empty wells).
+- **Contents just before it:** `at` before `Fill` sees Plate1 empty (with `"sameContents"`, one
+  group of all, `[]`); `at` `Wash` (after `Fill`) sees `Fill`'s contents; `at` `null` sees every
+  stage; a stage after `at` changes nothing.
+- **Many labware:** wells on Plate1, Plate2 and Deep1 together, all one volume, with
+  `"sameContents"`: a group may hold wells of several labware (wells of the same contents on two
+  plates share a mix step), in probe order; with `"freshTip"`, batches never span two labware or
+  two columns.
+- **Reservoir troughs** (decision C): `addMixingBox` and `updateMixingBox` with a `"freshTip"` draft
+  holding Plate1 A1 and Res1 3 and 1 refuse it with `A fresh tip for every well can't mix reservoir
+  troughs until that's checked in simulation: Res1 1. Use one tip for wells with the same contents,
+  or leave the troughs out.` (Res1 1, the first trough in probe order), the plan unchanged;
+  `mixingGroups` with that draft gives its groups (Plate1 A1, Res1 1, Res1 3, in the deck's labware
+  order) without refusing; the same wells with `"sameContents"` are added. **Order of checks:** a
+  `"freshTip"` draft with troughs and a bad `tipType` reports the tip type; with troughs and an
+  unknown `beforeId`, the stage; with troughs and an unknown ID (`updateMixingBox`), the ID; the
+  trough refusal comes only once everything else passes.
 - **The draft's form:** each refusal of section 5, in the order of checks: `5`, `null`, an object
   with a property missing or extra; `way` `"byRow"`; `wells` `null`, a well off the deck (`Well to
   mix 3: …`), a well twice; `tipType` `"BC50"`; `probes` `[9]`, `[1, 1]`; an empty `wells` is in its
   form (`mixingGroups` gives `[]`), but `addMixingBox` and `updateMixingBox` refuse it with `Pick at
   least one well to mix.`; `at` `"9"`.
 - **Adding:** the Plate1 wells above with `"sameContents"` on BC230 (`TIP_TYPES[0]`) and 3 probes
-  before `Wash`: two mix steps before `Wash`, named `Mix 1 of 2` and `Mix 2 of 2`, each a mix step
+  before `Wash`: three mix steps before `Wash`, named `Mix 1 of 3`, `Mix 2 of 3` and `Mix 3 of 3`, each a mix step
   (`isMixStep`) with the default mix step settings (whatever the nearest mix step before it uses:
   a mix step with another mix, added before the box, isn't copied), each the only stage of its tip
   group, loading the draft's tip type on `probesFor(3)`; their mixed wells are the groups' wells,
   each a transfer of `MIX_STEP_VOLUME`; `Wash` keeps its tips; `mixingBoxes` holds `{ id: "m1", way:
-  "sameContents", stages: [first, second] }`; one edit (one undo state); a second box is `m2`; with
+  "sameContents", stages: [first, second, third] }`; one edit (one undo state); a second box is `m2`; with
   `m1` removed and `m2` kept, the next is `m3`. Added at the end (`null`): after `Wash`, `Wash`
   keeping its tips. Added before the plan's first stage: the first mix step loads the draft's tips
   as the `START` tips, and `Fill` gets a tip change loading the tips it had.
@@ -3784,13 +3848,15 @@ and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests f
 - **`mixingBoxDraft`:** after adding, gives the draft's way, its wells (all of them, in probe order,
   whatever order the draft gave), and its tip type and probes; with its first mix step the plan's
   first, the `START` tips; a new object each time (changing it changes nothing in the plan).
-- **`mixedContentsOf`:** `["Media", "Drug A"]` and `["Media"]` for a same-contents box's two mix
-  steps; `null` for a fresh-tip batch whose wells differ; `[]` for a mix step of empty wells; after
+- **`mixedContentsOf`:** `["Media", "Drug A"]`, `["Media"]` and `["Media", "Drug A"]` for a
+  same-contents box's three mix steps; `null` for a fresh-tip batch whose wells differ (A1 to H1 on
+  8 probes); `[]` for a mix step of empty wells; after
   `renameComponent` of Media to DMEM, `["DMEM", "Drug A"]`; refused for `Fill` (not a mixing box's)
   and for `"9"`.
 - **Updating:** the same draft gives back the same plan (the same object); the same wells in another
   order too; a draft whose only change is the way (`"freshTip"`), the tip type or the probe count
-  remakes it: new mix step IDs, new names (`Mix 1 of 4` …), the tips given, in the same place (before
+  remakes it: new mix step IDs, new names (`Mix 1 of 5` … for `"freshTip"` on 3 probes: A1 to C1,
+  D1 to F1, G1 and H1, A2, B2), the tips given, in the same place (before
   `Wash`), the box keeping its ID and its place in `mixingBoxes`, `Wash` keeping its tips; one edit
   (undo brings back the old mix steps with their old IDs); adding a well, and taking one out,
   remake it; a box whose mix steps are all but one stage of the plan updates (new mix steps are
@@ -3810,17 +3876,23 @@ and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests f
   wells and an unknown ID reports the ID; a draft with no wells otherwise in its form gives `Pick at
   least one well to mix.`
 - **Out of date:** `false` right after adding and after updating. With `"sameContents"`: `true` after
-  adding DMSO to Plate1 B2 before the box (a new stage before it, or `addToWells` at Start, either
-  way B2 now holds three components); `false` after adding 10 µL of Media to every well of a group
-  the same way, if their shares stay equal to each other (e.g. a group whose wells all hold Media
-  alone); `true` after a change that makes two groups' contents the same (they'd merge); `true`
-  after `removeStage` of `Fill` (every well now empty: one group); `true` after `removeComponent` of
-  Drug A (its wells now hold Media alone: one group); `false` after `renameComponent`; `false` after
-  `Fill`'s settings change; `false` again after `updateMixingBox` with `mixingBoxDraft`. With
-  `"freshTip"` on 4 probes (Plate1 A1 to H1, A2 and B2: batches A1 to D1, E1 to H1, then A2 and
-  B2): `false` after any change to what its wells hold; `false` after `moveWell` of B2 to C2 (still
-  last: the batches keep their wells, B2's place taken by C2); `true` after `moveWell` of A1 to C2
-  (now last: B1 to E1, F1 to H1 with A2, then B2 and C2).
+  adding DMSO to Plate1 A1 before the box (a new stage before it, or `addToWells` at Start, either
+  way A1 now holds three components and leaves A1 to D1's group); `false` after adding DMSO to B2
+  alone the same way (alone in its group, it groups the same); `false` after adding 10 µL of Media
+  to every well of a group the same way, if their shares stay equal to each other (e.g. the group
+  whose wells all hold Media alone); `true` after topping up A1 with 90 µL of Media and 10 µL of
+  Drug A before the box (the same shares, twice the volume: it now groups with B2, decision A);
+  `true` after a change that makes two groups' contents the same at the same volume (they'd merge);
+  `true` after `removeStage` of `Fill` (every well now empty: one group); after `removeComponent` of
+  Drug A, `true` exactly when the groups change (A1 to D1 then hold 90 µL of Media, E1 to H1 and A2
+  100 µL, B2 180 µL: whether the first two groups merge is worked out from `MIX_VOLUME_TOLERANCE`);
+  `false` after `renameComponent`; `false` after `Fill`'s settings change; `false` again after
+  `updateMixingBox` with `mixingBoxDraft`. With `"freshTip"` on 4 probes (Plate1 A1 to H1, A2 and
+  B2: batches A1 to D1, E1 to H1, A2, then B2): `false` after a change to which components its
+  wells hold that keeps their volumes (Media at Start replaced by DMSO in the same amount); `true`
+  after adding 100 µL of Media to A2 before the box (A2 and B2 then hold the same volume: one
+  batch); `false` after `moveWell` of B2 to C2 (still a batch of its own, out of tolerance with A2);
+  `true` after `moveWell` of A1 to C2 (now B1 to E1, F1 to H1, then A2, B2 and C2 each alone).
 - **Removing:** takes out the box and its mix steps, as one edit; tip changes on the stage after it
   stay; a randomization without stages sitting before its first mix step then sits before `Wash`;
   refused, with its message, and `canRemoveMixingBox` `false`, when its mix steps are all the plan's
