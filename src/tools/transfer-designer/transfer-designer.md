@@ -1584,7 +1584,11 @@ only components a well holds, so a component there is in the well.)
 **About the same volume** (Andy, 2026-11-11, decision A; roadmap, item 34): a set of wells holds
 about the same volume when its **largest** volume is at most its **smallest** volume times
 `1 + MIX_VOLUME_TOLERANCE / 100` (`config/mixing.js`, section 3, "Configuration"), each well's
-volume being what it holds just before the mixing box (contents tracking's `totalVolumeOf`). It's
+volume being what it holds just before the mixing box (contents tracking's `totalVolumeOf`). With
+`t` for `MIX_VOLUME_TOLERANCE`, the comparison is exactly `largest <= smallest × (1 + t / 100) +
+NEGLIGIBLE_MICROLITERS` (`0.000001` µL, contents tracking's allowance for arithmetic leftovers,
+`contents-tracking.md`, "Tiny amounts", taken from there, not repeated), so a set exactly at the
+limit holds about the same volume despite leftovers in the arithmetic. It's
 judged on the **whole set**, not on a well and its neighbor, so a set can't drift by small steps
 (**no chaining**, as for shares): with a tolerance of `t`%, wells of `100`, `100 + 0.6t` and
 `100 + 1.2t` µL don't all hold about the same volume, though each is within `t`% of the next. A set
@@ -1661,7 +1665,12 @@ then grouped by its way's rule:
   same volume** (above; Andy, 2026-11-11, decision A), or else starts a new group, last. So groups
   are in the probe order of their first wells, each group's wells in probe order, and wells of the
   same contents but different volumes are **split by volume** into groups of their own (two groups
-  may then hold the same contents). E.g. Plate1 A1 to D1 holding 100 µL of 90% Media and 10% Drug A,
+  may then hold the same contents). This is **greedy, in probe order, on purpose**: a well joins
+  the first group it fits, never the one that would leave the fewest mix steps, so the groups are
+  easy to predict from the deck; don't "improve" it by sorting the wells by volume first. A well
+  that doesn't fit the first group of its contents on volume may join a later one: on 8 probes,
+  wells of 100, 200, 100 and 200 µL of the same contents, in probe order, give two groups, the 1st
+  and 3rd, then the 2nd and 4th. E.g. Plate1 A1 to D1 holding 100 µL of 90% Media and 10% Drug A,
   and B2 200 µL of the same shares: two groups, A1 to D1, then B2. A group may hold more wells than
   there are probes, and wells of several labware and columns: one tip then mixes several wells with
   the same contents (that's what this way is for).
@@ -1765,7 +1774,8 @@ box with a trough, Update refuses before that test, so it never gives back the s
 - with `"sameContents"`, an edit before it that changes what one of its wells holds so the wells
   group differently (a well topped up with another component, a stage before it removed, a well
   emptied at Start) makes it out of date; one that changes every well of a group alike, or changes
-  volumes but leaves every group holding about the same volume, doesn't;
+  volumes but leaves every group holding about the same volume, doesn't, unless it brings the
+  group within tolerance of another group with the same contents (the two then merge, so it is);
 - with either way, an edit before it that changes its wells' volumes so they group differently (a
   well topped up past `MIX_VOLUME_TOLERANCE` of the others in its mix step, or two wells' volumes
   brought within it) makes it out of date (decision A);
@@ -2201,7 +2211,11 @@ Two files in `config/` (ADR 0009), which this module's tests check:
   placeholder transfer volume in µL, `1` (Andy, 2026-10-30), a number above 0; and
   `MIX_VOLUME_TOLERANCE` (new, 2026-11-11, item 34, decision A), how far apart, in percent of the
   smallest, the volumes in one mixing box mix step may be: `10` (Andy, 2026-11-11), a number above
-  0 (section 3, "About the same volume"). (The file also holds `SHORT_MIX_SHARE`, which the
+  0 and below 100 (section 3, "About the same volume"; below 100 so a well holding twice another's
+  volume is always out of tolerance with it, which the tests' plan relies on). The build adds it to
+  the file with a comment of its own, as the file's other values have, and updates the file's
+  header comment to say what it's for (mixing box mix steps hold wells of about the same volume)
+  and that the transfer-designer module's tests check it. (The file also holds `SHORT_MIX_SHARE`, which the
   `mix-volumes` module's tests check; `mix-volumes.md`.)
 - **`config/tip-types.js`** also exports `DEFAULT_PROBE_COUNT`: how many probes a new plan's first
   tips go on, the first that many (`probesFor`). A whole number from 1 to 8; `4` (Andy, 2026-10-30).
@@ -2846,7 +2860,7 @@ order of checks.
 - `config/mixing.js`: `MIX_STEP_MODE`'s technique and liquid type are names, the liquid type
   follows Biomek's rule, and the technique isn't any pipetting mode's technique or mixing technique;
   `MIX_STEP_VOLUME` is a number above 0; `MIX_VOLUME_TOLERANCE` (2026-11-11, item 34) is a number
-  above 0.
+  above 0 and below 100.
 - `addStage` with `takeTips` before a stage with a tip change moves the tip change to the new stage;
   without it, the new stage joins the tip group before.
 - `addStage` before the first stage keeps the `START` tips first.
@@ -3754,7 +3768,7 @@ Res1 1 holding Media and Deep1 A1 holding Drug A, plenty of each; one transfer s
 `START` tips, filling Plate1 A1 to D1 with 90 µL of Media and 10 µL of Drug A each, Plate1 E1 to H1
 and A2 with 100 µL of Media, and Plate1 B2 with 180 µL of Media and 20 µL of Drug A (the same
 shares as A1, twice the volume, so out of `MIX_VOLUME_TOLERANCE` with every other well, whatever its
-value up to 100); then a stage `Wash` on tips of its own. Tip types and probe counts
+value below 100, as the config check requires); then a stage `Wash` on tips of its own. Tip types and probe counts
 are taken from `TIP_TYPES` and `probesFor`, never named where a test doesn't need a particular one,
 and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests follow config/").
 - **`MIXING_WAYS`** is `["freshTip", "sameContents"]` and frozen.
@@ -3800,12 +3814,20 @@ and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests f
     µL: the first two share a group, the third doesn't, though it's within `t`% of the second
     (judged on the group's smallest volume, not its last well's); with `"sameContents"` the third
     starts a group of its own;
-  - with `"freshTip"`, wells of `100`, `200` and `100` µL in one column: three batches (a batch
-    starts again at the 200 µL well, and again at the next, out of tolerance with it), not a batch
+  - **exactly at the limit:** a second well holding `100 × (1 + t / 100)` µL, worked out in the
+    test as written (so with whatever leftovers the arithmetic leaves), shares the first's group:
+    one group, for each way (the comparison allows `NEGLIGIBLE_MICROLITERS`, section 3, "About the
+    same volume");
+  - below, `far` is `100 × (1 + 2 t / 100)` µL, out of tolerance with 100 µL for any `t`;
+  - with `"freshTip"`, wells of `100`, `far` and `100` µL in one column: three batches (a batch
+    starts again at the `far` well, and again at the next, out of tolerance with it), not a batch
     of the first and third;
   - with `"sameContents"`, the same three wells: two groups, the first and third together (the
-    third joins the first group it fits), then the 200 µL well; groups in the probe order of their
+    third joins the first group it fits), then the `far` well; groups in the probe order of their
     first wells;
+  - with `"sameContents"`, four wells of `100`, `far`, `100` and `far` µL (greedy, section 3, "Its
+    groups"): two groups, the 1st and 3rd, then the 2nd and 4th (the 4th skips the first group on
+    volume and joins the later one); with `"freshTip"`, four batches of one;
   - the volumes are what the wells hold just before the box: wells filled to one volume at Start,
     one of them topped up past the tolerance by a stage before `at`, are two groups; with `at`
     before that stage, one.
@@ -3931,8 +3953,13 @@ and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests f
   Drug A before the box (the same shares, twice the volume: it now groups with B2, decision A);
   `true` after a change that makes two groups' contents the same at the same volume (they'd merge);
   `true` after `removeStage` of `Fill` (every well now empty: one group); after `removeComponent` of
-  Drug A, `true` exactly when the groups change (A1 to D1 then hold 90 µL of Media, E1 to H1 and A2
-  100 µL, B2 180 µL: whether the first two groups merge is worked out from `MIX_VOLUME_TOLERANCE`);
+  Drug A, every well holds Media alone, A1 to D1 90 µL, E1 to H1 and A2 100 µL, B2 180 µL, so the
+  expected answer is worked out in the test from `t` (`MIX_VOLUME_TOLERANCE`) by this closed form,
+  never by calling `mixingGroups`: A1 to D1 and E1 to H1 with A2 merge exactly when `100 <= 90 × (1
+  + t / 100)`, that is `t >= 100 / 9`; B2 stays alone for any allowed `t` (below 100, since `180 > 90
+  × (1 + t / 100)`, and, when the first two don't merge, `180 > 100 × (1 + t / 100)` too, as `t <
+  100 / 9`); so the box is out of date exactly when `t >= 100 / 9` (e.g. at `t` = 10 it
+  isn't: the three groups stay as they were);
   `false` after `renameComponent`; `false` after `Fill`'s settings change; `false` again after
   `updateMixingBox` with `mixingBoxDraft`. With `"freshTip"` on 4 probes (Plate1 A1 to H1, A2 and
   B2: batches A1 to D1, E1 to H1, A2, then B2): `false` after a change to which components its
