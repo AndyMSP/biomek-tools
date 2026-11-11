@@ -1710,7 +1710,8 @@ drag. It takes the selection, if the pressed thing is in it, or else the pressed
 becomes the selection).
 - What's dragged fades to half and gets a 2px dashed blue outline, 2px out.
 - A **label** follows the pointer (14px right, 10px down): `Move “Drugs”`, `Move 2 stages`, `Move a
-  tip group`, `Move 2 tip groups`, `Move a randomization`, or `Move 3 items` for a mix; with Ctrl
+  tip group`, `Move 2 tip groups`, `Move a randomization`, `Move 2 randomizations`, `Move a
+  transfer table`, `Move 2 transfer tables` (2026-11-11), or `Move 3 items` for a mix; with Ctrl
   (Cmd) held, `+ Copy` in place of `Move`. White semibold 13px text on blue, 6px corners, a soft
   shadow.
 - **Where it would land**: the seam nearest the pointer, up and down, while the pointer is over the
@@ -1802,14 +1803,20 @@ becomes the selection).
     note `Nothing was deleted: the plan changed while deleting. Try again.` is shown.
   With the system's "reduce motion" setting, there's no animation: the edit is recorded at once.
 - **Then**: everything deleted goes into the trash (section 7, "The trash"), one entry per thing
-  deleted, as part of the same edit. What was open stays open if it's still there; otherwise the
+  deleted, as part of the same edit (`addDeleted`, with `new Date().toISOString()` as `deletedAt`).
+  When one delete holds more than `TRASH_LIMIT` things, the trash keeps only the first
+  `TRASH_LIMIT` of them (`trash.md`, "Adding"), and a note says so after the message, on a line of
+  its own (as the storage note does, section 4): `The trash holds at most 20 things, so the last 3
+  deleted here aren't in it. Undo still brings them all back.` (20 being `TRASH_LIMIT`, and 3 the
+  number left out). What was open stays open if it's still there; otherwise the
   stage now where the first deleted stage was opens, or else the stage before it, or else Start
   (Claude's choice, from the preview). The selection is forgotten, as after any edit.
 - **Messages** (ok), with an **`Undo` button** after the text (below): `Deleted “S2”.`,
-  `Deleted 2 stages.`, `Deleted a tip group (2 stages).`, `Deleted a randomization (3 stages).`, `Deleted a
-  randomization.` (one that hasn't run: no stages, so no count),
-  `Deleted 2 items (3 stages).`; the things described as in a drag's label (section 7,
-  "Dragging"), then, unless they're all stages, the number of stages in brackets. Cut says `Cut`
+  `Deleted 2 stages.`, `Deleted a tip group (2 stages).`, `Deleted a tip group (1 stage).`,
+  `Deleted a randomization (3 stages).`, `Deleted a randomization.` (one that hasn't run: no
+  stages, so no count), `Deleted a transfer table (2 stages).`, `Deleted 2 items (3 stages).`; the
+  things described as in a drag's label (section 7, "Dragging"), then, unless they're all stages,
+  the number of stages in brackets (`1 stage`, singular, for one). Cut says `Cut`
   in place of `Deleted`. (Until 2026-11-11 messages ended `Undo brings it back.`; the button says
   it now.)
 - **The message's `Undo` button** does what Ctrl+Z does (section 12), the trash's change with it. It stays until the next
@@ -1876,7 +1883,8 @@ be made reliable); Undo is the exact way to bring back a recent delete.
 - **What goes in.** Everything deleted, by any route (Andy, 2026-11-11): the Delete key, the menu's
   `Delete`, Ctrl+X and the menu's `Cut`, dropping on the trash, a stage's or mix step's box's
   `Remove`, a randomization's card's `Remove` and a transfer table's wizard's `Remove`: **one entry
-  per thing deleted** (`addDeleted`, with the plan before the edit), as part of the same edit.
+  per thing deleted** (`addDeleted`, with the plan before the edit and `new Date().toISOString()`
+  as `deletedAt`), as part of the same edit.
   Joining a tip group to the one above deletes nothing, so nothing goes in. At most `TRASH_LIMIT`
   entries; older ones drop off.
 - **The list**, newest first (`trash.md`, "Order"), one row per entry: its **name** in semibold
@@ -1884,12 +1892,17 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   name, `Randomization “Randomization1”`; a tip group: `Tip group`; a transfer table: `Transfer
   table`); under it, in 12px gray, `3 transfers · deleted 12:28 AM` for a stage (a mix step's
   mixed wells counted as transfers, as `trash.md` counts them), or `2 stages · 5 transfers ·
-  deleted 12:28 AM` for the others (the time in the browser's own short form, hours and minutes).
+  deleted 12:28 AM` for the others, singular for one (`1 stage · 1 transfer`), and `0 stages ·
+  0 transfers` for a randomization that hasn't run. **When**: the time in the browser's own short
+  form, hours and minutes, for an entry deleted today (in the browser's time zone); for an earlier
+  day, the date before it, month and day, in the browser's short form (`deleted Nov 10, 12:28 AM`),
+  with the year too for another year (`deleted Nov 10, 2025, 12:28 AM`) (2026-11-11).
   Below the rows: `Drag one to a gap to put it there` (12px gray) and **`Empty trash`** (danger).
   Empty, the list says `The trash is empty. Deleted stages and tip groups come here.` (12px gray).
 - **Dragging an entry out.** A press on an entry's row and a 5px move (`DRAG_START_DISTANCE`)
-  starts a drag, as for the column's items: the label reads `Paste “S03 Drug A”` (the thing
-  described as in a drag's label, section 7, "Dragging"), and the nearest seam is marked with the
+  starts a drag, as for the column's items: the label reads `Paste “S03 Drug A”`, `Paste a tip
+  group`, `Paste a randomization` or `Paste a transfer table` (the thing described as in a drag's
+  label, section 7, "Dragging"), and the nearest seam is marked with the
   drop line, as for any drag (only seams between tip groups for a tip group, randomization or
   transfer table). Dropped on a marked seam, the entry is pasted there (`pasteEntry`, with that
   place), as one edit, and leaves the trash; the message `Pasted “S03 Drug A” from the trash.` (ok),
@@ -1914,7 +1927,8 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   - **There's no keyboard way to drag an entry out yet** (roadmap, "Technical debt"): entries
     aren't in the tab order.
 - **Dragging onto the trash deletes.** While a drag from the column is over the trash, the trash
-  turns red (section 15), no seam is marked, and the label reads `Delete “S04 Drug B”` on red.
+  turns red (section 15), no seam is marked, and the label reads `Delete “S04 Drug B”` (or `Delete
+  a transfer table`, and so on, as a drag's label describes it) on red.
   Dropping there deletes the dragged things, exactly as Delete does (the same refusals, animation,
   message and Undo). With Ctrl held, it still deletes (Claude's choice: a copy dropped on the trash
   would do nothing).
