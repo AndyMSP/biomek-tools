@@ -1870,7 +1870,9 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   scroll under it. Closed, it's one line: a 🗑, then `Trash` and, at the right, `Drag here to delete`
   (gray, 12px) while it's empty; or `Trash (3)` and `▴` once it holds something. Clicking it opens
   and closes its **list**, which opens above that line, inside the band (`▾` while open), at most
-  260px tall, scrolling.
+  260px tall, scrolling. **The column's contents end with bottom padding** of the closed band's
+  height plus 12px (2026-11-11), so End and the seam above it can scroll fully above the closed
+  band, and a drop on that seam is never under it.
 - **What goes in.** Everything deleted, by any route (Andy, 2026-11-11): the Delete key, the menu's
   `Delete`, Ctrl+X and the menu's `Cut`, dropping on the trash, a stage's or mix step's box's
   `Remove`, a randomization's card's `Remove` and a transfer table's wizard's `Remove`: **one entry
@@ -1902,6 +1904,15 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   cancels, as for any drag. An open editing box or randomization card is handled as for a paste:
   one without changes closes first; one with changes refuses the press, as for any drag (section
   7, "Dragging").
+  - **The list closes when the drag starts**, so the seams it covered can be reached; the band is
+    its closed line again until the list is opened again.
+  - **Ctrl does nothing special** (2026-11-11): dragging out is always a paste, the label never
+    says `Copy`, and Ctrl held at the drop pastes as without it.
+  - **A click on an entry** (a press and release without a 5px move) does nothing but show the
+    note `Drag it to a gap to put it there.`.
+  - **Right-clicking an entry** gives the browser's own menu (the column's menu isn't for entries).
+  - **There's no keyboard way to drag an entry out yet** (roadmap, "Technical debt"): entries
+    aren't in the tab order.
 - **Dragging onto the trash deletes.** While a drag from the column is over the trash, the trash
   turns red (section 15), no seam is marked, and the label reads `Delete “S04 Drug B”` on red.
   Dropping there deletes the dragged things, exactly as Delete does (the same refusals, animation,
@@ -1917,7 +1928,8 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   Reset does bring it back (section 5).
 - **Not tied to a plan.** Opening a plan file keeps the trash as it is (Andy, 2026-11-11, asked and
   kept it); dragging an entry into the plan that's open is pasting into it.
-- **Delete with the focus on an entry or `Empty trash`** does nothing.
+- **Delete with the focus on `Empty trash`** (or on an entry, if a click gave it the focus) does
+  nothing.
 - **While a randomization's card or the transfer table wizard is open**, the trash works as the
   rest of the column does then (a drag closes the card as a paste does, or is refused with the
   card's message).
@@ -2679,7 +2691,9 @@ group's tip type and probes from its heading), with what's expected. It checks:
   storage before the page opened, which reading back keeps, `trash.md`): the logic's message,
   nothing changed, the entry still in the trash; dropped with
   nothing marked: nothing; Escape canceling; an entry dragged into another plan opened from a
-  file.
+  file; the open list closing when the drag starts; Ctrl held while dropping (pasted, the label
+  without `Copy`); a click on an entry (its note, nothing else); the column scrolled to its end
+  with the trash closed (End's card and the seam above it wholly above the band).
 - **Edits around the trash**: Undo and Redo of a delete and of a drag-out moving entries in and
   out; a drag-out with a stage's editing box with changes open (refused, shaking, `Save or
   discard your changes first.`, the trash unchanged); Ctrl+Z pressed during the animation, then

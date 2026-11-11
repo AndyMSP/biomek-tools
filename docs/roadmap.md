@@ -1443,6 +1443,10 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **No keyboard way to take something out of the trash** (2026-11-11, item 32): an entry can only
+  be dragged out with the mouse, so someone who can't use one can't get anything back except by
+  Undo. Properly: entries in the tab order, with a key (or a menu) to paste the focused entry below
+  the selection, as Ctrl+V does.
 - **A stored trash a tab can't read in full is left alone** (2026-11-11, item 32): one written by a
   newer version, or damaged, is never written over; each tab then keeps a trash of its own in
   memory, lost when it closes, and says so once. Properly: offer to empty the stored trash (or
