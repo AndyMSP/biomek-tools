@@ -2335,8 +2335,8 @@ Each message has a kind: **ok** (green on pale green), **note** (gray on white, 
 **error** (dark red on pale red, with a border). Messages are listed with what causes them in
 sections 5 to 10. The kinds: errors from the logic, contents problems after adding or filling, a file that can't be
 opened, a browser copy that can't be read, and `All 30 colors are in use…` are **error**; `Added…`, `Saved…`, `Renamed…`, `Named…`, `Opened…`, `Volume changed…`, `New
-tips…`, `Moved…`, `Copied…` (after Ctrl+drag), `Pasted…`, `Deleted…`, `Cut…`, `Joined…` and `Put
-back…` are **ok**; the rest are **note**.
+tips…`, `Moved…`, `Copied…` (after Ctrl+drag), `Pasted…`, `Deleted…`, `Cut…` and `Joined…` are
+**ok**; the rest are **note**.
 
 **A message with an Undo button** (2026-11-11): a delete's or cut's message has an `Undo` button
 after its text (section 7, "Deleting and cutting"), which undoes as Ctrl+Z does; it goes with the

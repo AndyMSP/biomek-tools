@@ -254,7 +254,7 @@ the browser walk-through: `tests/fixtures/delete-test-plan.js`, exporting
   `TRASH_LIMIT` of the new entries; `added` holds only those; `removed` only the entry there before;
   undoing the change gives back the trash as it was, compared in full.
 
-**Round trips: pasted where it was.** For each case, from the test plan: delete the things, adding
+**Delete then paste at the original place.** For each case, from the test plan: delete the things, adding
 each delete's entries with `addDeleted`; then paste each entry with `pasteEntry` at the place it
 had, **in the reverse order of the deletes** (within one delete, in column order), each place
 written out in the test (worked out by hand from `columnBoxes` of the plan at that point, e.g. S03
@@ -267,7 +267,7 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
   randomization with S09 and S10; an unrun randomization added before S07, alone and with S07; the
   transfer table; the transfer table with S11; S01, group 2 and the randomization; S06, S11 and the
   transfer table.
-- **Separate deletes** (the cases the reviews found hard): S04, then S03; S03, then S04; S07, then
+- **Separate deletes:** S04, then S03; S03, then S04; S07, then
   S08, then S09; S09, then S08, then S07; S03, then group 2; S03, S04 and S05, then S06; S02, then
   S03; S09, then S10; S10, then the randomization; an unrun randomization added before S07, then
   S07; one added before S03, then group 1.

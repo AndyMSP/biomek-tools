@@ -3475,8 +3475,8 @@ that isn't moving); A moved to position 2: B, A, C, the tip change on B.
 `pasteItems` in the transfer designer's topic, with an example that moves a stage into another tip
 group and pastes a copied tip group into an empty plan.
 
-**Deleting** (2026-11-11; Andy asked for these to be thorough, as the preview showed deleting and
-putting back to be easy to get wrong). Use the **test plan with a bit of everything**,
+**Deleting** (2026-11-11; Andy asked for these to be thorough, as the preview showed deleting to be
+easy to get wrong). Use the **test plan with a bit of everything**,
 `tests/fixtures/delete-test-plan.js` (`trash.md`, section 6, which gives it exactly; stages are
 named here by their first word): stages `S01` to `S11` in tip groups [S01, S02] (`START`), [S03,
 S04, S05, S06] with S06 a mix step, [S07], [S08, S09], then a run randomization with three stages,
