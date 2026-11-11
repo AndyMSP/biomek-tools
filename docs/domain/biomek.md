@@ -452,6 +452,17 @@ Questions to answer before relying on the answer:
   different plate type in a deck position means changing the general-purpose method, whatever the
   tool stores.
 - Whether **8 probes can draw from one reservoir trough** at the same time in Transfer From File.
+- **How Transfer From File gives a file's rows to the probes**: in particular, whether a step with
+  tips on N probes and a file of at most N rows, each a different well, mixes (or pipettes) each
+  well with a different probe, and never takes a tip that has been in one well into a second well
+  of the same file. The manual says only that the step "automatically determines the most efficient
+  way to complete the transfer" (B56358AF, 22-25). The mixing box's "a fresh tip for every well"
+  relies on it (roadmap, item 34; `transfer-designer.md`, "Mixing boxes"; added 2026-11-11, not
+  verified). To test in simulation before any real run with a mixing box: a mix step of 4 wells
+  on 4 probes, and one of 8 wells (one column) on 8 probes, then one of 3 wells on 4 probes; in the
+  Details log (or the Span8Transfer log), each well is mixed by a different probe and no probe
+  enters two wells before its tips are unloaded. Also a mix step whose wells are in two columns
+  (A1 to D1 and A2 to D2 on 8 probes), to see whether it still gives each well its own probe.
 - Whether the **Operation and OperationMix dispenses touch the liquid** already in the
   destination well, for example because of their dispense height. The tools assume they do. A tip
   that touches the liquid can carry it to later wells (roadmap, item 27, "Possible contamination";
