@@ -556,7 +556,7 @@ Last updated: 2026-11-10
   **Specified** (Draft, 2026-11-11, hands-off workflow): `transfer-designer.md` ("Stages",
   "Deleting"), a new logic module `trash` (`trash.md`, `TRASH_LIMIT` in `config/trash.js`),
   `DELETE_ANIMATION_MS` in `config/animations.js`,
-  `transfer-designer-page.md` (sections 2, 4, 5, 7, 10, 12, 15, 16 and 17), a shared test plan
+  `transfer-designer-page.md` (sections 2, 4, 5, 7, 10, 12, 14, 15, 16 and 17), a shared test plan
   `tests/fixtures/delete-test-plan.js` and a browser walk-through `tests/browser/delete.walk.js`;
   glossary term Trash. Plan files don't change; what a plan writes changes only after a tip group's
   first stage is removed, which now keeps the group's tips.

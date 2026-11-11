@@ -237,7 +237,7 @@
 > request. They become Final once built and tested by Andy.
 
 > **Draft changes (2026-11-11, deleting and the trash, item 32 of v0.2.0; ADR 0024; sections 2, 4,
-> 5, 7, 10, 12, 15, 16 and 17):** **Delete** and **Cut** (the Delete key, Ctrl+X and the right-click
+> 5, 7, 10, 12, 14, 15, 16 and 17):** **Delete** and **Cut** (the Delete key, Ctrl+X and the right-click
 > menu) of what's selected in the Stages column, with a short red animation and an **Undo** button
 > in the message; **Join with the group above** in place of a tip change's Remove; and **the trash**
 > at the bottom of the Stages column, which keeps everything deleted, so it can be dragged out to
@@ -2375,7 +2375,8 @@ and the deck shows its point again.
   what a Ctrl-click would (not Ctrl+Space or Cmd+Space, which systems take for themselves).
 - **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac), the trash's change
   with each (section 4, "The history"). Not while an editing box or a randomization's card is open,
-  since their changes aren't in the plan yet.
+  since their changes aren't in the plan yet. While a delete's animation plays, Ctrl+Z cancels the
+  delete instead, and Redo is ignored (section 7, "Deleting and cutting").
 - **While the transfer table wizard is open** (section 7), none of these keys act on the page: the
   wizard's own keys apply (Enter, Tab and Escape in its cells; Escape elsewhere in it closes it, as
   Cancel), and Ctrl+V pastes only into its paste zone or a cell.
