@@ -49,6 +49,10 @@ import {
   addTransferTable,
   transferTableAt,
   isTransferTableOutOfDate,
+  addMixingBox,
+  updateMixingBox,
+  mixingBoxDraft,
+  isMixingBoxOutOfDate,
 } from "./transfer-designer.js";
 import { DEFAULT_PIPETTING_MODE } from "../../../config/pipetting-modes.js";
 import { DEFAULT_MIX, MIX_STEP_MODE } from "../../../config/mixing.js";
@@ -154,18 +158,26 @@ function mixingPlan() {
   return setStageMix(plan, "3", "destination", { share: 50, times: 2, speed: 100 });
 }
 
-// `file` (a parsed version 13 plan file) as a version 12 file, as saved from 2026-11-05 to
-// 2026-11-08 before randomizations had names: each randomization without its name. A new object;
-// `file` isn't changed.
+// `file` (a parsed version 14 plan file) as a version 13 file, as saved from 2026-11-08 to
+// 2026-11-11 before mixing boxes: without mixingBoxes. A new object; `file` isn't changed.
+function asVersion13(file) {
+  const { mixingBoxes, ...rest } = file;
+  return { ...rest, version: 13 };
+}
+
+// `file` (a parsed version 14 plan file) as a version 12 file, as saved from 2026-11-05 to
+// 2026-11-08 before randomizations had names: as version 13 (asVersion13), each randomization
+// without its name. A new object; `file` isn't changed.
 function asVersion12(file) {
+  const asThirteen = asVersion13(file);
   return {
-    ...file,
+    ...asThirteen,
     version: 12,
-    randomizations: file.randomizations.map(({ name, ...rest }) => rest),
+    randomizations: asThirteen.randomizations.map(({ name, ...rest }) => rest),
   };
 }
 
-// `file` (a parsed version 13 plan file) as a version 11 file, as saved on 2026-11-05 before a
+// `file` (a parsed version 14 plan file) as a version 11 file, as saved on 2026-11-05 before a
 // randomization's settings lived only on its stages: as version 12 (asVersion12), and each run
 // randomization holds the settings of its first stage and the tips that stage starts with, as every
 // run then gave every stage. A new object; `file` isn't changed.
@@ -180,10 +192,10 @@ function asVersion11(file) {
     const { settings } = file.stages.find((stage) => stage.id === first);
     return { ...randomization, settings, tipType, probes };
   });
-  return { ...file, version: 11, randomizations };
+  return { ...asVersion12(file), version: 11, randomizations };
 }
 
-// `file` (a parsed version 13 plan file) as a version 10 file, as saved on 2026-11-05 before
+// `file` (a parsed version 14 plan file) as a version 10 file, as saved on 2026-11-05 before
 // transfer tables: as version 11 (asVersion11), with no transferTables. A new object; `file` isn't
 // changed.
 function asVersion10(file) {
@@ -191,7 +203,7 @@ function asVersion10(file) {
   return { ...rest, version: 10 };
 }
 
-// `file` (a parsed version 13 plan file) as a version 9 file, as saved on 2026-11-05 before sources
+// `file` (a parsed version 14 plan file) as a version 9 file, as saved on 2026-11-05 before sources
 // sharing tips: each randomization source without sharesTips, and no transferTables. A new object;
 // `file` isn't changed.
 function asVersion9(file) {
@@ -205,7 +217,7 @@ function asVersion9(file) {
   };
 }
 
-// `file` (a parsed version 13 plan file) as a version 8 file, as saved from 2026-11-02 to 2026-11-05,
+// `file` (a parsed version 14 plan file) as a version 8 file, as saved from 2026-11-02 to 2026-11-05,
 // before osmolality: each component is { name, color, constituents }, and each randomization source
 // without sharesTips. A new object; `file` isn't changed.
 function asVersion8(file) {
@@ -301,6 +313,7 @@ function contentsOf(plan) {
     wellLabels: plan.wellLabels,
     randomizations: plan.randomizations,
     transferTables: plan.transferTables,
+    mixingBoxes: plan.mixingBoxes,
   };
 }
 
@@ -339,6 +352,7 @@ describe("plan-file", () => {
       "wellLabels",
       "randomizations",
       "transferTables",
+      "mixingBoxes",
     ]);
     assert.equal(file.format, PLAN_FILE_FORMAT);
     assert.equal(file.version, PLAN_FILE_VERSION);
@@ -349,7 +363,7 @@ describe("plan-file", () => {
 
   test("the format and version are the specification's", () => {
     assert.equal(PLAN_FILE_FORMAT, "biomek-tools transfer plan");
-    assert.equal(PLAN_FILE_VERSION, 13);
+    assert.equal(PLAN_FILE_VERSION, 14);
   });
 
   test("planToText writes each tip change with its probes, and each stage's settings without any", () => {
@@ -477,13 +491,14 @@ describe("plan-file", () => {
     assert.deepEqual(Object.keys(opened.tipChanges).sort(), ["3", START].sort());
   });
 
-  test('an empty plan, saved and opened, has the same contents, and is written as version 13, with "wellLabels": {}, "randomizations": [] and "transferTables": []', () => {
+  test('an empty plan, saved and opened, has the same contents, and is written as version 14, with "wellLabels": {}, "randomizations": [], "transferTables": [] and "mixingBoxes": []', () => {
     const plan = emptyPlan().plan;
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 13);
+    assert.equal(JSON.parse(text).version, 14);
     assert.deepEqual(JSON.parse(text).wellLabels, {});
     assert.deepEqual(JSON.parse(text).randomizations, []);
     assert.deepEqual(JSON.parse(text).transferTables, []);
+    assert.deepEqual(JSON.parse(text).mixingBoxes, []);
     const opened = planFromText(text);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
   });
@@ -806,13 +821,16 @@ describe("plan-file", () => {
     if (version < 12) {
       return asVersion11(file);
     }
-    return version < 13 ? asVersion12(file) : { ...file, version };
+    if (version < 13) {
+      return asVersion12(file);
+    }
+    return version < 14 ? asVersion13(file) : { ...file, version };
   }
 
-  test("a randomization with three filler wells, run, is saved (now as version 13) and opens as the same plan", () => {
+  test("a randomization with three filler wells, run, is saved (now as version 14) and opens as the same plan", () => {
     const plan = severalFillersPlan();
     const text = planToText(plan, SAVED_BY);
-    assert.equal(JSON.parse(text).version, 13);
+    assert.equal(JSON.parse(text).version, 14);
     const opened = planFromText(text);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
     assert.deepEqual(opened.randomizations[0].sources, plan.randomizations[0].sources);
@@ -881,11 +899,11 @@ describe("plan-file", () => {
     return tipGroups(plan).map((group) => group.stages);
   }
 
-  test("a run randomization with sources sharing tips is saved as version 13, sharesTips last, and opens as the same plan", () => {
+  test("a run randomization with sources sharing tips is saved as version 14, sharesTips last, and opens as the same plan", () => {
     const plan = sharingPlan();
     const text = planToText(plan, SAVED_BY);
     const file = JSON.parse(text);
-    assert.equal(file.version, 13);
+    assert.equal(file.version, 14);
     for (const entry of file.randomizations[0].sources) {
       assert.deepEqual(Object.keys(entry), ["labware", "well", "replicates", "filler", "sharesTips"]);
     }
@@ -1104,9 +1122,9 @@ describe("plan-file", () => {
     assertRefused(file, /the experiment name: /);
   });
 
-  test("saving an opened version 4 file writes version 13, with no well labels", () => {
+  test("saving an opened version 4 file writes version 14, with no well labels", () => {
     const file = JSON.parse(planToText(open(version4File()), SAVED_BY));
-    assert.equal(file.version, 13);
+    assert.equal(file.version, 14);
     assert.deepEqual(file.wellLabels, {});
   });
 
@@ -1315,8 +1333,8 @@ describe("plan-file", () => {
 
   test("a version above this one was saved by a newer version of the tools", () => {
     assertRefused(
-      { ...fullFile(), version: 14 },
-      "it was saved by a newer version of the tools (plan format 14). Open it with that version or a later one.",
+      { ...fullFile(), version: 15 },
+      "it was saved by a newer version of the tools (plan format 15). Open it with that version or a later one.",
     );
   });
 
@@ -1650,12 +1668,12 @@ describe("plan-file", () => {
     return { plan, id: added.id };
   }
 
-  test("a plan with a transfer table is saved as version 13, transferTables last, and opens as the same plan", () => {
+  test("a plan with a transfer table is saved as version 14, transferTables just before mixingBoxes, and opens as the same plan", () => {
     const { plan, id } = transferTablePlan();
     const text = planToText(plan, SAVED_BY);
     const file = JSON.parse(text);
-    assert.equal(file.version, 13);
-    assert.equal(Object.keys(file).at(-1), "transferTables");
+    assert.equal(file.version, 14);
+    assert.deepEqual(Object.keys(file).slice(-2), ["transferTables", "mixingBoxes"]);
     assert.deepEqual(Object.keys(file.transferTables[0]), ["id", "table", "sources", "stages"]);
     const opened = planFromText(text);
     assert.deepEqual(contentsOf(opened), contentsOf(plan));
@@ -1684,7 +1702,7 @@ describe("plan-file", () => {
   test("a version 11 and a version 12 file with a label-named column open, its transfer table up to date", () => {
     const { plan, id } = premixTablePlan();
     const file = JSON.parse(planToText(plan, SAVED_BY));
-    assert.equal(file.version, 13);
+    assert.equal(file.version, 14);
     assert.deepEqual(Object.keys(file.transferTables[1].sources), ["Premix"]);
     for (const version of [file, asVersion12(file), asVersion11(file)]) {
       const opened = open(version);
@@ -1730,7 +1748,7 @@ describe("plan-file", () => {
   test("a version 10 file opens with no transfer tables; one with transferTables, and a version 11 file without it, are refused", () => {
     const opened = open(asVersion10(fullFile()));
     assert.deepEqual(opened.transferTables, []);
-    assertRefused({ ...fullFile(), version: 10 }, 'it has "transferTables", which a plan file doesn\'t have.');
+    assertRefused({ ...asVersion13(fullFile()), version: 10 }, 'it has "transferTables", which a plan file doesn\'t have.');
     const { transferTables, ...without } = fullFile();
     assertRefused(without, 'it\'s missing "transferTables".');
     assertRefused({ ...fullFile(), transferTables: {} }, '"transferTables" must be a list.');
@@ -1837,10 +1855,10 @@ describe("plan-file", () => {
     return file;
   }
 
-  test("a run randomization is saved as version 13 with null settings, tip type and probes, and opens as the same plan", () => {
+  test("a run randomization is saved as version 14 with null settings, tip type and probes, and opens as the same plan", () => {
     const { plan, a1, a2 } = settingsOnStagesPlan();
     const file = JSON.parse(planToText(plan, SAVED_BY));
-    assert.equal(file.version, 13);
+    assert.equal(file.version, 14);
     const [randomization] = file.randomizations;
     assert.deepEqual([randomization.settings, randomization.tipType, randomization.probes], [null, null, null]);
     const opened = planFromText(planToText(plan, SAVED_BY));
@@ -1944,10 +1962,10 @@ describe("plan-file", () => {
     return plan.randomizations.map((randomization) => randomization.name);
   }
 
-  test("named randomizations, one run and one not, are saved as version 13, each name after its ID, and open as the same plan", () => {
+  test("named randomizations, one run and one not, are saved as version 14, each name after its ID, and open as the same plan", () => {
     const plan = namedPlan();
     const file = JSON.parse(planToText(plan, SAVED_BY));
-    assert.equal(file.version, 13);
+    assert.equal(file.version, 14);
     for (const randomization of file.randomizations) {
       assert.deepEqual(Object.keys(randomization).slice(0, 3), ["id", "name", "beforeId"]);
     }
@@ -2002,5 +2020,174 @@ describe("plan-file", () => {
     const alike = structuredClone(file);
     alike.randomizations[1].name = "HySoy_dose";
     assertRefused(alike, 'randomizations: Randomizations 1 and 2 are both named "HySoy_dose".');
+  });
+
+  // --- Version 14: mixing boxes (plan-file.md, "Version 14") ---
+
+  // fullPlan() with two mixing boxes added at the end, a stage between them: a "sameContents" box
+  // of PLATE A2 (50 µL of Media) and A4 (empty), two mix steps ("4" and "5") on the last tip type on
+  // 8 probes; stage "6" on new tips; then a "freshTip" box of PLATE A3, C3 and E3, three mix steps
+  // ("7" to "9") on the first tip type on 4 probes. Stage IDs are in stage order, so they keep their
+  // IDs when the file is opened. Gives { plan, sameId, freshId }.
+  function mixingBoxesPlan() {
+    let plan = fullPlan();
+    const same = addMixingBox(
+      plan,
+      { way: "sameContents", wells: ["A2", "A4"].map((well) => ({ labware: PLATE, well })), tipType: TIP_TYPES.at(-1), probes: probesFor(8) },
+      null,
+    );
+    plan = addStageWithNewTips(same.plan, null).plan;
+    const fresh = addMixingBox(
+      plan,
+      { way: "freshTip", wells: ["A3", "C3", "E3"].map((well) => ({ labware: PLATE, well })), tipType: TIP_TYPES[0], probes: probesFor(4) },
+      null,
+    );
+    return { plan: fresh.plan, sameId: same.id, freshId: fresh.id };
+  }
+
+  test("a plan with two mixing boxes is saved as version 14, mixingBoxes last, and opens as the same plan, not out of date", () => {
+    const { plan, sameId, freshId } = mixingBoxesPlan();
+    assert.deepEqual(stageOrder(plan), ["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+    const text = planToText(plan, SAVED_BY);
+    const file = JSON.parse(text);
+    assert.equal(file.version, 14);
+    assert.equal(Object.keys(file).at(-1), "mixingBoxes");
+    for (const mixingBox of file.mixingBoxes) {
+      assert.deepEqual(Object.keys(mixingBox), ["id", "way", "stages"]);
+    }
+    assert.deepEqual(file.mixingBoxes, [
+      { id: sameId, way: "sameContents", stages: ["4", "5"] },
+      { id: freshId, way: "freshTip", stages: ["7", "8", "9"] },
+    ]);
+    const opened = planFromText(text);
+    assert.deepEqual(contentsOf(opened), contentsOf(plan));
+    assert.deepEqual(mixingBoxDraft(opened, sameId), mixingBoxDraft(plan, sameId));
+    assert.deepEqual(mixingBoxDraft(opened, freshId), mixingBoxDraft(plan, freshId));
+    assert.equal(isMixingBoxOutOfDate(opened, sameId), false);
+    assert.equal(isMixingBoxOutOfDate(opened, freshId), false);
+  });
+
+  test("a plan with a mixing box out of date, saved and opened, is still out of date", () => {
+    const { plan, sameId } = mixingBoxesPlan();
+    // A4 given A2's contents at Start: the two would now share a mix step.
+    const changed = addToWells(plan, [{ labware: PLATE, well: "A4" }], "Media", 50);
+    assert.equal(isMixingBoxOutOfDate(changed, sameId), true);
+    assert.equal(isMixingBoxOutOfDate(planFromText(planToText(changed, SAVED_BY)), sameId), true);
+  });
+
+  test("a mixing box saved with another mix opens out of date, and Update gives it the default mix step settings", () => {
+    const { plan, sameId } = mixingBoxesPlan();
+    const file = JSON.parse(planToText(plan, SAVED_BY));
+    const share = DEFAULT_MIX.share + 10 <= 100 ? DEFAULT_MIX.share + 10 : DEFAULT_MIX.share - 10;
+    for (const stage of file.stages.filter((entry) => ["4", "5"].includes(entry.id))) {
+      stage.settings.destinationMix = { ...DEFAULT_MIX, share };
+    }
+    const opened = open(file);
+    assert.equal(isMixingBoxOutOfDate(opened, sameId), true);
+    const updated = updateMixingBox(opened, sameId, mixingBoxDraft(opened, sameId));
+    for (const stage of updated.mixingBoxes.find((mixingBox) => mixingBox.id === sameId).stages) {
+      assert.deepEqual(updated.stageList.get(stage).settings.destinationMix, DEFAULT_MIX);
+    }
+    assert.equal(isMixingBoxOutOfDate(updated, sameId), false);
+  });
+
+  test("a version 13 file opens with no mixing boxes; one with mixingBoxes, and a version 14 file without it, are refused", () => {
+    assert.deepEqual(open(asVersion13(fullFile())).mixingBoxes, []);
+    assertRefused({ ...fullFile(), version: 13 }, 'it has "mixingBoxes", which a plan file doesn\'t have.');
+    const { mixingBoxes, ...without } = fullFile();
+    assertRefused(without, 'it\'s missing "mixingBoxes".');
+    assertRefused({ ...fullFile(), mixingBoxes: {} }, '"mixingBoxes" must be a list.');
+  });
+
+  test("version 14 is read", () => {
+    assert.doesNotThrow(() => open({ ...fullFile(), version: 14 }));
+  });
+
+  test("a version 14 file's mixing boxes are refused when they name a stage not in the file, or setMixingBoxes refuses them", () => {
+    const { plan } = mixingBoxesPlan();
+    const file = JSON.parse(planToText(plan, SAVED_BY));
+    const missing = structuredClone(file);
+    missing.mixingBoxes[0].stages[0] = "99";
+    assertRefused(missing, 'mixing box 1 names stage "99", which isn\'t one of the file\'s stages.');
+    const noWells = structuredClone(file);
+    noWells.operations = noWells.operations.filter((operation) => operation.stage !== "5");
+    assertRefused(noWells, 'mixing boxes: Mixing box 1: stage "5" mixes no wells.');
+    const misnamed = structuredClone(file);
+    misnamed.stages.find((stage) => stage.id === "4").name = "Mix 2 of 2";
+    assertRefused(misnamed, 'mixing boxes: Mixing box 1: stage "4" must be named “Mix 1 of 2”, by its place.');
+    const sharing = structuredClone(file);
+    delete sharing.tipChanges["5"];
+    assertRefused(
+      sharing,
+      'mixing boxes: Mixing box 1: stage "5" shares tips with another stage. Every mix step of a mixing box starts on new tips.',
+    );
+    const otherTips = structuredClone(file);
+    otherTips.tipChanges["5"] = { tipType: TIP_TYPES[0], probes: probesFor(4) };
+    assertRefused(
+      otherTips,
+      `mixing boxes: Mixing box 1: its mix steps must all load the same tips, but stage "5" loads ${TIP_TYPES[0]} on 4 probes and stage "4" ${TIP_TYPES.at(-1)} on 8.`,
+    );
+  });
+
+  test("check 15.1's order: an extra property is reported before stages that aren't a list; bad stages alone get the stages message", () => {
+    const { plan } = mixingBoxesPlan();
+    const file = JSON.parse(planToText(plan, SAVED_BY));
+    const both = structuredClone(file);
+    both.mixingBoxes[0].extra = 1;
+    both.mixingBoxes[0].stages = "4";
+    assertRefused(both, 'mixing boxes: Mixing box 1 must be an object with exactly "id", "way" and "stages".');
+    const stagesOnly = structuredClone(file);
+    stagesOnly.mixingBoxes[0].stages = "4";
+    assertRefused(stagesOnly, "mixing boxes: Mixing box 1: its stages must be a non-empty list of stage IDs.");
+  });
+
+  test("a version 13 file whose mix steps are named Mix 1 of 2 and Mix 2 of 2, each on new tips, opens with no mixing box", () => {
+    const { plan } = mixingBoxesPlan();
+    const opened = open(asVersion13(JSON.parse(planToText(plan, SAVED_BY))));
+    assert.deepEqual(opened.mixingBoxes, []);
+    assert.equal(opened.stageList.get("4").name, "Mix 1 of 2");
+    assert.ok(isMixStep(opened, "4") && isMixStep(opened, "5"));
+  });
+
+  test("every earlier check holds in version 14: a file with shared tips, a transfer table and a mixing box opens; each older check still refuses", () => {
+    // sharingPlan with A1 on new tips and A2 sharing them, a transfer table and a mixing box, at the end.
+    let plan = sharingPlan([false, true, false, false]);
+    plan = setWellLabel(plan, { labware: PLATE, well: "H1" }, "Top");
+    const table = addTransferTable(plan, { table: [["Label", "Media"], ["Top", "10"]], sources: { Media: [trough("3")] } }, null);
+    plan = table.plan;
+    const box = addMixingBox(
+      plan,
+      { way: "sameContents", wells: ["B2", "B3"].map((well) => ({ labware: PLATE, well })), tipType: TIP_TYPES[0], probes: probesFor(4) },
+      null,
+    );
+    plan = box.plan;
+    const file = JSON.parse(planToText(plan, SAVED_BY));
+    const opened = open(structuredClone(file));
+    assert.deepEqual(contentsOf(opened), contentsOf(plan));
+    assert.deepEqual(tipGroupStages(opened), tipGroupStages(plan));
+    assert.equal(isRandomizationOutOfDate(opened, "r1"), false);
+    assert.equal(isTransferTableOutOfDate(opened, table.id), false);
+    assert.equal(isMixingBoxOutOfDate(opened, box.id), false);
+    const noShares = structuredClone(file);
+    delete noShares.randomizations[0].sources[1].sharesTips;
+    assertRefused(noShares, 'randomization 1, source 2, is missing "sharesTips", which a version 14 file\'s sources have.');
+    const noName = structuredClone(file);
+    delete noName.randomizations[0].name;
+    assertRefused(
+      noName,
+      'randomizations: Randomization 1 must be an object with exactly "id", "name", "beforeId", "sources", "fill", "seed", "volume", "settings", "tipType", "probes" and "stages".',
+    );
+    const noWellLabels = structuredClone(file);
+    delete noWellLabels.wellLabels;
+    assertRefused(noWellLabels, 'it\'s missing "wellLabels".');
+    const noOsmolality = structuredClone(file);
+    delete noOsmolality.components[0].osmolality;
+    assertRefused(noOsmolality, 'component 1 must be an object with exactly "name", "color", "constituents" and "osmolality".');
+    const noProbes = structuredClone(file);
+    delete noProbes.tipChanges.start.probes;
+    assertRefused(noProbes, 'the tip change at "start" must be an object with exactly "tipType" and "probes".');
+    const tableStage = structuredClone(file);
+    tableStage.transferTables[0].stages[0].stage = "99";
+    assertRefused(tableStage, 'transfer table 1 names stage "99", which isn\'t one of the file\'s stages.');
   });
 });

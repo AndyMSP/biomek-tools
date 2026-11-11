@@ -193,6 +193,24 @@
 > (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request. Still to
 > review: every new message. It becomes Final once built and tested by Andy.
 
+> **Draft change (2026-11-11, mixing boxes, item 34 of v0.2.0; ADR 0025):** a plan holds **mixing
+> boxes** (`docs/glossary.md`), each owning mix steps it makes from a set of wells and a **way to
+> mix**: a fresh tip for every well, or one tip for wells with the same contents. `MIXING_WAYS`,
+> `mixingGroups`, `addMixingBox`, `updateMixingBox`, `removeMixingBox`, `canRemoveMixingBox`,
+> `mixingBoxAt`, `mixingBoxOf`, `mixingBoxDraft`, `mixedContentsOf`, `isMixingBoxOutOfDate`,
+> `SAME_SHARE_ALLOWANCE`, `holdSameContents` and `setMixingBoxes`; every other edit of its mix steps is refused in the
+> logic; moving, copying (copied items version 6) and moving wells know them (sections 2 to 6).
+> Plan files hold them from format version 14 (`plan-file.md`). From a preview Andy approved on
+> 2026-11-11; written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
+> Andy are listed in its pull request. **Not verified:** "a fresh tip for every well" assumes the
+> Biomek mixes each well of a mix step with its own probe when the mix step has no more wells than
+> probes (`biomek.md`, "Not yet known"); a simulation run must check it before any real run.
+> **Decided by Andy** (2026-11-11; section 3, "Its groups"; roadmap, item 34): wells share a mix
+> step only if they also hold about the same volume (`MIX_VOLUME_TOLERANCE`); a fresh-tip batch
+> holds wells of one column of one labware, in rows right next to each other (11:42); reservoir troughs are refused for a fresh tip until
+> checked in simulation; empty wells can be picked. Still to review: every new message. It becomes
+> Final once built, tested by Andy and checked in simulation.
+
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
 and every edit that can be made to one, each checked so that a plan is always valid. A tool shows a
@@ -216,7 +234,7 @@ Beside it in this tool are two other logic modules, `plan-history` (undo and red
 Version 1 creates an empty plan; adds, removes, changes, moves, copies and deletes stages (and
 moves, copies and deletes tip groups, randomizations and transfer tables, several at once); adds, removes and changes transfers, tip changes,
 components (with their constituents and osmolality), starting contents, labware labels, well
-labels and the experiment name; adds, updates and removes transfer tables; and answers questions about a plan: its stage order, its tip
+labels and the experiment name; adds, updates and removes transfer tables and mixing boxes; and answers questions about a plan: its stage order, its tip
 groups, the tips it uses, the stages with a contents problem or a mix problem, where each stage
 ends, the labware it uses, and what each well carries (its concentrations and osmolality, and its
 cells per cm² where its labware has a growth area).
@@ -261,6 +279,7 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   wellLabels:       { Deep: { A1: "Cond 1", A2: "Cond 2" } },
   randomizations:   [/* a randomization, below */],
   transferTables:   [/* a transfer table, below */],
+  mixingBoxes:      [/* a mixing box, below */],
   experimentName:   "Exp36",
 }
 ```
@@ -309,6 +328,10 @@ changing a transfer's volume uses the operation list's `replace`, never a rebuil
   were added, except that a move or a paste that changes something puts the whole list in column
   order (section 3, "Moving and copying"). The file writer never reads them: their stages are
   ordinary stages to it.
+- **`mixingBoxes`** (2026-11-11): the plan's mixing boxes (section 3, "Mixing boxes"), in the order
+  they were added, except that a move or a paste that changes something puts the whole list in
+  column order (section 3, "Moving and copying"). The file writer never reads them: their mix steps
+  are ordinary mix steps to it, and their tip changes ordinary tip changes.
 - **`experimentName`**: the experiment's name (`docs/glossary.md`, "Experiment name"), or `""`
   until the user gives one (Andy, 2026-10-28). A name follows the file writer's rule,
   `checkExperimentName` (`file-writer.md`): letters, digits, hyphens and underscores, 1 to 40
@@ -1207,7 +1230,7 @@ designer's own, in the designer's words), in this order:
 | wells left over, no filler | `12 wells left over: make a source the filler, or unpick them.` (`1 well`) |
 | no seed | `Type a seed.` |
 | no volume | `Set the volume.` |
-| two filler wells holding something hold different liquids (different components, or a component's share of the well differing by more than 0.000001, just before the randomization; filler wells holding nothing are left out) | `The filler wells hold different liquids.` (Andy, 2026-11-02: they share a stage and tips) |
+| two filler wells holding something hold different liquids (different components, or a component's share of the well differing by more than 0.000001, just before the randomization; filler wells holding nothing are left out; since 2026-11-11 judged by `holdSameContents`, section 3, "Mixing boxes", one function for both rules, with the same result) | `The filler wells hold different liquids.` (Andy, 2026-11-02: they share a stage and tips) |
 
 With no sources, or no wells to fill, the pool's problems (replicates, too many, left over) aren't
 listed, since they'd only follow from that one.
@@ -1537,9 +1560,337 @@ transfers split among several source wells (the split follows the transfers' dec
 destination well past another with the same label can change which of them draws from the next
 source well, and then it's out of date, as any other change of what it would make.
 
+### Mixing boxes
+(Andy, 2026-11-11, from a preview he approved; roadmap, item 34 of v0.2.0; ADR 0025.) A **mixing
+box** (`docs/glossary.md`) mixes a set of wells and **makes the mix steps for it**: given the wells
+and a **way to mix**, it works out which wells share a mix step, and so a set of tips, and owns
+those mix steps, each on new tips of its own. It's part of the plan, so it's undone and saved like
+any edit. It is a **container of its own kind** (Andy, 2026-11-11: specified properly, not as a
+transfer table with an extra field, as the preview had it), sitting between tip groups like a
+transfer table. Each is:
+
+```js
+{
+  id:     "m1",                    // "m" and one more than the largest number in use (addMixingBox)
+  way:    "sameContents",          // one of MIXING_WAYS
+  stages: ["7", "8", "9"],         // the mix steps it owns, in stage order
+}
+```
+
+- **`way`**: the **way to mix** (`docs/glossary.md`), one of **`MIXING_WAYS`**, a constant of this
+  module (not `config/`: each way is code), in the order a tool offers them:
+  - **`"freshTip"`**, a fresh tip for every well: meant to carry nothing from one well to the next.
+    It puts in a mix step only wells of one column of one labware, in rows right next to each
+    other, no more than there are probes; that the Biomek then mixes each well with its own probe, in one pass, is **not verified**, and
+    is to be checked in simulation (`docs/domain/biomek.md`, "Not yet known", "How Transfer From
+    File gives a file's rows to the probes");
+  - **`"sameContents"`**, one tip for wells with the same contents: wells holding the same
+    components in the same shares, and about the same volume, share a tip.
+  More ways may come (Andy, 2026-11-11). Each way is one grouping rule ("Its groups", below), kept
+  as one entry in a table of rules keyed by the way's name, so a way is added by adding its name to
+  `MIXING_WAYS` and its rule to the table, and nothing else here changes (CLAUDE.md, "Extensible
+  design").
+- **`stages`**: the mix steps it owns, in stage order: a non-empty list of stage IDs. Only adding,
+  updating and removing change it.
+- **Nothing else is stored** (one source of truth, as for transfer tables, ADR 0019): its **wells**
+  are its mix steps' mixed wells, and its **tips** its mix steps' tip changes, which all load the
+  same tip type on the same probes. `mixingBoxDraft` reads them back.
+
+**Probe order** (`docs/glossary.md`): wells sorted by their labware's place in the deck's order,
+then down each column of the labware's grid, top to bottom, column by column (`A1`, `B1` … `H1`,
+`A2` …; on a numbered reservoir, `1`, `2` … `12`, each column holding one well), as the Span-8's
+probes sit, one above the next, in a column. (Not the deck order of transfer tables and wells to
+fill, which follows `wellNames()`, row by row.)
+
+**A draft** is `{ way, wells, tipType, probes }`, a mixing box's values before they're in the plan,
+as a caller edits them: `way` one of `MIXING_WAYS`; `wells` a list of wells on the deck (`{ labware,
+well }`), each once, in any order (an empty list is in its form, and makes nothing); `tipType` one
+of `TIP_TYPES`; `probes` a list of probe numbers as `setTipProbes` takes them. A draft not in this
+form is refused with a thrown message (section 5), since a caller builds it.
+
+**Same contents** (`holdSameContents(a, b)`, for two wells' `volumeFractionsOf`, contents tracking):
+`true` when they hold the same components (the same names, none more) and each component's share of
+the well differs by at most `SAME_SHARE_ALLOWANCE`, `0.000001` (a constant this module exports, the same
+allowance as the filler wells' one-liquid rule, section 3, "Randomizations", which uses this
+function too, so the two rules can't drift). Two wells holding nothing (`{}`) hold the same
+contents. So Media and Media with 1% DMSO differ, and two wells each 90% Media and 10% Drug A, one
+holding 100 µL and the other 200 µL, are the same. **A component in one well and not the other
+makes them different, however small its share** (decided in the specification review, 2026-11-11,
+to match the filler wells' rule, where Media and Media with DMSO in any amount differ): the
+allowance applies only to a component both wells hold. So `{ Media: 1 }` and `{ Media: 0.9999995,
+DMSO: 0.0000005 }` differ, though DMSO's share is below the allowance. (`volumeFractionsOf` lists
+only components a well holds, so a component there is in the well.)
+
+**About the same volume** (Andy, 2026-11-11, decision A; roadmap, item 34): a set of wells holds
+about the same volume when its **largest** volume is at most its **smallest** volume times
+`1 + MIX_VOLUME_TOLERANCE / 100` (`config/mixing.js`, section 3, "Configuration"), each well's
+volume being what it holds just before the mixing box (contents tracking's `totalVolumeOf`). With
+`t` for `MIX_VOLUME_TOLERANCE`, the comparison is exactly `largest <= smallest × (1 + t / 100) +
+NEGLIGIBLE_MICROLITERS` (`0.000001` µL, contents tracking's allowance for arithmetic leftovers,
+`contents-tracking.md`, "Tiny amounts", taken from there, not repeated), so a set exactly at the
+limit holds about the same volume despite leftovers in the arithmetic. It's
+judged on the **whole set**, not on a well and its neighbor, so a set can't drift by small steps
+(**no chaining**, as for shares): with a tolerance of `t`%, wells of `100`, `100 + 0.6t` and
+`100 + 1.2t` µL don't all hold about the same volume, though each is within `t`% of the next. A set
+with an empty well holds about the same volume only if every well in it is empty (its smallest is
+`0`). The reason: a mix step mixes every well with one volume, worked out from its **emptiest**
+well (`mix-volumes.md`, "A row's mix volume"), so a fuller well in the same mix step would mix
+less than its share without a warning; keeping a mix step's volumes close keeps every well's mix
+close to its share. Both ways use it ("Its groups", below).
+
+**Its groups** (`mixingGroups(plan, draft, at)`): which wells share a mix step, for a caller to show
+before adding or updating. `at` is where its mix steps go, as for a transfer table: for a mixing box
+in the plan, its first mix step; for a new one, the stage it's added before, or `null` for the end
+of the run. What a well holds **just before the mixing box** is the starting contents with the
+transfers of the stages before `at` in the stage order replayed (contents tracking's `replay`, as
+for a transfer table); for `null`, after every stage. The draft's wells are taken in **probe order**,
+then grouped by its way's rule:
+- **`"freshTip"`**: in **batches**, meant to give each well a tip of its own (Andy, 2026-11-11;
+  whether the Biomek does is to be checked in simulation, `docs/domain/biomek.md`, "Not yet
+  known"). **A batch holds wells of one column of one labware** (Andy, 2026-11-11, decision B:
+  "make sure batches are vertical lines as well — it does them all at once that way"), **in rows
+  right next to each other** (Andy, 2026-11-11 11:42: the probes sit one row apart, so A1, C1 and
+  E1 can't be mixed in one pass; "it does them all at once that way"), at most `probes.length` of
+  them, all holding **about the same volume** (above). Taking the wells in probe order, a well
+  **starts a new batch** when it's the first well; when it's on another labware, or in another
+  column of its labware's grid, than the batch's wells; when it's **not in the row directly below
+  the batch's last well** (a **gap**: e.g. C1 after A1, B1 not picked); when the batch already
+  holds `probes.length` wells; or when the batch, with it, wouldn't hold about the same volume
+  (decision A). Otherwise it joins the batch. So a batch's wells sit one directly above the next in
+  a column, with no well left out between them, as the probes do, and batches are in probe order.
+  What the wells hold doesn't matter, only how much. E.g. on 4 probes, all wells holding the same
+  volume:
+  - Plate1 A1 to H1: two batches, A1 to D1 and E1 to H1;
+  - Plate1 A1, C1 and E1: three batches of one well (a gap before C1 and before E1);
+  - Plate1 A1 to H1 without D1: A1 to C1, then E1 to H1 (a gap at D1; the second batch is full);
+  - Plate1 A1, B1, D1, E1, F1: A1 and B1, then D1 to F1;
+  - Plate1 A1 to C1, and A2 to C2: two batches, A1 to C1 and A2 to C2 (not A1 to C1 with A2);
+  - Plate1 A1 to A12 (one row): 12 batches of one well;
+  - 10 wells on Plate1 (A1 to H1, A2, B2) and 4 on Plate2 (A1 to D1): Plate1 A1 to D1, E1 to H1, A2
+    and B2, then Plate2 A1 to D1 (a new batch at each labware, even of the same labware type);
+  - Plate1 A1 to D1 holding 100 µL, except C1 holding twice that: A1 and B1, then C1, then D1 (a
+    batch starts again at C1, out of tolerance, and again at D1, out of tolerance with C1).
+  (A new batch at each labware also keeps a mix step from spanning two labware types, which the
+  file writer would split into substages on the same tips, `substages.md`. The old rule, batches of
+  `probes.length` wells across columns within a labware, is gone: a batch never takes a well of a
+  second column, and never leaves a gap.) Whether the Span-8 mixes a column batch of rows right
+  next to each other in one pass, each well with its own probe, is part of the simulation test (`biomek.md`, "Not yet known"), not a known fact.
+  **Reservoir troughs are refused for `"freshTip"`** (Andy, 2026-11-11, decision C) until the
+  simulation test has checked several probes in one trough. **A reservoir trough, for this rule, is
+  a well of a labware whose grid has one row** (`rows` `1`, `well-grid.md`), whatever its naming:
+  one function, `isTroughGrid(grid)`, decides it, so the refusal and "out of date" (below) can't
+  differ. So `DeepReservoir12`'s troughs (a numbered grid of 1 row × 12) count; a one-row lettered
+  labware (`A1` to `A12`) counts too, and so does a one-well reservoir (a grid of 1 row × 1); a
+  numbered grid of more than one row doesn't, nor does a 96-well plate. (Decided in the hands-off
+  workflow, 2026-11-11: what matters is that each column holds one well, so a fresh-tip batch there
+  is one well and every probe of its mix step may enter that well together; on any one-row grid
+  that's so, whatever its wells are called, and on a grid of more rows it isn't.) Whether 8 probes
+  can draw from one trough in Transfer From File is itself unknown (`docs/domain/biomek.md`, "Not
+  yet known"), so a fresh tip might not be fresh. `addMixingBox` and `updateMixingBox` refuse a
+  `"freshTip"` draft holding a reservoir trough, after "at least one well" (section 5's order of
+  checks) and, for `updateMixingBox`, **before** its "nothing changes" test, with `A fresh tip for
+  every well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip
+  for wells with the same contents, or leave the troughs out.` (naming the first such well in probe
+  order). `mixingGroups` still gives its groups for such a draft (each trough a batch of its own,
+  being a column of its own), so a caller can show them; `"sameContents"` takes troughs like any
+  wells. **Two routes get round the refusal**, and both end at "out of date": `moveWell` of a
+  fresh-tip box's well into a trough (moving wells isn't refused for it), and a plan file or a
+  pasted copy holding a fresh-tip box with a trough (`setMixingBoxes` doesn't check for troughs). A
+  `"freshTip"` mixing box holding a reservoir trough is therefore **out of date** (below), so its
+  Biomek files wait, as for any box out of date, and Update with its own draft (`mixingBoxDraft`)
+  gives the refusal above, not the same plan: the user switches its way or takes the trough out.
+- **`"sameContents"`**: each well, in probe order, joins the **first group whose first well holds
+  the same contents** as it just before the mixing box (`holdSameContents`; comparing with each
+  group's first well, so a group can't drift by small steps) **and that, with it, holds about the
+  same volume** (above; Andy, 2026-11-11, decision A), or else starts a new group, last. So groups
+  are in the probe order of their first wells, each group's wells in probe order, and wells of the
+  same contents but different volumes are **split by volume** into groups of their own (two groups
+  may then hold the same contents). This is **greedy, in probe order, on purpose**: a well joins
+  the first group it fits, never the one that would leave the fewest mix steps, so the groups are
+  easy to predict from the deck; don't "improve" it by sorting the wells by volume first. A well
+  that doesn't fit the first group of its contents on volume may join a later one: on 8 probes,
+  wells of 100, 200, 100 and 200 µL of the same contents, in probe order, give two groups, the 1st
+  and 3rd, then the 2nd and 4th. E.g. Plate1 A1 to D1 holding 100 µL of 90% Media and 10% Drug A,
+  and B2 200 µL of the same shares: two groups, A1 to D1, then B2. A group may hold more wells than
+  there are probes, and wells of several labware and columns: one tip then mixes several wells with
+  the same contents (that's what this way is for).
+- **Empty wells can be picked** (Andy, 2026-11-11, decision D), with either way: nothing refuses
+  them here. A well holding nothing just before the mixing box holds about the same volume only as
+  other empty wells, so with `"sameContents"` the empty wells form a group of their own (the same
+  contents, `{}`, and the same volume, `0`), and with `"freshTip"` an empty well is batched only
+  with empty wells next to it in its column. Their mix step is caught by the existing problems: a
+  mixed well holding less than `MIX_STEP_VOLUME` is an overdraw, a contents problem as any other
+  (section 3, "Mix steps"), so the Biomek files wait until it's fixed.
+
+It gives `[{ wells, components }]`, one per group, in order: `wells` its wells (`{ labware, well }`,
+in probe order); `components` the names of the components its first well holds just before the
+mixing box, in the plan's `components` order (`[]` for a well holding nothing), when every well of
+the group holds the same contents as its first (always, for `"sameContents"`), or `null` when they
+don't (only possible for `"freshTip"`). `[]` for a draft with no wells. E.g. on 4 probes with
+`"sameContents"`, Plate1 A1, B1 and C1 holding Media and Drug A (90% and 10%) and D1 and E1 holding
+Media alone, all 100 µL: `[{ wells: [A1, B1, C1], components: ["Media", "Drug A"] }, { wells: [D1, E1],
+components: ["Media"] }]` (with Media before Drug A in `components`).
+
+**Its mix steps.** Each group becomes one mix step (section 3, "Mix steps"):
+- **its settings**: the **default mix step settings** (`MIX_STEP_MODE` at both ends, no source mix,
+  `DEFAULT_MIX` after dispensing: the standard mix, Andy, 2026-11-11), never copied from a nearby mix
+  step, so every mixing box mixes the same way; its mixed wells are transfers of `MIX_STEP_VOLUME`,
+  as every mix step's;
+- **its name**: **`Mix 1 of 12`**: `Mix `, its place among the box's mix steps (from 1), ` of `, how
+  many it has (Andy, 2026-11-11: short names, "both ways"; what its wells hold is for a tool to show,
+  `mixedContentsOf`). A box of one mix step names it `Mix 1 of 1`;
+- **its tips**: a tip group of its own (no stage outside the box, and no other of its mix steps,
+  shares them), loading the draft's `tipType` on its `probes`. So every mix step of a box loads the
+  same tips, and the stage just after the box keeps its own.
+
+**What a mix step's wells hold** (`mixedContentsOf(plan, stageId)`, for a tool to show): for a mix
+step owned by a mixing box, the names of the components its wells hold just before the mixing box,
+in the plan's `components` order (`[]` for nothing), when every one of its wells holds the same
+contents as its first (`holdSameContents`), or `null` when they differ. Throws if `stageId` isn't a
+mixing box's mix step.
+
+**Its draft** (`mixingBoxDraft(plan, id)`, for a caller reopening it): `{ way, wells, tipType,
+probes }`: its `way`; its mix steps' mixed wells, all of them, in probe order; and the tip type and
+probes its first mix step's tip change loads (`START`'s when that's the plan's first stage). Throws if
+there's no mixing box `id`.
+
+**Adding** (`addMixingBox(plan, draft, beforeId)`), as one edit, `at` being `beforeId`:
+1. The draft is in its form (section 5), it has at least one well, and `beforeId` is a place a
+   mixing box can sit: `null`, or the first stage of a tip group that isn't inside a randomization,
+   a transfer table or another mixing box (the first stage of one of those boxes is allowed: the new
+   one goes above it), as for a transfer table.
+2. Its groups are worked out (`mixingGroups(plan, draft, beforeId)`), before anything changes.
+3. Each group, in order, gets a new mix step, added with `addMixStepWithNewTips(plan, beforeId)`, so
+   each starts its own tip group and the stage below keeps its tips; it's given the default mix step
+   settings (as `changeStageSettings`), its name (as `renameStage`), its tip change's tip type and
+   probes (as `setTipType` and `setTipProbes`; or the `START` tips, if it's now the plan's first
+   stage) and its mixed wells (as `mixWells`).
+4. The new mixing box is last in `mixingBoxes`, with the next free ID (`m` and one more than the
+   largest number in use, from `m1`), the draft's `way`, and `stages` in order.
+
+It gives `{ plan, id }`.
+
+**Updating** (`updateMixingBox(plan, id, draft)`): remakes it in its place, as one edit (Andy,
+2026-11-11), `at` being its first mix step. Its new groups are worked out first. **Nothing changes**,
+and the same plan is given back, when the draft's `way` is its `way`, its `tipType` and `probes` are
+its tips, the new groups are its mix steps, one for one in order, each with the same wells
+(ignoring their order), and **every one of its mix steps has the default mix step settings** as they
+are now (built from `MIX_STEP_MODE` and `DEFAULT_MIX`). So a box whose mix steps mix otherwise (one
+opened from a plan file saved before `DEFAULT_MIX` changed in `config/`, or pasted from such a copy)
+is remade by Update with the standard mix, rather than left as it is. Otherwise:
+1. **The place**: the stage just after its last mix step (or `null`); and every randomization whose
+   `beforeId` is its first mix step (one not run sitting above it, or one run just above it). Noted
+   first.
+2. **New mix steps** are added before the place, as in adding, step 3.
+3. **Its old mix steps are removed** (`removeStage`'s rules), after the new ones are in, so the plan
+   is never left without a stage. When its first mix step was the plan's first stage, its new first
+   mix step is first once they go, and its tip change becomes the `START` tips (`removeStage`'s
+   rule for the first stage), so `START` then loads the draft's tips.
+4. **Randomizations**: each noted in step 1 has its new first mix step as its `beforeId`, so it
+   stays above the mixing box, never inside it.
+5. Its `way` and `stages` are set; its ID and place in `mixingBoxes` don't change.
+So every mix step is new (a new ID): its settings are always the standard ones, so nothing the user
+set is lost. The stage just after it keeps its own tip change (step 2 gives it one when a mix step
+goes before it).
+
+**Removing** (`removeMixingBox(plan, id)`) takes out the mixing box and every mix step it owns, as
+one edit. Tip changes on the stage after it stay. A randomization without stages sitting before its
+first mix step then sits before the stage just after it (or `null`), as `removeStage`'s rule moves
+it. It's refused when its mix steps are all the plan's stages (`canRemoveMixingBox` is `false`), as
+for a transfer table: a plan needs at least one stage.
+
+**Out of date** (`isMixingBoxOutOfDate(plan, id)`; Andy, 2026-11-11). A mixing box's mix steps are
+what it last made; other edits never update it. It's **out of date** when its groups now
+(`mixingGroups(plan, mixingBoxDraft(plan, id), its first mix step)`) differ from its mix steps: a
+different number, or, for any of its mix steps in order, different wells (compared as a set:
+the order of a mix step's wells isn't compared, as the Biomek orders a stage's rows itself,
+B56358AF 22-25); **or when any of its mix steps doesn't have the default mix step settings** as they
+are now (from the specification review, 2026-11-11: after `DEFAULT_MIX` changes in `config/`, a box
+saved before mixes otherwise, and Update, above, remakes it); **or when it's a `"freshTip"` box
+holding a reservoir trough** (decision C, "Its groups", above). Its mix steps' names follow their
+number, and its tips are part of what's compared from, so neither is compared. It's the same test
+as Update's "nothing changes" with `mixingBoxDraft`, so one function serves both (for a fresh-tip
+box with a trough, Update refuses before that test, so it never gives back the same plan). So:
+- with `"sameContents"`, an edit before it that changes what one of its wells holds so the wells
+  group differently (a well topped up with another component, a stage before it removed, a well
+  emptied at Start) makes it out of date; one that changes every well of a group alike, or changes
+  volumes but leaves every group holding about the same volume, doesn't, unless it brings the
+  group within tolerance of another group with the same contents (the two then merge, so it is);
+- with either way, an edit before it that changes its wells' volumes so they group differently (a
+  well topped up past `MIX_VOLUME_TOLERANCE` of the others in its mix step, or two wells' volumes
+  brought within it) makes it out of date (decision A);
+- with either way, a well moved (`moveWell`, below) so the probe order, or which column it's in,
+  changes which wells go together makes it out of date;
+- with `"freshTip"`, which components the wells hold never makes it out of date, only their
+  volumes;
+- with either way, mix steps whose settings aren't the default mix step settings make it out of date
+  (no edit can do this to them: only a plan file or a copy from before a change to `DEFAULT_MIX` or
+  `MIX_STEP_MODE`);
+- with `"freshTip"`, **holding a reservoir trough** (`isTroughGrid`, "Its groups", above) makes it
+  out of date, whatever its groups (decision C; a well moved into a trough, or a plan file or copy
+  holding one: no other edit can make one).
+Nothing updates it but `updateMixingBox` (Andy, 2026-11-11: as for a randomization or a transfer
+table, a checked plate never changes by itself).
+
+**Where it sits**: its mix steps are consecutive in the stage order, each the only stage of its own
+tip group (so none shares tips with any other stage, inside it or out), in the order of its
+`stages`. Every edit keeps this so.
+
+**The refusals below are for calls from outside**: a mixing box's own edits (adding, updating,
+removing it, `moveItems`, `pasteItems`, `moveWell`) change its mix steps through internal helpers
+that skip these refusals but keep every other rule of the edit they stand for (the stage rule, the
+tip rules, and `removeStage`'s rules for randomizations).
+
+**Nothing can be edited on its mix steps one by one** (Andy, 2026-11-11: "its mix steps change only
+through its wizard, as a transfer table's stages"; in this module's terms: **only `addMixingBox`,
+`updateMixingBox` and `removeMixingBox`, and the mixing box's own edits below, change its mix
+steps' wells, names, settings, tips or place**, and every other edit of them is refused; decided in the hands-off workflow to include
+their mix and tips, unlike a transfer table's stages, since how its wells are grouped depends on its
+probes, and a tip group changed on its own would break "a fresh tip for every well"). **Refused, in
+the logic** (as for transfer tables and randomizations):
+- `addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer`, `mixWells`, `unmixWell` on one of
+  its mix steps;
+- `renameStage` of one of its mix steps (its name is its place);
+- `changeStageSettings` and `setStageMix` on one of its mix steps (it mixes with the standard mix);
+- `setTipType` and `setTipProbes` on one of its mix steps' tip changes (or `START`, when its first
+  mix step is the plan's first stage);
+- `removeStage` of one of its mix steps;
+- `removeTipChange` of one of its mix steps' tip changes, or of the stage just after its last mix
+  step (which keeps that stage off its tips);
+- `addStage`, `addMixStep` (with or without `takeTips`), `addStageWithNewTips`,
+  `addMixStepWithNewTips`, `addRandomization`, `placeRandomization`, `addTransferTable` and
+  `addMixingBox` with a `beforeId` that is one of its mix steps other than its first; and `addStage`
+  and `addMixStep` with `takeTips` before its first mix step (the new stage would take its tips);
+- `addStage` and `addMixStep` without `takeTips` whose new stage would land just after its last mix
+  step, joining its last tip group: a `beforeId` that is the stage just after its last mix step, or
+  `null` when its last mix step is the plan's last; `addStageWithNewTips` and
+  `addMixStepWithNewTips` there are allowed, since they start new tips;
+- `addTipChange` before one of its mix steps (each has one already, so this is the existing message;
+  no new rule);
+- `moveItems` with one of its mix steps without the mixing box, to any place (it has no moving
+  inside, unlike a transfer table: its order is worked out, not chosen); any other item to a place
+  inside its box.
+As for a transfer table: `removeStage` of the stage just after its last mix step gives the next
+stage a tip change loading the tips the removed one used, if it has none; and `addStage` and
+`addMixStep` without `takeTips` before its first mix step when that's the plan's first stage are
+allowed: the new stage becomes the first, on the `START` tips, and the mixing box's first mix step
+gets a tip change of its own loading the tips it had.
+
+**Components and labels**: nothing about them is stored in a mixing box, so `renameComponent`,
+`removeComponent`, `setComponentColor` and well labels change nothing in it. A rename changes no
+grouping (the same wells hold the same contents under the new name); `mixedContentsOf` gives the new
+name. Removing a component empties it from every well at Start, which can change what its wells hold,
+and so make a `"sameContents"` box out of date, as any edit before it can.
+
+**Moving wells** (section 3, "Moving wells"): a mixing box's wells are its mix steps' mixed wells,
+already **wells in use** (transfers), so nothing new is needed: `moveWell` moves the mixed-well
+transfer (both ends) as for any mix step, through its own edit, skipping the refusals above. The
+mixing box stores no wells, so it needs no change. If the moved well's new place changes the probe
+order so its wells group differently, it's out of date, as above.
+
 ### Moving and copying
-(Andy, 2026-11-01; ADR 0014.) Stages, tip groups, randomizations and transfer tables (since
-2026-11-05) can be moved, and copied, to
+(Andy, 2026-11-01; ADR 0014.) Stages, tip groups, randomizations, transfer tables (since
+2026-11-05) and mixing boxes (since 2026-11-11) can be moved, and copied, to
 another place in the column, and what was copied can be pasted into this plan or another one. Each
 is one edit, undone as one.
 
@@ -1552,7 +1903,10 @@ End: a list of **boxes**, in order, each either
   another's: section 3, "Sharing tips"), or `[]` while it has none; or
 - `{ kind: "transferTable", id, tipGroups }` (2026-11-05): a transfer table, with the tip groups of
   its stages, in stage order, each holding exactly one of its stages (section 3, "Transfer
-  tables"). A transfer table always has stages.
+  tables"). A transfer table always has stages; or
+- `{ kind: "mixingBox", id, tipGroups }` (2026-11-11): a mixing box, with the tip groups of its mix
+  steps, in stage order, each holding exactly one of its mix steps (section 3, "Mixing boxes"). A
+  mixing box always has mix steps.
 
 Every tip group of the plan is in exactly one box. A randomization without stages is placed where
 it sits (section 3, "Randomizations"): just before the box whose first stage is its `beforeId`, or
@@ -1565,7 +1919,8 @@ page's Stages column already shows; the page takes it from here, so there's one 
   randomization's own), named by its first stage's ID (an ID, not `START`, so it names the same
   group however the tips are keyed);
 - `{ kind: "randomization", id }`: a randomization;
-- `{ kind: "transferTable", id }` (2026-11-05): a transfer table.
+- `{ kind: "transferTable", id }` (2026-11-05): a transfer table;
+- `{ kind: "mixingBox", id }` (2026-11-11): a mixing box.
 
 A list of items is taken in **column order**, whatever order it's given in. A stage in a tip group or
 randomization that's also listed is part of it already, so it's left out; an item listed twice
@@ -1589,16 +1944,24 @@ A place may point at something that's itself being moved. It then means:
   hasn't run is a box with no stages of its own: it stays, and counts.)
 
 **The container rule** (ADR 0014; `docs/glossary.md`): **containers** are ordinary tip groups,
-randomizations and transfer tables; stages (mix steps included) are what goes inside them. A
-transfer table follows every rule written here for a randomization, except where it says otherwise.
+randomizations, transfer tables and mixing boxes; stages (mix steps included) are what goes inside
+them. A transfer table follows every rule written here for a randomization, except where it says
+otherwise, and a mixing box follows every rule written here for a transfer table, except where it
+says otherwise. Its two exceptions: **no moving inside** (below: its order is worked out, not
+chosen), and **its editing lock**: `changeStageSettings`, `setStageMix`, `setTipType` and
+`setTipProbes` are refused on its mix steps and their tip changes, where a transfer table's stages
+allow them (section 3, "Mixing boxes").
 - A tip group moved or copied brings its tip change (tip type and probes) and its stages, in order.
 - A randomization moved or copied brings all of itself: its sources, wells to fill, seed, volume,
   settings, tips, and its stages, in its tip groups as they were (stages sharing tips still share
   them; none shares tips with a stage outside it).
-- A tip group, randomization or transfer table goes only **between** boxes. A place inside a tip
-  group is refused for a list holding one.
+- A tip group, randomization, transfer table or mixing box goes only **between** boxes. A place
+  inside a tip group is refused for a list holding one, with one message naming all four (section
+  5; since 2026-11-11 it names transfer tables and mixing boxes too).
 - A transfer table moved or copied brings all of itself: its `table`, `sources`, and its stages,
   each on tips of its own as they were (its settings and tips are its stages').
+- A mixing box moved or copied brings all of itself: its `way`, and its mix steps, each on tips of
+  its own as they were (its wells and tips are its mix steps').
 - Stages put **inside** a tip group join it, in their column order, and use its tips. Put at its
   top, the first of them becomes the group's first stage, and the group's tip change moves onto it
   (so a group keeps its tips whichever stage is first).
@@ -1619,7 +1982,8 @@ transfer table follows every rule written here for a randomization, except where
 only where things are changes: `stageOrder`, `tipChanges`, the operation list's order (its blocks
 follow the stage order, ADR 0011, each stage's transfers in the same order as before), and the
 randomizations' places. A stage owned by a randomization can't be moved on its own (ADR 0014): a
-list holding one whose randomization isn't listed too is refused. **Nothing changes** when the new
+list holding one whose randomization isn't listed too is refused; nor can a mix step owned by a
+mixing box, to any place (section 3, "Mixing boxes"). **Nothing changes** when the new
 `stageOrder`, `tipChanges` (tip types and probes by key) and `randomizations` (compared in column
 order) would all equal the old ones: then the same plan object is given back, with `randomizations`
 as it was (from the review of the build, 2026-11-02: a list only out of column order isn't a change
@@ -1666,6 +2030,12 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
   It fills the same labeled wells as the original (Andy, 2026-11-05: as a copied randomization
   does), so it usually makes overfills, shown as any others. Copies of its stages copied alone are
   ordinary stages, owned by nothing, as a randomization's are.
+- A copied mixing box is a **new mixing box** (2026-11-11): the next free ID (`m` and one more than
+  the largest number in use), the copied `way`, and the copies of its mix steps as its `stages`, each
+  with the same name, settings and mixed wells, on tips of its own loading the tips it had. It mixes
+  the same wells as the original (as a copied transfer table fills them). A copy pasted where its
+  wells hold something else, or in another plan, may be out of date, as a plan file can be. Copies of
+  its mix steps copied alone are ordinary mix steps, owned by nothing.
 - A copied randomization is a **new randomization**: the next free ID (`r` and one more than the
   largest number in use, as `addRandomization` gives), a new name as `addRandomization` gives
   (`Randomization` and the smallest number free among the plan's randomizations and those made
@@ -1687,12 +2057,13 @@ It's the same as `pasteItems(plan, copyOf(plan, items), place)`:
 ```js
 {
   format: "biomek-tools copied items",
-  version: 4,
+  version: 6,
   items: [
     { kind: "stage", stage, tips, group },   // tips: the tip change of the tip group it came from
     { kind: "tipGroup", tips, stages: [stage, …] },
     { kind: "randomization", randomization, stages: [{ labware, well, stage, tips }, …] },  // tips may be null
     { kind: "transferTable", transferTable, stages: [{ component, stage, tips }, …] },      // version 4
+    { kind: "mixingBox", mixingBox, stages: [{ stage, tips }, …] },                         // version 6
   ],
 }
 ```
@@ -1701,10 +2072,24 @@ A transfer table's **`transferTable`** holds its `table` and `sources`, and its 
 owned stage's component, the stage itself, and the tips of its tip group (never `null`: each starts
 its own).
 
+**Copied items version 6** (2026-11-11, mixing boxes, item 34): items may be mixing boxes, each
+`{ kind: "mixingBox", mixingBox, stages }`: `mixingBox` holds its `way` only (`{ way }`), and
+`stages` each of its mix steps, in order, as `{ stage, tips }`, `stage` a stage as copied (its name,
+settings and transfers) and `tips` its tip group's (never `null`: each starts its own). `copyOf`
+writes version 6; `pasteItems` reads versions 1 to 6. A mixing box item in a version 1 to 5 copy is
+refused with the form message, unchanged (`Can't paste: item 2 isn't a stage, tip group or
+randomization as the transfer designer copies them.`). A pasted mixing box is checked as
+`setMixingBoxes` checks a plan file's (`way` one of `MIXING_WAYS`, each stage a mix step with at
+least one mixed well, named `Mix 1 of N` … by its place, no well in two of its mix steps, every mix
+step's tips the same), with the messages prefixed `Can't paste: item 2: `. Whether its mix steps
+match what it would make now isn't checked: one pasted where its wells hold something else is out
+of date. Nothing else in the form changes from version 5.
+
 **Copied items version 5** (2026-11-05, a randomization's settings on its stages, item 20): the
 same form as version 4, except that a randomization's `settings`, `tipType` and `probes` are
 `null` when it has owned stages in the copy, and given when it has none, as in a plan (section 3,
-"Randomizations"). `copyOf` writes version 5; `pasteItems` reads versions 1 to 5. **In a version 1
+"Randomizations"). `copyOf` wrote version 5 until version 6 (above); `pasteItems` reads versions 1
+to 6. **In a version 1
 to 4 copy**, a randomization with owned stages has its `settings`, `tipType` and `probes` checked as
 before and then **dropped** (`null`), since its stages and their `tips` hold them; one without
 stages keeps them. A version 5 copy breaking the rule is refused with the form message (`Can't
@@ -1762,7 +2147,7 @@ several filler wells as newer, rather than with a confusing message (as plan fil
 
 **Pasting checks everything**, as opening a plan file does (ADR 0010): copied items may come from
 another plan or the system clipboard, so they're never trusted. `pasteItems` refuses, changing
-nothing, anything that isn't copied items in this form (version 1, 2, 3, 4 or 5), and checks every value with
+nothing, anything that isn't copied items in this form (version 1, 2, 3, 4, 5 or 6), and checks every value with
 the rules of the edit that would make it: names (`renameStage`), settings (`changeStageSettings`),
 transfers (`addTransfer`: wells on this plan's deck, the stage rule, a mix step's wells), tips
 (`setTipType`, `setTipProbes`), a randomization's values (`setRandomization`) and its stages (as
@@ -1772,7 +2157,7 @@ messages, prefixed `Can't paste: item 2: ` (e.g. `Can't paste: item 2: "Z99" isn
 Its wells are A1 to H12.`).
 
 **Where randomizations sit afterwards.** After any move or paste, `transferTables` is in column
-order (2026-11-05), and `randomizations` is in column order, each one with stages has its `beforeId` set to the stage just after its last stage (or
+order (2026-11-05), `mixingBoxes` is in column order (2026-11-11), and `randomizations` is in column order, each one with stages has its `beforeId` set to the stage just after its last stage (or
 `null`), and each without stages has its `beforeId` set to the first stage of the next box below
 it that has one (or `null`), so section 3's rules about where a randomization sits keep holding.
 
@@ -1870,6 +2255,9 @@ changes:
   given when its randomization ran, stays as it was;
 - **transfer tables** (2026-11-05): each source well at `from` gets `to`, keeping its place in its
   list. Its table doesn't change: its destinations are found by label, which moves with the well.
+- **mixing boxes** (2026-11-11): nothing: a mixing box stores no wells, and its mix steps' mixed
+  wells move as any transfers do (above), its own refusals skipped (section 3, "Mixing boxes"). It
+  may then be out of date, if the new well's place in probe order groups its wells differently.
 
 Since `to` wasn't in use, every rule the plan kept still holds with it in `from`'s place (the stage
 rule, a mix step's wells, no well twice in a randomization), so nothing else is checked. A move may
@@ -1908,8 +2296,15 @@ Two files in `config/` (ADR 0009), which this module's tests check:
   doesn't matter, since every mix speed comes from the worklist; Andy, 2026-10-29): names, the
   liquid type following Biomek's rule, and the technique none of the pipetting modes' techniques or
   mixing techniques, so a mix step is never read as a mode; and `MIX_STEP_VOLUME`, a mixed well's
-  placeholder transfer volume in µL, `1` (Andy, 2026-10-30), a number above 0. (The file also holds
-  `SHORT_MIX_SHARE`, which the `mix-volumes` module's tests check; `mix-volumes.md`.)
+  placeholder transfer volume in µL, `1` (Andy, 2026-10-30), a number above 0; and
+  `MIX_VOLUME_TOLERANCE` (new, 2026-11-11, item 34, decision A), how far apart, in percent of the
+  smallest, the volumes in one mixing box mix step may be: `10` (Andy, 2026-11-11), a number above
+  0 and below 100 (section 3, "About the same volume"; below 100 so a well holding twice another's
+  volume is always out of tolerance with it, which the tests' plan relies on). The build adds it to
+  the file with a comment of its own, as the file's other values have, and updates the file's
+  header comment to say what it's for (mixing box mix steps hold wells of about the same volume)
+  and that the transfer-designer module's tests check it. (The file also holds `SHORT_MIX_SHARE`, which the
+  `mix-volumes` module's tests check; `mix-volumes.md`.)
 - **`config/tip-types.js`** also exports `DEFAULT_PROBE_COUNT`: how many probes a new plan's first
   tips go on, the first that many (`probesFor`). A whole number from 1 to 8; `4` (Andy, 2026-10-30).
   It's in `config/` because it may change (CLAUDE.md, "No hard-coded configuration").
@@ -1928,7 +2323,7 @@ given; "returns the plan with …" means a new plan.
 **Plans**
 | Function | Returns |
 |---|---|
-| `emptyPlan()` | `{ plan, stageId }`: a plan with no components, starting contents, transfers, labels, well labels, randomizations or transfer tables, no experiment name (`""`), one stage (`NEW_STAGE_NAME`, default settings), and `START` tips of the first tip type; and that stage's ID. |
+| `emptyPlan()` | `{ plan, stageId }`: a plan with no components, starting contents, transfers, labels, well labels, randomizations, transfer tables or mixing boxes, no experiment name (`""`), one stage (`NEW_STAGE_NAME`, default settings), and `START` tips of the first tip type; and that stage's ID. |
 | `setExperimentName(plan, name)` | the plan with the experiment called `name`, its spaces at the ends removed; `""` (or only spaces) gives no name. Throws if `name` isn't text, or isn't a valid experiment name (`checkExperimentName`, `file-writer.md`). An unchanged name gives the same plan back. |
 | `defaultSettings()` | a stage's default settings (section 3, "Stages"). |
 | `probesFor(count)` | the first `count` probes, e.g. `4` → `[1, 2, 3, 4]`. Throws unless `count` is a whole number from 1 to 8. |
@@ -2077,14 +2472,35 @@ randomization.
 
 The edits refused on a transfer table's stages (section 3, "Where it sits") throw as section 5 says.
 
+**Mixing boxes** (section 3, "Mixing boxes"; 2026-11-11)
+| Function | Returns |
+|---|---|
+| `MIXING_WAYS` | (a constant) `["freshTip", "sameContents"]`, frozen: the ways to mix, in the order a tool offers them. |
+| `SAME_SHARE_ALLOWANCE` | (a constant) `0.000001`: how far two wells' shares of a component may differ and still be the same contents (section 3, "Same contents"). |
+| `isTroughGrid(grid)` | `true` if a labware's grid (a `WellGrid`, `well-grid.md`) has one row, so its wells count as reservoir troughs for the fresh-tip refusal (section 3, "Its groups"), e.g. `DeepReservoir12`'s grid → `true`, `GRID_96` → `false`. |
+| `holdSameContents(a, b)` | `true` if two wells' `volumeFractionsOf` (each an object of component names and shares) hold the same contents (section 3, "Same contents"), else `false`. Never throws for two such objects. |
+| `mixingGroups(plan, draft, at)` | which wells share a mix step: `[{ wells, components }]` in order (section 3, "Its groups"); `[]` for no wells. `at` is a stage ID or `null`. Throws if the draft isn't in its form, or `at` isn't a stage or `null`. |
+| `addMixingBox(plan, draft, beforeId)` | `{ plan, id }`: the plan with a new mixing box and its mix steps before stage `beforeId` (or last, for `null`), as one edit. Throws if the draft isn't in its form, has no wells, or `beforeId` isn't a place it can sit, or it's a `"freshTip"` draft with a reservoir trough. |
+| `updateMixingBox(plan, id, draft)` | the plan with mixing box `id` remade from `draft`, in its place, as one edit; the same plan if nothing would change (section 3, "Updating"). Throws if there's no such mixing box, the draft isn't in its form, or it has no wells, or it's a `"freshTip"` draft with a reservoir trough (even the box's own). |
+| `removeMixingBox(plan, id)` | the plan without the mixing box and its mix steps. Throws if there's no such mixing box, or its mix steps are all the plan's stages. |
+| `canRemoveMixingBox(plan, id)` | `true` unless its mix steps are all the plan's stages. Throws if there's no such mixing box. |
+| `mixingBoxAt(plan, id)` | the mixing box with ID `id`, or `null`. |
+| `mixingBoxOf(plan, stageId)` | the ID of the mixing box owning stage `stageId`, or `null`. |
+| `mixingBoxDraft(plan, id)` | its draft, `{ way, wells, tipType, probes }`, read from its mix steps (section 3, "Its draft"), as new lists. Throws if there's no such mixing box. |
+| `mixedContentsOf(plan, stageId)` | the components a mixing box's mix step's wells all hold just before the box, in the plan's `components` order (`[]` for nothing), or `null` when they differ (section 3). Throws if `stageId` isn't a mixing box's mix step. |
+| `isMixingBoxOutOfDate(plan, id)` | `true` if its groups now differ from its mix steps (section 3, "Out of date"). Throws if there's no such mixing box. |
+| `setMixingBoxes(plan, mixingBoxes)` | the plan with its mixing boxes replaced by `mixingBoxes`, each in the form of section 3, for a list already in the plan's own form, such as one read from a plan file. Strict (order of checks below). Throws `Mixing box 2: ` and the problem's message if not. |
+
+The edits refused on a mixing box's mix steps (section 3, "Mixing boxes") throw as section 5 says.
+
 **Moving and copying** (section 3, "Moving and copying")
 | Function | Returns |
 |---|---|
-| `columnBoxes(plan)` | the column's boxes, in order: `{ kind: "tipGroup", key, tipType, probes, stages }`, `{ kind: "randomization", id, tipGroups }` or `{ kind: "transferTable", id, tipGroups }`. |
+| `columnBoxes(plan)` | the column's boxes, in order: `{ kind: "tipGroup", key, tipType, probes, stages }`, `{ kind: "randomization", id, tipGroups }`, `{ kind: "transferTable", id, tipGroups }` or `{ kind: "mixingBox", id, tipGroups }`. |
 | `moveItems(plan, items, place)` | `{ plan, placed }`: the plan with `items` moved to `place`, as one edit; the same plan, and `placed` the items, if nothing would change. Throws as section 5 says. |
 | `copyOf(plan, items)` | the copied items for `items` (plain data, JSON). Throws if `items` isn't a list of items of this plan. |
 | `copyItems(plan, items, place)` | `{ plan, placed }`: the plan with copies of `items` at `place`, as one edit: `pasteItems(plan, copyOf(plan, items), place)`. |
-| `pasteItems(plan, copied, place)` | `{ plan, placed }`: the plan with the copied items at `place`, each stage and randomization a new one, as one edit. Throws as section 5 says. |
+| `pasteItems(plan, copied, place)` | `{ plan, placed }`: the plan with the copied items at `place`, each stage, randomization, transfer table and mixing box a new one, as one edit. Throws as section 5 says. |
 
 **Deleting** (section 3, "Deleting")
 | Function | Returns |
@@ -2253,17 +2669,17 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `removeSources`: `indexes` isn't a list of the list's indexes, each once | `The sources to remove must be a list of indexes from 0 to 3, each once, but got [1, 1].` (one source: `… a list of index 0, at most once, but got [1].`; none: `There are no sources to remove, but got [0].`) |
 | `setRandomizations`: `beforeId` isn't a place it can sit | `Randomization 2: ` and `addRandomization`'s message |
 
-| `moveItems`, `copyOf`, `copyItems`: `items` isn't a non-empty list | `The things to move must be a list of stages, tip groups, randomizations or transfer tables, but got 5.` (transfer tables named since 2026-11-05) (`copy` for `copyOf` and `copyItems`) |
-| an item isn't `{ kind, id }` with a known kind | `Item 2 must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", but got "box".` |
+| `moveItems`, `copyOf`, `copyItems`: `items` isn't a non-empty list | `The things to move must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got 5.` (transfer tables named since 2026-11-05, mixing boxes since 2026-11-11) (`copy` for `copyOf` and `copyItems`) |
+| an item isn't `{ kind, id }` with a known kind | `Item 2 must be { kind, id }, with kind "stage", "tipGroup", "randomization", "transferTable" or "mixingBox", but got "box".` (`"mixingBox"` since 2026-11-11) |
 | an item's stage isn't in the plan | `There's no stage "9" in the plan.` |
 | a `tipGroup` item's ID isn't the first stage of an ordinary tip group | `Stage "3" doesn't start a tip group, so it can't name one.` |
 | an item's randomization isn't in the plan | `There's no randomization "r9" in the plan.` (as above) |
 | a place isn't one of the three forms, or its index is outside the column | `The place must be between boxes (index 0 to 4), inside a tip group or inside a transfer table, but got {"kind":"between","index":9}.` (the column's real largest index; the place as JSON) |
 | `inTipGroup`'s position is outside its tip group | `Box 2 has positions 0 to 3, but got 7.` |
 | `inTipGroup` names a randomization's box | `Box 3 is a randomization: nothing can be put inside it.` |
-| a tip group or randomization put inside a tip group | `A tip group or randomization can't go inside another tip group: put it between tip groups.` |
+| a tip group, randomization, transfer table or mixing box put inside a tip group | `A tip group, randomization, transfer table or mixing box can't go inside another tip group: put it between tip groups.` (Until 2026-11-11 it named only `A tip group or randomization`; it now names every container, since a transfer table and a mixing box get it too.) |
 | `moveItems`: a randomization's stage without its randomization | `Stage 5, “Drug A”, belongs to a randomization, which moves its stages with it: move the whole randomization, or copy the stage.` |
-| `pasteItems`: not copied items (not an object, wrong `format`, `items` not a non-empty list) | `Can't paste: this isn't stages, tip groups, randomizations or transfer tables copied from the transfer designer.` (The per-item form message, `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.`, stays as it is.) |
+| `pasteItems`: not copied items (not an object, wrong `format`, `items` not a non-empty list) | `Can't paste: this isn't stages, tip groups, randomizations, transfer tables or mixing boxes copied from the transfer designer.` (`mixing boxes` since 2026-11-11) (The per-item form message, `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.`, stays as it is.) |
 | `pasteItems`: a newer version | `Can't paste: these were copied by a newer version of the tools (version 3).` |
 | `pasteItems`: an entry isn't in its form | `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.` |
 | `pasteItems`: a value refused by the edit that would make it | `Can't paste: item 2: ` and that edit's message, e.g. `Can't paste: item 2: "Z99" isn't a well on Plate1. Its wells are A1 to H12.` (Messages pass through unchanged, so the operation list's stage rule names the new stage's ID and an operation number, which the user never sees; roadmap, "Technical debt", "Some messages use internal terms".) |
@@ -2305,6 +2721,40 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `deleteItems`: a randomization's stage without its randomization (the first in column order) | `Stage 5, “Drug A”, belongs to a randomization: delete the whole randomization, or change it in its card.` |
 | `deleteItems`: a transfer table's stage without its transfer table (the first in column order) | `Stage 3, “Media”, belongs to a transfer table: delete the whole transfer table, or change it in its wizard.` |
 | `deleteItems`: every stage of the plan | `That's every stage in the plan, and a plan needs at least one. Leave one stage, or add a new one first.` |
+| A mixing box's `id` isn't one of the plan's (every function taking one, except `mixingBoxAt`, which gives `null`, as `transferTableAt` does) | `There's no mixing box "m9" in the plan.` |
+| a mixing box's draft isn't an object with exactly `way`, `wells`, `tipType` and `probes` | `A mixing box's draft must be an object with exactly "way", "wells", "tipType" and "probes", but got 5.` |
+| the draft's `way` isn't one of `MIXING_WAYS` | `The way to mix must be one of "freshTip", "sameContents", but got "byRow".` (`MIXING_WAYS`, joined by `, `) |
+| the draft's `wells` isn't a list, a well isn't on the deck, or a well is listed twice | `The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], but got null.` (as `mixWells`) / `Well to mix 3: ` and `deck.checkWell`'s message / `Plate1 A1 is a well to mix twice. List each once.` |
+| the draft's `tipType` or `probes` | `setTipType`'s or `setTipProbes`' message, unchanged |
+| `addMixingBox`, `updateMixingBox`: the draft has no wells | `Pick at least one well to mix.` |
+| `addMixingBox`, `updateMixingBox`: a `"freshTip"` draft with a reservoir trough, a well of a labware whose grid has one row (`isTroughGrid`; Andy, 2026-11-11, decision C; section 3, "Its groups"); for `updateMixingBox`, also when the draft is the box's own (checked before "nothing changes") | `A fresh tip for every well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip for wells with the same contents, or leave the troughs out.` (the first such well in probe order) |
+| `mixingGroups`: `at` isn't a stage or `null` | `There's no stage "9" in the plan.` |
+| `addMixingBox`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a mixing box before.` |
+| `addMixingBox`: `beforeId` is inside a tip group | `A mixing box sits between tip groups, so it can't go before stage 3, “Drugs”.` (Inside a randomization, a transfer table or another mixing box: each one's "stay together" message.) |
+| `mixedContentsOf`: the stage isn't a mixing box's mix step | `Stage 3, “Drugs”, isn't part of a mixing box.` (or `There's no stage "9" in the plan.`) |
+| `removeMixingBox`: its mix steps are all the plan's stages | `This mixing box's mix steps are all the plan's stages, and a plan needs at least one. Add a stage outside it first.` |
+| an edit of its mix steps' wells (`addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer`, `mixWells`, `unmixWell`) | `Stage 7, “Mix 1 of 3”, is part of a mixing box: change its wells in the mixing box.` |
+| `renameStage` of one of its mix steps | `Stage 7, “Mix 1 of 3”, is part of a mixing box: it's named by its place in the box.` |
+| `changeStageSettings`, `setStageMix` on one of its mix steps, or `setTipType`, `setTipProbes` on its tip change | `Stage 7, “Mix 1 of 3”, is part of a mixing box: its tips are set in the mixing box, and it mixes with the standard mix.` |
+| `removeStage` of one of its mix steps | `Stage 7, “Mix 1 of 3”, is part of a mixing box: change its wells in the mixing box, or remove the whole mixing box.` |
+| `removeTipChange` of one of its mix steps | `Every mix step of a mixing box starts on new tips, so these can't be removed.` |
+| `removeTipChange` of the stage just after it | `This tip change keeps stage 10, “Wash”, off the mixing box's tips. A mixing box never shares tips with other stages.` |
+| `addStage`, `addMixStep` without `takeTips` just after its last mix step (a `beforeId` that's the stage after it, or `null` when it's last) | `A stage added here would share the mixing box's tips. Add it with new tips, from the seam between tip groups.` |
+| adding a stage, mix step, randomization, transfer table or mixing box inside it (a `beforeId` that's one of its mix steps but its first), or a stage or mix step with `takeTips` before its first mix step | `A mixing box's mix steps stay together, each on its own tips: add before its first mix step or after its last.` |
+| `moveItems`: one of its mix steps without the mixing box | `Stage 7, “Mix 1 of 3”, belongs to a mixing box, which moves its mix steps with it: move the whole mixing box, or copy the mix step.` |
+| `inTipGroup` names a mixing box's box | `Box 3 is a mixing box: nothing can be put inside it.` |
+| `inTransferTable` names a mixing box's box | as for any box that isn't a transfer table: `Box 3 isn't a transfer table.` |
+| `setMixingBoxes`: not a list, or an entry isn't an object with exactly its three properties | `The mixing boxes must be a list, but got 5.` / `Mixing box 2 must be an object with exactly "id", "way" and "stages".` |
+| `setMixingBoxes`: an ID isn't `"m"` and a whole number of at least 1, or is repeated | `Mixing box 2's ID must be "m" and a whole number, like "m1", but got "x".` / `Mixing boxes 1 and 3 both have the ID "m2".` |
+| `setMixingBoxes`: `way` isn't one of `MIXING_WAYS` | `Mixing box 2: ` and the draft's way message |
+| `setMixingBoxes`: `stages` isn't a non-empty list of stage IDs, names a stage not in the plan, or one twice | `Mixing box 2: its stages must be a non-empty list of stage IDs.` / `Mixing box 2: its stage "9" isn't in the plan.` / `Mixing box 2: stage "5" is listed twice.` |
+| `setMixingBoxes`: a stage isn't a mix step, has no mixed wells, or isn't named by its place | `Mixing box 2: stage "5" isn't a mix step.` / `Mixing box 2: stage "5" mixes no wells.` / `Mixing box 2: stage "5" must be named “Mix 2 of 3”, by its place.` |
+| `setMixingBoxes`: a well is mixed by two of its mix steps | `Mixing box 2: Plate1 A1 is mixed by two of its mix steps.` |
+| `setMixingBoxes`: its stages aren't consecutive in stage order, one isn't the only stage of its tip group, or their tips differ | `Mixing box 2: its stages must come one after another, in stage order.` / `Mixing box 2: stage "5" shares tips with another stage. Every mix step of a mixing box starts on new tips.` / `Mixing box 2: its mix steps must all load the same tips, but stage "6" loads BC1070 on 8 probes and stage "5" BC230 on 4.` |
+| `setMixingBoxes`: a stage is owned by two mixing boxes | `Stage "5" belongs to two mixing boxes, 1 and 2.` (A stage of a randomization or a transfer table is never a mix step, which their own checks refuse, so a stage owned by one of them and a mixing box is refused by the mix step check of whichever is checked second.) |
+| `setMixingBoxes`: a randomization without stages sits before one of its mix steps other than its first | `Randomization 2 sits before stage "5", inside mixing box 1. A randomization sits between tip groups.` |
+| `pasteItems`: a mixing box item in a version 1 to 5 copy | the form message: `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.` |
+| `pasteItems`: a mixing box's values or stages refused | `Can't paste: item 2: ` and `setMixingBoxes`' message without its `Mixing box 2: ` prefix, e.g. `Can't paste: item 2: stage "5" mixes no wells.` (the stage named by its new ID, as pasted stages' messages are; roadmap, "Technical debt", "Some messages use internal terms") |
 | `isWellUsed`, `isWellToFill`, `moveWell`: a well isn't on the deck | `deck.checkWell`'s messages, unchanged, e.g. `"Z99" isn't a well on Plate1. Its wells are A1 to H12.` |
 | `moveWell`: `to` is `from` | `Res1 3 is where it is already. Choose another well to move it to.` |
 | `moveWell`: `from` isn't in use | `The plan doesn't use Res1 7, so there's nothing to move.` |
@@ -2322,9 +2772,13 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
 - `addTipChange`: in the table's order (not a stage, the first stage, already has new tips), then
   a randomization's stage (2026-11-05, item 20).
 - `removeTipChange`: `START`, then none at `key`, then the transfer table refusals (its stage's,
-  then the stage just after it), then a randomization's stage, then the stage just after a
+  then the stage just after it), then the mixing box refusals (the same two), then a randomization's
+  stage, then the stage just after a
   randomization's last stage, then a stage a randomization without stages sits before.
-- `setTipType`: none at `key`, then the tip type.
+- `setTipType`: none at `key`, then a mixing box's mix step's tip change (2026-11-11), then the tip
+  type. `setTipProbes`, `changeStageSettings`, `setStageMix`, `mixWells`, `unmixWell` and
+  `renameStage` likewise check a mixing box's mix step right after the stage (or tip change)
+  exists, before their own checks.
 - `changeStageSettings`: the stage list's checks, then the source's mixing, then the
   destination's, then the mix step checks in the table's order (one end only, source mix,
   destination mix, change of kind).
@@ -2376,9 +2830,10 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   then its label is text, not blank, without spaces at its ends.
 - `moveItems`, `copyOf`, `copyItems`: the list, then each item in turn (its form, then that it's
   in the plan, then for a tip group that its ID starts one); then the place's form and range, then
-  a randomization's or transfer table's box, then the container rule; then, for `moveItems`, a
-  randomization's stage without its randomization, then a transfer table's stage without its
-  transfer table (unless the place is inside its own transfer table).
+  a randomization's, transfer table's or mixing box's box, then the container rule; then, for
+  `moveItems`, a randomization's stage without its randomization, then a transfer table's stage
+  without its transfer table (unless the place is inside its own transfer table), then a mixing
+  box's mix step without its mixing box.
 - `readTransferTable`: the table's form (the list, then each row in turn: a list, its length,
   then each cell text); then the problems, in reading order (section 3).
 - A draft (`transferTableProblems`, `sourceSplit`, `transferTableStages`, `addTransferTable`,
@@ -2390,7 +2845,22 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   source well, no wells chosen, a well that isn't a source well, a well the table fills; for each,
   the first such in its list).
 - The refusals for a transfer table's stages come after the edit's own checks that the stage (or
-  `beforeId`, or tip change) exists, and before any other check.
+  `beforeId`, or tip change) exists, and before any other check. The refusals for a mixing box's
+  mix steps likewise, and after the transfer table's (a stage is never both).
+- A mixing box draft (`mixingGroups`, `addMixingBox`, `updateMixingBox`): for `updateMixingBox` the
+  mixing box first; then the draft's form (an object with exactly its four properties, then `way`,
+  then `wells`: the list, then each well on the deck, then repeats; then `tipType`, then `probes` in
+  `setTipProbes`' order); then `at` (or `beforeId`: a stage or `null`, then, for adding, the "stay
+  together" refusals of randomizations, transfer tables and mixing boxes, then a place it can sit);
+  then, for adding and updating, at least one well; then no reservoir trough in a `"freshTip"`
+  draft (`mixingGroups` doesn't check this one); then, for updating, "nothing changes".
+- `mixedContentsOf`: the stage, then whether a mixing box owns it.
+- `setMixingBoxes`: the list; then each mixing box in turn: its form (exactly its properties), its
+  ID, `way`, then `stages` (form, each stage in the plan, not twice, each a mix step, mixing at
+  least one well, named by its place, consecutive and in stage order, each the only stage of its tip
+  group (its first, then each after it), every tip change loading the first's tips, no well in two
+  of its mix steps); then IDs repeated; then stages owned by two mixing boxes; then each
+  randomization without stages, in order, sitting before a mix step of one other than its first.
 - `setTransferTables`: the list; then each transfer table in turn: its form (exactly its
   properties), its ID, `table`'s form, `sources`' form (as a draft's), then `stages` (form, each
   stage in the plan, not twice, each component a column's header, no component twice, each stage
@@ -2400,14 +2870,15 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   then each randomization without stages, in order, sitting before a transfer table's stage other
   than its first.
 - `addStage`, `addMixStep`: `beforeId` a stage or `null`, then the transfer table refusals (inside
-  it, `takeTips` before its first stage, then just after its last stage), then the randomization
-  refusals in the same order (inside it, `takeTips` before its first stage, then just after its
+  it, `takeTips` before its first stage, then just after its last stage), then the mixing box
+  refusals in the same order, then the randomization refusals in the same order (inside it, `takeTips` before its first stage, then just after its
   last stage).
 - `addStageWithNewTips`, `addMixStepWithNewTips`: `beforeId` a stage or `null`, then inside a
   transfer table, then inside a randomization.
 - `deleteItems`: the list, then each item in turn (as `moveItems`); then a stage of a randomization
   or transfer table without its owner (the first such in column order, whichever kind); then
   every stage of the plan.
+  transfer table, then inside a mixing box, then inside a randomization.
 - `moveWell`: `from` on the deck, then `to` on the deck (`deck.checkWell`'s order), then the same
   well, then `from` in use, then `from` a well to fill, then `to` in use.
 - `pasteItems`: the copied items' form and version, then each item in turn, in order (its form,
@@ -2495,7 +2966,8 @@ order of checks.
   only `operationList`.
 - `config/mixing.js`: `MIX_STEP_MODE`'s technique and liquid type are names, the liquid type
   follows Biomek's rule, and the technique isn't any pipetting mode's technique or mixing technique;
-  `MIX_STEP_VOLUME` is a number above 0.
+  `MIX_STEP_VOLUME` is a number above 0; `MIX_VOLUME_TOLERANCE` (2026-11-11, item 34) is a number
+  above 0 and below 100.
 - `addStage` with `takeTips` before a stage with a tip change moves the tip change to the new stage;
   without it, the new stage joins the tip group before.
 - `addStage` before the first stage keeps the `START` tips first.
@@ -3452,6 +3924,291 @@ between boxes are refused with section 5's messages; a pasted table whose stage 
 **The REPL** (`scripts/repl.js`): `readTransferTable`, `addTransferTable`, `updateTransferTable` and
 `isTransferTableOutOfDate` in the transfer designer's topic, with an example building a two-column
 table on the real deck (`Res1`, `Deep1`, `Plate1`).
+
+**Mixing boxes** (2026-11-11). A test plan, built in a helper: components Media, Drug A and DMSO;
+Res1 1 holding Media and Deep1 A1 holding Drug A, plenty of each; one transfer stage, `Fill`, on the
+`START` tips, filling Plate1 A1 to D1 with 90 µL of Media and 10 µL of Drug A each, Plate1 E1 to H1
+and A2 with 100 µL of Media, and Plate1 B2 with 180 µL of Media and 20 µL of Drug A (the same
+shares as A1, twice the volume, so out of `MIX_VOLUME_TOLERANCE` with every other well, whatever its
+value below 100, as the config check requires); then a stage `Wash` on tips of its own. Tip types and probe counts
+are taken from `TIP_TYPES` and `probesFor`, never named where a test doesn't need a particular one,
+and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests follow config/").
+- **`MIXING_WAYS`** is `["freshTip", "sameContents"]` and frozen.
+- **Probe order:** `mixingGroups` with `"freshTip"` on 8 probes for Plate1 A2, B1, A1, H1 (given in
+  that order) gives A1 and B1, then H1 (a gap: C1 to G1 not picked), then A2: down each column,
+  then the next; with `"sameContents"`, all one volume and the same contents, one group A1, B1,
+  H1, A2, in that order; wells on Deep1 and
+  Plate1 together come in the deck's labware order (whichever `config/deck.js` lists first, worked
+  out from it); Res1 5, 1 and 3 give Res1 1, 3, 5 (each a group of its own, a trough being a column
+  of its own).
+- **Fresh tip, column batches** (decision B; wells of one volume, so volume plays no part): on 4
+  probes, Plate1 A1 to H1 gives A1 to D1, then E1 to H1; Plate1 A1 to C1 and A2 to C2 give A1 to C1,
+  then A2 to C2 (never A1 to C1 with A2); Plate1 A1 to A12 gives 12 groups of one, in column order.
+  On 3 probes, Plate1 G1, H1 and A2 give G1 and H1, then A2 (a new column starts a batch even when
+  the last isn't full). On 1 probe, any wells give groups of one.
+- **Fresh tip, gaps** (Andy, 2026-11-11 11:42; wells of one volume): on 4 probes, Plate1 A1, C1 and
+  E1 give three groups of one (three mix steps once added); Plate1 A1, B1, D1, E1 and F1 give A1 and
+  B1, then D1 to F1; on 8 probes, Plate1 A1 to H1 without D1 (a gap inside an otherwise full column)
+  gives A1 to C1, then E1 to H1, never one batch of seven; on 4 probes, the same wells give A1 to C1,
+  then E1 to H1; a gap and a new column at once (Plate1 A1 and C2 on 8 probes) give two groups; with `"sameContents"` (the same
+  contents, one volume), each of these is one group: gaps never split it.
+- **Fresh tip, restart at labware:** Plate1 A1 to C1 and another 96-well labware's A1 to C1 (the
+  same labware type), on 8 probes: two batches, one per labware, never a batch with wells on both.
+- **Fresh tip, the test plan:** its 10 wells on Plate1 (A1 to H1, A2, B2) on 4 probes: A1 to D1, E1
+  to H1, then A2, then B2 (B2 holds twice A2's volume: a volume break, below); on 8 probes: A1 to
+  H1, A2, then B2. `components` on 4 probes: `["Media", "Drug A"]` for A1 to D1 (all hold the same;
+  Media before Drug A, the plan's `components` order), `["Media"]` for E1 to H1 and for A2, and
+  `["Media", "Drug A"]` for B2; on 8 probes, `null` for A1 to H1 (Media alone, and Media with Drug
+  A).
+- **Fresh tip ignores contents:** the same wells, holding the same volumes, give the same batches
+  whatever they hold, and after an edit before it that changes what they hold but not how much.
+- **Volume tolerance** (decision A; the numbers worked out from `MIX_VOLUME_TOLERANCE`, called `t`
+  here, never naming its value: CLAUDE.md, "Tests follow config/"), with wells of the same contents,
+  in one column, in rows right next to each other (Plate1 A1, B1, C1 …, so no gap plays a part), on
+  8 probes, the first holding 100 µL; for each way:
+  - a second well holding `100 × (1 + 0.9 t / 100)` µL shares the first's group; one holding
+    `100 × (1 + 1.1 t / 100)` µL doesn't (with `"sameContents"`, it starts a second group; with
+    `"freshTip"`, a new batch);
+  - a smaller second well likewise: `100 / (1 + 0.9 t / 100)` µL shares the group (the tolerance is
+    of the smallest, so the first, the larger, is then within it), `100 / (1 + 1.1 t / 100)` µL
+    doesn't;
+  - **no chaining:** three wells of `100`, `100 × (1 + 0.6 t / 100)` and `100 × (1 + 1.2 t / 100)`
+    µL: the first two share a group, the third doesn't, though it's within `t`% of the second
+    (judged on the group's smallest volume, not its last well's); with `"sameContents"` the third
+    starts a group of its own;
+  - **exactly at the limit:** a second well holding `100 × (1 + t / 100)` µL, worked out in the
+    test as written (so with whatever leftovers the arithmetic leaves), shares the first's group:
+    one group, for each way (the comparison allows `NEGLIGIBLE_MICROLITERS`, section 3, "About the
+    same volume");
+  - below, `far` is `100 × (1 + 2 t / 100)` µL, out of tolerance with 100 µL for any `t`;
+  - with `"freshTip"`, wells of `100`, `far` and `100` µL in one column: three batches (a batch
+    starts again at the `far` well, and again at the next, out of tolerance with it), not a batch
+    of the first and third;
+  - with `"sameContents"`, the same three wells: two groups, the first and third together (the
+    third joins the first group it fits), then the `far` well; groups in the probe order of their
+    first wells;
+  - with `"sameContents"`, four wells of `100`, `far`, `100` and `far` µL (greedy, section 3, "Its
+    groups"): two groups, the 1st and 3rd, then the 2nd and 4th (the 4th skips the first group on
+    volume and joins the later one); with `"freshTip"`, four batches of one;
+  - the volumes are what the wells hold just before the box: wells filled to one volume at Start,
+    one of them topped up past the tolerance by a stage before `at`, are two groups; with `at`
+    before that stage, one.
+- **Same contents, grouping:** the test plan's Plate1 A1 to H1, A2 and B2, on 4 probes: three
+  groups, A1 to D1 (`["Media", "Drug A"]`), E1 to H1 with A2 (`["Media"]`), then B2 (`["Media",
+  "Drug A"]`: the same contents as A1, twice the volume, so split by volume); groups in the probe
+  order of their first wells; each group's wells in probe order (A2 last in the second group). A
+  group of 5 wells on 4 probes is kept whole (more wells than probes), as is a group of wells in
+  two columns.
+- **Same contents, order of first appearance:** with Plate1 A1 holding Media alone and B1 to D1
+  Media and Drug A (all one volume), the Media group comes first, then the Media and Drug A group.
+- **Same contents, precision** (`SAME_SHARE_ALLOWANCE` is `0.000001`; the other numbers are worked
+  out from it): `holdSameContents` is `true` for `{ Media: 0.9, "Drug A": 0.1 }` and the same with
+  each share moved by half the allowance (one up, one down); `false` with each moved by ten times
+  the allowance; `false` for `{ Media: 1 }` and `{ Media: 0.99, DMSO: 0.01 }`, and for `{ Media: 1 }`
+  and `{ DMSO: 1 }`; `true` for `{}` and `{}`; `false` for `{}` and `{ Media: 1 }`; the order of keys
+  doesn't matter; swapping its arguments never changes the answer; `false` for `{ Media: 1 }` and
+  `{ Media: 1 - SAME_SHARE_ALLOWANCE / 2, DMSO: SAME_SHARE_ALLOWANCE / 2 }` (a component in one
+  well only, below the allowance, still differs, as in the filler wells' rule). In `mixingGroups`, wells 0.1% apart in
+  Drug A's share are two groups; wells holding the same shares through different routes (one filled
+  at Start, one by transfers) are one.
+- **No chaining (shares):** three wells whose Drug A shares are `x`, `x + 0.8 × SAME_SHARE_ALLOWANCE` and
+  `x + 1.6 × SAME_SHARE_ALLOWANCE` (Media's shares moving the other way): the second joins the
+  first's group, the third doesn't (compared with the group's first well, not its last).
+- **Empty wells** (decision D): with `"sameContents"`, Plate1 C3 and D3 holding nothing just before
+  it, picked with A1 to D1, form one group with `components` `[]`, placed by probe order of its
+  first well like any group, never joining a group of wells that hold something; after adding, the
+  mix step mixing them has a contents problem (`stagesWithContentsProblem`: each mixed well draws
+  `MIX_STEP_VOLUME` from nothing), as any mix step of an empty well, and nothing refuses the pick.
+  With `"freshTip"` on 8 probes, Plate1 A3 holding 100 µL and B3 and C3 empty: A3, then B3 and C3
+  (empty wells batch only with empty wells).
+- **Contents just before it:** `at` before `Fill` sees Plate1 empty (with `"sameContents"`, one
+  group of all, `[]`); `at` `Wash` (after `Fill`) sees `Fill`'s contents; `at` `null` sees every
+  stage; a stage after `at` changes nothing.
+- **Many labware:** wells on Plate1, Plate2 and Deep1 together, all one volume, with
+  `"sameContents"`: a group may hold wells of several labware (wells of the same contents on two
+  plates share a mix step), in probe order; with `"freshTip"`, batches never span two labware or
+  two columns.
+- **Reservoir troughs** (decision C): `addMixingBox` and `updateMixingBox` with a `"freshTip"` draft
+  holding Plate1 A1 and Res1 3 and 1 refuse it with `A fresh tip for every well can't mix reservoir
+  troughs until that's checked in simulation: Res1 1. Use one tip for wells with the same contents,
+  or leave the troughs out.` (Res1 1, the first trough in probe order), the plan unchanged;
+  `mixingGroups` with that draft gives its groups (Plate1 A1, Res1 1, Res1 3, in the deck's labware
+  order) without refusing; the same wells with `"sameContents"` are added. **Order of checks:** a
+  `"freshTip"` draft with troughs and a bad `tipType` reports the tip type; with troughs and an
+  unknown `beforeId`, the stage; with troughs and an unknown ID (`updateMixingBox`), the ID; the
+  trough refusal comes only once everything else passes.
+- **What counts as a trough** (`isTroughGrid`, tested with grids built in the test, since the deck
+  may hold none of them): `true` for the grid of `DeepReservoir12` (`GRID_1X12_NUMBERED`), for a
+  one-row lettered grid (`new WellGrid(1, 12)`) and for a one-well reservoir's grid (`new
+  WellGrid(1, 1, { naming: "number" })`); `false` for `GRID_96` and for a numbered grid of two rows
+  (`new WellGrid(2, 6, { naming: "number" })`).
+- **Troughs got round the refusal** (decision C): with a `"freshTip"` box of Plate1 A1 alone added
+  (one mix step), `moveWell` of Plate1 A1 to Res1 5 (an unused trough) is allowed and makes the box
+  out of date (`isMixingBoxOutOfDate` `true`, though its one group, Res1 5, matches its one mix
+  step: the trough alone makes it out of date), and `updateMixingBox` with `mixingBoxDraft` then refuses with the trough
+  message (naming Res1 5), not giving back the same plan; with the way changed to `"sameContents"`
+  it updates, and the box is up to date. Likewise a plan built with `setMixingBoxes` (as a plan file
+  gives it) holding a `"freshTip"` box whose one mix step mixes Res1 1: accepted, out of date, and
+  Update with its own draft refused with the trough message. A `"sameContents"` box with a trough
+  is never out of date for it.
+- **The draft's form:** each refusal of section 5, in the order of checks: `5`, `null`, an object
+  with a property missing or extra; `way` `"byRow"`; `wells` `null`, a well off the deck (`Well to
+  mix 3: …`), a well twice; `tipType` `"BC50"`; `probes` `[9]`, `[1, 1]`; an empty `wells` is in its
+  form (`mixingGroups` gives `[]`), but `addMixingBox` and `updateMixingBox` refuse it with `Pick at
+  least one well to mix.`; `at` `"9"`.
+- **Adding:** the Plate1 wells above with `"sameContents"` on BC230 (`TIP_TYPES[0]`) and 3 probes
+  before `Wash`: three mix steps before `Wash`, named `Mix 1 of 3`, `Mix 2 of 3` and `Mix 3 of 3`, each a mix step
+  (`isMixStep`) with the default mix step settings (whatever the nearest mix step before it uses:
+  a mix step with another mix, added before the box, isn't copied), each the only stage of its tip
+  group, loading the draft's tip type on `probesFor(3)`; their mixed wells are the groups' wells,
+  each a transfer of `MIX_STEP_VOLUME`; `Wash` keeps its tips; `mixingBoxes` holds `{ id: "m1", way:
+  "sameContents", stages: [first, second, third] }`; one edit (one undo state); a second box is `m2`; with
+  `m1` removed and `m2` kept, the next is `m3`. Added at the end (`null`): after `Wash`, `Wash`
+  keeping its tips. Added before the plan's first stage: the first mix step loads the draft's tips
+  as the `START` tips, and `Fill` gets a tip change loading the tips it had.
+- **One mix step:** a draft of one well gives one mix step named `Mix 1 of 1`.
+- **`addMixingBox` with an unknown `beforeId`** (`"9"`): `There's no stage "9" to add a mixing box
+  before.`, the plan unchanged.
+- **`mixingBoxAt` and `mixingBoxOf`:** after adding `m1`, `mixingBoxAt(plan, "m1")` is the box
+  (`{ id, way, stages }`, frozen) and `mixingBoxAt(plan, "m9")` is `null` (not a throw);
+  `mixingBoxOf` gives `"m1"` for each of its mix steps, and `null` for `Fill`, `Wash`, a
+  randomization's stage, a transfer table's stage and an ID that isn't a stage.
+- **Where it can be added:** `null`; the first stage of a tip group; before a randomization's,
+  transfer table's or mixing box's first stage (it goes above); refused before a stage inside a tip
+  group, inside a randomization, a transfer table or a mixing box, with each one's message.
+- **`mixingBoxDraft`:** after adding, gives the draft's way, its wells (all of them, in probe order,
+  whatever order the draft gave), and its tip type and probes; with its first mix step the plan's
+  first, the `START` tips; a new object each time (changing it changes nothing in the plan).
+- **`mixedContentsOf`:** `["Media", "Drug A"]`, `["Media"]` and `["Media", "Drug A"]` for a
+  same-contents box's three mix steps; `null` for a fresh-tip batch whose wells differ (A1 to H1 on
+  8 probes); `[]` for a mix step of empty wells; after
+  `renameComponent` of Media to DMEM, `["DMEM", "Drug A"]`; refused for `Fill` (not a mixing box's)
+  and for `"9"`.
+- **Updating:** the same draft gives back the same plan (the same object); the same wells in another
+  order too; a draft whose only change is the way (`"freshTip"`), the tip type or the probe count
+  remakes it: new mix step IDs, new names (`Mix 1 of 5` … for `"freshTip"` on 3 probes: A1 to C1,
+  D1 to F1, G1 and H1, A2, B2), the tips given, in the same place (before
+  `Wash`), the box keeping its ID and its place in `mixingBoxes`, `Wash` keeping its tips; one edit
+  (undo brings back the old mix steps with their old IDs); adding a well, and taking one out,
+  remake it; a box whose mix steps are all but one stage of the plan updates (new mix steps are
+  added before the old ones go).
+- **Randomizations around an update:** a randomization without stages sitting before the box's
+  first mix step still sits before its new first mix step after an update; one run just above it
+  (its `beforeId` the box's first mix step) has the new first mix step as its `beforeId`;
+  `setRandomizations` accepts both results. A randomization without stages sitting **below** the
+  box (its `beforeId` `Wash`, the stage just after the box) still sits before `Wash` after an
+  update, below the new mix steps, never above or among them.
+- **Updating at the top of the plan:** with the box's first mix step the plan's first stage (on the
+  `START` tips), an update with another tip type (`TIP_TYPES`' other) and probe count gives the new
+  first mix step the `START` tips, set to the draft's; the old first mix step's tips go with it, and
+  every other new mix step has a tip change loading the draft's tips; `Wash` keeps its own.
+- **`updateMixingBox`'s order of checks** (section 5): an unknown ID with a draft not in its form
+  reports the ID; a draft with a bad `way` and a well off the deck reports the way; a draft with no
+  wells and an unknown ID reports the ID; a draft with no wells otherwise in its form gives `Pick at
+  least one well to mix.`
+- **Out of date:** `false` right after adding and after updating. With `"sameContents"`: `true` after
+  adding DMSO to Plate1 A1 before the box (a new stage before it, or `addToWells` at Start, either
+  way A1 now holds three components and leaves A1 to D1's group); `false` after adding DMSO to B2
+  alone the same way (alone in its group, it groups the same); `false` after adding 10 µL of Media
+  to every well of a group the same way, if their shares stay equal to each other (e.g. the group
+  whose wells all hold Media alone); `true` after topping up A1 with 90 µL of Media and 10 µL of
+  Drug A before the box (the same shares, twice the volume: it now groups with B2, decision A);
+  `true` after a change that makes two groups' contents the same at the same volume (they'd merge);
+  `true` after `removeStage` of `Fill` (every well now empty: one group); after `removeComponent` of
+  Drug A, every well holds Media alone, A1 to D1 90 µL, E1 to H1 and A2 100 µL, B2 180 µL, so the
+  expected answer is worked out in the test from `t` (`MIX_VOLUME_TOLERANCE`) by this closed form,
+  never by calling `mixingGroups`: A1 to D1 and E1 to H1 with A2 merge exactly when `100 <= 90 × (1
+  + t / 100)`, that is `t >= 100 / 9`; B2 stays alone for any allowed `t` (below 100, since `180 > 90
+  × (1 + t / 100)`, and, when the first two don't merge, `180 > 100 × (1 + t / 100)` too, as `t <
+  100 / 9`); so the box is out of date exactly when `t >= 100 / 9` (e.g. at `t` = 10 it
+  isn't: the three groups stay as they were);
+  `false` after `renameComponent`; `false` after `Fill`'s settings change; `false` again after
+  `updateMixingBox` with `mixingBoxDraft`. With `"freshTip"` on 4 probes (Plate1 A1 to H1, A2 and
+  B2: batches A1 to D1, E1 to H1, A2, then B2): `false` after a change to which components its
+  wells hold that keeps their volumes (Media at Start replaced by DMSO in the same amount); `true`
+  after adding 100 µL of Media to A2 before the box (A2 and B2 then hold the same volume: one
+  batch); `false` after `moveWell` of B2 to C2 (still a batch of its own: a gap after A2, and out of
+  tolerance with it);
+  `true` after `moveWell` of A1 to C2 (now B1 to E1, F1 to H1, then A2, B2 and C2 each alone).
+- **Removing:** takes out the box and its mix steps, as one edit; tip changes on the stage after it
+  stay; a randomization without stages sitting before its first mix step then sits before `Wash`;
+  refused, with its message, and `canRemoveMixingBox` `false`, when its mix steps are all the plan's
+  stages (a plan of one box: built with `setMixingBoxes`, or by removing the other stages through
+  their own edits); unknown IDs refused by every function taking one except `mixingBoxAt`, which
+  gives `null` (tested below).
+- **Protection:** each refusal of section 5 for a mixing box's mix step, with its message and the
+  plan unchanged: `addTransfer` (a mixed well), `addTransfers`, `changeVolume`, `removeTransfer`,
+  `mixWells`, `unmixWell`, `renameStage`, `changeStageSettings` (even to the same settings),
+  `setStageMix`, `setTipType` and `setTipProbes` on its tip changes (and on `START` with its first
+  mix step the plan's first), `removeStage`, `removeTipChange` of its own and of the stage just after
+  it, adding a stage, mix step, randomization, transfer table or mixing box before its second mix
+  step, `takeTips` before its first, `addStage` and `addMixStep` without `takeTips` before the stage
+  just after it and with `null` when it's last; and what's allowed works: `addStageWithNewTips` and
+  `addMixStepWithNewTips` before its first mix step and just after its last (new tips of their own,
+  the stage below keeping its tips); `addStage` and `addMixStep` without `takeTips` before its first
+  mix step (joining the tip group above), and, with its first mix step the plan's first, the new
+  stage first on the `START` tips and its first mix step given a tip change loading the tips it had;
+  `removeStage` of the stage just after it gives the next stage a tip change loading the removed
+  one's tips.
+- **Its own edits skip the refusals:** adding, updating (removing old mix steps), removing,
+  `moveItems`, `pasteItems` and `moveWell` (its mixed wells) all work on its mix steps, and
+  `removeStage`'s randomization rules still apply in them.
+- **`setMixingBoxes`:** accepts what adding gives; each refusal of section 5, in the order of checks
+  (not a list, `5`; an entry `5`, and one with a property missing or extra; an ID `"x"`, `"m0"`,
+  `"m1.5"` and `5`; two boxes with the ID `"m2"`; a `way` of `"byRow"`; `stages` `"7"`, `[]` and
+  `[5]`; a stage `"9"` not in the plan; a stage listed twice; a stage that's a transfer stage; a mix step with no wells; a name `Mix 1 of 3` on the second of
+  two; a well in two of its mix steps; stages out of order or apart; a mix step sharing its tip group
+  with another stage; two mix steps on different tips; a stage in two boxes; a not-run randomization
+  sitting before its second mix step); a box whose mix steps use another mix (built through the
+  internal helpers, as a plan file saved before `DEFAULT_MIX` changed in `config/` holds one; no
+  plan file before version 14 holds a mixing box) is accepted: settings aren't checked beyond being
+  a mix step's. Such a box is out of date (`isMixingBoxOutOfDate` `true`), and `updateMixingBox`
+  with `mixingBoxDraft` remakes it with the default mix step settings (a new plan, not the same
+  object), after which it's up to date.
+- **`columnBoxes`:** a mixing box is a `mixingBox` box whose tip groups each hold one mix step;
+  beside a transfer table and a randomization, three boxes.
+- **`tipsUsed`:** a box of three mix steps on 4 probes counts 12 tips of its tip type, as any tip
+  changes.
+- **Moving and copying:** moving a mixing box between boxes keeps its mix steps, their IDs, wells and
+  tips, and its ID; moving it to the place just above or just below itself gives back the same plan
+  object ("Nothing changes", section 3, "Moving and copying"); listing the box and one of its mix
+  steps moves or copies the box once (the mix step is part of it already), and `copyOf` of the two
+  gives one `mixingBox` item and no `stage` item; refused inside a tip group (`A tip group, randomization, transfer table or mixing
+  box can't go inside another tip group: put it between tip groups.`); a mix step of it alone refused to any place, with its
+  message, including inside its own box (`inTipGroup` naming its box: `Box 3 is a mixing box: nothing
+  can be put inside it.`; `inTransferTable` naming it: `Box 3 isn't a transfer table.`); moving it
+  above a stage that changes what its wells hold makes a `"sameContents"` box out of date; `copyOf`
+  writes version 6, with `{ kind: "mixingBox", mixingBox: { way }, stages: [{ stage, tips }] }`; a
+  pasted copy is a new mixing box (the next free ID) with new mix steps of the same names, settings,
+  wells and tips, each on its own tips, `placed` naming it; pasted at the top of the plan, its first
+  mix step's tips are the `START` ones; a copy survives `JSON.stringify` and `JSON.parse` and pastes
+  into another plan, out of date there if its wells hold other contents; copies of its mix steps
+  copied alone are ordinary mix steps, owned by nothing; a version 5 copy holding a mixing box item
+  is refused with the form message; each `setMixingBoxes` refusal in a version 6 copy is refused with
+  `Can't paste: item N: ` and the message; `mixingBoxes` is in column order after a move or paste.
+- **Moving wells:** `isWellUsed` is `true` for a mixing box's well (a mixed well); moving Plate1 A1
+  to an unused well moves its mixed-well transfer (both ends) in its mix step, the box changing
+  nothing stored, `mixingBoxDraft` then giving the new well; out of date only as above.
+- **Undo:** with `plan-history`, one undo takes out an added box, one brings back an updated one's
+  old mix steps, one brings back a removed one.
+- **Immutability:** every function above leaves the plan and the draft given unchanged; a plan's
+  mixing boxes and their `stages` are frozen; `mixingBoxDraft` gives new lists.
+- **The filler wells' one-liquid rule** uses `holdSameContents`: the existing tests of `The filler
+  wells hold different liquids.` pass unchanged.
+- **Existing tests whose results change** (the specification changed, not the tests' purpose):
+  `moveItems`, `copyOf` and `copyItems` given something that isn't a list now name `… or mixing
+  boxes`; an item of an unknown kind now lists `"transferTable" or "mixingBox"`; `pasteItems` given
+  something that isn't copied items now names `… transfer tables or mixing boxes copied from …`;
+  `copyOf` writes version 6 (tests checking version 5 check 6); a newer version is now `7`; tests
+  of a tip group, randomization or transfer table put inside a tip group expect the message naming
+  all four containers (`A tip group, randomization, transfer table or mixing box can't go inside
+  another tip group: …`);
+  `emptyPlan()` has `mixingBoxes` `[]`, and the table of which parts each edit may change lists it.
+
+**The REPL** (`scripts/repl.js`): `mixingGroups`, `addMixingBox`, `updateMixingBox`,
+`mixingBoxDraft`, `mixedContentsOf` and `isMixingBoxOutOfDate` in the transfer designer's topic,
+with an example that fills four plate wells two ways at Start, then makes a same-contents mixing box
+of them (two mix steps) and a fresh-tip one (on 2 probes), on the real deck (`Res1`, `Plate1`).
 
 **Moving and copying**
 Set up a plan with Res1 troughs 1 and 2 holding `Media` and `Drug`, and four stages in two tip
