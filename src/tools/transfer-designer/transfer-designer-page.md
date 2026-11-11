@@ -397,7 +397,9 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
   transfer table out of date, in column order, is named: `A transfer table (at stage 3, “Media”) is
   out of date: open it and press Update.` Mixing boxes likewise (2026-11-11;
   `isMixingBoxOutOfDate`): `A mixing box (at stage 7, “Mix 1 of 3”) is out of date: open it and
-  press Update.` (its first mix step).
+  press Update.` (its first mix step). There's still **one message**: the first randomization,
+  transfer table or mixing box out of date **in column order** (`columnBoxes`), whichever kind it
+  is, so a mixing box above an out-of-date randomization is the one named.
 
 **Save as** (Andy, 2026-11-10; ADR 0023): when the files can be written, the box shows a choice
 under its text, headed `Save as`, with two options, one per line, each a radio button, its name and
@@ -1669,8 +1671,12 @@ From the top:
   deck.` Wells picked on labware that's then put away stay picked (and counted).
 - **2 · How to mix**: two radio choices, one per line, each its name (semibold) with a one-line
   note under it (13px gray), in `MIXING_WAYS` order:
-  - **`A fresh tip for every well`** (`"freshTip"`): `Nothing is carried from one well to the
-    next.`
+  - **`A fresh tip for every well`** (`"freshTip"`): `Meant to give each well its own tip (to be
+    checked in simulation).` (From the specification review, 2026-11-11: the preview's `Nothing is
+    carried from one well to the next.` stated as fact what isn't verified, `biomek.md`, "Not yet
+    known", "How Transfer From File gives a file's rows to the probes". This note was chosen over a
+    softer one that leaves the check out, so the user knows it's unchecked; once the simulation
+    confirms it, the note becomes `Nothing is carried from one well to the next.`)
   - **`One tip for wells with the same contents`** (`"sameContents"`): `Wells holding the same
     things, in the same shares, share a tip.`
   A new wizard starts on the first.
@@ -1679,7 +1685,14 @@ From the top:
   point**: the tip group of the stage just before `beforeId` in the stage order, or of the plan's
   last stage for `null`, or the `START` tips when `beforeId` is the first stage (as a new
   randomization's are, `transfer-designer.md`, "Where a new randomization's settings come from").
-  Editing, from its mix steps' tips (`mixingBoxDraft`).
+  Editing, from its mix steps' tips (`mixingBoxDraft`). **Probes that aren't the first N** (a
+  mixing box from a plan file or a copy may load, say, probes 2, 3 and 4, which the menu's `probesFor`
+  choices can't show; likewise the tips in use at a new wizard's seam): the probe menu gets **one
+  more entry, first and chosen**, naming them as a tip group's heading does, `probes 2, 3, 4`, and
+  the draft keeps those probes until another entry is chosen; the entry goes when the wizard closes.
+  (Decided in the specification review, 2026-11-11, over showing `3 probes` with a note: choosing
+  `3 probes` would quietly change the probes to 1 to 3, and Update with nothing else changed would
+  remake the box.) The Makes line names them the same way (`new BC230 tips on probes 2, 3, 4`).
 - **Makes** (a section heading), from `mixingGroups(plan, draft, at)` on the wizard's draft, worked
   out again on every change:
   - With no wells: `Nothing yet: pick the wells to mix.` (gray).
@@ -1702,16 +1715,19 @@ From the top:
   (editing), disabled with no wells picked, with the tooltip `Pick the wells to mix first.`
 
 **Escape** cancels (anywhere on the page while the wizard is open, unless a menu in it is open,
-which closes first), as `Cancel` does: the wizard closes and nothing changes (decided in the
+which closes first, the wizard staying open), as `Cancel` does: the wizard closes and nothing
+changes, and **what was open and selected before it opened is shown and selected again** (the open
+entry, the page's selection, or none) (decided in the
 hands-off workflow: like the transfer table wizard, nothing is asked; a mixing box's picks are
 quick to make again from the deck). A plan opened or reset can't happen while it's open (above).
 
 **Make mix steps** adds it (`addMixingBox(plan, draft, beforeId)`), closes the wizard and opens its
-first mix step, as one undoable edit; message `Added a mixing box: 3 mix steps, each on new tips.`
+first mix step, **selecting the mixing box** (as clicking its heading does), as one undoable edit; message `Added a mixing box: 3 mix steps, each on new tips.`
 (ok; `1 mix step`). **Update** (`updateMixingBox(plan, id, draft)`) likewise, opening its first mix
-step: `Updated the mixing box: 3 mix steps, each on new tips.`; when the update would change nothing
-(the logic gives back the same plan), nothing is recorded, the wizard closes, and the note `Nothing
-to update: the mixing box already matches.` shows. The new mix steps glow (below, "What changed
+step and selecting the mixing box: `Updated the mixing box: 3 mix steps, each on new tips.`; when the update would change nothing
+(the logic gives back the same plan), nothing is recorded, the wizard closes, the mixing box is
+selected and its first mix step opens, and the note `Nothing to update: the mixing box already
+matches.` shows. The new mix steps glow (below, "What changed
 glows"), and the mixing box's box opens. If the logic refuses, its message shows as an error and the
 wizard stays open.
 
@@ -2340,7 +2356,9 @@ and the deck shows its point again.
   what a Ctrl-click would (not Ctrl+Space or Cmd+Space, which systems take for themselves).
 - **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac). Not while an editing
   box, a randomization's card or the mixing wizard is open, since their changes aren't in the plan
-  yet. While the mixing wizard is open, Ctrl+C and Ctrl+V of stages and the menu key are refused as
+  yet. While the mixing wizard is open they act as its `Undo` and `Redo` buttons do (section 7,
+  "Mixing boxes"): the wizard shakes and the message bar shows the same message, `Make the mix
+  steps, or cancel the mixing, first.` (editing: `Update the mixing box, or cancel, first.`). While the mixing wizard is open, Ctrl+C and Ctrl+V of stages and the menu key are refused as
   section 7 says ("Mixing boxes").
 - **While the transfer table wizard is open** (section 7), none of these keys act on the page: the
   wizard's own keys apply (Enter, Tab and Escape in its cells; Escape elsewhere in it closes it, as
@@ -2949,14 +2967,25 @@ page's configuration (ADR 0009):
     and changing the line and chips as changed.
   - **Elsewhere while open:** clicking a stage, a heading, a ✎, a seam's button, `‹`, `›`, `Move
     wells`, `Undo`, `Save`, `Open`, `Reset`, `Biomek files`, the deck panel's copy and paste buttons,
-    a drag in the column, right-click in the column, Ctrl+C and Ctrl+V: each shakes the wizard and
-    shows `Make the mix steps, or cancel the mixing, first.` (editing: `Update the mixing box, or
-    cancel, first.`), changing nothing; bringing out labware, `Names`, `Arrows`, the contents card,
+    a drag in the column, right-click in the column, Ctrl+C, Ctrl+V, **Ctrl+Z and Ctrl+Y** (with
+    something to undo and redo): each shakes the wizard and shows `Make the mix steps, or cancel the
+    mixing, first.` (editing: `Update the mixing box, or cancel, first.`), changing nothing (the
+    undo history as it was); bringing out labware, `Names`, `Arrows`, the contents card,
     naming a well by right-click, and renaming labware work.
   - **Make mix steps:** the mixing box appears where the seam was, open, its mix steps glowing, each
     in a tip group of its own (`New tips · BC230 · 4 tips`), the stage below keeping its tips; its
-    first mix step opens; the message; one Undo takes it all out; from the seam below a
-    randomization that hasn't run, the randomization stays above (one undo).
+    first mix step opens and the mixing box is selected; the message; one Undo takes it all out;
+    from the seam below a randomization that hasn't run, the randomization stays above (one undo).
+    **A logic refusal on Make** (for the check, `addMixingBox` made to throw in the page under test)
+    shows its message as an error, and the wizard stays open with its wells, way and tips.
+  - **Escape and Cancel:** Escape with the tip type or probe menu open closes only the menu, the
+    wizard staying open with its picks; a second Escape cancels it; after Escape or Cancel, the stage
+    that was open before the wizard opened is open again and what was selected (a stage, a box, or
+    nothing) is selected again.
+  - **Probes that aren't the first N:** a mixing box opened from a plan file whose mix steps load
+    probes 2, 3 and 4: its ✎ shows the probe menu's extra first entry `probes 2, 3, 4`, chosen, and
+    the Makes line `… on probes 2, 3, 4`; Update with nothing changed shows `Nothing to update: …`;
+    choosing `3 probes` changes the line to `… on 3 probes`.
   - **The box:** its heading `▸`/`▾`, ⟳, `Mixing`, `3 mix steps · fresh tip per well` or `2 mix steps
     · same contents share a tip`; opening and closing by click, Enter and Space, `aria-expanded`;
     open state kept across edits, undo and redo but not a reload; a narrow column cutting the
@@ -2966,20 +2995,26 @@ page's configuration (ADR 0009):
     nothing; End's tips count including its tips.
   - **Editing:** its ✎ opens the wizard just after its box, with its wells, way and tips; changing the
     way and pressing Update remakes it in place (the box stays put, new mix steps, the message, one
-    undo); Update with nothing changed shows `Nothing to update: …` and records nothing; Remove
-    (red outline) acts at once, with its message, the first stage opening if one of its mix steps
-    was open, Undo bringing it back; Remove disabled, with its tooltip, when its mix steps are all
+    undo), the mixing box selected after it and its first mix step open; Update with nothing changed
+    shows `Nothing to update: …` and records nothing; Remove (red outline) acts at once, with its
+    message, the first stage opening when one of its mix steps was open before the ✎ (and the stage
+    that was open staying open otherwise), Undo bringing it back; Remove disabled, with its tooltip, when its mix steps are all
     the plan's stages; Escape and Cancel change nothing.
   - **Out of date:** with `One tip for wells with the same contents`, adding DMSO to Plate1 B2 in
     `Fill`: the heading reads `needs update` in red, with its tooltip; the problem count goes up by
     one; the Biomek files box names it (`A mixing box (at stage N, “Mix 1 of 2”) is out of date: …`)
-    with Write files disabled; ✎ then Update clears all three (now 3 mix steps); a fresh-tip box
-    isn't affected by the same edit.
+    with Write files disabled; ✎ on the out-of-date box opens the wizard with its stored wells, way
+    and tips and its Makes showing the new grouping (3 mix steps), and Update clears all three; a
+    fresh-tip box isn't affected by the same edit. **Which is named:** with a mixing box out of date
+    above a randomization out of date, the Biomek files box names the mixing box; with the
+    randomization moved above it, the randomization.
   - **Moving and copying:** dragging the box by its heading between other boxes (moved whole, its
     tips kept, one undo); refused inside a tip group; one of its mix steps dragged alone shows the
     gray label and is refused on drop, and with Ctrl copies as an ordinary mix step (which has its ✎
     and `×`); Ctrl+C and Ctrl+V of the box pasting a new mixing box below it (out of date only if
-    its wells hold something else there); the right-click menu's Copy and Paste on its heading.
+    its wells hold something else there); the right-click menu's Copy and Paste on its heading;
+    with one of its mix steps selected, Ctrl+V pastes between boxes, just below the mixing box's box,
+    never inside it.
   - **Moving wells:** its heading opens and closes, its ✎ hidden; moving one of its wells moves the
     mix step's well; a move that changes which wells go together makes it `needs update`.
   - **Plan files:** saving and opening a plan with two mixing boxes (version 14) gives them back, up
