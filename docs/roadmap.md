@@ -555,7 +555,8 @@ Last updated: 2026-11-10
   tip group's first stage joined the rest of the group to the tips before it (fixed: the group
   keeps its tips). **Specified** (Draft, 2026-11-11, hands-off workflow): `transfer-designer.md`
   ("Stages", "Deleting"), a new logic module `trash` (`trash.md`, `TRASH_LIMIT` in
-  `config/trash.js`), `transfer-designer-page.md` (sections 2, 4, 5, 7, 10, 12, 15, 16 and 17), a
+  `config/trash.js`; the remembered stage order and group keys from the specifications' review),
+  `transfer-designer-page.md` (sections 2, 4, 5, 7, 10, 12, 15, 16 and 17), a
   shared test plan `tests/fixtures/delete-test-plan.js` and a browser walk-through
   `tests/browser/delete.walk.js`; glossary term Trash. Plan files don't change; what a plan writes
   changes only after a tip group's first stage is removed, which now keeps the group's tips.
@@ -1305,10 +1306,12 @@ added on 2026-10-28 (Andy).
     - **The trash**, at the bottom of the Stages column: drag onto it to delete, drag out of it to
       put something anywhere, or `Put back` to where it was. Everything deleted goes in, by any
       route, one entry per thing (Andy, after the preview put several things back as one and got
-      their order wrong). At most 20 (`TRASH_LIMIT`), kept by the browser across reloads, not in
+      their order wrong). At most `TRASH_LIMIT`, kept by the browser across reloads, not in
       plan files and not tied to a plan; Empty trash and Reset clear it, Reset undoably.
-    - **Put back finds the same neighbors**, matched by ID and name, so it never puts something
-      into another plan by itself (found in the preview).
+    - **Put back finds the same neighbors**: the trash remembers the stage order and each stage's
+      tip group, and a remembered stage counts only with the same ID and name, so Put back finds
+      no place in a plan where none of them counts, such as one opened since (found in the
+      preview); one sharing them, such as the same plan reopened, does (Claude's choice).
     - **Removing a tip group's first stage keeps the group's tips** (Andy found the old behavior,
       2026-11-11): a bug fix in every removal of a stage.
     - **Very thorough tests** (Andy asked): round trips of deleting and putting back in every
@@ -1441,10 +1444,12 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
-- **Tabs don't follow each other's trash** (2026-11-11, item 32): each tab of the designer reads the
-  trash when it opens and writes it after every change, so with two tabs open the last to change it
-  wins, and an entry deleted in one can vanish from the other's view. Properly: listen for the
-  browser's `storage` event and merge the other tab's changes (by entry ID) into the trash shown.
+- **Tabs don't follow each other's trash** (2026-11-11, item 32): each change to the trash reads the
+  stored trash first and writes it back, so no tab undoes another's change, but a tab left alone
+  shows its trash as it last read it, and Undo in one tab applies a change kept by that tab (its
+  remembered stage order included) to the trash as stored. Properly: listen for the browser's
+  `storage` event and redraw the trash from it, and keep each tab's undo of the trash to its own
+  entries.
 - **The tutorial can't run unbuilt** (2026-11-08, item 29): the build joins the transfer
   designer's page and the guide panel, adding `data-tutorial` to the page's HTML, so `npm run serve`
   has no tutorial page. Trying it means `npm run build` first. Doing it properly would mean a small
