@@ -197,6 +197,21 @@ import {
   labwareSheet,
 } from "../src/tools/transfer-designer/labware-sheet.js";
 import { wellMaps } from "../src/tools/transfer-designer/well-maps.js";
+import {
+  emptyTrash,
+  addDeleted,
+  pasteEntry,
+  clearTrash,
+  undoTrashChange,
+  redoTrashChange,
+  trashToText,
+  trashFromText,
+  trashTextProblem,
+  TRASH_FORMAT,
+  TRASH_VERSION,
+  TRASH_LIMIT,
+} from "../src/tools/transfer-designer/trash.js";
+import { deleteTestPlan, stageIdOf, planOutline } from "../tests/fixtures/delete-test-plan.js";
 import { buildVersion, branchLabel, fileNameFor, readGitFacts } from "./build-version.js";
 import { BUILD_ENTRIES, isBuildOf, tutorialHtml } from "./build-tools.js";
 import {
@@ -956,6 +971,40 @@ const TOPICS = {
       'mapPlan = renameRandomization(runRandomization(mapPlan, "r1"), "r1", "HySoy_dose")',
       "wellMaps(mapPlan).map((file) => file.name)",
       "console.log(wellMaps(mapPlan)[0].text)",
+    ],
+  },
+  trash: {
+    loaded: {
+      emptyTrash,
+      addDeleted,
+      pasteEntry,
+      clearTrash,
+      undoTrashChange,
+      redoTrashChange,
+      trashToText,
+      trashFromText,
+      trashTextProblem,
+      TRASH_FORMAT,
+      TRASH_VERSION,
+      TRASH_LIMIT,
+      deleteTestPlan,
+      stageIdOf,
+      planOutline,
+    },
+    examples: [
+      "const testPlan = deleteTestPlan()",
+      'const twoStages = [{ kind: "stage", id: stageIdOf(testPlan, "S03") }, { kind: "stage", id: stageIdOf(testPlan, "S07") }]',
+      "let added = addDeleted(emptyTrash(), testPlan, twoStages, new Date().toISOString())",
+      "added.trash.entries.map((entry) => [entry.id, entry.kind, entry.name, entry.stageCount, entry.transferCount])",
+      "added.change.added.length",
+      'let pasted = pasteEntry(emptyPlan().plan, added.trash, 1, { kind: "between", index: 0 })',
+      "stageOrder(pasted.plan).map((id) => pasted.plan.stageList.get(id).name)",
+      "pasted.trash.entries.map((entry) => [entry.id, entry.name])",
+      "undoTrashChange(pasted.trash, pasted.change).entries.length",
+      "clearTrash(added.trash).trash",
+      "trashFromText(trashToText(added.trash)).entries.length",
+      'trashTextProblem("{ not json")',
+      'pasteEntry(testPlan, added.trash, 9, { kind: "between", index: 0 })',
     ],
   },
   "plan-file": {
