@@ -554,7 +554,7 @@ Last updated: 2026-11-11
   workflow): `transfer-designer.md` ("Mixing boxes", and moving and copying with copied items
   version 6), `plan-file.md` (format version 14), `transfer-designer-page.md` (sections 2, 4, 5, 6,
   7, 11, 12, 15 and 16), glossary terms Mixing box, Probe order and Way to mix, and an open question
-  in `biomek.md`. **Not verified:** "a fresh tip for every well" assumes the Biomek mixes each well
+  in `biomek.md`; and **built (#155)**. **Not verified:** "a fresh tip for every well" assumes the Biomek mixes each well
   of a mix step with its own probe; a simulation run must check it before any real run. It writes
   only mix steps and tip changes the tool already writes, so the Biomek files' format doesn't change.
   **Decided by Andy** (2026-11-11, item 34): grouping by volume too, fresh-tip batches of one
