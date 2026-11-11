@@ -1688,7 +1688,7 @@ From the top:
   Editing, from its mix steps' tips (`mixingBoxDraft`). **Probes that aren't the first N** (a
   mixing box from a plan file or a copy may load, say, probes 2, 3 and 4, which the menu's `probesFor`
   choices can't show; likewise the tips in use at a new wizard's seam): the probe menu gets **one
-  more entry, first and chosen**, naming them as a tip group's heading does, `probes 2, 3, 4`, and
+  more entry, first and chosen**, naming them, smallest first, `probes 2, 3, 4`, and
   the draft keeps those probes until another entry is chosen; the entry goes when the wizard closes.
   (Decided in the specification review, 2026-11-11, over showing `3 probes` with a note: choosing
   `3 probes` would quietly change the probes to 1 to 3, and Update with nothing else changed would
