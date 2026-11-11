@@ -289,9 +289,9 @@ started first.
 How a mixing box decides which wells share a mix step, and so a set of tips (Andy, 2026-11-11):
 **a fresh tip for every well** (wells in batches, each holding wells of one column of one labware,
 at most as many as there are probes, meant to give each well a tip of its own; whether the Biomek
-does is still to be checked in simulation, `docs/domain/biomek.md`, "Not yet known"; not for
-reservoir troughs until then) or **one tip for wells with the same contents** (wells holding the
-same components in the same shares share a tip). With either way, wells share a mix step only if
+does is still to be checked in simulation, `docs/domain/biomek.md`, "Not yet known") or **one
+tip for wells with the same contents** (wells holding the same components in the same shares share
+a tip). With either way, wells share a mix step only if
 they also hold about the same volume, within `MIX_VOLUME_TOLERANCE` (`transfer-designer.md`,
 "About the same volume"). More ways may be added.
 
