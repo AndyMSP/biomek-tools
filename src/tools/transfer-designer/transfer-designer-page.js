@@ -1201,7 +1201,7 @@ function toggleBiomekBox() {
   const now = new Date();
   const summary = elements.biomekSummary;
   try {
-    checkNoRandomizationOutOfDate(currentPlan());
+    checkNoBoxOutOfDate(currentPlan());
     const { folderName, files } = writeRunFiles(currentPlan(), now);
     const sheet = labwareSheet(currentPlan(), folderName, now);
     const planFile = recordsPlanFile(currentPlan(), folderName);
@@ -1248,10 +1248,11 @@ function showBiomekSummary() {
   }
 }
 
-// Throws if a randomization, transfer table or mixing box of the plan is out of date (section 5), naming the
-// first in the column's order by its first stage: 'A randomization (at stage 1, “Drug”) is out of
-// date: open it and press Update.' or 'A transfer table (at stage 3, “Media”) is out of date: …'.
-function checkNoRandomizationOutOfDate(plan) {
+// Throws if a randomization, transfer table or mixing box of the plan is out of date (section 5),
+// naming the first in the column's order by its first stage: 'A randomization (at stage 1, “Drug”)
+// is out of date: open it and press Update.', 'A transfer table (at stage 3, “Media”) is out of
+// date: …' or 'A mixing box (at stage 7, “Mix 1 of 3”) is out of date: …'.
+function checkNoBoxOutOfDate(plan) {
   const box = firstOutOfDateBox(plan);
   if (box !== null) {
     const what = { randomization: "A randomization", transferTable: "A transfer table", mixingBox: "A mixing box" }[box.kind];
@@ -1863,8 +1864,8 @@ function refreshProblemCount(plan) {
 }
 
 // The number of problems in the whole plan, as the problem count shows it (section 6, "First bar"):
-// each contents problem, each randomization or transfer table that's out of date, and each stage
-// with a mix problem, e.g. 2.
+// each contents problem, each randomization, transfer table or mixing box that's out of date, and
+// each stage with a mix problem, e.g. 2.
 function problemCount(plan) {
   return (
     replay(plan.startingContents, plan.operationList).listProblems().length +
@@ -2465,8 +2466,10 @@ function createArrow(from, to, color, { insetEnd, dashed }) {
 // --- The Stages column (section 7) ---
 
 // Redraws the Stages column from the plan: Start, the tip group boxes with their stages, each
-// randomization's and transfer table's box where it sits (columnBlocks), End, a seam between tip
-// groups above each box and above End, and the open editing box.
+// randomization's, transfer table's and mixing box's box where it sits (columnBlocks), End, a seam
+// between tip groups above each box and above End, the mixing wizard while it's open (just after
+// its seam, or after the mixing box it edits, with nothing shown as open or selected), and the
+// open editing box.
 function refreshStages() {
   const plan = currentPlan();
   // While the mixing wizard is open, no entry is shown as open (section 7, "While it's open").
