@@ -40,17 +40,23 @@ decided for transfer tables).
 - **A fresh tip for every well** takes the wells in **probe order** (down each column, as the
   Span-8's probes sit) in batches that each hold **wells of one column of one labware** (Andy,
   2026-11-11, decision B: "make sure batches are vertical lines as well — it does them all at once
-  that way"), at most as many as there are probes with tips: a batch starts again at each new
-  column, each new labware, when it's full, and at a volume break. Reason: a column batch matches
-  how the probes sit, so the Span-8 can mix it in one pass (to be checked in simulation), and a new
+  that way"), **in rows right next to each other** (Andy, 2026-11-11 11:42), at most as many as
+  there are probes with tips: a batch starts again at each new column, each new labware, at any
+  gap (a well not in the row directly below the batch's last well), when it's full, and at a
+  volume break. So on 4 probes A1, C1 and E1 are three mix steps. Reason: a column batch of
+  adjacent rows matches how the probes sit, one row apart, so the Span-8 can mix it in one pass
+  (to be checked in simulation); A1, C1 and E1 can't be reached in one pass. A new
   batch at each labware also keeps a mix step out of two labware types, which the file writer would
-  split into substages on the same tips. Rejected: batches across columns within a labware, and a
-  new batch only at each labware type. Its cost is more mix steps and tips when the wells are in
+  split into substages on the same tips. Rejected: batches across columns within a labware, a
+  new batch only at each labware type, and batches that skip rows. Its cost is more mix steps and tips when the wells are in
   rows (A1 to A12 on any probes is 12 mix steps).
 - **Reservoir troughs are refused for a fresh tip** (Andy, 2026-11-11, decision C) until the
   simulation test has checked several probes in one trough: every probe of a mix step may enter the
   same trough, and whether 8 probes can draw from one trough is unknown, so a fresh tip might not be
-  fresh. One tip for wells with the same contents takes them.
+  fresh. A trough here is any well of a grid with one row (a one-row lettered labware and a one-well
+  reservoir included), the case where each column holds one well. One tip for wells with the same
+  contents takes them. A fresh-tip box that comes to hold a trough anyway (a well moved into one,
+  or a plan file) is out of date, so the Biomek files wait and Update gives the refusal.
 - **One tip for wells with the same contents** groups wells by what they hold just before the box,
   the same components in shares within 0.000001 of each other (the filler wells' rule, one function
   for both), and about the same volume, in probe order of first appearance.
@@ -75,7 +81,7 @@ decided for transfer tables).
   tool already writes. So what goes into the Biomek files changes only as any mix steps a user could
   build by hand would change them.
 - **Not verified:** "a fresh tip for every well" assumes the Biomek, given a mix step with tips on N
-  probes and at most N wells of one column, mixes each well with its own probe, in one pass, and
+  probes and at most N wells of one column in adjacent rows, mixes each well with its own probe, in one pass, and
   never takes a tip into a second well (`biomek.md`, "Not yet known"). Transfer From File chooses its own order (B56358AF, 22-25).
   A simulation run must check this before any real run with a mixing box; if it fails, this way
   needs one mix step per well, or another remedy.
