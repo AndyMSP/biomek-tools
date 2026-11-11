@@ -113,7 +113,8 @@ Part of a plan that mixes a set of wells and makes the mix steps for it (Andy, 2
 mix steps, each on new tips of its own, named by their place (`Mix 1 of 12`). It stores only its
 way to mix: its wells and tips are its mix steps'. Its mix steps change only through it. It's **out
 of date** when its wells would now be grouped differently, from what they hold just before it or
-where they are (`transfer-designer.md`, "Mixing boxes").
+where they are, or its mix steps don't mix with the standard mix as it now is
+(`transfer-designer.md`, "Mixing boxes").
 
 **Mix problem**
 A mix whose volume is under the minimum mix volume (1 µL): the well a row's mix volume is worked
@@ -158,7 +159,8 @@ pipette. Some pipetting modes suit only one end; Non-Contact, for example, is fo
 **Plan**
 Everything the tools hold about one experiment's liquid handling: its experiment name, its
 components (each with its constituents and osmolality), its starting contents (what each well holds before the run), its operation list, its
-stage list, its tip changes, its labware labels, its well labels and its randomizations. The transfer designer builds a plan, and the file writer turns it into the
+stage list, its tip changes, its labware labels, its well labels, its randomizations, its transfer
+tables and its mixing boxes. The transfer designer builds a plan, and the file writer turns it into the
 files the Biomek runs. A plan isn't a Biomek method: the general-purpose method stays the same for
 every plan (ADR 0006, ADR 0007).
 
@@ -203,7 +205,8 @@ A place in the transfer designer's Stages column where a stage, a mix step or a 
 added. A seam inside a tip group (between two of its stages, or at its top or bottom) adds stages
 and mix steps with that group's tips, and between two stages can split the group with new tips; a
 seam between tip groups (above the first, between two, or above End) adds them with new tips, as a
-tip group of their own, or adds a randomization. A randomization's card has seams of the same two
+tip group of their own, or adds a randomization (its dice button), a transfer table (its table
+button) or a mixing box (its ⟳⟳ button). A randomization's card has seams of the same two
 kinds between its source groups and between their sources, where a source is dropped or two
 groups are joined or split.
 
@@ -284,9 +287,10 @@ started first.
 
 **Way to mix**
 How a mixing box decides which wells share a mix step, and so a set of tips (Andy, 2026-11-11):
-**a fresh tip for every well** (each well mixed with a tip of its own, in batches of as many wells as
-there are probes) or **one tip for wells with the same contents** (wells holding the same components
-in the same shares share a tip). More ways may be added.
+**a fresh tip for every well** (wells in batches of at most as many wells as there are probes, meant
+to give each well a tip of its own; whether the Biomek does is still to be checked in simulation,
+`docs/domain/biomek.md`, "Not yet known") or **one tip for wells with the same contents** (wells
+holding the same components in the same shares share a tip). More ways may be added.
 
 **Well in use**
 A well the plan names anywhere: in its starting contents, as a transfer's source or destination (a
