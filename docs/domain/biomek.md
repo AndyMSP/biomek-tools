@@ -458,15 +458,23 @@ Questions to answer before relying on the answer:
   of the same file. The manual says only that the step "automatically determines the most efficient
   way to complete the transfer" (B56358AF, 22-25). The mixing box's "a fresh tip for every well"
   relies on it (roadmap, item 34; `transfer-designer.md`, "Mixing boxes"; added 2026-11-11, not
-  verified). To test in simulation before any real run with a mixing box: a mix step of 4 wells
-  on 4 probes, and one of 8 wells (one column) on 8 probes, then one of 3 wells on 4 probes; in the
-  Details log (or the Span8Transfer log), each well is mixed by a different probe and no probe
-  enters two wells before its tips are unloaded. Also a mix step whose wells are in two columns
-  (A1 to D1 and A2 to D2 on 8 probes), to see whether it still gives each well its own probe.
-  And a **reservoir case** (added 2026-11-11, whichever way Andy decides on troughs; roadmap, item
-  34, decision C): a mix step of 4 troughs of `Res1` (1 to 4) on 4 probes, checking in the log
-  which probes enter each trough, and whether any probe enters a trough other than the one it
-  mixes; this also bears on whether 8 probes can draw from one trough (above).
+  verified). A fresh-tip mix step holds wells of one column of one labware (Andy, 2026-11-11,
+  decision B), on the assumption that the Span-8 mixes such a column **in one pass**, each well
+  with its own probe; that too is unverified. To test in simulation before any real run with a
+  mixing box: a mix step of 4 wells of one column (A1 to D1) on 4 probes, one of 8 wells (A1 to H1)
+  on 8 probes, then one of 3 wells (A1 to C1) on 4 probes; in the Details log (or the Span8Transfer
+  log), each well is mixed by a different probe, no probe enters two wells before its tips are
+  unloaded, and **the column is mixed in one pass** (all its wells at the same time, not one probe
+  after another; added 2026-11-11, decision B). Also the second batch of a column (E1 to H1 on 4
+  probes, as a mixing box makes after A1 to D1), to see which probes the step uses and whether
+  it's still one pass. Also a mix step whose wells are in two columns (A1 to D1 and A2
+  to D2 on 8 probes), to see whether it still gives each well its own probe (a mixing box no
+  longer makes such a mix step, but a user can build one by hand). And a **reservoir case** (added
+  2026-11-11; roadmap, item 34, decision C: troughs are refused for a fresh tip until this is
+  checked): a mix step of 4 troughs of `Res1` (1 to 4) on 4 probes, and one of one trough on 4
+  probes, checking in the log which probes enter each trough, and whether any probe enters a
+  trough other than the one it mixes; this also bears on whether 8 probes can draw from one trough
+  (above).
 - Whether the **Operation and OperationMix dispenses touch the liquid** already in the
   destination well, for example because of their dispense height. The tools assume they do. A tip
   that touches the liquid can carry it to later wells (roadmap, item 27, "Possible contamination";
