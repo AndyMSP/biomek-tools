@@ -1418,6 +1418,63 @@ button.entry-row {
   font-size: 12px;
 }
 
+/* The All transfers row above a transfer stage's rows (sections 7 and 15). The card's body spaces
+   its parts 10px apart, so these margins bring the row to 6px below Hide transfers and 4px above
+   the first transfer row. */
+.all-transfers-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 -6px;
+  padding: 6px 8px;
+  border: 1px dashed var(--panel-border);
+  border-radius: 6px;
+  background: var(--page-background);
+}
+
+/* In the style of a box's field names (.field-name), taking the spare width. */
+.all-transfers-name {
+  flex: 1 1 auto;
+  color: var(--muted-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Selected as input.all-transfers-box so it outweighs the general input[type="text"] rule. */
+input.all-transfers-box {
+  flex: none;
+  box-sizing: border-box;
+  width: 80px;
+  min-height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  font-family: var(--mono-font);
+  font-size: 12px;
+  text-align: right;
+}
+
+input.all-transfers-box::placeholder {
+  color: var(--muted-text);
+  font-style: italic;
+}
+
+/* While moving wells it can't be typed in, and takes the page's disabled look. */
+input.all-transfers-box[aria-disabled="true"] {
+  border-color: var(--disabled-background);
+  background: #f1f0ec;
+  color: var(--disabled-text);
+  cursor: not-allowed;
+}
+
+.all-transfers-unit {
+  flex: none;
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
 /* How much of a mix step's well is mixed, where a transfer's volume goes (section 7); "too little"
    in red for the well causing a mix problem. */
 .mixed-share {
