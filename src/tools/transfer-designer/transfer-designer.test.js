@@ -54,6 +54,7 @@ import {
   addTransfer,
   addTransfers,
   changeVolume,
+  changeStageVolumes,
   removeTransfer,
   transfersIn,
   tipChangeAt,
@@ -1613,6 +1614,194 @@ describe("transfer-designer", () => {
     assert.throws(() => changeVolume(plan, 0, -5), {
       message: "The volume must be a number of microliters, 0 or more, like 50, but got -5.",
     });
+  });
+
+  // --- changeStageVolumes ---
+
+  // A plan with three transfer stages, "1", "2" and "3", and a mix step "4" mixing PLATE D1 and D2:
+  // stage 1 with one transfer into PLATE A1, stage 2 with three, of 10, 20 and 30 µL, into PLATE B1,
+  // OTHER_PLATE B2 and PLATE B3 (from troughs 1, 2 and 3), and stage 3 with one into PLATE C1.
+  function stageVolumesPlan() {
+    let plan = planWithStages(3);
+    plan = addTransfer(plan, transferTo("1", "A1"));
+    plan = addTransfers(plan, [
+      { type: "transfer", source: trough("1"), destination: plateWell("B1"), volume: 10, stage: "2" },
+      { type: "transfer", source: trough("2"), destination: wellOn(OTHER_PLATE, "B2"), volume: 20, stage: "2" },
+      { type: "transfer", source: trough("3"), destination: plateWell("B3"), volume: 30, stage: "2" },
+    ]);
+    plan = addTransfer(plan, transferTo("3", "C1"));
+    const { plan: withMixStep, id } = addMixStep(plan, null);
+    return mixWells(withMixStep, id, [plateWell("D1"), plateWell("D2")]);
+  }
+
+  // The plan with every transfer of stage `id` given `volume` one at a time, by changeVolume.
+  function withVolumesOneByOne(plan, id, volume) {
+    return transfersIn(plan, id).reduce(
+      (planSoFar, transfer) => changeVolume(planSoFar, transfer.position, volume),
+      plan,
+    );
+  }
+
+  // The volumes of stage `id`'s transfers, in order, e.g. [10, 20, 30].
+  function volumesIn(plan, id) {
+    return transfersIn(plan, id).map((transfer) => transfer.volume);
+  }
+
+  // The plan with stage `id`'s transfers given `volumes`, one each in order, by changeVolume.
+  function withVolumes(plan, id, volumes) {
+    return transfersIn(plan, id).reduce(
+      (planSoFar, transfer, index) => changeVolume(planSoFar, transfer.position, volumes[index]),
+      plan,
+    );
+  }
+
+  test("changeStageVolumes gives every transfer of the stage the volume, each keeping its position, stage, source and destination", () => {
+    const plan = stageVolumesPlan();
+    const changed = changeStageVolumes(plan, "2", 25);
+    const before = transfersIn(plan, "2");
+    const after = transfersIn(changed, "2");
+    assert.deepEqual(volumesIn(changed, "2"), [25, 25, 25]);
+    assert.equal(after.length, before.length);
+    before.forEach((transfer, index) => {
+      assert.equal(after[index].position, transfer.position);
+      assert.equal(after[index].stage, transfer.stage);
+      assert.deepEqual(after[index].source, transfer.source);
+      assert.deepEqual(after[index].destination, transfer.destination);
+      assert.deepEqual(after[index], { ...transfer, volume: 25 });
+    });
+  });
+
+  test("changeStageVolumes changes nothing else: other stages' transfers are the very same objects, and every other part is the same", () => {
+    const plan = stageVolumesPlan();
+    const changed = changeStageVolumes(plan, "2", 25);
+    const before = plan.operationList.listOperations();
+    const after = changed.operationList.listOperations();
+    assert.equal(after.length, before.length);
+    assert.deepEqual(stagesOfTransfers(changed), stagesOfTransfers(plan));
+    before.forEach((operation, position) => {
+      if (operation.stage !== "2") {
+        assert.equal(after[position], operation);
+      }
+    });
+    for (const part of PLAN_PARTS.filter((name) => name !== "operationList")) {
+      assert.equal(changed[part], plan[part], part);
+    }
+  });
+
+  test("changeStageVolumes is one edit and leaves the plan given unchanged", () => {
+    const plan = stageVolumesPlan();
+    const before = snapshot(plan);
+    const changed = changeStageVolumes(plan, "2", 25);
+    assert.equal(snapshot(plan), before);
+    assert.deepEqual(volumesIn(plan, "2"), [10, 20, 30]);
+    assert.equal(new PlanHistory(plan).record(changed).undo().present, plan);
+  });
+
+  test("changeStageVolumes gives the same transfers as changeVolume on each of the stage's positions in turn", () => {
+    const plan = stageVolumesPlan();
+    assert.deepEqual(
+      changeStageVolumes(plan, "2", 25).operationList.listOperations(),
+      withVolumesOneByOne(plan, "2", 25).operationList.listOperations(),
+    );
+  });
+
+  test("changeStageVolumes gives back the very same plan when every transfer has the volume already, and changes the others when only some do", () => {
+    const plan = stageVolumesPlan();
+    const allAt20 = changeStageVolumes(plan, "2", 20);
+    assert.equal(changeStageVolumes(allAt20, "2", 20), allAt20);
+    // Only the second has 20 µL already.
+    assert.notEqual(allAt20, plan);
+    assert.deepEqual(volumesIn(allAt20, "2"), [20, 20, 20]);
+  });
+
+  test("changeStageVolumes compares volumes exactly, without rounding", () => {
+    const plan = stageVolumesPlan();
+    const differing = withVolumes(plan, "2", [33.3333, 33.33, 33.33]);
+    assert.equal(new Set(volumesIn(differing, "2")).size, 2);
+    const at33_3333 = changeStageVolumes(plan, "2", 33.3333);
+    const at33_33 = changeStageVolumes(at33_3333, "2", 33.33);
+    assert.notEqual(at33_33, at33_3333);
+    assert.deepEqual(volumesIn(at33_33, "2"), [33.33, 33.33, 33.33]);
+    assert.equal(changeStageVolumes(at33_33, "2", 33.33), at33_33);
+    // -0 === 0, so a stage all at 0 given -0 is the same plan.
+    const atZero = changeStageVolumes(plan, "2", 0);
+    assert.equal(changeStageVolumes(atZero, "2", -0), atZero);
+    // A stage all at 5 given -0 sets every transfer as the operation list stores it.
+    const atFive = changeStageVolumes(plan, "2", 5);
+    const atMinusZero = changeStageVolumes(atFive, "2", -0);
+    assert.deepEqual(
+      atMinusZero.operationList.listOperations(),
+      withVolumesOneByOne(atFive, "2", -0).operationList.listOperations(),
+    );
+    assert.ok(volumesIn(atMinusZero, "2").every((volume) => volume === 0));
+  });
+
+  test("changeStageVolumes changes a stage's only transfer, as changeVolume would", () => {
+    const plan = stageVolumesPlan();
+    const position = transfersIn(plan, "1")[0].position;
+    assert.deepEqual(
+      changeStageVolumes(plan, "1", 75).operationList.listOperations(),
+      changeVolume(plan, position, 75).operationList.listOperations(),
+    );
+  });
+
+  test("changeStageVolumes sets 0 and a decimal volume as given", () => {
+    const plan = stageVolumesPlan();
+    assert.deepEqual(volumesIn(changeStageVolumes(plan, "2", 0), "2"), [0, 0, 0]);
+    assert.deepEqual(volumesIn(changeStageVolumes(plan, "2", 12.5), "2"), [12.5, 12.5, 12.5]);
+  });
+
+  test("changeStageVolumes refuses an ID that isn't a stage, a stage with no transfers, a mix step and a refused volume, changing nothing", () => {
+    let plan = stageVolumesPlan();
+    plan = renameStage(addStage(plan, null).plan, "5", "Drugs");
+    const before = snapshot(plan);
+    assert.throws(() => changeStageVolumes(plan, "9", 25), { message: `There's no stage "9" in the plan.` });
+    assert.throws(() => changeStageVolumes(plan, "5", 25), {
+      message: "Stage 5, “Drugs”, has no transfers yet, so there's no volume to change.",
+    });
+    const mixStepMessage = "A mix step's wells are mixed with its own settings, so their volume can't be changed.";
+    assert.throws(() => changeStageVolumes(plan, "4", 25), { message: mixStepMessage });
+    const { plan: withEmptyMixStep, id: emptyMixStep } = addMixStep(plan, null);
+    assert.throws(() => changeStageVolumes(withEmptyMixStep, emptyMixStep, 25), { message: mixStepMessage });
+    for (const [volume, got] of [[-5, "-5"], ["abc", `"abc"`], [null, "null"], [NaN, "NaN"]]) {
+      assert.throws(() => changeStageVolumes(plan, "2", volume), {
+        message: `The volume must be a number of microliters, 0 or more, like 50, but got ${got}.`,
+      });
+    }
+    assert.equal(snapshot(plan), before);
+    assert.deepEqual(volumesIn(plan, "2"), [10, 20, 30]);
+  });
+
+  test("changeStageVolumes checks, in order: the stage, then a mix step or no transfers, then the volume", () => {
+    let plan = stageVolumesPlan();
+    plan = addStage(plan, null).plan;
+    assert.throws(() => changeStageVolumes(plan, "9", -5), { message: `There's no stage "9" in the plan.` });
+    assert.throws(() => changeStageVolumes(plan, "4", -5), {
+      message: "A mix step's wells are mixed with its own settings, so their volume can't be changed.",
+    });
+    assert.throws(() => changeStageVolumes(plan, "5", -5), { message: /has no transfers yet/ });
+  });
+
+  test("changeStageVolumes doesn't refuse a contents problem: the stage then has one, as after changeVolume", () => {
+    // Trough 5 has `usable` µL above its dead volume; two transfers of a quarter of it each fit, and
+    // two of three quarters don't. A deep well holds either.
+    const usable = capacityOf(DEEP) / 2;
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addToWells(plan, [trough("5")], "Media", deadVolumeOf(RESERVOIR) + usable);
+    plan = addTransfers(
+      plan,
+      ["A1", "A2"].map((well) => ({
+        type: "transfer",
+        source: trough("5"),
+        destination: wellOn(DEEP, well),
+        volume: usable / 4,
+        stage: "1",
+      })),
+    );
+    assert.equal(stagesWithContentsProblem(plan).size, 0);
+    const changed = changeStageVolumes(plan, "1", (usable * 3) / 4);
+    assert.deepEqual([...stagesWithContentsProblem(changed)], ["1"]);
   });
 
   test("removeTransfer removes only that transfer", () => {
@@ -6189,6 +6378,7 @@ describe("transfer-designer", () => {
     ["removeStage", (plan) => removeStage(plan, "3"), ["operationList", "stageList", "stageOrder", "tipChanges"]],
     ["addTransfer", (plan) => addTransfer(plan, transferTo("1", "C1")), ["operationList"]],
     ["changeVolume", (plan) => changeVolume(plan, 0, 25), ["operationList"]],
+    ["changeStageVolumes", (plan) => changeStageVolumes(plan, "1", 25), ["operationList"]],
     ["removeTransfer", (plan) => removeTransfer(plan, 0), ["operationList"]],
     ["addTipChange", (plan) => addTipChange(plan, "3"), ["tipChanges"]],
     ["setTipType", (plan) => setTipType(plan, "2", TIP_TYPES.at(-1)), ["tipChanges"]],
@@ -7059,6 +7249,8 @@ describe("transfer-designer", () => {
     assert.throws(() => addTransfer(plan, transferTo(media, "H1")), { message: amounts });
     assert.throws(() => addTransfers(plan, [transferTo(media, "H1")]), { message: amounts });
     assert.throws(() => changeVolume(plan, position, 5), { message: amounts });
+    assert.throws(() => changeStageVolumes(plan, media, 5), { message: amounts });
+    assert.throws(() => changeStageVolumes(plan, media, -5), { message: amounts });
     assert.throws(() => removeTransfer(plan, position), { message: amounts });
     assert.throws(() => renameStage(plan, media, "X"), {
       message: "Stage 2, “Media”, is part of a transfer table: it's named after its component.",
@@ -8086,6 +8278,8 @@ describe("transfer-designer", () => {
     assert.throws(() => addTransfer(plan, transferTo(first, "H12")), { message: transfersMessage });
     assert.throws(() => addTransfers(plan, [transferTo(first, "H12")]), { message: transfersMessage });
     assert.throws(() => changeVolume(plan, position, 3), { message: transfersMessage });
+    assert.throws(() => changeStageVolumes(plan, first, 3), { message: transfersMessage });
+    assert.throws(() => changeStageVolumes(plan, first, -5), { message: transfersMessage });
     assert.throws(() => removeTransfer(plan, position), { message: transfersMessage });
     assert.throws(() => renameStage(plan, first, "Mine"), {
       message: `${named(first)}, is part of a randomization: it's named after its source.`,
@@ -8123,6 +8317,24 @@ describe("transfer-designer", () => {
     const last = runRandomization(lastSetUp, lastId);
     assert.throws(() => addStage(last, null), { message: joins });
     assert.equal(stageOrder(addStageWithNewTips(last, null).plan).length, stageOrder(last).length + 1);
+  });
+
+  test("changeStageVolumes on a randomization's stage with no transfers gives the randomization's message, not the empty stage's", () => {
+    const { plan: setUp, id } = sharingPlan();
+    const plan = runRandomization(setUp, id);
+    const first = randomizationAt(plan, id).stages[0].stage;
+    // No edit empties an owned stage, so its transfers are taken out of the operation list directly,
+    // last first so the positions stay right.
+    const operationList = transfersIn(plan, first)
+      .map((transfer) => transfer.position)
+      .reverse()
+      .reduce((listSoFar, position) => listSoFar.remove(position), plan.operationList);
+    const emptied = { ...plan, operationList };
+    assert.equal(transfersIn(emptied, first).length, 0);
+    const named = `Stage ${stageOrder(plan).indexOf(first) + 1}, “${plan.stageList.get(first).name}”`;
+    assert.throws(() => changeStageVolumes(emptied, first, 5), {
+      message: `${named}, is part of a randomization: change its sources and wells in the randomization.`,
+    });
   });
 
   test("addStage before a randomization that starts the plan: the new stage takes START, its first stage keeps its tips", () => {
