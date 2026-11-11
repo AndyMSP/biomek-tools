@@ -351,11 +351,10 @@ without transfers isn't run.
   stage 4 now keyed with the BC1070 tip change; removing stage 1 leaves stage 2 on the `START`
   tips, as before. Every removal of a stage goes through this one rule, whichever edit makes it:
   `removeStage`, `deleteItems`, and the removals inside `removeRandomization`,
-  `removeTransferTable`, `updateTransferTable` and a randomization's run. For most of those
-  nothing moves (a transfer table's stages, and the stage just after a randomization or transfer
-  table, have tip changes of their own); where it does (a randomization's run dropping the first
-  stage of a group of sources sharing tips), the rest of that group keeps its tips too, which is
-  what sharing means (section 3, "Sharing tips").
+  `removeTransferTable`, `updateTransferTable` and a randomization's run. For those last four nothing
+  changes: a transfer table's stages, and the stage just after a randomization or transfer table,
+  have tip changes of their own, and a run already keeps a source group's tips when its first source
+  goes (section 3, "Sharing tips").
 - **A stage may mix labware types.** The file writer splits it into substages (ADR 0007, amended
   2026-10-26), so nothing here refuses it.
 
@@ -2503,7 +2502,10 @@ order of checks.
 - `removeStage` removes a stage with transfers, and its transfers, and takes it out of the stage
   order, leaving the others in their order; removing the only stage throws.
 - **Removing a tip group's first stage keeps the group's tips** (2026-11-11; this test fails on the
-  code before it, which dropped the tip change): tip groups [1, 2] on the `START` tips and [3, 4, 5]
+  code before it, which dropped the tip change; the existing test named `removeStage removes a stage
+  and its transfers, takes it out of the stage order leaving the others in their order, and its tip
+  change goes` checks a stage whose tip change has no stage to move to, and is renamed to say so,
+  its expectations unchanged): tip groups [1, 2] on the `START` tips and [3, 4, 5]
   on the second tip type (`TIP_TYPES[1]`, skipped with fewer than 2) on `[1, 2]`, keyed by 3;
   `removeStage` of 3 leaves [1, 2] and [4, 5], the tip change now keyed by 4 with the same tip type
   and probes, and `tipGroups` giving the same two groups' tips as before; stage 4 then removed too:
@@ -2513,9 +2515,11 @@ order of checks.
   removed: no tip change moves. The same through `deleteItems` (below) and through
   `removeRandomization` and `removeTransferTable` (their stages' tip changes never move onto a
   stage outside them: the stage just after them keeps its own).
-- **The rule's reach:** a randomization run again after its first source, which started a group of
-  sources sharing tips, is taken out: the next source's stage starts the group, keyed with its tips
-  (the same tip type and probes); every other test of runs, updates and moves passes unchanged.
+- **The rule's reach** (a regression test, not a change: a run already keeps a source group's tips,
+  section 3, "Sharing tips"): a randomization run again after its first source, which started a
+  group of sources sharing tips, is taken out: the next source's stage starts the group, keyed with
+  its tips (the same tip type and probes); every other test of runs, updates and moves passes
+  unchanged.
 - Removing the first stage, when the second has its own tip change, makes that tip change the
   `START` one, with its tip type and probes.
 - `renameStage` and `changeStageSettings` change only that stage; the stage list's errors pass
@@ -3473,9 +3477,10 @@ group and pastes a copied tip group into an empty plan.
 
 **Deleting** (2026-11-11; Andy asked for these to be thorough, as the preview showed deleting and
 putting back to be easy to get wrong). Use the **test plan with a bit of everything**,
-`tests/fixtures/delete-test-plan.js` (`trash.md`, section 6): stages named `S01` to `S11` in tip
-groups [S01, S02] (`START`), [S03, S04, S05, S06] with S06 a mix step, [S07], [S08, S09], then a
-run randomization with three stages, then [S10, S11], then a transfer table with two stages.
+`tests/fixtures/delete-test-plan.js` (`trash.md`, section 6, which gives it exactly; stages are
+named here by their first word): stages `S01` to `S11` in tip groups [S01, S02] (`START`), [S03,
+S04, S05, S06] with S06 a mix step, [S07], [S08, S09], then a run randomization with three stages,
+then [S10, S11], then a transfer table with two stages, each group's tips different.
 - **Each kind alone**, each one edit (one `PlanHistory` record undoes it to the very same plan):
   - a stage in the middle of a group (S04): gone with its transfers; S03's group keeps its tips;
   - a group's first stage (S03): S04 to S06 keep the group's tip type and probes (keyed by S04);

@@ -4,7 +4,8 @@ Date: 2026-11-11
 
 ## Status
 Proposed (Andy, 2026-11-11: shaped in a preview the same night; written in the hands-off workflow,
-so it stands as a proposal until he merges its pull request).
+so it stands as a proposal until he merges its pull request). It updates ADR 0014, whose version had no Cut or
+Delete, and its container rule now covers removing a stage too.
 
 ## Context
 Andy asked for an easier delete (select stages, tip groups, randomizations or transfer tables and
@@ -35,11 +36,15 @@ tips before it, which the logic specification said on purpose but nobody wanted.
   edits that made them, Reset included; Empty trash isn't an edit.
 - **One entry per deleted thing.** Putting each back on its own makes each place simple to find;
   Undo still undoes a whole delete at once.
-- **Putting back finds the same neighbors**: a stage goes back into its old tip group, beside the
-  nearest groupmate still there; anything else goes between tip groups, beside the box of the nearest
-  stage that was above (or else below) it. A neighbor counts only if it's the same stage: the same
-  ID **and the same name** as when the entry was deleted, following the IDs stages were put back as.
-  With no neighbor, Put back is unavailable and the entry can only be dragged.
+- **Putting back finds the same neighbors.** The trash remembers the plan's stage order with the
+  deleted stages kept in their places, and which tip group each stage belongs to (a group key that
+  survives deletes), so things deleted in separate deletes can be put back in any order and rebuild
+  the plan (found in the review of the specifications: neighbors recorded once, when each was
+  deleted, went wrong). A stage goes back into its old tip group, beside the nearest stage of it
+  still there; anything else goes between tip groups, beside the box of the nearest stage that was
+  above (or else below) it. A remembered stage counts only if it's the same stage: the same ID
+  **and the same name** as the trash remembers. In a plan where none counts, Put back is
+  unavailable and the entry can only be dragged.
 - **The trash's rules are a logic module** (`trash.md`), not page code as in the preview, so they're
   tested in Node, thoroughly, as Andy asked.
 

@@ -62,6 +62,6 @@ A randomization's stages can't be moved on their own, since their order and well
   shown as any others, and Undo takes the move back.
 - Copying a randomization copies its wells to fill too, so the copy usually overfills them; that's
   what copying means, and the marks show it.
-- Not in this version: cut (Ctrl+X) and Delete, moving a transfer to another stage, and moving a
+- Not in this version: cut (Ctrl+X) and Delete (added since, by ADR 0024, 2026-11-11), moving a transfer to another stage, and moving a
   transfer within its stage (which wouldn't change the run: the Biomek orders a stage's transfers
   itself, B56358AF 22-25).
