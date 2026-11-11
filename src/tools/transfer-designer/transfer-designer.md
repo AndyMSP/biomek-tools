@@ -176,8 +176,8 @@
 > once built and tested by Andy.
 
 > **Draft change (2026-11-11, every transfer's volume at once, item 33 of v0.2.0):**
-> `changeStageVolumes` gives every transfer of a stage one volume, as one edit, for a tool's box
-> setting them all (sections 3 to 6). Nothing new is stored, so plan files and the Biomek files
+> `changeStageVolumes` gives every transfer of a stage one volume, as one edit, for a tool to set
+> them all (sections 3 to 6). Nothing new is stored, so plan files and the Biomek files
 > don't change. From a preview Andy approved on 2026-11-11; written in the hands-off workflow
 > (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request. Still to
 > review: every new message. It becomes Final once built and tested by Andy.
@@ -420,6 +420,8 @@ new for it (`plan-file.md`).
   volumes from its owner, and a mix step's mixed wells have a fixed placeholder volume
   (`MIX_STEP_VOLUME`), so both are refused, as `changeVolume` refuses them. A stage whose transfers
   all have that volume already gives back the same plan, so a caller can tell nothing changed.
+  "Have that volume" means **exact equality** (`===`) of the stored volume with the one given: no
+  rounding, so 33.3333 and 33.33 differ (and, as `===` has it, `-0` and `0` don't).
 - Removing a stage's last transfer leaves the stage in its place: the stage order doesn't change.
 - Positions are positions in the operation list, counting from 0, as in `listOperations()`.
 
@@ -1897,7 +1899,7 @@ given; "returns the plan with …" means a new plan.
 | `addTransfer(plan, transfer)` | the plan with `transfer` added to its stage (section 3, "Transfers"); the stage order is unchanged. Throws if the operation list refuses it (its message), a well isn't on the deck, or the stage isn't in the plan. |
 | `addTransfers(plan, transfers)` | the plan with each of `transfers` added in turn, as one edit. Throws, adding none, if any can't be added. |
 | `changeVolume(plan, position, volume)` | the plan with the transfer at `position` given `volume` (the operation list checks both). |
-| `changeStageVolumes(plan, id, volume)` | the plan with every transfer of stage `id` given `volume`, as one edit, each keeping its position (section 3, "Transfers"; 2026-11-11). The same plan if they all have `volume` already. Throws, in this order, if `id` isn't a stage, it's a randomization's or a transfer table's stage, it's a mix step, it has no transfers, or the operation list refuses `volume` (its message, as for `changeVolume`). |
+| `changeStageVolumes(plan, id, volume)` | the plan with every transfer of stage `id` given `volume`, as one edit, each keeping its position (section 3, "Transfers"; 2026-11-11). The same plan if every transfer's volume is `===` `volume` already. Added to the REPL's `transfer-designer` topic, beside `changeVolume`, in both of `scripts/repl.js`'s lists. Throws, in this order, if `id` isn't a stage, it's a randomization's or a transfer table's stage, it's a mix step, it has no transfers, or the operation list refuses `volume` (its message, as for `changeVolume`). |
 | `removeTransfer(plan, position)` | the plan without the transfer at `position` (the operation list checks it); the stage order is unchanged. |
 | `transfersIn(plan, id)` | stage `id`'s transfers, in order, each with its `position` added, e.g. `[{ type: "transfer", source: …, destination: …, volume: 50, stage: "2", position: 4 }]`. A stage without transfers, or an ID that isn't a stage, gives `[]`. |
 
@@ -2499,15 +2501,23 @@ order of checks.
     `changeVolume` applied to each of the stage's positions in turn.
   - **Already that volume:** a stage whose transfers all have the volume gives back the very same
     plan (`===`); one where only some do changes the others.
+  - **Exact equality, no rounding:** a stage with transfers of 33.3333 and 33.33 µL has volumes
+    that differ (a tool reading them sees two values); a stage all at 33.3333 given `33.33` changes
+    every transfer to 33.33 (not the same plan); a stage all at 33.33 given `33.33` gives back the
+    same plan. A stage all at `0` given `-0` gives back the same plan (`-0 === 0`); a stage all at 5
+    given `-0` sets every transfer as the operation list stores it.
   - **A stage with one transfer** changes it, as `changeVolume` would.
   - **Volumes the operation list accepts:** `0` and a decimal such as `12.5` are set as given.
     (No volume here comes from `config/`, so the tests name their volumes as literals.)
   - **Refused**, each with its section 5 message, the plan unchanged: an ID that isn't a stage
-    (`"9"`); a stage with no transfers; a mix step (with mixed wells, and without); a randomization's
+    (`"9"`); a stage with no transfers; a mix step (with mixed wells, made with `mixWells`, each a
+    well into itself of `MIX_STEP_VOLUME`, and without); a randomization's stage with no transfers
+    (the owner's message, before the empty stage's); a randomization's
     stage and a transfer table's stage (their owners' messages); a volume of `-5`, `"abc"`, `null`
     and `NaN` (the operation list's message; a refused volume changes none of the stage's transfers,
     not even the first). The order of checks: a stage that isn't one is reported before a bad
-    volume; an owned stage, a mix step and an empty stage before a bad volume.
+    volume; an owned stage before an empty stage; an owned stage, a mix step and an empty stage
+    before a bad volume.
   - **Contents problems** aren't refused: a volume that overdraws a source still gives the plan,
     and `stagesWithContentsProblem` then names the stage, as after `changeVolume`.
 - `removeTransfer` removes only that transfer.
