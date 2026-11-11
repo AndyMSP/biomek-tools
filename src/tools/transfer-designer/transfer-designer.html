@@ -60,7 +60,7 @@
           <button id="reset" class="danger-outline" type="button" aria-haspopup="dialog" aria-expanded="false">Reset</button>
           <div id="reset-box" class="confirm-box" role="dialog" aria-labelledby="reset-heading" hidden>
             <h3 id="reset-heading">Reset the whole plan?</h3>
-            <p>This clears the starting contents, every transfer, every stage and every well's name. Undo can bring them back.</p>
+            <p>This clears the starting contents, every transfer, every stage and every well's name, and empties the trash. Undo can bring them back.</p>
             <div class="confirm-buttons">
               <button id="reset-cancel" class="action" type="button">Cancel</button>
               <button id="reset-everything" class="danger" type="button">Reset everything</button>
@@ -131,6 +131,12 @@
       <aside id="stages-column" class="panel stages-column" aria-labelledby="stages-heading">
         <h2 id="stages-heading" class="visually-hidden">Stages</h2>
         <div id="stages-list" class="stages-list"></div>
+        <!-- The trash (section 7, "The trash"), pinned at the bottom of the column: its list, which
+             opens above its line, and the line, filled in by transfer-designer-page.js. -->
+        <div id="trash" class="trash">
+          <div id="trash-list" class="trash-list" hidden></div>
+          <button id="trash-line" type="button" class="trash-line" aria-expanded="false" aria-controls="trash-list"></button>
+        </div>
       </aside>
     </main>
 

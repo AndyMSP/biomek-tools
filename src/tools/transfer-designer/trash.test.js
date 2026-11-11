@@ -24,7 +24,6 @@ import {
 } from "./trash.js";
 import {
   emptyPlan,
-  addStage,
   addStageWithNewTips,
   addRandomization,
   renameRandomization,
