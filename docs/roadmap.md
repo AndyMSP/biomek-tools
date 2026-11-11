@@ -557,8 +557,9 @@ Last updated: 2026-11-11
   in `biomek.md`. **Not verified:** "a fresh tip for every well" assumes the Biomek mixes each well
   of a mix step with its own probe; a simulation run must check it before any real run. It writes
   only mix steps and tip changes the tool already writes, so the Biomek files' format doesn't change.
-  **Waiting for Andy's decisions before the build** (item 34): A, B, C and empty wells, which change
-  what goes into the Biomek files.
+  **Decided by Andy** (2026-11-11, item 34): grouping by volume too, fresh-tip batches of one
+  column, reservoir troughs refused for a fresh tip until checked in simulation, empty wells
+  allowed.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1307,8 +1308,9 @@ added on 2026-10-28 (Andy).
       12`, with what their wells hold in a tooltip; the standard mix (`DEFAULT_MIX`,
       `MIX_STEP_MODE`).
     - **Fresh tip**: wells in probe order (labware as on the deck, then down each column), in
-      batches of as many wells as there are probes. **Same contents**: wells grouped by what they
-      hold just before it, compared to a stated precision, in order of first appearance.
+      batches of wells of one column of one labware, at most as many as there are probes (decision
+      B, below). **Same contents**: wells grouped by what they hold just before it, compared to a
+      stated precision, in order of first appearance. Both also by volume (decision A, below).
     - **It moves, copies, pastes and is removed as a whole**; its mix steps change only through its
       wizard; `needs update` when its wells would be grouped differently; saved in plan files and
       copied items.
@@ -1318,28 +1320,27 @@ added on 2026-10-28 (Andy).
       mix and tips are locked too, not only their wells; it stores only its way, its wells and tips
       being its mix steps'; Update remakes every mix step; while the wizard is open, anything else
       that would change the plan or what's open is refused with a shake.
-    - **Waiting for Andy's decision before the build** (from the specification review, 2026-11-11;
-      each changes what goes into the Biomek files, so it's his even in the hands-off workflow;
-      `transfer-designer.md`, "Mixing boxes", "Its groups", marks the text depending on each as
-      pending):
-      - **A. Grouping ignores well volume.** A mix step mixes every well with one volume, from its
-        emptiest well (`mix-volumes.md`), so a 200 µL well grouped with a 100 µL well of the same
-        contents is under-mixed with no warning; with a fresh tip, a nearly empty well shrinks its
-        batch's mix. Options: (1) also group by volume, within a tolerance in `config/` (Claude
-        recommends this: it fixes the cause, costing only more mix steps and tips); (2) keep the
-        grouping, and warn when the volumes in one mix step differ; (3) bring forward "Splitting a
-        stage's rows by well volume" from the Later list.
-      - **B. Where a fresh-tip batch restarts.** The reason for restarting is the file writer's
-        split by labware type, so restarting at each labware is stricter than needed. Options: at
-        each labware (recommended: simplest to check by eye) or at each labware type. (The claim
-        that it keeps a batch to one column was wrong, and is gone.)
-      - **C. Reservoir troughs with a fresh tip.** Every probe of a batch may enter one trough
-        together, and whether 8 probes can draw from one trough is unknown (`biomek.md`). Options:
-        refuse troughs for a fresh tip until checked in simulation (recommended), or allow them. A
-        reservoir case is in `biomek.md`'s simulation test either way.
-      - **Empty wells**: wells holding nothing can be picked and, with "same contents", group
-        together, which adds a mix step and its tips to what's written. Recommended: allow them, as
-        specified (the overdraw stops the Biomek files until it's fixed).
+    - **Decided by Andy** (2026-11-11, 08:38 to 08:44; raised in the specification review, each
+      changing what goes into the Biomek files):
+      - **A. Grouping by volume too** (option 1, of three: also group by volume; warn; or split a
+        stage's rows by well volume). With either way, wells share a mix step only if they also
+        hold about the same volume: the largest at most `MIX_VOLUME_TOLERANCE` percent (new, in
+        `config/mixing.js`) above the smallest, judged on the whole group, so no chaining. With
+        "same contents", groups are split by volume; with a fresh tip, a batch starts again at a
+        well out of tolerance. Reason: a mix step mixes every well with one volume, from its
+        emptiest well (`mix-volumes.md`), so a fuller well would be under-mixed without warning.
+      - **B. Fresh-tip batches in one column** (option 1, a new batch at each labware, plus
+        columns; Andy: "make sure batches are vertical lines as well — it does them all at once
+        that way"). A batch holds wells of one column of one labware, at most as many as there are
+        probes; it starts again at each new column, each new labware, when full, and at a volume
+        break. On 4 probes: A1 to H1 gives A1 to D1 and E1 to H1; A1 to C1 with A2 to C2 gives two
+        batches; A1 to A12 gives 12 batches of one. Whether a column batch runs in one pass is in
+        `biomek.md`'s simulation test.
+      - **C. Reservoir troughs refused for a fresh tip** (option 1) until the simulation test has
+        checked several probes in one trough; the reservoir case stays in `biomek.md`'s
+        simulation test.
+      - **Empty wells can be picked** (option 1): the existing overdraw problem catches their mix
+        step, and with "same contents" they form a group of their own.
     - **Not verified** (`biomek.md`, "Not yet known"): that Transfer From File gives each well of a
       mix step its own probe when it has no more wells than probes. Andy runs the simulation test
       there before any real run with a mixing box.
