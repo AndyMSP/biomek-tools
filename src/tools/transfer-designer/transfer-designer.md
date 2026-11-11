@@ -186,6 +186,13 @@
 > Andy are listed in its pull request. Still to review: every new message. It becomes Final once
 > built and tested by Andy.
 
+> **Draft change (2026-11-11, every transfer's volume at once, item 33 of v0.2.0):**
+> `changeStageVolumes` gives every transfer of a stage one volume, as one edit, for a tool to set
+> them all (sections 3 to 6). Nothing new is stored, so plan files and the Biomek files
+> don't change. From a preview Andy approved on 2026-11-11; written in the hands-off workflow
+> (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request. Still to
+> review: every new message. It becomes Final once built and tested by Andy.
+
 ## 1. Purpose
 `transfer-designer.js` holds the transfer designer's rules: what a **plan** (`docs/glossary.md`) is,
 and every edit that can be made to one, each checked so that a plan is always valid. A tool shows a
@@ -430,6 +437,15 @@ new for it (`plan-file.md`).
 - Several transfers can be added as **one edit** (for example, one source into each of many
   wells): all are added, or, if any can't be, none.
 - A transfer's volume can be changed in place, keeping its position and stage (`replace`).
+- **Every transfer of a stage can be given one volume, as one edit** (`changeStageVolumes`;
+  Andy, 2026-11-11): each keeps its position, stage, source and destination, and only its volume
+  changes, so the operation list's order and every other stage's transfers are untouched. It's for
+  a transfer stage of the plan's own: a randomization's or a transfer table's stage takes its
+  volumes from its owner, and a mix step's mixed wells have a fixed placeholder volume
+  (`MIX_STEP_VOLUME`), so both are refused, as `changeVolume` refuses them. A stage whose transfers
+  all have that volume already gives back the same plan, so a caller can tell nothing changed.
+  "Have that volume" means **exact equality** (`===`) of the stored volume with the one given: no
+  rounding, so 33.3333 and 33.33 differ (and, as `===` has it, `-0` and `0` don't).
 - Removing a stage's last transfer leaves the stage in its place: the stage order doesn't change.
 - Positions are positions in the operation list, counting from 0, as in `listOperations()`.
 
@@ -866,7 +882,7 @@ first), work as on any stage; a run keeps what they set (below, "Running"). **Ev
 them is refused, in the logic** (2026-11-05, item 20, as for transfer tables: until then only the
 page kept them, and a plan that lost a run randomization's stages couldn't be saved and opened
 again, since its settings are `null`):
-- `addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer` on an owned stage;
+- `addTransfer`, `addTransfers`, `changeVolume`, `changeStageVolumes`, `removeTransfer` on an owned stage;
 - `renameStage` of an owned stage (it's named after its source);
 - `removeStage` of an owned stage;
 - `removeTipChange` of an owned stage's tip change (whether its stages share tips is its sources'
@@ -1456,7 +1472,7 @@ before a removed stage, and giving the stage after one's last stage a tip change
 and `setStageMix` on any of its stages; `setTipType` and `setTipProbes` on their tip changes (or
 `START`, for one that's the plan's first). **Refused, in the logic** (not only by a caller; as for
 randomizations since 2026-11-05, item 20, "It owns its stages"):
-- `addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer` on one of its stages;
+- `addTransfer`, `addTransfers`, `changeVolume`, `changeStageVolumes`, `removeTransfer` on one of its stages;
 - `renameStage` of one of its stages (its name is its component's);
 - `removeStage` of one of its stages;
 - `removeTipChange` of one of its stages' tip changes, or of the stage just after its last stage
@@ -1955,6 +1971,7 @@ given; "returns the plan with …" means a new plan.
 | `addTransfer(plan, transfer)` | the plan with `transfer` added to its stage (section 3, "Transfers"); the stage order is unchanged. Throws if the operation list refuses it (its message), a well isn't on the deck, or the stage isn't in the plan. |
 | `addTransfers(plan, transfers)` | the plan with each of `transfers` added in turn, as one edit. Throws, adding none, if any can't be added. |
 | `changeVolume(plan, position, volume)` | the plan with the transfer at `position` given `volume` (the operation list checks both). |
+| `changeStageVolumes(plan, id, volume)` | the plan with every transfer of stage `id` given `volume`, as one edit, each keeping its position (section 3, "Transfers"; 2026-11-11). The same plan if every transfer's volume is `===` `volume` already. Added to the REPL's `transfer-designer` topic, beside `changeVolume`, in both of `scripts/repl.js`'s lists. Throws, in this order, if `id` isn't a stage, it's a randomization's or a transfer table's stage, it's a mix step, it has no transfers, or the operation list refuses `volume` (its message, as for `changeVolume`). |
 | `removeTransfer(plan, position)` | the plan without the transfer at `position` (the operation list checks it); the stage order is unchanged. |
 | `transfersIn(plan, id)` | stage `id`'s transfers, in order, each with its `position` added, e.g. `[{ type: "transfer", source: …, destination: …, volume: 50, stage: "2", position: 4 }]`. A stage without transfers, or an ID that isn't a stage, gives `[]`. |
 
@@ -2105,6 +2122,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `addTransfer`: the stage isn't in the plan | `There's no stage "9" in the plan to add this transfer to.` |
 | `addTransfer`, `addTransfers`: a transfer into a mix step that isn't a mixed well (from a well into itself, of `MIX_STEP_VOLUME`) | `Stage 2, “Mix plate”, is a mix step: it only mixes wells. Add this transfer to a transfer stage.` |
 | `changeVolume`: a mix step's mixed well | `A mix step's wells are mixed with its own settings, so their volume can't be changed.` |
+| `changeStageVolumes`: `id` isn't a stage (2026-11-11) | `There's no stage "9" in the plan.` |
+| `changeStageVolumes`: a mix step | `changeVolume`'s message: `A mix step's wells are mixed with its own settings, so their volume can't be changed.` |
+| `changeStageVolumes`: a stage with no transfers | `Stage 2, “Drugs”, has no transfers yet, so there's no volume to change.` |
+| `changeStageVolumes`: the volume is refused | the operation list's message, as for `changeVolume`, e.g. `The volume must be a number of microliters, 0 or more, like 50, but got "abc".` |
 | `mixWells`, `unmixWell`: `id` isn't a mix step | `Stage 2, “Drugs”, isn't a mix step, so it can't mix wells.` (or `There's no stage "9" in the plan.`) |
 | `unmixWell`: the mix step doesn't mix that well | `Stage 2, “Mix plate”, doesn't mix Plate1 A2.` |
 | `mixWells`: `wells` isn't a list of wells | `The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], but got null.` |
@@ -2213,7 +2234,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `runRandomization`: `forAll` turns mixing on at an end whose mode (given, or a stage's own) can't mix | `modeSettings`' message: `Non-Contact can't mix, so it can't be used at the destination while the destination mixes. Turn the destination's mixing off first.` (checked before anything changes, for every stage it owns or would make) |
 | `runRandomization`: `forAll`'s `tipType` or `probes` | `setTipType`'s or `setTipProbes`' message |
 | `runRandomization`: `forAll` gives an end's mixing without its mode, and a stage's end isn't one of the modes, or (mixing on) its mode can't mix | `Stage 5, “Drug A”, uses Non-Contact at the destination, which can't mix. Choose a mode for every stage, or change that stage first.` / `Stage 5, “Drug A”, doesn't use one of the modes at the source. Choose a mode for every stage, or change that stage first.` (`source` or `destination`; the first stage in stage order) |
-| an edit of an owned stage's transfers (`addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer`) | `Stage 5, “Drug A”, is part of a randomization: change its sources and wells in the randomization.` |
+| an edit of an owned stage's transfers (`addTransfer`, `addTransfers`, `changeVolume`, `changeStageVolumes`, `removeTransfer`) | `Stage 5, “Drug A”, is part of a randomization: change its sources and wells in the randomization.` |
 | `renameStage` of an owned stage | `Stage 5, “Drug A”, is part of a randomization: it's named after its source.` |
 | `removeStage` of an owned stage | `Stage 5, “Drug A”, is part of a randomization: take its source out of the randomization, or remove the whole randomization.` |
 | `removeTipChange` of an owned stage's tip change, or `addTipChange` before an owned stage | `Stage 5, “Drug A”, is part of a randomization: which of its stages share tips is set by its sources.` |
@@ -2260,7 +2281,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `addTransferTable`: `beforeId` is inside a tip group | `A transfer table sits between tip groups, so it can't go before stage 3, “Drugs”.` (Inside a transfer table or a randomization: each one's "stay together" message.) |
 | `transferTableProblems`, `sourceSplit`, `transferTableStages`: `at` isn't a stage or `null` | `There's no stage "9" in the plan.` |
 | `removeTransferTable`: its stages are all the plan's stages | `This transfer table's stages are all the plan's stages, and a plan needs at least one. Add a stage outside it first.` |
-| an edit of its stages' transfers (`addTransfer`, `addTransfers`, `changeVolume`, `removeTransfer`) | `Stage 3, “Media”, is part of a transfer table: change its amounts in the table.` |
+| an edit of its stages' transfers (`addTransfer`, `addTransfers`, `changeVolume`, `changeStageVolumes`, `removeTransfer`) | `Stage 3, “Media”, is part of a transfer table: change its amounts in the table.` |
 | `renameStage` of one of its stages | `Stage 3, “Media”, is part of a transfer table: it's named after its component.` |
 | `removeStage` of one of its stages | `Stage 3, “Media”, is part of a transfer table: clear its column in the table, or remove the whole table.` |
 | `removeTipChange` of one of its stages | `Every stage of a transfer table starts on new tips, so these can't be removed.` |
@@ -2465,7 +2486,8 @@ order of checks.
   with a transfer stage after it, copies that transfer stage.
 - `addTransfer` into a mix step refuses a transfer between two wells, and a well into itself of
   any volume but `MIX_STEP_VOLUME`; accepts a well into itself of `MIX_STEP_VOLUME`. `changeVolume`
-  refuses a mix step's transfer.
+  refuses a mix step's transfer, and `changeStageVolumes` refuses a mix step with mixed wells (and
+  one without), each with `changeVolume`'s message (2026-11-11).
 - A mix step's mixed well holding at least `MIX_STEP_VOLUME` changes no well's contents; a well
   holding less above its dead volume is a contents problem (`stagesWithContentsProblem`).
 - In the table of which parts of the plan each edit may change: `addMixStep` changes `stageList`
@@ -2565,6 +2587,41 @@ order of checks.
   `null` gives the operation list's message.
 - `changeVolume` changes only that transfer's volume; the other transfers are the very same objects
   as before (sharing).
+- **`changeStageVolumes`** (2026-11-11), on a plan with three transfer stages, 1, 2 and 3, each with
+  transfers (stage 2's with volumes that differ, e.g. 10, 20 and 30 µL, between wells of more than
+  one labware), and a mix step:
+  - **Every transfer of the stage** gets the volume: stage 2's three transfers all have 25 µL
+    after; each keeps its position, stage, source and destination (compared field by field with
+    the plan before), and `transfersIn(plan, "2")` lists them in the same order.
+  - **Nothing else changes:** stages 1's and 3's transfers are the very same objects as before
+    (sharing, as for `changeVolume`); the operation list's length and each position's stage are
+    unchanged; the stage list, stage order, tip changes, components, starting contents, labels,
+    well labels, randomizations and transfer tables are the very same values as before.
+  - **One edit:** a single call gives the new plan; the plan given is unchanged (its transfers
+    still 10, 20 and 30 µL).
+  - **The same as `changeVolume` one by one:** the plan it gives holds the same transfers as
+    `changeVolume` applied to each of the stage's positions in turn.
+  - **Already that volume:** a stage whose transfers all have the volume gives back the very same
+    plan (`===`); one where only some do changes the others.
+  - **Exact equality, no rounding:** a stage with transfers of 33.3333 and 33.33 µL has volumes
+    that differ (a tool reading them sees two values); a stage all at 33.3333 given `33.33` changes
+    every transfer to 33.33 (not the same plan); a stage all at 33.33 given `33.33` gives back the
+    same plan. A stage all at `0` given `-0` gives back the same plan (`-0 === 0`); a stage all at 5
+    given `-0` sets every transfer as the operation list stores it.
+  - **A stage with one transfer** changes it, as `changeVolume` would.
+  - **Volumes the operation list accepts:** `0` and a decimal such as `12.5` are set as given.
+    (No volume here comes from `config/`, so the tests name their volumes as literals.)
+  - **Refused**, each with its section 5 message, the plan unchanged: an ID that isn't a stage
+    (`"9"`); a stage with no transfers; a mix step (with mixed wells, made with `mixWells`, each a
+    well into itself of `MIX_STEP_VOLUME`, and without); a randomization's stage with no transfers
+    (the owner's message, before the empty stage's); a randomization's
+    stage and a transfer table's stage (their owners' messages); a volume of `-5`, `"abc"`, `null`
+    and `NaN` (the operation list's message; a refused volume changes none of the stage's transfers,
+    not even the first). The order of checks: a stage that isn't one is reported before a bad
+    volume; an owned stage before an empty stage; an owned stage, a mix step and an empty stage
+    before a bad volume.
+  - **Contents problems** aren't refused: a volume that overdraws a source still gives the plan,
+    and `stagesWithContentsProblem` then names the stage, as after `changeVolume`.
 - `removeTransfer` removes only that transfer.
 - With stages 1, 2 and 3, each with one transfer, removing stage 2's transfer leaves the stage order
   1, 2, 3; removing stage 3's leaves 1, 2, 3 too.
@@ -3002,7 +3059,8 @@ before, one after (each with tips of its own), and Plate1's B2 to C11 (20 wells)
   - **Regression fixture** (`tests/fixtures/shared-tips/`): opening `randomized-plan-v9.json` and
     running `r1` with no `forAll` still gives exactly the fixture's files.
   - **Protection** (each with its message, changing nothing): `addTransfer`, `changeVolume`,
-    `removeTransfer`, `renameStage`, `removeStage` on an owned stage; `removeTipChange` of a
+    `changeStageVolumes` (2026-11-11), `removeTransfer`, `renameStage`, `removeStage` on an owned
+    stage; `removeTipChange` of a
     group's tip change; `addTipChange` before a stage sharing tips; `addStage` before its second
     stage, with `takeTips` before its first, and without `takeTips` just after its last; allowed:
     `addStageWithNewTips` just after its last, and `addStage` without `takeTips` before its first
@@ -3272,7 +3330,8 @@ from Res1 1 (changing the split); `false` again after updating (for the removed 
   before), its header stays, the table is
   out of date, its stage is still owned.
 - **Protection:** each refusal of section 5 for a transfer table's stage: adding, removing and
-  changing a transfer's volume, renaming, removing the stage, removing its tip change, removing the
+  changing a transfer's volume, changing all its transfers' volumes (`changeStageVolumes`,
+  2026-11-11), renaming, removing the stage, removing its tip change, removing the
   tip change just after it, adding a stage, mix step, randomization or transfer table before its
   second stage, and `takeTips` before its first; `addStage` and `addMixStep` without `takeTips`
   before the stage just after it, and with `null` when it's last, refused with their own message;
