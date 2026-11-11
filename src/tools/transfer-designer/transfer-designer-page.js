@@ -2796,8 +2796,13 @@ function sharedVolume(transfers) {
 }
 
 // Whether the All transfers box's text has been edited since it last got the focus (section 7):
-// set by its input event, cleared each time it gets the focus and once it's saved or put back.
+// set by its input event, cleared only when it gets the focus (anew, as after the redraw that
+// follows a save). While it's set, Ctrl+Z and Ctrl+Y are the text box's own.
 let allTransfersEdited = false;
+
+// Whether the All transfers box holds an edit not yet saved: set by its input event, cleared once
+// it's saved or put back, so a box is saved at most once per change.
+let allTransfersUnsaved = false;
 
 // Connects the All transfers box's events (section 7): selecting its text when it gets the focus,
 // noting edits, its keys (Enter, Tab, Escape, Ctrl+Z and Ctrl+Y) and saving when it's left.
@@ -2816,6 +2821,7 @@ function connectAllTransfersBox(box) {
   });
   box.addEventListener("focus", () => {
     allTransfersEdited = false;
+    allTransfersUnsaved = false;
     box.select();
   });
   // A click passed on by another box's saving (guardInlineBox) doesn't focus a text box by itself.
@@ -2826,6 +2832,7 @@ function connectAllTransfersBox(box) {
   });
   box.addEventListener("input", () => {
     allTransfersEdited = true;
+    allTransfersUnsaved = true;
     // While edited, it's the open inline box, so a press outside saves it first and passes the
     // click on (guardInlineBox).
     inlineBox = { box, finish: (how) => saveAllTransfers(box, how) };
@@ -2850,7 +2857,7 @@ function pressKeyInAllTransfers(box, event) {
   if (event.key === "Enter") {
     event.preventDefault();
     saveAllTransfers(box, "enter");
-  } else if (event.key === "Tab" && !withCtrl && !event.altKey && allTransfersEdited && box.value.trim() !== "") {
+  } else if (event.key === "Tab" && !withCtrl && !event.altKey && allTransfersUnsaved && box.value.trim() !== "") {
     event.preventDefault();
     saveAllTransfers(box, event.shiftKey ? "back" : "next");
   } else if (event.key === "Escape") {
@@ -2879,10 +2886,10 @@ function undoOrRedoFromAllTransfers(stage, isRedo) {
   focusAllTransfersBox(stage);
 }
 
-// Puts the value the All transfers box showed back, as not edited; it's no longer the open inline
-// box.
+// Puts the value the All transfers box showed back, with nothing left to save; it's no longer the
+// open inline box. Whether it was edited since it got the focus stays as it was (for Ctrl+Z).
 function putBackAllTransfers(box) {
-  allTransfersEdited = false;
+  allTransfersUnsaved = false;
   box.value = box.dataset.shown;
   if (inlineBox !== null && inlineBox.box === box) {
     inlineBox = null;
@@ -2901,7 +2908,7 @@ function saveAllTransfers(box, how) {
     inlineBox = null;
   }
   const text = box.value.trim();
-  if (!allTransfersEdited || text === "") {
+  if (!allTransfersUnsaved || text === "") {
     putBackAllTransfers(box);
     return "closed";
   }

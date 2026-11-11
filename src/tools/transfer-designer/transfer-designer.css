@@ -28,6 +28,8 @@
   --green-tint: #edf5ef;
   --disabled-background: #d9d7cf;
   --disabled-text: #6b6b66;
+  /* What a disabled button or box is filled with. */
+  --disabled-field: #f1f0ec;
 
   --sand-tint: #f5f1e8;
   --pill-gray: #eceae3;
@@ -232,7 +234,7 @@ button[aria-pressed="true"]:not(.color-swatch) {
 /* Disabled buttons look the same whatever their group, so this comes after the groups. */
 button:disabled {
   border-color: var(--disabled-background);
-  background: #f1f0ec;
+  background: var(--disabled-field);
   color: var(--disabled-text);
   cursor: not-allowed;
 }
@@ -1464,7 +1466,7 @@ input.all-transfers-box::placeholder {
 /* While moving wells it can't be typed in, and takes the page's disabled look. */
 input.all-transfers-box[aria-disabled="true"] {
   border-color: var(--disabled-background);
-  background: #f1f0ec;
+  background: var(--disabled-field);
   color: var(--disabled-text);
   cursor: not-allowed;
 }
