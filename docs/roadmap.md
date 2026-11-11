@@ -1308,8 +1308,8 @@ added on 2026-10-28 (Andy).
       12`, with what their wells hold in a tooltip; the standard mix (`DEFAULT_MIX`,
       `MIX_STEP_MODE`).
     - **Fresh tip**: wells in probe order (labware as on the deck, then down each column), in
-      batches of wells of one column of one labware, at most as many as there are probes (decision
-      B, below). **Same contents**: wells grouped by what they hold just before it, compared to a
+      batches of wells of one column of one labware, in rows right next to each other, at most as
+      many as there are probes (decisions B and E, below). **Same contents**: wells grouped by what they hold just before it, compared to a
       stated precision, in order of first appearance. Both also by volume (decision A, below).
     - **It moves, copies, pastes and is removed as a whole**; its mix steps change only through its
       wizard; `needs update` when its wells would be grouped differently; saved in plan files and
@@ -1320,8 +1320,8 @@ added on 2026-10-28 (Andy).
       mix and tips are locked too, not only their wells; it stores only its way, its wells and tips
       being its mix steps'; Update remakes every mix step; while the wizard is open, anything else
       that would change the plan or what's open is refused with a shake.
-    - **Decided by Andy** (2026-11-11, 08:38 to 08:44; raised in the specification review, each
-      changing what goes into the Biomek files):
+    - **Decided by Andy** (2026-11-11, A to D 08:38 to 08:44, raised in the specification review;
+      E 11:42; each changing what goes into the Biomek files):
       - **A. Grouping by volume too** (option 1, of three: also group by volume; warn; or split a
         stage's rows by well volume). With either way, wells share a mix step only if they also
         hold about the same volume: the largest at most `MIX_VOLUME_TOLERANCE` percent (new, in
@@ -1338,9 +1338,17 @@ added on 2026-10-28 (Andy).
         `biomek.md`'s simulation test.
       - **C. Reservoir troughs refused for a fresh tip** (option 1) until the simulation test has
         checked several probes in one trough; the reservoir case stays in `biomek.md`'s
-        simulation test.
+        simulation test. A trough, for this, is a well of a grid with one row (a one-row lettered
+        labware and a one-well reservoir included; decided in the hands-off workflow); a fresh-tip
+        box that comes to hold one (a well moved into a trough, or a plan file) is out of date, so
+        the Biomek files wait and Update gives the refusal.
       - **Empty wells can be picked** (option 1): the existing overdraw problem catches their mix
         step, and with "same contents" they form a group of their own.
+      - **E. Fresh-tip batches only in rows right next to each other** (2026-11-11, 11:42): a batch
+        also starts again at any gap, a well not in the row directly below the batch's last well.
+        Reason (Andy): the probes sit one row apart, so A1, C1 and E1 can't be done in one pass
+        ("it does them all at once that way"). On 4 probes, A1, C1 and E1 give three mix steps; A1
+        to H1 without D1 gives A1 to C1, then E1 to H1.
     - **Not verified** (`biomek.md`, "Not yet known"): that Transfer From File gives each well of a
       mix step its own probe when it has no more wells than probes. Andy runs the simulation test
       there before any real run with a mixing box.
@@ -1348,8 +1356,8 @@ added on 2026-10-28 (Andy).
       already writes; their format doesn't change.
     - **Once #153 (deleting and the trash) merges**, deleting a mixing box follows its container
       rules, as for a transfer table.
-    Specified (Draft, 2026-11-11; the specification review's points fixed the same day). Waiting
-    for Andy's decisions A, B, C and empty wells before the build.
+    Specified (Draft, 2026-11-11; the specification review's points fixed the same day, and the
+    second review's after decision E).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
