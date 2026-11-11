@@ -550,16 +550,15 @@ Last updated: 2026-11-10
   select anything in the Stages column and press Delete (right after a click in the column),
   choose Delete or Cut from the right-click menu, or drag it onto the trash; a short red animation
   and an Undo button in the message; Join with the group above in place of a tip change's Remove;
-  and a trash at the bottom of the column that keeps everything deleted, to put back where it was
-  or drag anywhere. From a preview Andy shaped on 2026-11-11, where he also found that removing a
-  tip group's first stage joined the rest of the group to the tips before it (fixed: the group
-  keeps its tips). **Specified** (Draft, 2026-11-11, hands-off workflow): `transfer-designer.md`
-  ("Stages", "Deleting"), a new logic module `trash` (`trash.md`, `TRASH_LIMIT` in
-  `config/trash.js`; the remembered stage order and group keys from the specifications' review),
-  `transfer-designer-page.md` (sections 2, 4, 5, 7, 10, 12, 15, 16 and 17), a
-  shared test plan `tests/fixtures/delete-test-plan.js` and a browser walk-through
-  `tests/browser/delete.walk.js`; glossary term Trash. Plan files don't change; what a plan writes
-  changes only after a tip group's first stage is removed, which now keeps the group's tips.
+  and a trash at the bottom of the column that keeps everything deleted, to drag out to any gap.
+  From a preview Andy shaped on 2026-11-11, where he also found that removing a tip group's first
+  stage joined the rest of the group to the tips before it (fixed: the group keeps its tips).
+  **Specified** (Draft, 2026-11-11, hands-off workflow): `transfer-designer.md` ("Stages",
+  "Deleting"), a new logic module `trash` (`trash.md`, `TRASH_LIMIT` in `config/trash.js`),
+  `transfer-designer-page.md` (sections 2, 4, 5, 7, 10, 12, 15, 16 and 17), a shared test plan
+  `tests/fixtures/delete-test-plan.js` and a browser walk-through `tests/browser/delete.walk.js`;
+  glossary term Trash. Plan files don't change; what a plan writes changes only after a tip group's
+  first stage is removed, which now keeps the group's tips.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1303,19 +1302,19 @@ added on 2026-10-28 (Andy).
       change's `Remove`, instead of deleting a tip change to join two groups.
     - **Seeing it go:** the deleted rows flash red and shrink away, and the message has an `Undo`
       button (Andy chose both, from three options).
-    - **The trash**, at the bottom of the Stages column: drag onto it to delete, drag out of it to
-      put something anywhere, or `Put back` to where it was. Everything deleted goes in, by any
-      route, one entry per thing (Andy, after the preview put several things back as one and got
-      their order wrong). At most `TRASH_LIMIT`, kept by the browser across reloads, not in
-      plan files and not tied to a plan; Empty trash and Reset clear it, Reset undoably.
-    - **Put back finds the same neighbors**: the trash remembers the stage order and each stage's
-      tip group, and a remembered stage counts only with the same ID and name, so Put back finds
-      no place in a plan where none of them counts, such as one opened since (found in the
-      preview); one sharing them, such as the same plan reopened, does (Claude's choice).
+    - **The trash**, at the bottom of the Stages column: drag onto it to delete, and drag an entry
+      out of it to any gap, in this plan or another, to paste it there. Everything deleted goes in,
+      by any route, one entry per thing. At most `TRASH_LIMIT`, kept by the browser across reloads,
+      not in plan files and not tied to a plan; Empty trash and Reset clear it, Reset undoably.
+    - **No Put back** (Andy, 2026-11-11, 01:51): the preview's button that put an entry back where
+      it was went wrong in ways two reviews couldn't fix (stage IDs renumber on reopening, and
+      moves, splits, joins and renames after a delete), so the trash is drag-out only, and Undo is
+      the exact way to bring back a recent delete.
     - **Removing a tip group's first stage keeps the group's tips** (Andy found the old behavior,
       2026-11-11): a bug fix in every removal of a stage.
-    - **Very thorough tests** (Andy asked): round trips of deleting and putting back in every
-      order, in Node, and a browser walk-through.
+    - **Very thorough tests** (Andy asked): deleting every kind alone and mixed, and each entry
+      pasted back where it was giving the same plan and the same Biomek files, in Node, and a
+      browser walk-through.
     It changes neither plan files nor the Biomek files' format; what a plan writes changes only
     after a removal of a tip group's first stage.
 
@@ -1446,10 +1445,8 @@ final Biomek runs, so they test the files as they will be:
 Shortcuts taken knowingly, each with what doing it properly would mean.
 - **Tabs don't follow each other's trash** (2026-11-11, item 32): each change to the trash reads the
   stored trash first and writes it back, so no tab undoes another's change, but a tab left alone
-  shows its trash as it last read it, and Undo in one tab applies a change kept by that tab (its
-  remembered stage order included) to the trash as stored. Properly: listen for the browser's
-  `storage` event and redraw the trash from it, and keep each tab's undo of the trash to its own
-  entries.
+  shows the trash as it last read it, until its own next change or a reload. Properly: listen for
+  the browser's `storage` event and redraw the trash from it.
 - **The tutorial can't run unbuilt** (2026-11-08, item 29): the build joins the transfer
   designer's page and the guide panel, adding `data-tutorial` to the page's HTML, so `npm run serve`
   has no tutorial page. Trying it means `npm run build` first. Doing it properly would mean a small
