@@ -154,10 +154,11 @@ convenience, and a damaged one shouldn't stop a tool opening):
 - **Each entry.** One that can't be read is **dropped**, and the others kept: one that isn't an
   object with exactly the properties above, each of its kind (`id` a whole number of at least 1,
   below `nextEntryId`; `deletion` a whole number of at least 1, below `nextDeletion`; `kind` one of
-  the four; `name` text or `null`; `stageCount` and `transferCount` whole numbers of at least 0;
-  `deletedAt` text that `Date` reads as a date; `copied` an object). Of two entries with one `id`,
-  the later is dropped. `copied` isn't checked here: `pasteItems` checks it when it's pasted, and
-  refuses it with its message.
+  the four; **`name` as its `kind` has it**: text for a `"stage"` or `"randomization"`, `null` for
+  a `"tipGroup"` or `"transferTable"`; `stageCount` and `transferCount` whole numbers of at least
+  0; `deletedAt` text that `Date` reads as a date; **`copied` a plain object**, not a list and not
+  `null`). Of two entries with one `id`, the later is dropped. What's inside `copied` isn't checked
+  here: `pasteItems` checks it when it's pasted, and refuses it with its message.
 
 Entries out of order are put in order; more than `TRASH_LIMIT` keeps the newest `TRASH_LIMIT`.
 
@@ -352,8 +353,10 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
   `entries` not a list.
 - One entry unreadable, dropped and the others kept: each property missing or of the wrong kind in
   turn, among them `stageCount` -1, `kind` `"box"`, `deletedAt` `"not a date"`, `deletion` at or
-  above `nextDeletion`, `id` at or above `nextEntryId`; two entries with one `id` (the later
-  dropped).
+  above `nextDeletion`, `id` at or above `nextEntryId`; an **extra property** (`note: "x"`);
+  **`name` not as its `kind` has it**: `null` for a stage and for a randomization, text for a tip
+  group and for a transfer table; **`copied` not a plain object**: `null`, a list (`[]`), text;
+  two entries with one `id` (the later dropped).
 - Entries out of order come back in order; more than the limit keeps the newest.
 - `trashTextProblem`: `null` for `trashToText` of an empty trash and of one with an entry of each
   kind, for entries out of order, and for more than the limit; `"newer"` for version 2 (with
