@@ -404,8 +404,9 @@ export function canRemoveStage(plan, id) {
   return plan.stageList.has(id) && plan.stageList.listStages().length > 1;
 }
 
-// Returns the plan without stage `id`, its transfers, or a tip change before it. It's taken out of
-// the stage order, which keeps the other stages in their order. Throws if canRemoveStage is false,
+// Returns the plan without stage `id` or its transfers; a tip change before it moves to the next
+// stage when that has none, so the rest of its tip group keeps its tips, and otherwise goes. It's
+// taken out of the stage order, which keeps the other stages in their order. Throws if canRemoveStage is false,
 // or the stage is a transfer table's or a randomization's, which change only through their owner.
 export function removeStage(plan, id) {
   if (!plan.stageList.has(id)) {
@@ -452,9 +453,24 @@ function removeStageOfAnyOwner(plan, id) {
     operationList,
     stageList: plan.stageList.remove(id),
     stageOrder: order.filter((stage) => stage !== id),
-    tipChanges: withoutKey(plan.tipChanges, id),
+    tipChanges: tipChangesAfterRemove(plan.tipChanges, id, nextId),
   });
   return withRandomizationsAfterRemove(withStartTipsFirst(removed), id, nextId, keptTips);
+}
+
+// The tip changes after stage `id` is removed, `nextId` being the stage after it (or null): a tip
+// change keyed by `id` moves to `nextId` when that stage has none of its own, so the rest of its
+// tip group keeps the group's tips (section 3, "Stages"); otherwise it goes with the stage,
+// e.g. { start: …, 3: bc1070 } with 3 removed and 4 next → { start: …, 4: bc1070 }.
+function tipChangesAfterRemove(tipChanges, id, nextId) {
+  if (!Object.hasOwn(tipChanges, id)) {
+    return tipChanges;
+  }
+  const without = withoutKey(tipChanges, id);
+  if (nextId === null || Object.hasOwn(tipChanges, nextId)) {
+    return without;
+  }
+  return withKey(without, nextId, tipChanges[id]);
 }
 
 // For each stage with transfers, in run order, how many transfers have run when it ends,

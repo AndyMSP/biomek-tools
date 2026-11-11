@@ -215,6 +215,16 @@ function planWithStages(count) {
   return plan;
 }
 
+// A plan with stages "1" to "5", each with a transfer, in tip groups [1, 2] on the START tips and
+// [3, 4, 5] on the second tip type on probes [1, 2], keyed by "3" (the specification's example of
+// removing a tip group's first stage). Needs at least 2 tip types.
+function planWithFirstStageTips() {
+  let plan = withTransfersIn(planWithStages(5), ["1", "2", "3", "4", "5"]);
+  plan = addTipChange(plan, "3");
+  plan = setTipType(plan, "3", TIP_TYPES[1]);
+  return setTipProbes(plan, "3", [1, 2]);
+}
+
 // The plan with one transfer added to each of `stages`, in turn, each into its own well of PLATE
 // (A1, A2, …), e.g. withTransfersIn(plan, ["1", "2"]).
 function withTransfersIn(plan, stages) {
@@ -910,7 +920,7 @@ describe("transfer-designer", () => {
     }
   });
 
-  test("removeStage removes a stage and its transfers, takes it out of the stage order leaving the others in their order, and its tip change goes", () => {
+  test("removeStage removes a stage and its transfers, takes it out of the stage order leaving the others in their order, and no tip change stays keyed by it", () => {
     let plan = withTransfersIn(planWithStages(3), ["1", "2", "3"]);
     plan = addTipChange(plan, "2");
     const { plan: withFour, id: four } = addStage(plan, "2");
@@ -919,6 +929,65 @@ describe("transfer-designer", () => {
     assert.deepEqual(stagesOfTransfers(removed), ["1", "3"]);
     assert.deepEqual(stageOrder(removed), ["1", four, "3"]);
     assert.equal(tipChangeAt(removed, "2"), null);
+  });
+
+  test("removing a tip group's first stage keeps the group's tips: its tip change moves to the next stage of the group", { skip: TIP_TYPES.length < 2 && "needs 2 tip types" }, () => {
+    const plan = planWithFirstStageTips();
+    const groupsBefore = tipGroups(plan).map(({ tipType, probes }) => ({ tipType, probes }));
+
+    const withoutThree = removeStage(plan, "3");
+    assert.deepEqual(tipGroups(withoutThree).map(({ key, stages }) => ({ key, stages })), [
+      { key: START, stages: ["1", "2"] },
+      { key: "4", stages: ["4", "5"] },
+    ]);
+    assert.deepEqual(tipChangeAt(withoutThree, "4"), { tipType: TIP_TYPES[1], probes: [1, 2] });
+    assert.equal(tipChangeAt(withoutThree, "3"), null);
+    assert.deepEqual(
+      tipGroups(withoutThree).map(({ tipType, probes }) => ({ tipType, probes })),
+      groupsBefore,
+    );
+
+    const withoutFour = removeStage(withoutThree, "4");
+    assert.deepEqual(tipGroups(withoutFour).map(({ key, stages }) => ({ key, stages })), [
+      { key: START, stages: ["1", "2"] },
+      { key: "5", stages: ["5"] },
+    ]);
+    assert.deepEqual(tipChangeAt(withoutFour, "5"), { tipType: TIP_TYPES[1], probes: [1, 2] });
+
+    const withoutFive = removeStage(withoutFour, "5");
+    assert.deepEqual(tipGroups(withoutFive).map(({ key, stages }) => ({ key, stages })), [
+      { key: START, stages: ["1", "2"] },
+    ]);
+    assert.deepEqual(withoutFive.tipChanges, { [START]: startTips() });
+  });
+
+  test("removing a tip group's only stage takes its tip change with it, and the next group keeps its own", () => {
+    // Groups [1, 2], [3] and [4, 5]: 3 alone, 4 on the last tip type on [1].
+    let plan = withTransfersIn(planWithStages(5), ["1", "2", "3", "4", "5"]);
+    plan = addTipChange(plan, "3");
+    plan = addTipChange(plan, "4");
+    plan = setTipType(plan, "4", TIP_TYPES.at(-1));
+    plan = setTipProbes(plan, "4", [1]);
+    const removed = removeStage(plan, "3");
+    assert.deepEqual(removed.tipChanges, {
+      [START]: startTips(),
+      4: { tipType: TIP_TYPES.at(-1), probes: [1] },
+    });
+  });
+
+  test("removing the last stage in the stage order, first of its group, takes its tip change with it", () => {
+    let plan = withTransfersIn(planWithStages(3), ["1", "2", "3"]);
+    plan = addTipChange(plan, "3");
+    const removed = removeStage(plan, "3");
+    assert.deepEqual(removed.tipChanges, { [START]: startTips() });
+    assert.deepEqual(stageOrder(removed), ["1", "2"]);
+  });
+
+  test("removing a stage in the middle of a tip group moves no tip change", () => {
+    const plan = planWithFirstStageTips();
+    const removed = removeStage(plan, "4");
+    assert.deepEqual(removed.tipChanges, plan.tipChanges);
+    assert.deepEqual(tipGroups(removed).map(({ stages }) => stages), [["1", "2"], ["3", "5"]]);
   });
 
   test("removing the only stage throws, and canRemoveStage is false for it", () => {
@@ -8160,6 +8229,19 @@ describe("transfer-designer", () => {
     const joined = runRandomization(setRandomization(plan, id, { sources: setSourceSharesTips(sources, 2, true) }), id);
     assert.equal(tipChangeAt(joined, a3), null);
     assert.equal(tipsOfStage(joined, a3).tipType, otherTips().tipType);
+  });
+
+  test("the removal rule's reach: a run after a sharing group's first source is taken out keys the group's tips, the same tip type and probes, by the next source's stage", () => {
+    const { plan: setUp, id } = sharingPlan([false, true, false, false]);
+    const run = runRandomization(setUp, id);
+    const a1 = stageFor(run, id, "A1");
+    const a2 = stageFor(run, id, "A2");
+    let plan = setTipType(run, a1, otherTips().tipType);
+    plan = setTipProbes(plan, a1, [1, 3]);
+    const sources = randomizationAt(plan, id).sources;
+    const withoutA1 = runRandomization(setRandomization(plan, id, { sources: removeSources(sources, [0]) }), id);
+    assert.equal(withoutA1.stageList.has(a1), false);
+    assert.deepEqual(tipChangeAt(withoutA1, a2), { tipType: otherTips().tipType, probes: [1, 3] });
   });
 
   test("nothing kept: every new stage starts like the old first stage; new filler wells start like the old filler stage", () => {
