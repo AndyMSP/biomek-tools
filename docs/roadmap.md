@@ -551,8 +551,8 @@ Last updated: 2026-11-11
   transfers share, or `Mixed` when they differ ("just like randomizer sources"), which sets them
   all as one edit. From a preview Andy approved on 2026-11-11. **Specified** (Draft, 2026-11-11,
   hands-off workflow): `changeStageVolumes` (`transfer-designer.md`, sections 3 to 6) and the
-  page (`transfer-designer-page.md`, sections 7, 12, 15 and 16). Plan files and the Biomek files
-  don't change.
+  page (`transfer-designer-page.md`, sections 7, 12, 15 and 16), and **built (#154)**. Plan files
+  and the Biomek files don't change.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
