@@ -20,6 +20,7 @@ import {
   renameRandomization,
   randomizationAt,
   transferTableAt,
+  mixingBoxAt,
   tipGroups,
   transfersIn,
 } from "./transfer-designer.js";
@@ -35,7 +36,7 @@ const TEXT_PROPERTIES = ["format", "version", "entries", "nextEntryId", "nextDel
 const ENTRY_PROPERTIES = ["id", "deletion", "kind", "name", "stageCount", "transferCount", "deletedAt", "copied"];
 
 // The kinds of thing an entry holds, and those that have a name (the others' name is null).
-const ENTRY_KINDS = ["stage", "tipGroup", "randomization", "transferTable"];
+const ENTRY_KINDS = ["stage", "tipGroup", "randomization", "transferTable", "mixingBox"];
 const NAMED_KINDS = ["stage", "randomization"];
 
 // The words checkNameRule needs; only whether it throws matters here, never its message.
@@ -189,6 +190,8 @@ function stagesOfItem(plan, item) {
       return tipGroups(plan).find((group) => group.stages[0] === item.id).stages;
     case "randomization":
       return randomizationAt(plan, item.id).stages.map((owned) => owned.stage);
+    case "mixingBox":
+      return [...mixingBoxAt(plan, item.id).stages];
     default:
       return transferTableAt(plan, item.id).stages.map((owned) => owned.stage);
   }
