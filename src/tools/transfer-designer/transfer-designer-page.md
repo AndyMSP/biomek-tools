@@ -365,11 +365,24 @@ data everyone has to clear first).
   **reads the stored trash first, makes the change to it, and writes it back** (from the review,
   2026-11-11), so a change in one tab never undoes another tab's; the list a tab shows is redrawn
   from what it read. A tab doesn't follow another tab's changes while it's left alone (it isn't
-  told of them; roadmap, "Technical debt"). If writing it fails (storage full or switched off),
-  the trash keeps working in that tab's memory, and the first failure says, as a note, `The trash
-  can't be kept by this browser, so it will be empty after a reload.` Not in plan files,
-  not tied to a plan, and not part of the browser copy; and whether its list is open (closed at
-  first). Its changes are undone and redone with the edits that made them (above, "The history").
+  told of them; roadmap, "Technical debt"). No stored trash reads as an empty one (`emptyTrash`).
+  **When storage can't be used, the tab keeps the trash in its own memory only**, for as long as
+  it's open, reading and writing local storage no more (2026-11-11):
+  - **writing fails** (`setItem` throws: storage full or switched off), or **reading fails**
+    (`getItem` throws), when the page opens or at any change: the note `The trash can't be kept by
+    this browser, so it will be empty after a reload.`, once per tab. It shows **after the message
+    of the change** it happened in, on a line of its own in the same message bar, the message
+    keeping its kind and its `Undo` button (so a delete still says what it deleted); a failure when
+    the page opens waits for the first change to the trash;
+  - **the stored trash was written by a newer version, or is damaged** (`trashTextProblem`,
+    `trash.md`, "Keeping the trash as text"): it's **never written over** (another version or a
+    repair may still read it); the tab starts from what `trashFromText` reads of it (for a newer
+    one, an empty trash), and the note shows once, when the page opens: `The stored trash was saved
+    by a newer version of the transfer designer, so this tab keeps a trash of its own and leaves
+    that one as it is.` or `The stored trash is damaged, so this tab keeps a trash of its own, from
+    what could be read, and leaves the stored one as it is.` (roadmap, "Technical debt").
+  Not in plan files, not tied to a plan, and not part of the browser copy; and whether its list is
+  open (closed at first). Its changes are undone and redone with the edits that made them (above, "The history").
   In a private window, the trash lasts only until the window closes.
 
 The experiment's name and the well labels aren't the page's own: they're part of the plan
@@ -1879,7 +1892,10 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   transfer table). Dropped on a marked seam, the entry is pasted there (`pasteEntry`, with that
   place), as one edit, and leaves the trash; the message `Pasted “S03 Drug A” from the trash.` (ok),
   and what was pasted is selected, glows, scrolls into view and its first stage opens, as after a
-  paste (section 7, "After a move, copy or paste"). If the logic refuses (`pasteItems`' message,
+  paste (section 7, "After a move, copy or paste"). **The entry is looked up at the drop**, in
+  the stored trash read then (section 4): if it's no longer there (another tab pasted it, emptied
+  the trash or undid its delete), the note `That item has left the trash (another tab used it).`
+  shows, nothing is pasted, and the list is redrawn from what was read. If the logic refuses (`pasteItems`' message,
   such as a tip group dropped inside one, or an entry whose stored copy is damaged), its message
   is shown (error), nothing changes, and the entry stays in the trash. Dropped with nothing
   marked, or back on the trash, nothing happens. The column scrolls near its edges, and Escape
@@ -2673,6 +2689,15 @@ group's tip type and probes from its heading), with what's expected. It checks:
   tab's Undo and Redo: only this tab's entries go out and come back, the other tab's kept;
   a delete, then a change of what's open (a stage clicked), then Undo: the delete's entries leave
   the trash (the replaced state kept its change).
+- **Storage**: local storage switched off (`setItem` and `getItem` throwing, set up with
+  Playwright's `addInitScript` before the page opens): a delete shows its message with `Undo`, then
+  the note on its own line; the trash lists the entry; a second delete shows no note; dragging the
+  entry out works. A stored trash of version 2: its note when the page opens, a delete working in
+  memory, and the stored text unchanged afterwards (read back with `page.evaluate`); the same for a
+  damaged stored trash (an entry with `kind` `"box"`), the tab starting from the entries it could
+  read. An entry another tab dragged out (a second page in the same context) dropped on a gap in
+  this tab: `That item has left the trash (another tab used it).`, nothing pasted, the list
+  redrawn without it.
 - **No errors** on the page throughout (Playwright's `pageerror`).
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
@@ -2925,7 +2950,7 @@ group's tip type and probes from its heading), with what's expected. It checks:
   trash's look by eye, in both browsers; the trash shared by two tabs (each change keeping the
   other tab's entries; a tab showing the other's only after its own next change or a reload); a
   private window starting with an empty trash; the trash with `TRASH_LIMIT` entries and one more
-  (the oldest dropped); the browser's storage switched off (the trash in memory, its note); dragging an entry out near the column's edges
+  (the oldest dropped); dragging an entry out near the column's edges
   (scrolling); the menu key on a heading showing `Delete`;
 - moving wells: `Move wells` and `Done`; the bar's two texts; a trough moved to a free trough by a
   click and by a drag, its label, contents and transfers following it, then another move without

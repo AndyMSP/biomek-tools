@@ -23,7 +23,8 @@ every check of pasting apply as for any paste (`transfer-designer.md`, "Moving a
 ## 2. Scope
 Version 1 adds what a delete took to a trash of at most `TRASH_LIMIT` entries, pastes an entry at a
 place the caller gives (taking it out of the trash), empties the trash, undoes and redoes its
-changes, and turns a trash into text and back, for a caller to keep.
+changes, and turns a trash into text and back, for a caller to keep, saying whether a text can be
+read in full.
 
 Not in version 1:
 - **Putting an entry back where it was by itself** (ADR 0024: dropped by Andy, 2026-11-11). The
@@ -160,6 +161,16 @@ convenience, and a damaged one shouldn't stop a tool opening):
 
 Entries out of order are put in order; more than `TRASH_LIMIT` keeps the newest `TRASH_LIMIT`.
 
+**`trashTextProblem(text)`** says whether `trashFromText` would read `text` **in full**, for a
+caller that keeps the trash and mustn't write over one it can't read in full (Claude's choice,
+2026-11-11: another version, or a repair, may still read it). It **never throws**, and gives:
+- `null` when the frame is read and no entry is dropped (entries out of order, or more than
+  `TRASH_LIMIT`, are no problem: that's only putting in order, or the limit);
+- `"newer"` when the text is JSON of an object whose `format` is `"biomek-tools trash"` and whose
+  `version` is a whole number above `TRASH_VERSION` (whatever else it holds);
+- `"damaged"` otherwise: anything `trashFromText` reads as `emptyTrash()` for its frame, or an
+  entry it drops; and anything that isn't text.
+
 ### Configuration
 `config/trash.js` (data only, ADR 0009):
 - **`TRASH_LIMIT`**: the most entries the trash keeps, `20` (Andy, 2026-11-11, from the preview).
@@ -178,6 +189,7 @@ None of these changes what it's given.
 | `redoTrashChange(trash, change)` | the trash with `change` made again. |
 | `trashToText(trash)` | the trash as JSON text. |
 | `trashFromText(text)` | the trash `text` holds, as much of it as can be read. Never throws. |
+| `trashTextProblem(text)` | `null` if `trashFromText` reads `text` in full, `"newer"` if it's a trash of a newer version, `"damaged"` otherwise. Never throws. |
 | `TRASH_FORMAT`, `TRASH_VERSION` | (constants) `"biomek-tools trash"` and `1`. |
 | `TRASH_LIMIT` | (a constant) re-exported from `config/trash.js`. |
 
@@ -343,6 +355,11 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
   above `nextDeletion`, `id` at or above `nextEntryId`; two entries with one `id` (the later
   dropped).
 - Entries out of order come back in order; more than the limit keeps the newest.
+- `trashTextProblem`: `null` for `trashToText` of an empty trash and of one with an entry of each
+  kind, for entries out of order, and for more than the limit; `"newer"` for version 2 (with
+  otherwise valid properties, and with properties version 1 doesn't know); `"damaged"` for every
+  case above where the frame is unreadable (version 2 aside) or an entry is dropped, for `5` and
+  `null`; never throws.
 
 **Immutability**: no function changes the trash, entries, plan or change it's given.
 

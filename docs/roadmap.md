@@ -1443,6 +1443,11 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **A stored trash a tab can't read in full is left alone** (2026-11-11, item 32): one written by a
+  newer version, or damaged, is never written over; each tab then keeps a trash of its own in
+  memory, lost when it closes, and says so once. Properly: offer to empty the stored trash (or
+  keep what can be read of it) from the note, so the trash can be kept again without clearing the
+  browser's storage by hand.
 - **Tabs don't follow each other's trash** (2026-11-11, item 32): each change to the trash reads the
   stored trash first and writes it back, so no tab undoes another's change, but a tab left alone
   shows the trash as it last read it, until its own next change or a reload. Properly: listen for
