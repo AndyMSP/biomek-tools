@@ -9812,6 +9812,18 @@ describe("transfer-designer", () => {
     assert.throws(() => addMixingBox(table.plan, draft, tableSecond), {
       message: "A transfer table's stages stay together, each on its own tips: add before its first stage or after its last.",
     });
+    // A run randomization of two sources, each on tips of its own.
+    const randomized = addRandomization(table.plan, null, { seed: 5, volume: 5 });
+    let run = setRandomization(randomized.plan, randomized.id, {
+      sources: ["A1", "A3"].map((well) => ({ labware: DEEP, well, replicates: 1, filler: false, sharesTips: false })),
+      fill: [plateWell("H10"), plateWell("H11")],
+    });
+    run = runRandomization(run, randomized.id);
+    const [randomFirst, randomSecond] = randomizationAt(run, randomized.id).stages.map((owned) => owned.stage);
+    assert.doesNotThrow(() => addMixingBox(run, draft, randomFirst));
+    assert.throws(() => addMixingBox(run, draft, randomSecond), {
+      message: "A randomization's stages stay together: add before its first stage or after its last.",
+    });
   });
 
   test("mixingBoxDraft: its way, every well in probe order, its tips; START's at the top; a new object each time", () => {
