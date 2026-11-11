@@ -30,19 +30,33 @@ decided for transfer tables).
 
 - **Ways to mix are a list of rules**, each turning the wells (in probe order) into groups, one mix
   step per group; a new way is a new entry, and nothing else changes.
-- **A fresh tip for every well** batches the wells in **probe order** (down each column, as the
-  Span-8's probes sit) in batches of as many wells as there are probes, starting a new batch at
-  each labware, so a mix step never reaches into two labware types (the file writer would split it
-  into substages on the same tips). **Pending Andy's decision B** (before the build): a new batch at
-  each labware, or only at each labware type, which is all the substage split needs. Which wells
-  it may take is **pending Andy's decision C**: reservoir troughs, where every probe may enter one
-  trough, refused until checked in simulation, or allowed.
+- **Both ways also group by volume** (Andy, 2026-11-11, decision A): wells share a mix step only if
+  they hold about the same volume, the largest at most `MIX_VOLUME_TOLERANCE` percent (in
+  `config/mixing.js`) above the smallest, judged on the whole group so it can't chain. Reason: a mix
+  step mixes every well with one volume, worked out from its emptiest well (`mix-volumes.md`), so a
+  fuller well would be under-mixed without a warning. Rejected: warning about mixed volumes (leaves
+  the fix to the user), and splitting a stage's rows by well volume in the file writer (fixes every
+  mix step, but changes the file writer; still on the Later list).
+- **A fresh tip for every well** takes the wells in **probe order** (down each column, as the
+  Span-8's probes sit) in batches that each hold **wells of one column of one labware** (Andy,
+  2026-11-11, decision B: "make sure batches are vertical lines as well — it does them all at once
+  that way"), at most as many as there are probes with tips: a batch starts again at each new
+  column, each new labware, when it's full, and at a volume break. Reason: a column batch matches
+  how the probes sit, so the Span-8 can mix it in one pass (to be checked in simulation), and a new
+  batch at each labware also keeps a mix step out of two labware types, which the file writer would
+  split into substages on the same tips. Rejected: batches across columns within a labware, and a
+  new batch only at each labware type. Its cost is more mix steps and tips when the wells are in
+  rows (A1 to A12 on any probes is 12 mix steps).
+- **Reservoir troughs are refused for a fresh tip** (Andy, 2026-11-11, decision C) until the
+  simulation test has checked several probes in one trough: every probe of a mix step may enter the
+  same trough, and whether 8 probes can draw from one trough is unknown, so a fresh tip might not be
+  fresh. One tip for wells with the same contents takes them.
 - **One tip for wells with the same contents** groups wells by what they hold just before the box,
   the same components in shares within 0.000001 of each other (the filler wells' rule, one function
-  for both), in probe order of first appearance. **Pending Andy's decision A** (before the build):
-  grouping ignores volume, but a mix step mixes one volume worked out from its emptiest well
-  (`mix-volumes.md`), so a full well grouped with a half-full one is under-mixed without a warning;
-  the options are grouping by volume too, a warning, or splitting rows by well volume.
+  for both), and about the same volume, in probe order of first appearance.
+- **Empty wells can be picked** (Andy, 2026-11-11, decision D): they group only with other empty
+  wells, and their mix step's overdraw, an existing contents problem, stops the Biomek files until
+  it's fixed, so no new refusal is needed.
 - **Its mix steps change only through it**, enforced in the logic: their wells, names, mix and tips
   included, since the grouping depends on the probes and a tip group changed alone would break "a
   fresh tip for every well". Every mix step uses the standard mix (`DEFAULT_MIX`, `MIX_STEP_MODE`)
@@ -61,8 +75,8 @@ decided for transfer tables).
   tool already writes. So what goes into the Biomek files changes only as any mix steps a user could
   build by hand would change them.
 - **Not verified:** "a fresh tip for every well" assumes the Biomek, given a mix step with tips on N
-  probes and at most N wells, mixes each well with its own probe and never takes a tip into a second
-  well (`biomek.md`, "Not yet known"). Transfer From File chooses its own order (B56358AF, 22-25).
+  probes and at most N wells of one column, mixes each well with its own probe, in one pass, and
+  never takes a tip into a second well (`biomek.md`, "Not yet known"). Transfer From File chooses its own order (B56358AF, 22-25).
   A simulation run must check this before any real run with a mixing box; if it fails, this way
   needs one mix step per well, or another remedy.
 - A mixing box's mix steps can't use another mix. If one is needed, the wizard can gain a Mix row
