@@ -463,6 +463,10 @@ Questions to answer before relying on the answer:
   Details log (or the Span8Transfer log), each well is mixed by a different probe and no probe
   enters two wells before its tips are unloaded. Also a mix step whose wells are in two columns
   (A1 to D1 and A2 to D2 on 8 probes), to see whether it still gives each well its own probe.
+  And a **reservoir case** (added 2026-11-11, whichever way Andy decides on troughs; roadmap, item
+  34, decision C): a mix step of 4 troughs of `Res1` (1 to 4) on 4 probes, checking in the log
+  which probes enter each trough, and whether any probe enters a trough other than the one it
+  mixes; this also bears on whether 8 probes can draw from one trough (above).
 - Whether the **Operation and OperationMix dispenses touch the liquid** already in the
   destination well, for example because of their dispense height. The tools assume they do. A tip
   that touches the liquid can carry it to later wells (roadmap, item 27, "Possible contamination";
