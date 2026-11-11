@@ -103,10 +103,14 @@ calls it with that one item.
 1. It refuses an `id` that isn't in the trash.
 2. It pastes the entry's `copied` at `place` (`pasteItems`, whose refusals pass through unchanged,
    the trash unchanged).
-3. **It gives a randomization its name back**: a pasted randomization gets a new name, so if no
-   other randomization of the new plan has the entry's `name`, the pasted one is renamed to it
-   (`renameRandomization`), in the same edit (Claude's choice, 2026-11-11: its well map is named
-   after it); otherwise it keeps the pasted name.
+3. **It gives a randomization its name back**: a pasted randomization gets a new name, so it's
+   renamed to the entry's `name` (`renameRandomization`), in the same edit (Claude's choice,
+   2026-11-11: its well map is named after it), **only when** that name passes a randomization
+   name's rule (the experiment name's rule, `transfer-designer.md`, "Randomizations") and **no
+   other randomization of the new plan has it, ignoring capitals** (`HySoy_dose` and
+   `hysoy_dose` are the same). Otherwise it keeps the pasted name, and nothing is refused:
+   `renameRandomization` is never called when it would throw. (An entry read back from text may
+   hold a name that breaks the rule; `trashFromText` checks only that it's text.)
 4. It takes the entry out of the trash.
 
 It gives `{ plan, placed, trash, change }`: the plan with it pasted; `placed`, `pasteItems`' (the
@@ -295,8 +299,12 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
   S08, then S09; S09, then S08, then S07; S03, then group 2; S03, S04 and S05, then S06; S02, then
   S03; S09, then S10; S10, then the randomization; an unrun randomization added before S07, then
   S07; one added before S03, then group 1.
-- A randomization pasted takes its name again; if another randomization has the name, it keeps the
-  pasted one.
+- A randomization pasted takes its name again (`Randomization1`, pasted where it was: the plan's
+  outline equal to the test plan's).
+- It keeps the pasted name, the paste not refused, when: another randomization has the name; another
+  has it in other capitals (a randomization added and renamed `RANDOMIZATION1` before the paste);
+  the entry's `name` breaks the rule (an entry read back from text with `name` `"bad name"`, with a
+  space, and one with a name of 41 characters).
 
 **Pasting elsewhere**
 - An entry pasted into `emptyPlan()` (`between` 0): the same stages, settings, tips and transfers
