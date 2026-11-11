@@ -64,7 +64,10 @@ import {
   checkNameRule,
   folderNameFor,
 } from "../src/shared/file-writer/file-writer.js";
-import { zipFiles, crc32 } from "../src/shared/zip/zip.js";
+import { zipFiles, crc32, checkEntries } from "../src/shared/zip/zip.js";
+import { lastFolderName, writeIntoFolder } from "../src/shared/folder-writer/folder-writer.js";
+import { MemoryFolder } from "../tests/fixtures/memory-folder.js";
+import { BASE_FOLDER } from "../config/paths.js";
 import { writePdf, textWidth, toPdfText } from "../src/shared/pdf/pdf.js";
 import {
   findProblems,
@@ -517,7 +520,7 @@ const TOPICS = {
     ],
   },
   zip: {
-    loaded: { zipFiles, crc32 },
+    loaded: { zipFiles, crc32, checkEntries },
     examples: [
       'crc32(new TextEncoder().encode("123456789")).toString(16)',
       "crc32(new Uint8Array(0))",
@@ -527,6 +530,24 @@ const TOPICS = {
       "Buffer.from(zipBytes).toString(\"hex\").match(/../g).join(\" \")",
       'zipFiles([{ name: "Run\\\\Setup.csv", text: "" }], new Date())',
       'zipFiles([{ name: "a.csv", text: "" }, { name: "a.csv", text: "" }], new Date())',
+      'checkEntries([{ name: "Run/Setup.csv", text: "" }])',
+      'checkEntries([{ name: "Run/../Setup.csv", text: "" }])',
+    ],
+  },
+  "folder-writer": {
+    loaded: { lastFolderName, writeIntoFolder, MemoryFolder, BASE_FOLDER },
+    examples: [
+      "BASE_FOLDER",
+      "lastFolderName(BASE_FOLDER)",
+      'const ento = new MemoryFolder("Ento")',
+      'const runEntries = [{ name: "Run1/Setup.csv", text: "a,b\\r\\n" }, { name: "Run1/Records/Run1 plan.json", text: "{}" }]',
+      "await writeIntoFolder(ento, runEntries, lastFolderName(BASE_FOLDER))",
+      "ento.texts()",
+      "ento.made()",
+      "await writeIntoFolder(ento, runEntries, lastFolderName(BASE_FOLDER))",
+      'await writeIntoFolder(new MemoryFolder("Downloads"), runEntries, "Ento")',
+      'await writeIntoFolder(new MemoryFolder("Ento", { failOnFile: 2 }), runEntries, "Ento")',
+      'lastFolderName("C:\\\\")',
     ],
   },
   pdf: {

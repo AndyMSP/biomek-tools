@@ -9,7 +9,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { zipFiles, crc32 } from "./zip.js";
+import { zipFiles, crc32, checkEntries } from "./zip.js";
 
 const utf8 = new TextEncoder();
 
@@ -411,6 +411,33 @@ describe("zip", () => {
     assert.throws(() => zipFiles(entries, DATE), {
       message: 'Entry 3 to zip must be an object with a name and a text, but got "Stages.csv".',
     });
+  });
+
+  // --- checkEntries ---
+
+  test("checkEntries passes a valid list", () => {
+    assert.doesNotThrow(() => checkEntries(TWO_FILES));
+  });
+
+  test("checkEntries throws exactly zipFiles' messages for a name with .. and for two entries named alike", () => {
+    const wrongLists = [
+      [{ name: "a/../b", text: "" }],
+      [
+        { name: "Setup.csv", text: "1" },
+        { name: "Setup.csv", text: "2" },
+      ],
+    ];
+    for (const entries of wrongLists) {
+      // The message zipFiles throws for the same entries, caught to compare.
+      let zipMessage = null;
+      try {
+        zipFiles(entries, DATE);
+      } catch (error) {
+        zipMessage = error.message;
+      }
+      assert.notEqual(zipMessage, null);
+      assert.throws(() => checkEntries(entries), { message: zipMessage });
+    }
   });
 
   test("a bad name is reported before a bad date", () => {

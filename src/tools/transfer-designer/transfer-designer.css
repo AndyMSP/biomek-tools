@@ -360,6 +360,42 @@ input.experiment-name-box.invalid {
   overflow-wrap: anywhere;
 }
 
+/* The Save as choice (section 15): no border or background, 12px above the buttons. */
+.save-as {
+  margin: 0 0 12px;
+}
+
+/* The choice's heading, in the box's text, semibold, 4px above the options. */
+.save-as-heading {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+/* One option on a line of its own: its radio button, name and note 6px apart, lined up on the
+   text's baseline, 2px above and below. The whole line is the label, so it can all be clicked. */
+.save-as-option {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.save-as-option input {
+  margin: 0;
+}
+
+/* Folder, disabled in a browser that can't write folders: its line isn't clickable. */
+.save-as-option:has(input:disabled) {
+  cursor: default;
+}
+
+/* The option's quieter note. */
+.save-as-note {
+  color: var(--muted-text);
+  font-size: 90%;
+}
+
 /* The file writer's message when it refuses the plan: in red. */
 .confirm-box p.refused {
   color: var(--red);
