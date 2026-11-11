@@ -20,8 +20,9 @@ reliable:
   boundary), and things deleted separately came back in the wrong order or the wrong tip groups
   (S04, then S03; S07, S08 and S09 one at a time; S03, then the rest of its group).
 - Where something was can only be described by the stages around it, and a plan has no lasting way
-  to name a stage: stage IDs are renumbered every time a plan is reopened or the page reloaded, a
-  pasted stage gets a new ID, a new stage may take a deleted one's ID, and names repeat (`New
+  to name a stage: stage IDs are renumbered from 1 whenever a plan is opened or the page reloads,
+  so any gap or reordering changes them; a pasted stage gets a new ID; a new stage can take a
+  deleted one's ID only after an undo or a reopen (`stage-list.md`, "IDs"); and names repeat (`New
   stage`). Another plan or another tab mixed up what the trash remembered.
 - Moving, splitting, joining or renaming things after a delete sent things to the wrong place.
 
