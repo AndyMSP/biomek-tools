@@ -3610,13 +3610,93 @@ export function pasteItems(plan, copied, place) {
   return { plan: withOperationsInStageOrder(pasted), placed: pieces.map(placedItemOf) };
 }
 
+// --- Deleting ---
+
+// Returns { plan, removed, deleted }: the plan without `items` (stages, tip groups, randomizations
+// and transfer tables, in any mix, each { kind, id }), as one edit (section 3, "Deleting");
+// `removed`, how many stages were taken out; `deleted`, the items deleted, in column order, a stage
+// of a listed container left out and an item listed twice once. Randomizations and transfer tables
+// go first, in column order, then the stages left, in column order, each as removeStage removes it,
+// so a tip group whose first stage goes keeps its tips. Throws, in section 5's order: the list and
+// each item (as moveItems), then a randomization's or transfer table's stage without its owner,
+// then every stage of the plan, e.g. deleteItems(plan, [{ kind: "tipGroup", id: "3" }]).
+export function deleteItems(plan, items) {
+  const entries = checkedItemsToDelete(plan, items);
+  let deleting = plan;
+  for (const entry of entries.filter((candidate) => candidate.kind === "randomization")) {
+    deleting = removeRandomization(deleting, entry.id);
+  }
+  for (const entry of entries.filter((candidate) => candidate.kind === "transferTable")) {
+    deleting = removeTransferTable(deleting, entry.id);
+  }
+  for (const id of ordinaryStagesOf(plan, entries)) {
+    deleting = removeStage(deleting, id);
+  }
+  return {
+    plan: deleting,
+    removed: plan.stageOrder.length - deleting.stageOrder.length,
+    deleted: entries.map(({ kind, id }) => ({ kind, id })),
+  };
+}
+
+// The items in `items`, checked for deleting from `plan` and in column order, as checkedItems gives
+// them. Throws as checkedItems does (with "delete"), then if a randomization's or transfer table's
+// stage is listed without its owner (the first in column order), then if they're every stage of the
+// plan, which needs at least one.
+function checkedItemsToDelete(plan, items) {
+  const boxes = columnBoxes(plan);
+  const entries = checkedItems(plan, items, "delete", boxes);
+  // A stage of a listed owner was left out by checkedItems, so any stage with an owner is alone.
+  const ownedAlone = entries.find((entry) => entry.kind === "stage" && ownerOf(plan, entry.id) !== null);
+  if (ownedAlone !== undefined) {
+    throw new Error(ownedStageDeleteMessage(plan, ownedAlone.id));
+  }
+  const stageCount = entries.reduce((count, entry) => count + stagesOfEntry(plan, boxes, entry).length, 0);
+  if (stageCount === plan.stageOrder.length) {
+    throw new Error(
+      "That's every stage in the plan, and a plan needs at least one. Leave one stage, or add a new one first.",
+    );
+  }
+  return entries;
+}
+
+// The message refusing to delete stage `id`, a randomization's or transfer table's, without its
+// owner, e.g. "Stage 5, “Drug A”, belongs to a randomization: delete the whole randomization, or
+// change it in its card."
+function ownedStageDeleteMessage(plan, id) {
+  if (ownerOf(plan, id).kind === "randomization") {
+    return `${stageNamed(plan, id)}, belongs to a randomization: delete the whole randomization, or change it in its card.`;
+  }
+  return `${stageNamed(plan, id)}, belongs to a transfer table: delete the whole transfer table, or change it in its wizard.`;
+}
+
+// The IDs of the stages a checked entry (from checkedItems) holds, in stage order: a stage's own;
+// every stage of a tip group, randomization or transfer table box (none for a randomization that
+// hasn't run).
+function stagesOfEntry(plan, boxes, entry) {
+  if (entry.kind === "stage") {
+    return [entry.id];
+  }
+  const box = boxes[entry.boxIndex];
+  return box.kind === "tipGroup" ? [...box.stages] : box.tipGroups.flatMap((group) => group.stages);
+}
+
+// The IDs of the ordinary stages the checked `entries` delete (listed stages, and every stage of a
+// listed tip group), in column order.
+function ordinaryStagesOf(plan, entries) {
+  const boxes = columnBoxes(plan);
+  return entries
+    .filter((entry) => entry.kind === "stage" || entry.kind === "tipGroup")
+    .flatMap((entry) => stagesOfEntry(plan, boxes, entry));
+}
+
 // --- Moving and copying: helpers ---
 
 // The items in `items`, checked and in column order, each as { kind, id, boxIndex, order }: its
 // box's index in `boxes` and its place for sorting. A stage inside a listed tip group or randomization
 // is left out, and an item listed twice counts once. Throws, in section 5's order: the list, then each
 // item in turn (its form, that it's in the plan, a tip group's ID starting one). `verb` is "move" or
-// "copy", for the message about the list.
+// "copy" or "delete", for the message about the list.
 function checkedItems(plan, items, verb, boxes) {
   if (!Array.isArray(items) || items.length === 0) {
     const got = Array.isArray(items) ? "an empty list" : describeValue(items);
