@@ -3,7 +3,7 @@
 Where the project is headed. This is a plan, not a specification: nothing here is built until it has
 a specification (`name.md`) and Andy has approved it. Decisions are recorded as ADRs in `docs/adr/`.
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 ## Where things stand
 - The randomizer is released as **v0.1.0** (GitHub Releases; see `CHANGELOG.md`). Version numbers
@@ -546,6 +546,17 @@ Last updated: 2026-11-10
   reviewed by a separate agent, and checked in headless Chrome (the Biomek files byte for byte
   main's; the tutorials' walk-throughs pass). Still to check by Andy, including the remembered
   folder with a real folder, which headless Chrome can't read back.
+- **Decided: mixing boxes and the mixing wizard** (Andy, 2026-11-11; item 34, below; ADR 0025,
+  Proposed): a ⟳⟳ button on seams between tip groups opens a wizard in the Stages column where wells
+  are picked on the deck, with a way to mix (a fresh tip for every well, or one tip for wells with
+  the same contents) and tips; it makes a **mixing box** owning one mix step per group, each on new
+  tips. From a preview Andy approved on 2026-11-11. **Specified** (Draft, 2026-11-11, hands-off
+  workflow): `transfer-designer.md` ("Mixing boxes", and moving and copying with copied items
+  version 6), `plan-file.md` (format version 14), `transfer-designer-page.md` (sections 2, 4, 5, 6,
+  7, 11, 12, 15 and 16), glossary terms Mixing box, Probe order and Way to mix, and an open question
+  in `biomek.md`. **Not verified:** "a fresh tip for every well" assumes the Biomek mixes each well
+  of a mix step with its own probe; a simulation run must check it before any real run. It writes
+  only mix steps and tip changes the tool already writes, so the Biomek files' format doesn't change.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1276,6 +1287,44 @@ added on 2026-10-28 (Andy).
       from the specification review), so the folder and the zip can't drift apart.
     It changes neither the Biomek's files nor plan files.
     Built (#152).
+34. **Mixing boxes and the mixing wizard** (Andy, 2026-11-11; hands-off workflow; ADR 0025): a way
+    to mix wells that makes the mix steps for you. (Item numbers 32 and 33 are taken by the open
+    pull requests #153 and #154.) Decided with Andy, from a preview he approved on 2026-11-11:
+    - **Two ways to mix for now**: a fresh tip for every well (nothing carried from one well to the
+      next), and one tip for wells with the same contents (the same components in the same shares).
+      More may come, so a way is one entry in a list of rules.
+    - **Started from a seam between tip groups**, a fifth button, ⟳⟳ (`Add mixing here`), left of
+      the mix step button.
+    - **The wizard opens in its spot in the Stages column**, as a randomization's card does, with
+      the deck showing the plate at the mixing's point and no stage shown as open: 1 · Wells to mix
+      (picked on the deck), 2 · How to mix, 3 · Tips (from the tips in use there), then Makes (a
+      line and numbered chips that ring their wells on the deck), Remove, Cancel and `Make mix
+      steps` / `Update`.
+    - **A mixing box** in the Stages column, like a transfer table's box: `Mixing`, `3 mix steps ·
+      fresh tip per well` or `· same contents share a tip`, ▸/▾ and ✎; mix steps named `Mix 1 of
+      12`, with what their wells hold in a tooltip; the standard mix (`DEFAULT_MIX`,
+      `MIX_STEP_MODE`).
+    - **Fresh tip**: wells in probe order (labware as on the deck, then down each column), in
+      batches of as many wells as there are probes. **Same contents**: wells grouped by what they
+      hold just before it, compared to a stated precision, in order of first appearance.
+    - **It moves, copies, pastes and is removed as a whole**; its mix steps change only through its
+      wizard; `needs update` when its wells would be grouped differently; saved in plan files and
+      copied items.
+    - **Specified properly, as its own kind of container** (Andy: the preview stored it as a
+      transfer table with an extra field, didn't save it and refused to copy it).
+    - Decided in the hands-off workflow (2026-11-11; reasons in its pull request): a fresh-tip batch
+      starts again at each labware; its mix steps' mix and tips are locked too, not only their
+      wells; it stores only its way, its wells and tips being its mix steps'; Update remakes every
+      mix step; while the wizard is open, anything else that would change the plan or what's open
+      is refused with a shake; wells holding nothing can be picked and group together.
+    - **Not verified** (`biomek.md`, "Not yet known"): that Transfer From File gives each well of a
+      mix step its own probe when it has no more wells than probes. Andy runs the simulation test
+      there before any real run with a mixing box.
+    - **The Biomek files**: a mixing box writes only mix steps and tip changes, which the tool
+      already writes; their format doesn't change.
+    - **Once #153 (deleting and the trash) merges**, deleting a mixing box follows its container
+      rules, as for a transfer table.
+    Specified (Draft, 2026-11-11).
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
@@ -1328,7 +1377,12 @@ final Biomek runs, so they test the files as they will be:
     It changes no Biomek files and no plan files, so it needn't come before the final runs.
 22. Writing the run as a folder (item 31), added on 2026-11-10: preview, specifications, then
     build. It changes no Biomek files or plan files, so it needn't come before the final runs.
-23. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+23. Mixing boxes and the mixing wizard (item 34), added on 2026-11-11: preview, specifications,
+    then build. It changes plan files (version 14) but not the Biomek files' format; what a plan
+    writes changes only through the mix steps and tip changes a user asks for, and the fresh-tip
+    way needs a simulation run first (`biomek.md`). (#153 and #154 also number themselves 23 here:
+    whichever merges later renumbers.)
+24. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
