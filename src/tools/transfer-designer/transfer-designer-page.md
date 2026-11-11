@@ -315,11 +315,22 @@ tall as its contents.
 
 ## 4. What the page keeps
 **The history.** A `PlanHistory` (`plan-history.md`) whose states are each
-`{ plan, open }`: the plan, and what's **open** in the Stages column: `"start"`, a stage's ID, or
-`"end"`. So undo goes back to the plan and to where the edit was made.
-- An edit of the plan is **recorded** (one undo each).
+`{ plan, open, trashChange }`: the plan; what's **open** in the Stages column: `"start"`, a stage's
+ID, or `"end"`; and **the trash's change** made by the edit that led to this state (`trash.md`,
+"Undo and redo": a delete adds entries, a drag-out from the trash takes one out, Reset empties it),
+or `null` when that edit didn't change the trash (and for the first state). So undo goes back to the
+plan, to where the edit was made, and to the trash as that edit found it (2026-11-11).
+- An edit of the plan is **recorded** (one undo each), with its trash change.
 - Opening something else (Start, a stage, End) **replaces** the current state, so it isn't an undo
-  of its own (`replacePresent`).
+  of its own (`replacePresent`); the replacing state keeps the current state's `trashChange`.
+- **Undo** out of a state applies `undoTrashChange` with that state's `trashChange`, and **Redo**
+  into a state applies `redoTrashChange` with its `trashChange` (when it isn't `null`), to the
+  trash as stored: like every change to the trash, each first reads the stored trash (another tab
+  may have changed it), makes the change to it and writes it back (below, "the trash"). So Undo of
+  a delete takes its entries out of the trash even when another tab added entries since. **Redo
+  after another tab pasted the entry** (dragged it out of its own trash) puts the entry back in
+  the trash, so the thing may be in a plan and in the trash at once; that's accepted (Claude's
+  choice, 2026-11-11: rare, harmless, and the entry is only a copy).
 
 **When the page opens**, it brings back the browser copy (section 5) and opens the last stage in the
 stage order. With no copy, or one that can't be read, it starts with `emptyPlan()`, with Start open and no
@@ -357,11 +368,9 @@ data everyone has to clear first).
   told of them; roadmap, "Technical debt"). If writing it fails (storage full or switched off),
   the trash keeps working in that tab's memory, and the first failure says, as a note, `The trash
   can't be kept by this browser, so it will be empty after a reload.` Not in plan files,
-  not tied to a plan, and not part of the browser copy; whether its list is open (closed at first);
-  and, for each recorded edit that changed it, the trash's **change** (`trash.md`, "Undo and redo"),
-  kept beside the plan history for as long as that state is (Claude's choice: kept with the state
-  it belongs to, so Undo and Redo apply it as they move through the history). In a private window,
-  the trash lasts only until the window closes.
+  not tied to a plan, and not part of the browser copy; and whether its list is open (closed at
+  first). Its changes are undone and redone with the edits that made them (above, "The history").
+  In a private window, the trash lasts only until the window closes.
 
 The experiment's name and the well labels aren't the page's own: they're part of the plan
 (`transfer-designer.md`), so they're undone, kept in the browser copy and saved like any edit.
@@ -1872,9 +1881,9 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   message and Undo). With Ctrl held, it still deletes (Claude's choice: a copy dropped on the trash
   would do nothing).
 - **Undo and Redo.** Each edit that changed the trash (a delete adds entries, a drag-out takes one
-  out, Reset empties it) keeps its change (`trash.md`, "Undo and redo"), and Undo and Redo apply
-  it: undoing a delete takes its entries out of the trash, undoing a drag-out puts the entry back
-  in the trash, and undoing Reset brings back the trash with the plan.
+  out, Reset empties it) keeps its change in its history state (section 4, "The history"), and Undo
+  and Redo apply it: undoing a delete takes its entries out of the trash, undoing a drag-out puts
+  the entry back in the trash, and undoing Reset brings back the trash with the plan.
 - **`Empty trash`** empties it at once (`clearTrash`), with no question and no message; it isn't
   an edit of the plan, so Undo doesn't bring it back (Claude's choice: it's the trash's own button,
   like emptying a computer's recycle bin). Reset empties it too, as part of its edit, so Undo of
@@ -2311,8 +2320,9 @@ and the deck shows its point again.
   a transfer stage open and a source chosen, keeps the source chosen (section 9, "Keeping the
   source", which says where it applies). On a focused well, **Ctrl+Enter** or **Cmd+Enter** does
   what a Ctrl-click would (not Ctrl+Space or Cmd+Space, which systems take for themselves).
-- **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac). Not while an editing
-  box or a randomization's card is open, since their changes aren't in the plan yet.
+- **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac), the trash's change
+  with each (section 4, "The history"). Not while an editing box or a randomization's card is open,
+  since their changes aren't in the plan yet.
 - **While the transfer table wizard is open** (section 7), none of these keys act on the page: the
   wizard's own keys apply (Enter, Tab and Escape in its cells; Escape elsewhere in it closes it, as
   Cancel), and Ctrl+V pastes only into its paste zone or a cell.
@@ -2639,7 +2649,10 @@ group's tip type and probes from its heading), with what's expected. It checks:
   discard your changes first.`, the trash unchanged); Ctrl+Z pressed during the animation, then
   Delete again (the note, then deleted once, with one entry); the message's `Undo` pressed after a
   later edit (it undoes the later edit, as Ctrl+Z would); a second tab changing the trash, then
-  this tab deleting: both tabs' entries kept.
+  this tab deleting: both tabs' entries kept; this tab deleting, a second tab deleting, then this
+  tab's Undo and Redo: only this tab's entries go out and come back, the other tab's kept;
+  a delete, then a change of what's open (a stage clicked), then Undo: the delete's entries leave
+  the trash (the replaced state kept its change).
 - **No errors** on the page throughout (Playwright's `pageerror`).
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
