@@ -563,7 +563,7 @@ editing box, clears any source, and picks the plan's first component (or nothing
 ` and `planFromText`'s message (`This file can't be opened: …`); nothing changes.
 
 **Reset** (red outline) opens a small box under it, focused on Cancel: **Reset the whole plan?**
-`This clears the starting contents, every transfer, every stage and every well's name. Undo can bring them back.` with
+`This clears the starting contents, every transfer, every stage and every well's name, and empties the trash. Undo can bring them back.` with
 `Cancel` and `Reset everything` (solid red). Reset everything replaces the plan with `emptyPlan()` as
 one undoable edit, opens Start, puts all labware away, closes any editing box, clears any source,
 and picks no component. It also **empties the trash** (section 7, "The trash"; `clearTrash`), as
@@ -1423,8 +1423,8 @@ From the top:
   Update the message is `Updated: 12 stages with 96 transfers (seed 37). Undo takes the change out
   again.`. `Remove` acts at once (`removeRandomization`), as every Remove does, and the
   randomization goes into the trash (section 7, "The trash"): `Removed the
-  randomization.` or, once run, `Removed the randomization and its 12 stages. Undo brings them
-  back.`, with the tooltip `Removes it and its 12 stages. Tips it added stay.`; disabled when its
+  randomization.` or, once run, `Removed the randomization and its 12 stages.`, each with an
+  `Undo` button, as a delete's message has (section 12), with the tooltip `Removes it and its 12 stages. Tips it added stay.`; disabled when its
   stages are all the plan's (`canRemoveRandomization`), with the tooltip `Its stages are all the
   plan's stages. Add a stage outside it first.` (A `Turn into ordinary stages` button was tried and
   dropped for now; Andy, 2026-11-01.)
@@ -1621,7 +1621,7 @@ closes, and the note `Nothing to update: the transfer table already matches.` sh
 
 **Remove** acts at once (`removeTransferTable`), as every Remove does, and the transfer table goes
 into the trash (section 7, "The trash"): closes the wizard; message
-`Removed the transfer table and its 4 stages. Undo brings them back.` (ok); if one of its stages was
+`Removed the transfer table and its 4 stages.` (ok), with an `Undo` button (section 12); if one of its stages was
 open, the first stage in the stage order opens. Disabled when `canRemoveTransferTable` is `false`,
 with the tooltip `Its stages are all the plan's stages. Add a stage outside it first.`
 
@@ -2247,7 +2247,7 @@ Contains rows fit; section 15), so its menus show their whole names, such as `No
   MIX         [✓]            [ ]
   ```
 - **Remove**, which takes it out at once (`removeStage`; message `Removed stage 2, “Drugs” and
-  its 4 transfers. Undo brings it back.`, or without "and its …"), and puts it in the trash
+  its 4 transfers.`, or without "and its …", with an `Undo` button, section 12), and puts it in the trash
   (section 7, "The trash"); if it was open, the first stage in the stage order opens. When it's the only stage, Remove is disabled, with the tooltip `Keep at
   least one stage.`
 
@@ -2266,8 +2266,8 @@ Contains rows fit; section 15), so its menus show their whole names, such as `No
 **A mix step's box** (280px): **Name**; then a note saying how it mixes, from its `destinationMix`:
 `Mixes each well: 90% of the well (≈ 108 µL), 3 times, at 400 µL/s.`, with the volume as for a
 transfer stage's Mix tooltip (section 10, above), or `(no wells yet)` while it has none; then
-**Remove**, as for a stage (message `Removed stage 2, “Mix plate” and its 4 mixed wells. Undo
-brings it back.`). No modes:
+**Remove**, as for a stage (message `Removed stage 2, “Mix plate” and its 4 mixed wells.`, with
+an `Undo` button). No modes:
 a mix step's settings are its own (`transfer-designer.md`, "Mix steps"). (Andy, 2026-10-29: mixing
 has no options for now.)
 
@@ -2359,9 +2359,12 @@ opened, a browser copy that can't be read, and `All 30 colors are in use…` are
 tips…`, `Moved…`, `Copied…` (after Ctrl+drag), `Pasted…`, `Deleted…`, `Cut…` and `Joined…` are
 **ok**; the rest are **note**.
 
-**A message with an Undo button** (2026-11-11): a delete's or cut's message has an `Undo` button
-after its text (section 7, "Deleting and cutting"), which undoes as Ctrl+Z does; it goes with the
-message.
+**A message with an Undo button** (2026-11-11): a delete's or cut's message (section 7, "Deleting
+and cutting"), and the message of a `Remove` that puts something in the trash (a stage's, a mix
+step's, a randomization's card's and the transfer table wizard's; Claude's choice, 2026-11-11: they
+delete as Delete does, so they offer the same way back), has an `Undo` button after its text, which
+undoes as Ctrl+Z does; it goes with the message. These messages no longer end `Undo brings it
+back.` (or `them`): the button says it. Other messages that mention Undo keep their words.
 
 **Stages in messages** are named by place and name, e.g. `stage 3, “New stage”`, so two stages with
 the same name can't be confused. **Wells** are named by the labware's label and the well, e.g. `Assay
@@ -2648,7 +2651,8 @@ group's tip type and probes from its heading), with what's expected. It checks:
 - **The trash**: its closed line empty and with entries (`Trash (2)`); opening it; one entry per
   thing deleted, newest first, column order within a delete, each row's name and details, and no
   button on a row; a stage's box's `Remove`, a randomization's card's `Remove` and the wizard's
-  `Remove` each adding an entry; dragging a stage onto the trash (red trash, red label, deleted);
+  `Remove` each adding an entry, its message with an `Undo` button that brings it back and takes
+  the entry out; Reset's question saying it empties the trash; dragging a stage onto the trash (red trash, red label, deleted);
   the trash after a reload; `Empty trash`; Reset emptying it and Undo bringing it back; the trash
   off while moving wells (its message); Delete with the focus on a trash entry (nothing).
 - **Dragging out**: an entry dragged to a gap (the drop line, the label, pasted there, the entry
