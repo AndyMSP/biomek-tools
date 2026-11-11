@@ -93,7 +93,8 @@ deletes `items` from `plan` (the plan **before** the delete):
 The **change** is `{ added, removed }`: `added`, the new entries the trash **kept** (with their
 IDs; in a delete of more things than the limit, those dropped at once aren't in it); `removed`, the
 entries that were **in the trash before** and were dropped. So undoing the change gives back the
-trash exactly as it was.
+trash's entries exactly as they were. The counters (`nextEntryId`, `nextDeletion`) aren't put
+back, by design (2026-11-11): an ID is never given twice, even after an undo.
 
 A caller removing one thing by another edit (removing a stage, a randomization or a transfer table)
 calls it with that one item.
@@ -300,7 +301,8 @@ the tool's other tests: `tests/fixtures/delete-test-plan.js`, exporting
 - One delete of more things than the limit (a plan with the limit plus 2 stages, each in its own tip
   group, all but one deleted, onto a trash holding one entry): the trash keeps the first
   `TRASH_LIMIT` of the new entries; `added` holds only those; `removed` only the entry there before;
-  undoing the change gives back the trash as it was, compared in full.
+  undoing the change gives back the trash's entries as they were, compared in full (the counters
+  stay ahead, by design: section 3, "Adding").
 
 **Delete then paste at the original place.** For each case, from the test plan: delete the things, adding
 each delete's entries with `addDeleted`; then paste each entry with `pasteEntry` at the place it

@@ -371,7 +371,8 @@ data everyone has to clear first).
   - **writing fails** (`setItem` throws: storage full or switched off), or **reading fails**
     (`getItem` throws), when the page opens or at any change: the note `The trash can't be kept by
     this browser, so it will be empty after a reload.`, once per tab. It shows **after the message
-    of the change** it happened in, on a line of its own in the same message bar, the message
+    of the change** it happened in (only a change to the trash: an Undo or Redo that doesn't change
+    the trash never shows it), on a line of its own in the same message bar, the message
     keeping its kind and its `Undo` button (so a delete still says what it deleted); a failure when
     the page opens waits for the first change to the trash;
   - **the stored trash was written by a newer version, or is damaged** (`trashTextProblem`,
@@ -1764,7 +1765,9 @@ becomes the selection).
   included, though Delete with the focus on one of the trash's own buttons or entries does
   nothing), or while the keyboard focus is in the column (Andy, 2026-11-11: so that working on
   the deck and pressing Delete never deletes the open stage). A press anywhere else on the page
-  ends that, until the next press in the column. **A delete ends it too**, by any route (Claude's
+  ends that, until the next press in the column, and so does **the keyboard focus leaving the
+  column** for another part of the page (from the review, 2026-11-11: Tab into the column, then
+  Shift+Tab back to the deck, then Delete, deleted the open stage). **A delete ends it too**, by any route (Claude's
   choice, 2026-11-11: Andy's rule is meant to stop deletes he didn't pick, and after a delete what's
   open or selected is something he didn't pick): a second Delete needs a new press in the column,
   or the focus moved to a row or heading with the keyboard. So clicking a stage's row and pressing
@@ -1796,7 +1799,9 @@ becomes the selection).
     recorded yet, so undoing the edit before it too would surprise them): the animation stops, the
     rows come back as they were, nothing is recorded or undone, the history and the trash are
     unchanged, and the note `Delete canceled.` is shown. Redo (Ctrl+Y, Ctrl+Shift+Z) while it plays
-    is ignored.
+    is ignored. **A canceled Cut keeps its copy** (here, or when the plan changed meanwhile, below),
+    as a Copy would (Claude's choice, 2026-11-11: the copy is made at once, and taking it off the
+    clipboard again would surprise more than leaving it).
   - **A second Delete, Ctrl+X, menu `Delete` or `Cut`, or drop on the trash while it plays is
     ignored** (Claude's choice, 2026-11-11: one delete at a time; the first is already under way).
   - If the plan has changed otherwise by the time the animation ends, nothing is deleted and the
@@ -1936,7 +1941,9 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   out, Reset empties it) keeps its change in its history state (section 4, "The history"), and Undo
   and Redo apply it: undoing a delete takes its entries out of the trash, undoing a drag-out puts
   the entry back in the trash, and undoing Reset brings back the trash with the plan.
-- **`Empty trash`** empties it at once (`clearTrash`), with no question and no message; it isn't
+- **`Empty trash`** empties it at once (`clearTrash`), with no question, and the note `Emptied the
+  trash.` (from the review, 2026-11-11: so the storage note, section 4, follows a message of its
+  own change, never an older one); it isn't
   an edit of the plan, so Undo doesn't bring it back (Claude's choice: it's the trash's own button,
   like emptying a computer's recycle bin). Reset empties it too, as part of its edit, so Undo of
   Reset does bring it back (section 5).
@@ -2677,7 +2684,8 @@ group's tip type and probes from its heading), with what's expected. It checks:
 - **The Delete key**: a stage's row clicked, then Delete: deleted, its message with `Undo`; a stage
   opened, then a well on the deck clicked, then Delete: nothing; Delete before any press: nothing;
   Delete typed in the experiment's name box: the box's own; the focus moved to a row with Tab,
-  then Delete: deleted.
+  then Delete: deleted; a stage's row clicked, a well clicked, Tab until the focus is in the
+  column, then Shift+Tab back out to the deck, then Delete: nothing.
 - **Ctrl+X**: a stage cut after a click in the column (deleted, and Ctrl+V pastes it back below the
   selection); Ctrl+X after a click on the deck: nothing deleted.
 - **The menu**: on a stage, a tip group's heading, a randomization's and a transfer table's: its
@@ -2712,7 +2720,7 @@ group's tip type and probes from its heading), with what's expected. It checks:
   local storage before the page opens (`trashToText` of a trash built for it, the limit read from
   `config/trash.js`): `Trash (N)`, N being `TRASH_LIMIT`, the oldest not listed, and no note; an
   entry put in storage with a `deletedAt` of the day before: its row shows the date before the
-  time; `Empty trash`; Reset emptying it and Undo bringing it back; the trash
+  time; `Empty trash` (emptied, its note); Reset emptying it and Undo bringing it back; the trash
   off while moving wells (its message); Delete with the focus on a trash entry (nothing).
 - **Dragging out**: an entry dragged to a gap (the drop line, the label, pasted there, the entry
   gone from the trash, the message, the pasted thing selected); dragged back to where it was, for
@@ -2726,10 +2734,13 @@ group's tip type and probes from its heading), with what's expected. It checks:
   without `Copy`); a click on an entry (its note, nothing else); the column scrolled to its end
   with the trash closed (End's card and the seam above it wholly above the band).
 - **Edits around the trash**: Undo and Redo of a delete and of a drag-out moving entries in and
-  out; a drag-out with a stage's editing box with changes open (refused, shaking, `Save or
-  discard your changes first.`, the trash unchanged); Ctrl+Z pressed during the animation, then
+  out; a drag-out with a stage's editing box with changes open (the list opened first, then the
+  box changed, then an entry dragged: refused, shaking, `Save or discard your changes first.`,
+  the trash and the plan unchanged); Ctrl+Z pressed during the animation, then
   a click on the row and Delete again (`Delete canceled.`, then deleted once, with one entry); the message's `Undo` pressed after a
-  later edit (it undoes the later edit, as Ctrl+Z would); a second tab changing the trash, then
+  later edit (it undoes the later edit, as Ctrl+Z would; the later edit is closing the card of a
+  randomization that hasn't run, after changing its seed, which saves its draft with no message
+  of its own: every other edit shows one, replacing the button); a second tab changing the trash, then
   this tab deleting: both tabs' entries kept; this tab deleting, a second tab deleting, then this
   tab's Undo and Redo: only this tab's entries go out and come back, the other tab's kept;
   a delete, then a change of what's open (a stage clicked), then Undo: the delete's entries leave

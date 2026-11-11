@@ -3502,7 +3502,9 @@ then [S10, S11], then a transfer table with two stages, each group's tips differ
   two); S07, S08 and S09 (a lone group and the whole next group: both groups gone); S01, S03's
   tip group and the randomization; S06, S11 and the transfer table; S09 and S10 (either side of the
   randomization: the randomization's `beforeId` and tips as `removeStage` leaves them, and the
-  stage after it keeps tips of its own). For each: the stages left, in order, with the tip type
+  stage after it keeps tips of its own); and, from a test plan with the transfer table moved to the
+  top (`moveItems`, `between` 0), the randomization and the transfer table, listed in that order
+  (they're removed in column order, the table first). For each: the stages left, in order, with the tip type
   and probes of each one's tip group, exactly as listed in the test; `removed` the number of stages
   taken out; `deleted` the items in column order.
 - **An unrun randomization sitting before what's deleted** (`beforeId` moves on, as `removeStage`
@@ -3520,7 +3522,11 @@ then [S10, S11], then a transfer table with two stages, each group's tips differ
   files, byte for byte, and the same tips used) as the plan after the equivalent removals, made one
   after another as this section says ("randomizations and transfer tables first, in column order,
   then the stages left, in column order": `removeRandomization`, `removeTransferTable`,
-  `removeStage`), and `writeRunFiles` succeeds for each (the troughs hold enough for every case).
+  `removeStage`; the test works out that order itself, from `columnBoxes` of the plan before, not
+  from `deleteItems`), and `writeRunFiles` succeeds for each (the troughs hold enough for every case).
+- **A transfer table followed by an ordinary stage** (the test plan with the transfer table moved
+  to just before S10's tip group): `removeTransferTable`, and `deleteItems` of the table, leave
+  S10's own tip change as it was, and no tip change of the table's stages moves onto S10.
 - **The items:** given out of column order, `deleted` is in column order; a stage of a listed tip
   group, randomization or transfer table is left out of `deleted` and not counted twice; an item
   listed twice counts once.
