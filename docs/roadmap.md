@@ -557,6 +557,8 @@ Last updated: 2026-11-11
   in `biomek.md`. **Not verified:** "a fresh tip for every well" assumes the Biomek mixes each well
   of a mix step with its own probe; a simulation run must check it before any real run. It writes
   only mix steps and tip changes the tool already writes, so the Biomek files' format doesn't change.
+  **Waiting for Andy's decisions before the build** (item 34): A, B, C and empty wells, which change
+  what goes into the Biomek files.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1312,11 +1314,32 @@ added on 2026-10-28 (Andy).
       copied items.
     - **Specified properly, as its own kind of container** (Andy: the preview stored it as a
       transfer table with an extra field, didn't save it and refused to copy it).
-    - Decided in the hands-off workflow (2026-11-11; reasons in its pull request): a fresh-tip batch
-      starts again at each labware; its mix steps' mix and tips are locked too, not only their
-      wells; it stores only its way, its wells and tips being its mix steps'; Update remakes every
-      mix step; while the wizard is open, anything else that would change the plan or what's open
-      is refused with a shake; wells holding nothing can be picked and group together.
+    - Decided in the hands-off workflow (2026-11-11; reasons in its pull request): its mix steps'
+      mix and tips are locked too, not only their wells; it stores only its way, its wells and tips
+      being its mix steps'; Update remakes every mix step; while the wizard is open, anything else
+      that would change the plan or what's open is refused with a shake.
+    - **Waiting for Andy's decision before the build** (from the specification review, 2026-11-11;
+      each changes what goes into the Biomek files, so it's his even in the hands-off workflow;
+      `transfer-designer.md`, "Mixing boxes", "Its groups", marks the text depending on each as
+      pending):
+      - **A. Grouping ignores well volume.** A mix step mixes every well with one volume, from its
+        emptiest well (`mix-volumes.md`), so a 200 µL well grouped with a 100 µL well of the same
+        contents is under-mixed with no warning; with a fresh tip, a nearly empty well shrinks its
+        batch's mix. Options: (1) also group by volume, within a tolerance in `config/` (Claude
+        recommends this: it fixes the cause, costing only more mix steps and tips); (2) keep the
+        grouping, and warn when the volumes in one mix step differ; (3) bring forward "Splitting a
+        stage's rows by well volume" from the Later list.
+      - **B. Where a fresh-tip batch restarts.** The reason for restarting is the file writer's
+        split by labware type, so restarting at each labware is stricter than needed. Options: at
+        each labware (recommended: simplest to check by eye) or at each labware type. (The claim
+        that it keeps a batch to one column was wrong, and is gone.)
+      - **C. Reservoir troughs with a fresh tip.** Every probe of a batch may enter one trough
+        together, and whether 8 probes can draw from one trough is unknown (`biomek.md`). Options:
+        refuse troughs for a fresh tip until checked in simulation (recommended), or allow them. A
+        reservoir case is in `biomek.md`'s simulation test either way.
+      - **Empty wells**: wells holding nothing can be picked and, with "same contents", group
+        together, which adds a mix step and its tips to what's written. Recommended: allow them, as
+        specified (the overdraw stops the Biomek files until it's fixed).
     - **Not verified** (`biomek.md`, "Not yet known"): that Transfer From File gives each well of a
       mix step its own probe when it has no more wells than probes. Andy runs the simulation test
       there before any real run with a mixing box.
@@ -1324,7 +1347,8 @@ added on 2026-10-28 (Andy).
       already writes; their format doesn't change.
     - **Once #153 (deleting and the trash) merges**, deleting a mixing box follows its container
       rules, as for a transfer table.
-    Specified (Draft, 2026-11-11).
+    Specified (Draft, 2026-11-11; the specification review's points fixed the same day). Waiting
+    for Andy's decisions A, B, C and empty wells before the build.
 
 **Order of the remaining work** (Andy, 2026-10-28). Whatever changes the files comes before the
 final Biomek runs, so they test the files as they will be:
