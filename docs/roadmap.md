@@ -1292,8 +1292,8 @@ added on 2026-10-28 (Andy).
 34. **Mixing boxes and the mixing wizard** (Andy, 2026-11-11; hands-off workflow; ADR 0025): a way
     to mix wells that makes the mix steps for you. (Item numbers 32 and 33 are taken by the open
     pull requests #153 and #154.) Decided with Andy, from a preview he approved on 2026-11-11:
-    - **Two ways to mix for now**: a fresh tip for every well (nothing carried from one well to the
-      next), and one tip for wells with the same contents (the same components in the same shares).
+    - **Two ways to mix for now**: a fresh tip for every well (meant to carry nothing from one well to
+      the next; not verified, below), and one tip for wells with the same contents (the same components in the same shares).
       More may come, so a way is one entry in a list of rules.
     - **Started from a seam between tip groups**, a fifth button, ⟳⟳ (`Add mixing here`), left of
       the mix step button.
