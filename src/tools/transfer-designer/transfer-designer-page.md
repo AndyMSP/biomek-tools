@@ -244,7 +244,10 @@
 > transfer table's box. From a preview Andy approved on 2026-11-11. Written in the hands-off
 > workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request.
 > They become Final once built and tested by Andy, and the fresh-tip way is checked in simulation
-> (`biomek.md`, "Not yet known").
+> (`biomek.md`, "Not yet known"). Andy's decisions of 2026-11-11 (grouping by volume too, a
+> fresh-tip batch holding one column, troughs refused for a fresh tip, empty wells allowed) are the
+> logic's; the page shows the trough refusal as Make's or Update's error (section 7, "2 · How to
+> mix").
 
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
@@ -1679,11 +1682,15 @@ From the top:
     confirms it, the note becomes `Nothing is carried from one well to the next.`)
   - **`One tip for wells with the same contents`** (`"sameContents"`): `Wells holding the same
     things, in the same shares, share a tip.`
-  A new wizard starts on the first. **Pending Andy's decision C** (`transfer-designer.md`, "Its groups"): if
-  reservoir troughs are refused for `A fresh tip for every well`, the refusal shows as Make's or
-  Update's error, the wizard staying open (below), and the user switches the way or unpicks the
-  troughs; nothing else on the page changes. **Pending Andy's decision A**: if he chooses a warning
-  (option 2) rather than grouping by volume, where it shows is specified then.
+  A new wizard starts on the first. **Reservoir troughs** (Andy, 2026-11-11; `transfer-designer.md`,
+  "Its groups"): the logic refuses them for `A fresh tip for every well`, and the refusal (`A fresh
+  tip for every well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use
+  one tip for wells with the same contents, or leave the troughs out.`) shows as Make's or Update's
+  error, the wizard staying open with its wells, way and tips (below), and the user switches the way
+  or unpicks the troughs; the troughs can still be picked, and Makes still shows their groups.
+  Nothing else on the page changes. (Grouping by volume, and a fresh-tip batch holding one column
+  of one labware, are the logic's, `transfer-designer.md`, "Its groups"; the page shows the groups
+  it gives, and needs nothing of its own for them.)
 - **3 · Tips**: a menu of tip types (`TIP_TYPES`), then `on` (gray), then a menu of probe counts
   (`1 probe` … `8 probes`, choosing `probesFor`). A new wizard starts from **the tips in use at that
   point**: the tip group of the stage just before `beforeId` in the stage order, or of the plan's
@@ -2960,15 +2967,23 @@ page's configuration (ADR 0009):
     count `10 on Plate1 · 4 on Plate2` (labels as given), `Clear`; with none, the gray hint and
     `Make mix steps` disabled with its tooltip; the cursor's label `Pick` and `Unpick`; typed digits
     ignored; a picked well's labware put away and brought back keeps its picks.
-  - **Makes:** with `A fresh tip for every well` on 4 probes, the 10 Plate1 wells give `3 mix steps
-    · 2 to 4 wells each · new BC230 tips on 4 probes` (the tip type as chosen) and chips 1 to 3;
-    pointing at chip 1 rings A1 to D1 (solid blue, standing off the well) and its tooltip reads
-    `Mix 1 of 3: Media + Drug A` (or the plan's component order) with the wells; chip 3 (A2 and B2)
-    `… its wells hold different things`; Tab reaches each chip and rings its wells; with wells on two
-    plates, no chip has wells of both; with `One tip for wells with the same contents`: 2 mix steps,
-    `5 wells each`, the note about more wells than probes on 4 probes, and none on 8 probes; one
-    well picked: `1 mix step · 1 well · …`; the tips menus starting from the tips in use at the seam,
-    and changing the line and chips as changed.
+  - **Makes:** with `A fresh tip for every well` on 4 probes, the 10 Plate1 wells give `4 mix steps
+    · 1 to 4 wells each · new BC230 tips on 4 probes` (the tip type as chosen; A1 to D1, E1 to H1,
+    A2, then B2, which holds twice A2's volume) and chips 1 to 4; pointing at chip 1 rings A1 to D1
+    (solid blue, standing off the well) and its tooltip reads `Mix 1 of 4: Media + Drug A` (or the
+    plan's component order) with the wells; on 8 probes, chip 1 (A1 to H1) `… its wells hold
+    different things`; Tab reaches each chip and rings its wells; with wells on two plates, no chip
+    has wells of both, and with wells in two columns, no chip has wells of both; with `One tip for
+    wells with the same contents`: 3 mix steps, `1 to 5 wells each` (B2 a mix step of its own, split
+    by volume), the note about more wells than probes on 4 probes, and none on 8 probes; one well
+    picked: `1 mix step · 1 well · …`; the tips menus starting from the tips in use at the seam, and
+    changing the line and chips as changed.
+  - **Reservoir troughs:** with `A fresh tip for every well` and Res1 1 picked with the Plate1
+    wells, Makes shows Res1 1 as a chip of its own, and `Make mix steps` shows `A fresh tip for every
+    well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip for
+    wells with the same contents, or leave the troughs out.` as an error, the wizard staying open
+    with its wells, way and tips and nothing added; switching to `One tip for wells with the same
+    contents`, Make adds the box; likewise `Update` on a box being edited.
   - **Elsewhere while open:** clicking a stage, a heading, a ✎, a seam's button, `‹`, `›`, `Move
     wells`, `Undo`, `Save`, `Open`, `Reset`, `Biomek files`, the deck panel's copy and paste buttons,
     a drag in the column, right-click in the column, Ctrl+C, Ctrl+V, **Ctrl+Z and Ctrl+Y** (with
@@ -2990,8 +3005,8 @@ page's configuration (ADR 0009):
     probes 2, 3 and 4: its ✎ shows the probe menu's extra first entry `probes 2, 3, 4`, chosen, and
     the Makes line `… on probes 2, 3, 4`; Update with nothing changed shows `Nothing to update: …`;
     choosing `3 probes` changes the line to `… on 3 probes`.
-  - **The box:** its heading `▸`/`▾`, ⟳, `Mixing`, `3 mix steps · fresh tip per well` or `2 mix steps
-    · same contents share a tip`; opening and closing by click, Enter and Space, `aria-expanded`;
+  - **The box:** its heading `▸`/`▾`, ⟳, `Mixing`, `4 mix steps · fresh tip per well` or `3 mix steps
+    · same contents share a tip` (the 10 Plate1 wells on 4 probes); opening and closing by click, Enter and Space, `aria-expanded`;
     open state kept across edits, undo and redo but not a reload; a narrow column cutting the
     right-hand text first; its mix steps named `Mix 1 of 3` …, each with the tooltip `Mix 1 of 3:
     Media + Drug A`; no ✎ on a mix step or its tip group heading, no `×` on its wells, no seam buttons
@@ -3004,12 +3019,14 @@ page's configuration (ADR 0009):
     message, the first stage opening when one of its mix steps was open before the ✎ (and the stage
     that was open staying open otherwise), Undo bringing it back; Remove disabled, with its tooltip, when its mix steps are all
     the plan's stages; Escape and Cancel change nothing.
-  - **Out of date:** with `One tip for wells with the same contents`, adding DMSO to Plate1 B2 in
+  - **Out of date:** with `One tip for wells with the same contents`, adding 1 µL of DMSO to Plate1 A1 in
     `Fill`: the heading reads `needs update` in red, with its tooltip; the problem count goes up by
-    one; the Biomek files box names it (`A mixing box (at stage N, “Mix 1 of 2”) is out of date: …`)
+    one; the Biomek files box names it (`A mixing box (at stage N, “Mix 1 of 3”) is out of date: …`)
     with Write files disabled; ✎ on the out-of-date box opens the wizard with its stored wells, way
-    and tips and its Makes showing the new grouping (3 mix steps), and Update clears all three; a
-    fresh-tip box isn't affected by the same edit. **Which is named:** with a mixing box out of date
+    and tips and its Makes showing the new grouping (4 mix steps), and Update clears all three; a
+    fresh-tip box isn't affected by the same edit (A1's volume stays within `MIX_VOLUME_TOLERANCE`
+    of the others), but is by adding 100 µL of Media to Plate1 A2 in `Fill` (A2 and B2 then hold
+    the same volume, so they'd share a batch). **Which is named:** with a mixing box out of date
     above a randomization out of date, the Biomek files box names the mixing box; with the
     randomization moved above it, the randomization.
   - **Moving and copying:** dragging the box by its heading between other boxes (moved whole, its
