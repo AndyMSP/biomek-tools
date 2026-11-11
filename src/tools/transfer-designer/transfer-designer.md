@@ -3505,6 +3505,22 @@ then [S10, S11], then a transfer table with two stages, each group's tips differ
   stage after it keeps tips of its own). For each: the stages left, in order, with the tip type
   and probes of each one's tip group, exactly as listed in the test; `removed` the number of stages
   taken out; `deleted` the items in column order.
+- **An unrun randomization sitting before what's deleted** (`beforeId` moves on, as `removeStage`
+  moves it): one added before S07, then S07 deleted: it sits before S08; then (from the test plan
+  again) S07's and S08's tip groups deleted together: it sits before the run randomization's first
+  stage; one added before S03, then S03's tip group deleted: it sits before S07; one added before
+  the transfer table's first stage, then the transfer table deleted: nothing's left after it, so
+  its `beforeId` is `null` (it sits last). Each also through `removeStage` one stage at a time,
+  giving the same `beforeId`.
+- **The same as removing one by one:** for **every stage of the test plan `removeStage` can
+  remove** (every stage not a randomization's or a transfer table's), `deleteItems(plan, [that
+  stage])` gives the same plan as `removeStage(plan, id)`, compared part by part, with `removed` 1.
+  For each "Mixed and scattered" case above, the plan after `deleteItems` gives the same
+  `planOutline` and the same **Biomek output** (`biomekOutput`, the test plan's helper: the same
+  files, byte for byte, and the same tips used) as the plan after the equivalent removals, made one
+  after another as this section says ("randomizations and transfer tables first, in column order,
+  then the stages left, in column order": `removeRandomization`, `removeTransferTable`,
+  `removeStage`), and `writeRunFiles` succeeds for each (the troughs hold enough for every case).
 - **The items:** given out of column order, `deleted` is in column order; a stage of a listed tip
   group, randomization or transfer table is left out of `deleted` and not counted twice; an item
   listed twice counts once.
@@ -3514,8 +3530,9 @@ then [S10, S11], then a transfer table with two stages, each group's tips differ
   and the transfer table listed; and a plan of one stage); the list and item messages as for
   `moveItems`, with `delete`; order of checks (a bad item before an owned stage; an owned stage
   before every stage).
-- **Not refused:** a randomization's stage listed with its randomization; a plan left with one
-  stage; only an unrun randomization.
+- **Not refused:** a randomization's stage listed with its randomization; a transfer table's stage
+  listed with its transfer table (the stage left out of `deleted`, the table and both its stages
+  gone); a plan left with one stage; only an unrun randomization.
 - **Immutability:** the plan given is unchanged; in the table of which parts each edit may change,
   `deleteItems` may change `operationList`, `stageList`, `stageOrder`, `tipChanges`,
   `randomizations` and `transferTables`.

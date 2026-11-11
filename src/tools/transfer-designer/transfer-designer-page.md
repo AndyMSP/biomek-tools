@@ -2680,7 +2680,14 @@ group's tip type and probes from its heading), with what's expected. It checks:
   reason on the first; `Delete` and `Cut` from it; `Join` from it (the group joined, its message).
 - **The tip change's box**: its button reads `Join with the group above` and joins.
 - **Each kind deleted**, and the refusals (a randomization's stage alone, a transfer table's stage
-  alone, every stage selected): the logic's message, nothing changed.
+  alone, every stage selected): the logic's message, nothing changed. **A mixed selection** (S02,
+  S03's tip group by its heading with Ctrl-click, and the transfer table's heading) deleted with
+  the Delete key: the column as expected, the message `Deleted 3 items (7 stages).` with `Undo`,
+  and three entries in the trash, in column order.
+- **A group's first stage removed with its box's `Remove`** (S03, opened, then `Remove`): S04 to
+  S06 keep the group's tip type and probes, read from the group's heading.
+- **Join refused just after a randomization**: the right-click menu on S10's tip group heading
+  shows `Join with the group above` grayed out, with the logic's message under it.
 - **The animation**: right after Delete the deleted rows are still drawn, red; after
   `DELETE_ANIMATION_MS` they're gone; with reduced motion (Playwright's `reducedMotion: "reduce"`)
   they're gone at once; Ctrl+Z pressed during the animation: `Delete canceled.`, nothing deleted,
@@ -2694,8 +2701,12 @@ group's tip type and probes from its heading), with what's expected. It checks:
   thing deleted, newest first, column order within a delete, each row's name and details, and no
   button on a row; a stage's box's `Remove`, a randomization's card's `Remove` and the wizard's
   `Remove` each adding an entry, its message with an `Undo` button that brings it back and takes
-  the entry out; Reset's question saying it empties the trash; dragging a stage onto the trash (red trash, red label, deleted);
-  the trash after a reload; `Empty trash`; Reset emptying it and Undo bringing it back; the trash
+  the entry out; Reset's question saying it empties the trash; dragging a stage onto the trash (red trash, red label, deleted), and again with Ctrl held while
+  dropping (still deleted, not copied); the trash after a reload; `TRASH_LIMIT` + 1 entries put in
+  local storage before the page opens (`trashToText` of a trash built for it, the limit read from
+  `config/trash.js`): `Trash (N)`, N being `TRASH_LIMIT`, the oldest not listed, and no note; an
+  entry put in storage with a `deletedAt` of the day before: its row shows the date before the
+  time; `Empty trash`; Reset emptying it and Undo bringing it back; the trash
   off while moving wells (its message); Delete with the focus on a trash entry (nothing).
 - **Dragging out**: an entry dragged to a gap (the drop line, the label, pasted there, the entry
   gone from the trash, the message, the pasted thing selected); dragged back to where it was, for
@@ -2726,6 +2737,9 @@ group's tip type and probes from its heading), with what's expected. It checks:
   read. An entry another tab dragged out (a second page in the same context) dropped on a gap in
   this tab: `That item has left the trash (another tab used it).`, nothing pasted, the list
   redrawn without it.
+- **The tutorial build's own trash**: the built tutorial file opened, a stage deleted there: its
+  entry is under `biomek-tools transfer designer tutorial: trash` (section 17), and the designer's
+  `biomek-tools transfer designer: trash` is unchanged.
 - **No errors** on the page throughout (Playwright's `pageerror`).
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
@@ -2977,8 +2991,7 @@ group's tip type and probes from its heading), with what's expected. It checks:
 - deleting and the trash (2026-11-11), beyond what `delete.walk.js` checks: the animation and the
   trash's look by eye, in both browsers; the trash shared by two tabs (each change keeping the
   other tab's entries; a tab showing the other's only after its own next change or a reload); a
-  private window starting with an empty trash; the trash with `TRASH_LIMIT` entries and one more
-  (the oldest dropped); dragging an entry out near the column's edges
+  private window starting with an empty trash; dragging an entry out near the column's edges
   (scrolling); the menu key on a heading showing `Delete`;
 - moving wells: `Move wells` and `Done`; the bar's two texts; a trough moved to a free trough by a
   click and by a drag, its label, contents and transfers following it, then another move without

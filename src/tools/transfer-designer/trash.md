@@ -273,6 +273,13 @@ the browser walk-through: `tests/fixtures/delete-test-plan.js`, exporting
 **Configuration**
 - `TRASH_LIMIT` is a whole number of at least 1. The tests below take the limit from it: "the
   limit" is `TRASH_LIMIT`.
+- **Every test holds with any limit of at least 1, `TRASH_LIMIT` = 1 included** (CLAUDE.md, "Tests
+  follow `config/`"). A test that needs more entries kept than the limit allows (a round trip below
+  of a delete of three things needs three) is skipped when `TRASH_LIMIT` is below what it needs,
+  its name saying so (`… (needs TRASH_LIMIT ≥ 3)`), so changing `config/trash.js` never breaks a
+  test; every test of the limit itself works out its numbers from `TRASH_LIMIT` and runs at any
+  limit. The build is checked once with `TRASH_LIMIT` set to `1` in `config/trash.js` (not
+  committed): `npm test` passes, the limit's tests running.
 
 **Entries**
 - `addDeleted` of each kind, from the test plan: a stage (S04: `kind`, `name`, `stageCount` 1,
@@ -336,6 +343,12 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
   its place; of a clear brings every entry back in order; `redoTrashChange` of each does it again.
   Undo after the entries were emptied meanwhile: nothing to take out, no error. Redoing a delete
   past the limit drops older entries again (accepted).
+- **Undo of a paste when the entry put back would be the oldest past the limit**: a trash at the
+  limit whose oldest entry is S03's; S03's entry pasted (its change kept); then entries added by a
+  delete not undone (as another tab's would be) until the trash is at the limit again, all newer;
+  `undoTrashChange` of the paste's change: S03's entry, the oldest, is dropped at once, so the
+  trash is unchanged (compared in full), with no error; `redoTrashChange` of it then changes
+  nothing either.
 - Sequences like a tool's, the trash compared in full after every step, applying the changes as a
   plan history would:
   - delete S03, delete S07, paste S03's entry, undo (back in the trash), undo (S07's entry gone),
