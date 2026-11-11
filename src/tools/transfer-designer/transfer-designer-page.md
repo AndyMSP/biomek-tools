@@ -2468,7 +2468,7 @@ A row's amount box shows a saved amount as JavaScript writes the number, e.g. `1
 - **Counts** take a plural `s` except for 1: `1 well`, `3 wells`.
 
 ## 14. Configuration
-Two files in `config/` (ADR 0009), each data only, with comments saying where the values come from:
+Files in `config/` (ADR 0009), each data only, with comments saying where the values come from:
 - **`config/component-colors.js`** exports `COMPONENT_COLORS`: the 30 colors components can have
   (Andy, 2026-10-25), as `#RRGGBB` text, ordered so the most distinct come first (a new component
   takes the first free one, so similar colors only appear once there are many components):
@@ -2482,6 +2482,11 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
   offered units (cells/mL among them, from 2026-11-05) and `DEFAULT_CONCENTRATION_UNIT` for a new
   row; the page doesn't check it (the
   concentrations module's tests do).
+- **`config/animations.js`** (2026-11-11) exports `DELETE_ANIMATION_MS` (`450`): how long, in
+  milliseconds, deleted rows take to flash red and shrink away (section 7, "Deleting and cutting";
+  section 15), from the preview Andy shaped on 2026-11-11. A whole number of at least 1; the page's
+  tests check it, as the page is what uses it, and the browser walk-through reads it to know how
+  long to wait.
 - **`config/default-volumes.js`** exports `DEFAULT_TRANSFER_VOLUME` (`50`) and `DEFAULT_FILL_VOLUME`
   (`1000`), in µL: the volumes the next transfer and the brush start with when the page opens.
 
@@ -2626,7 +2631,7 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **Deleting** (section 7, from the preview of 2026-11-11): the right-click menu's `Delete` in red
   text (`#B3261E`); the **animation**: each deleted row or box first shows a pale red background
   (`#FBE3E0`) and a red border (`#C4362A`), held for the first 40% of `DELETE_ANIMATION_MS`
-  (450 ms, a constant in the page script, as `DRAG_START_DISTANCE` is), then shrinks to no height
+  (section 14), then shrinks to no height
   (its padding, margins and borders with it) and fades out, easing in, while the rows below move
   up; the **message's `Undo`** button 8px after the text, in the message's own text color, with a
   1px border of that color, 6px corners, 2px by 10px padding, semibold, transparent, lightening on

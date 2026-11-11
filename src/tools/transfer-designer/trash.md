@@ -210,7 +210,7 @@ Each becomes at least one unit test in `trash.test.js`, inside `describe("trash"
 section 5 has at least one test. Andy asked (2026-11-11) for these to be **very thorough**.
 
 **The test plan with a bit of everything**, a fixture shared with `transfer-designer.test.js` and
-the browser walk-through: `tests/fixtures/delete-test-plan.js`, exporting
+the tool's other tests: `tests/fixtures/delete-test-plan.js`, exporting
 - `deleteTestPlan()`: a plan built with the transfer designer's own edits (so it's valid by
   construction), that **can be written as Biomek files**, with:
   - **the experiment name** `DeleteTest` (`setExperimentName`);
@@ -345,7 +345,8 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
   past the limit drops older entries again (accepted).
 - **Undo of a paste when the entry put back would be the oldest past the limit**: a trash at the
   limit whose oldest entry is S03's; S03's entry pasted (its change kept); then entries added by a
-  delete not undone (as another tab's would be) until the trash is at the limit again, all newer;
+  delete not undone (as another caller sharing the trash would add them) until the trash is at the
+  limit again, all newer;
   `undoTrashChange` of the paste's change: S03's entry, the oldest, is dropped at once, so the
   trash is unchanged (compared in full), with no error; `redoTrashChange` of it then changes
   nothing either.
@@ -355,7 +356,8 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
     redo, redo;
   - delete S03 and S04, paste S03's entry, undo, paste S04's, then S03's;
   - delete S04, undo, redo, paste it;
-  - delete S03, empty the trash as part of an edit (a Reset: the plan replaced with `emptyPlan()`),
+  - delete S03, then a caller emptying the trash as part of an edit replacing the plan (the plan
+    replaced with `emptyPlan()`, `clearTrash`'s change kept with that edit),
     undo (S03's entry back), paste it into the plan where it was: the test plan's outline.
 
 **Text**
