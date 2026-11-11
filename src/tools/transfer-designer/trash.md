@@ -195,27 +195,41 @@ section 5 has at least one test. Andy asked (2026-11-11) for these to be **very 
 **The test plan with a bit of everything**, a fixture shared with `transfer-designer.test.js` and
 the browser walk-through: `tests/fixtures/delete-test-plan.js`, exporting
 - `deleteTestPlan()`: a plan built with the transfer designer's own edits (so it's valid by
-  construction), with:
+  construction), that **can be written as Biomek files**, with:
+  - **the experiment name** `DeleteTest` (`setExperimentName`);
   - **labware**: the deck's first reservoir and first 96-well plate, taken from `config/deck.js`
-    by kind, never by name (CLAUDE.md, "Tests follow `config/`");
-  - **components** Media, Drug A, Drug B and Dye, in troughs 1 to 4 of the reservoir, each
-    `DEFAULT_FILL_VOLUME`;
+    by kind, never by name (CLAUDE.md, "Tests follow `config/`"); below, "the plate";
+  - **components** Media, Drug A, Drug B and Dye, in troughs 1 to 4 of the reservoir. **Each trough
+    is filled with what the plan draws from it, above its dead volume, and a margin**: its labware
+    type's `deadVolume` (`config/labware-types.js`), plus `DEFAULT_TRANSFER_VOLUME` times the number
+    of transfers below that draw from it, plus one more `DEFAULT_TRANSFER_VOLUME`. Every volume in
+    the plan is `DEFAULT_TRANSFER_VOLUME`, and the transfers drawn are: Media 28 (S01, S02, S07,
+    S09 and S10, 4 each; the randomization's filler, 4; the transfer table's Media column, 4), Drug
+    A 8 (S03, 4; the randomization, 4), Drug B 8 (S04, 4; the randomization, 4) and Dye 14 (S05, S08
+    and S11, 4 each; the transfer table's Dye column, 2). (Until 2026-11-11 each trough held
+    `DEFAULT_FILL_VOLUME`, below the reservoir's dead volume, so nothing could be drawn and the
+    Biomek files couldn't be written.)
   - **stages**, named so each keeps its name when stages are renumbered, each with transfers of
-    `DEFAULT_TRANSFER_VOLUME` from its component's trough into the wells its name gives (`row A`:
-    A1 to A4; and so on), in this column order and tip groups:
+    `DEFAULT_TRANSFER_VOLUME` from its component's trough into the plate's wells its name gives
+    (`row A`: A1 to A4; and so on), in this column order and tip groups:
     1. [S01 Media row A, S02 Media row B]: the `START` tips, `TIP_TYPES[0]` on `probesFor(4)`;
     2. [S03 Drug A row A, S04 Drug B row B, S05 Dye row B, S06 Mix row A (a mix step mixing A1 to
        A4)]: `TIP_TYPES[1]` (or `TIP_TYPES[0]` when there's one) on `probesFor(2)`;
     3. [S07 Media row C]: `TIP_TYPES[0]` on `probesFor(8)`;
     4. [S08 Dye row C, S09 Media row H]: `TIP_TYPES[0]` on `probesFor(1)`;
-    5. a **run randomization**, `Randomization1`: sources the Drug A and Drug B troughs, 4
-       replicates each, the Media trough the filler, wells to fill D1 to E6 (12 wells: 4 + 4 + 4
-       filler), seed `7`, run so it has **three stages** (Drug A, Drug B, Media), each on tips of
-       its own (its first run's settings and tips from the stage before it); the fixture checks
-       it has three;
+    5. a **run randomization**, `Randomization1`, added before S10: sources the Drug A and Drug B
+       troughs, 4 replicates each, the Media trough the filler, wells to fill D1 to D6 and E1 to E6
+       of the plate (12 wells: 4 + 4 + 4 filler), seed `7`, volume `DEFAULT_TRANSFER_VOLUME`, run
+       so it has **three stages** (Drug A, Drug B, Media), each on tips of its own (its first run's
+       settings and tips from the stage before it, so `TIP_TYPES[0]` on `probesFor(1)`);
     6. [S10 Media row G, S11 Dye row G]: `TIP_TYPES[0]` on `probesFor(4)`;
-    7. a **transfer table** of Media and Dye into wells labeled `Control` (F1, F2) and `Dyed` (F3,
-       F4): two stages.
+    7. a **transfer table**, added last: the plate's F1 and F2 labeled `Control` and F3 and F4
+       `Dyed` (`setWellLabel`); the table `[["Dest Well Label", "Media", "Dye"], ["Control", V,
+       ""], ["Dyed", V, V]]`, `V` being `DEFAULT_TRANSFER_VOLUME` as text; sources Media from trough
+       1 and Dye from trough 4; so **two stages**, Media (into F1 to F4) and Dye (into F3 and F4),
+       their settings as `addTransferTable` gives them, then each one's tip change set to
+       `TIP_TYPES[0]` on `probesFor(3)` (`setTipType`, `setTipProbes`, as a transfer table's
+       stages' tips are edited).
   So groups 1 to 4 have different tips whatever `TIP_TYPES` holds.
 - `stageIdOf(plan, name)`: the ID of the stage called `name` (or just its first word, `S03`).
 - `planOutline(plan)`: the plan **up to its IDs**: the column's boxes in order (`columnBoxes`), each
@@ -225,9 +239,19 @@ the browser walk-through: `tests/fixtures/delete-test-plan.js`, exporting
   tip groups; where an unrun randomization sits, as its place among the boxes; and the components,
   starting contents, labware labels, well labels and experiment name. Stage, randomization and
   transfer table IDs, and `beforeId`, aren't in it.
-- `biomekOutput(plan)`: the plan's Biomek files, `writeRunFiles` (`file-writer.md`) with the
-  experiment name `DeleteTest` and a fixed timestamp, as a list of `{ name, text }`, and its
-  `tipsUsed`.
+- `biomekOutput(plan)`: the plan's Biomek files, `writeRunFiles(plan, timestamp)`
+  (`file-writer.md`) with the fixed timestamp `new Date(2026, 10, 11, 12, 0, 0)`, as its folder
+  name and its list of `{ name, text }`, and the plan's `tipsUsed`.
+
+**The test plan itself**, so every test below starts from a plan that works:
+- it has the stages, tip groups and tips listed above, in that order, and the randomization has
+  three stages;
+- each trough holds what's listed above, worked out from `config/` as above, and the transfers
+  drawn from each trough are the counts listed;
+- `stagesWithContentsProblem` and `stagesWithMixProblem` are empty;
+- `writeRunFiles` succeeds (`biomekOutput` doesn't throw), which it doesn't with a contents problem
+  of any kind, the starting contents' included (`file-writer.md`, section 5); and `planToText` then
+  `planFromText` gives the same plan.
 
 **Configuration**
 - `TRASH_LIMIT` is a whole number of at least 1. The tests below take the limit from it: "the
@@ -278,9 +302,10 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
 - An entry pasted into `emptyPlan()` (`between` 0): the same stages, settings, tips and transfers
   as `copyOf` gave; pasting into another plan is a paste like any.
 - `pasteItems`' refusals pass through, the trash unchanged: a tip group at an `inTipGroup` place; a
-  place out of range; an entry whose `copied` is damaged (read from text with a wrong `copied`); a
-  stage whose wells aren't on the deck of a plan with other labware (if the deck can differ;
-  otherwise skipped).
+  place out of range; an entry whose `copied` is damaged (read from text with a wrong `copied`); an
+  entry whose `copied` names a well not on the deck (a stage's transfer to the plate's `Z99`,
+  written into the entry's text and read back with `trashFromText`, which doesn't check `copied`):
+  `pasteItems`' message for that well.
 - No such entry: its message.
 - The change is `{ added: [], removed: [entry] }`; `placed` is `pasteItems`'.
 
