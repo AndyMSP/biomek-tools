@@ -6,11 +6,11 @@
 // would never write rather than tidying it. The plan is built from an empty plan through the
 // transfer designer's own edits, so a plan made from a file is as valid as one made by editing, and
 // a file that fails any check isn't opened in part.
-// It writes format version 13, which holds each component's constituents and osmolality, the
+// It writes format version 14, which holds each component's constituents and osmolality, the
 // randomizations (each with its name, whose filler may be several wells, whose sources say whether
 // they share tips, and whose settings and tips, once run, are only their stages'), the transfer
-// tables and the well labels, each stage's settings hold its mixes and each tip change its probes.
-// It still reads version 12 files (randomizations without names, opening as Randomization1 …),
+// tables, the mixing boxes and the well labels, each stage's settings hold its mixes and each tip
+// change its probes. It still reads version 13 files (no mixing boxes), version 12 files (randomizations without names, opening as Randomization1 …),
 // version 11 files (a run randomization's settings and tips dropped on opening), version 10 files
 // (no transfer tables), version 9 files (sources without sharesTips, each opening on new tips), version 8 files (components
 // without osmolality), version 7 files (the same properties, written when a filler
@@ -56,6 +56,7 @@ import {
   setRandomization,
   FIRST_RUN_PROPERTIES,
   setTransferTables,
+  setMixingBoxes,
   setExperimentName,
   setConstituents,
   setOsmolality,
@@ -77,10 +78,11 @@ export const PLAN_FILE_FORMAT = "biomek-tools transfer plan";
 // transfer tables (ADR 0019); version 12 (2026-11-05) holds a run randomization's settings, tip type
 // and probes as null, its stages holding them (ADR 0012, amended), so a version 11 tool refuses such
 // a file as newer rather than with a confusing message; version 13 (2026-11-08) added each
-// randomization's name.
-export const PLAN_FILE_VERSION = 13;
+// randomization's name; version 14 (2026-11-11) added the mixing boxes (ADR 0025).
+export const PLAN_FILE_VERSION = 14;
 
-// The versions this module can read: the one it writes, version 12 (plans saved from 2026-11-05 to
+// The versions this module can read: the one it writes, version 13 (plans saved from 2026-11-08 to
+// 2026-11-11, before mixing boxes), version 12 (plans saved from 2026-11-05 to
 // 2026-11-08, before randomizations had names), version 11 (plans saved on 2026-11-05,
 // before a randomization's settings lived only on its stages), version 10 (plans saved on 2026-11-05,
 // before transfer tables), version 9 (plans saved on 2026-11-05, before sources sharing tips),
@@ -91,7 +93,7 @@ export const PLAN_FILE_VERSION = 13;
 // version 4 (plans saved from 2026-10-30 to 2026-11-01, before well labels), version 3 (plans saved
 // on 2026-10-30, before mixing), version 2 (plans saved from 2026-10-28 to 2026-10-30) and version
 // 1 (plans saved before 2026-10-28).
-const VERSIONS_READ = [PLAN_FILE_VERSION, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+const VERSIONS_READ = [PLAN_FILE_VERSION, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
 
 // The first version whose components hold their constituents. An older file's components are
 // { name, color } only, and open carrying nothing.
@@ -138,8 +140,9 @@ const VERSIONS_WITHOUT_MIXES = [1, 2, 3];
 // table: an older file's stages can't hold them, and get them as null.
 const MIX_SETTINGS = ["sourceMix", "destinationMix"];
 
-// A plan file's properties, in the order they are written (plan-file.md, section 3). Versions 11 to
-// 13 have all of them, and versions 6 to 10 all but the transfer tables: version 7's and version 9's
+// A plan file's properties, in the order they are written (plan-file.md, section 3). Version 14 and
+// later have all of them, versions 11 to 13 all but the mixing boxes, and versions 6 to 10 also not
+// the transfer tables: version 7's and version 9's
 // changes are inside each component, and version 8's, version 10's, version 12's and version 13's
 // inside the randomizations.
 const FILE_PROPERTIES = [
@@ -156,6 +159,7 @@ const FILE_PROPERTIES = [
   "wellLabels",
   "randomizations",
   "transferTables",
+  "mixingBoxes",
 ];
 
 // The properties version 2 added. A version 1 file has neither these nor version 5's.
@@ -170,6 +174,9 @@ const VERSION_6_PROPERTIES = ["randomizations"];
 // The properties version 11 added. A version 1 to 10 file can't have these.
 const VERSION_11_PROPERTIES = ["transferTables"];
 
+// The properties version 14 added. A version 1 to 13 file can't have these.
+const VERSION_14_PROPERTIES = ["mixingBoxes"];
+
 // savedBy is for information only, so a file may leave it out.
 const OPTIONAL_PROPERTIES = ["savedBy"];
 
@@ -181,6 +188,7 @@ const LIST_PROPERTIES = [
   "operations",
   "randomizations",
   "transferTables",
+  "mixingBoxes",
 ];
 const OBJECT_PROPERTIES = ["tipChanges", "labwareLabels", "wellLabels"];
 
@@ -213,6 +221,10 @@ const RANDOMIZATION_PROPERTIES_WITHOUT_NAME = RANDOMIZATION_PROPERTIES.filter((p
 // "Transfer tables"), so one missing one is refused with setTransferTables' form message.
 const TRANSFER_TABLE_PROPERTIES = ["id", "table", "sources", "stages"];
 
+// Every property of a mixing box, as setMixingBoxes takes them (transfer-designer.md, "Mixing
+// boxes"), so one missing one is refused with setMixingBoxes' form message.
+const MIXING_BOX_PROPERTIES = ["id", "way", "stages"];
+
 // --- Saving ---
 
 // The plan file's text for `plan`: JSON, indented by 2 spaces, with the properties of plan-file.md
@@ -238,6 +250,7 @@ export function planToText(plan, savedBy) {
     wellLabels: plan.wellLabels,
     randomizations: plan.randomizations,
     transferTables: plan.transferTables,
+    mixingBoxes: plan.mixingBoxes,
   };
   return JSON.stringify(file, null, 2);
 }
@@ -262,7 +275,8 @@ export function planFromText(text) {
   plan = withExperimentName(plan, file);
   plan = withWellLabels(plan, file);
   plan = withRandomizations(plan, file, added.newIds);
-  return withTransferTables(plan, file, added.newIds);
+  plan = withTransferTables(plan, file, added.newIds);
+  return withMixingBoxes(plan, file, added.newIds);
 }
 
 // True if a file of `version` (one of VERSIONS_READ) keeps each stage's probes in its settings, and
@@ -309,7 +323,7 @@ function checkFormatAndVersion(file) {
 }
 
 // The properties a plan file of `version` (one of VERSIONS_READ) holds, in the order they are
-// written: a version 1 to 10 file has all but the ones version 11 added, a version 1 to 5 file also
+// written: a version 1 to 13 file has all but the ones version 14 added, a version 1 to 10 file has all but the ones version 11 added, a version 1 to 5 file also
 // lacks the ones version 6 added, a version 1 to 4 file also
 // lacks the ones version 5 added, and a version 1 file also lacks the ones version 2 added, e.g.
 // propertiesOfVersion(1) has no "experimentName", "wellLabels" or "randomizations". Versions 3 and 4
@@ -318,6 +332,9 @@ function checkFormatAndVersion(file) {
 // and several filler wells inside the randomizations).
 function propertiesOfVersion(version) {
   let properties = FILE_PROPERTIES;
+  if (version < 14) {
+    properties = properties.filter((property) => !VERSION_14_PROPERTIES.includes(property));
+  }
   if (version < 11) {
     properties = properties.filter((property) => !VERSION_11_PROPERTIES.includes(property));
   }
@@ -900,6 +917,44 @@ function checkTableRenumberableForm(transferTable, index) {
       `transfer tables: Transfer table ${number}: its stages must be a non-empty list of objects with ` +
         'exactly "component" and "stage".',
     );
+  }
+}
+
+// Check 15: returns the plan with the file's mixing boxes (version 14 and later): first just enough
+// of their form to renumber (checkMixingBoxRenumberableForm), then every stage they name is one of
+// the file's, then renumbered, then setMixingBoxes checks and sets them all at once. A version 1 to
+// 13 file opens with none.
+function withMixingBoxes(plan, file, newIds) {
+  if (file.version < 14) {
+    return plan;
+  }
+  const mixingBoxes = file.mixingBoxes;
+  mixingBoxes.forEach(checkMixingBoxRenumberableForm);
+  mixingBoxes.forEach((mixingBox, index) => {
+    for (const stage of mixingBox.stages) {
+      if (!newIds.has(stage)) {
+        refuse(`mixing box ${index + 1} names stage ${describeValue(stage)}, which isn't one of the file's stages.`);
+      }
+    }
+  });
+  const renumbered = mixingBoxes.map((mixingBox) => ({
+    ...mixingBox,
+    stages: mixingBox.stages.map((stage) => newIds.get(stage)),
+  }));
+  return withPlace("mixing boxes", () => setMixingBoxes(plan, renumbered));
+}
+
+// Throws if the mixing box at `index` hasn't just enough form for its stage IDs to be renumbered (an
+// object with exactly its properties; its stages a list of text), with setMixingBoxes' message for
+// that form.
+function checkMixingBoxRenumberableForm(mixingBox, index) {
+  const number = index + 1;
+  if (!hasExactly(mixingBox, MIXING_BOX_PROPERTIES)) {
+    refuse(`mixing boxes: Mixing box ${number} must be an object with exactly ${listNamesWithAnd(MIXING_BOX_PROPERTIES)}.`);
+  }
+  const { stages } = mixingBox;
+  if (!Array.isArray(stages) || stages.length === 0 || !stages.every((stage) => typeof stage === "string")) {
+    refuse(`mixing boxes: Mixing box ${number}: its stages must be a non-empty list of stage IDs.`);
   }
 }
 
