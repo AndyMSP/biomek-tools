@@ -239,8 +239,9 @@
 > **Draft changes (2026-11-11, every transfer's volume at once, item 33 of v0.2.0):** a transfer
 > stage's shown transfer list starts with an **All transfers** box, showing the volume its transfers
 > share or `Mixed`, which sets every transfer's volume as one edit (`changeStageVolumes`; sections
-> 7, 12, 15 and 16), from a preview Andy approved on 2026-11-11. Written in the hands-off workflow
-> (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request. They
+> 7, 9, 12, 15 and 16), from a preview Andy approved on 2026-11-11. Written in the hands-off
+> workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request.
+> Still to review: the new messages and tooltips, and where the focus goes after a save. They
 > become Final once built and tested by Andy.
 
 ## 1. Purpose
@@ -940,41 +941,65 @@ holds:
   after the route was left hanging (Andy, 2026-10-30).
 - **The All transfers box** (Andy, 2026-11-11): a transfer stage's shown list starts with a row
   holding `All transfers`, a text box and `µL`, which sets **every transfer's volume at once**.
-  A randomization's or a transfer table's stage has no such row (its volumes come from its owner,
-  and its rows' volumes aren't buttons), and neither has a mix step (its list is its mixed wells).
+  It's shown whenever the list is, even for a stage with one transfer (as in the preview Andy
+  approved). A randomization's or a transfer table's stage has no such row (its volumes come from
+  its owner, and its rows' volumes aren't buttons), and neither has a mix step (its list is its
+  mixed wells).
   - **What it shows**, worked out afresh each time the list is drawn, so it follows every edit
     (a single transfer's volume, a transfer added or removed, Undo, Redo): the volume all the
     stage's transfers share, written as volumes are (section 13, e.g. `33.33`); or, when they
     differ, **nothing, with the placeholder `Mixed`** (as a randomization's card shows `Mixed` where
-    its stages differ; section 7, "Randomizations"). Its tooltip: `Type a volume to give every
-    transfer in this stage.`, or, when they differ, `The transfers have different volumes: type
-    one to give them all.` Its label names the box (a `<label>` for it), and its accessible name is
-    `Volume of every transfer in this stage, in µL`.
+    its stages differ; section 7, "Randomizations"). **Share** means the stored volumes are equal
+    exactly (`===`), as `changeStageVolumes` compares them, so 33.3333 and 33.33 µL show `Mixed`
+    though both are written `33.33`. Its tooltip: `Type a volume to give every transfer in this
+    stage.`, or, when they differ, `The transfers have different volumes: type one to give them
+    all.`
+  - **Its names:** the visible `All transfers` is a `<label>` for the box, so clicking it focuses
+    the box; the box's accessible name is its `aria-label`, `Volume of every transfer in this stage,
+    in µL`.
   - **Typing:** an ordinary text box. While it has the focus, keys go to it, not to the next
     transfer's volume (section 13), as in any text box. A click or Tab into it selects its text.
-  - **Saving**, at most once per change, **on Enter** or **on leaving the box** (clicking elsewhere
-    or Tab), through the same mechanism as a transfer's volume box (below, "A transfer's volume"):
-    the page saves as the press starts, then passes a main-button click on to whatever is now under
-    the pointer, once. What's saved is what's typed with spaces at its ends removed: **blank**, or
-    **the text it showed**, saves nothing and shows no message (the box shows its value again);
-    anything else is passed on as a typed volume is (section 13: a number when it's one, otherwise
-    as typed, so the logic's message says what's wrong) to **`changeStageVolumes`**, as **one
-    edit** (one Undo). Message (ok): `Set all 6 transfers in stage 1, “S01 Media row A” to 75 µL.`
-    (`Set the only transfer in stage 1, “S01 Media row A” to 75 µL.` for one), the volume written as
-    volumes are. A stage whose transfers all had that volume already (`changeStageVolumes` gives the
-    same plan back) records nothing and shows no message. After Enter the list is redrawn with the
-    focus back in the box, its new value selected; after leaving, the focus goes where it was
-    going. Like a single transfer's volume, a volume that makes a contents problem is saved, and
-    the problem shows as usual (red volumes, the red stage, the problem count).
+    The page notes whether the text has been **edited** since the box got the focus (set by the
+    box's `input` event, cleared each time it gets the focus).
+  - **Pointing at rows** while it has the focus works as usual (a row singles out its transfer);
+    the box itself singles out no transfer.
+  - **Saving**, **on Enter** or **on leaving the box** (clicking elsewhere or Tab), through the same
+    mechanism as a transfer's volume box (below, "A transfer's volume"): the page saves as the press
+    starts, then passes a main-button click on to whatever is now under the pointer, once. So a
+    press on a header button right after typing saves first, then acts (Undo then undoes that
+    save), and a click on another stage's row saves, then opens that stage. **Nothing is saved
+    unless the text was edited**, and nothing is saved for **blank** text (the box shows its value
+    again, with no message). Otherwise, what's typed, with spaces at its ends removed (this box
+    trims them on purpose; a single transfer's volume box doesn't), is passed on as a typed volume
+    is (section 13: a number when it's one, otherwise as typed, so the logic's message says what's
+    wrong) to **`changeStageVolumes`**, as **one edit** (one Undo). Message (ok): `Set all 6
+    transfers in stage 1, “S01 Media row A”, to 75 µL.` (`Set the only transfer in stage 1, “S01
+    Media row A”, to 75 µL.` for one), the volume written as volumes are. When `changeStageVolumes`
+    gives the same plan back (every transfer had that volume already), nothing is recorded and no
+    message is shown. Like a single transfer's volume, a volume that makes a contents problem is
+    saved, and the problem shows as usual (red volumes, the red stage, the problem count). The box
+    is saved **at most once** per change: a box removed while it has focus (the redraw after Enter
+    or after a save by leaving) saves nothing more.
+  - **Where the focus goes after a save:** after Enter, the list is redrawn with the focus back in
+    the box, found again by its stage, its new value selected. After Tab, the focus goes to the
+    redrawn list's first transfer's volume button; after Shift+Tab, to the redrawn `Hide transfers
+    ▾` (each found again in the open stage's card after the redraw). After a click, the focus goes
+    where the click puts it.
   - **A refused volume**: the logic's message is shown (error), and nothing changes. After Enter
-    the box stays with what was typed, selected, to fix it. After leaving, the box shows its value
-    again and the click does nothing else, so the message stays in view, as for a transfer's volume.
-  - **Escape** puts the value it showed back and takes the focus out of the box, and does nothing
-    else: no box or card closes, and a chosen source stays.
+    the box stays with what was typed, selected, to fix it. After Tab or a click away, the box shows
+    its value again, nothing is redrawn, and the focus moves on as Tab would; a click does nothing
+    else, so the message stays in view, as for a transfer's volume.
+  - **Escape** puts the value it showed back, then takes the focus out of the box (that blur saves
+    nothing), and does nothing else: no box or card closes, and a chosen source stays.
+  - **Ctrl+Z and Ctrl+Y** (Cmd on a Mac; also Ctrl+Shift+Z) in the box act as the page's Undo and
+    Redo while its text hasn't been edited since it got the focus (so Enter, then Ctrl+Z, undoes the
+    save); once edited, they're the text box's own.
+  - **A chosen source stays** when the box is saved (section 9, "What keeps it").
   - **While a transfer's volume box is open**, a click in the All transfers box first saves that
     box (as any click away does), then focuses this one.
-  - **While moving wells** (below), the box is shown but disabled, so it can't be typed in; a click
-    on it says `Stages can't be changed while moving wells. Press Done first.` (note), as for a
+  - **While moving wells** (below), the box is `readonly` with `aria-disabled="true"` and the
+    disabled look, so it can't be typed in, and a click on it is caught by the column's handler
+    and says `Stages can't be changed while moving wells. Press Done first.` (note), as for a
     transfer's volume.
 - **A transfer with a contents problem** (`contents-tracking.md`; the transfer's own problem, the
   first if it has two) shows its volume in red and semibold, with the tooltip `Only 450 µL is
@@ -1998,7 +2023,8 @@ wells that don't form a box: each click is its own edit (its own Undo step), as 
   Stages column; Open; Reset; putting away the source's labware; starting moving wells.
 - **What keeps it:** Undo and Redo; typing a volume; opening a transfer's volume box or the open
   stage's ✎ (a click on a deck well while an editing box with changes is open shakes the box, as
-  for any click, and adds nothing); selecting in the Stages column.
+  for any click, and adds nothing); selecting in the Stages column; saving the All transfers box
+  (section 7; 2026-11-11).
 - **After an Undo or Redo** during a kept run (Andy, 2026-11-05), or with a source just chosen,
   if what's open is no longer a transfer stage (a mix step, Start, End, or a stage of a
   randomization or transfer table), the source is cleared, as opening it would.
@@ -2360,14 +2386,17 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   - **disabled** buttons: gray text and border on a light gray background, whatever their group;
   - buttons with a look of their own keep it: `Show transfers`, a transfer's volume and `×`, a
     labware's label, the seams, and the Stages column's rows.
-- **The All transfers box** (section 7; 2026-11-11): a row above the transfer rows, 6px above and
-  4px below it, 6px × 8px padding, a 1px dashed border (`#E2E0D8`, the panels' border) with 6px
+- **The All transfers box** (section 7; 2026-11-11): a row above the transfer rows, with a 6px
+  margin above it (from `Hide transfers ▾`) and a 4px margin below it (to the first transfer row),
+  6px × 8px padding, a 1px dashed border (`#E2E0D8`, the panels' border) with 6px
   corners, on the page's background (`#F6F5F1`); its items 8px apart, centered on one line.
   `All transfers` at the left, taking the spare width, in the style of a box's field names (12px,
   semibold, gray, capitals, letter spacing 0.03em); then the box, 80px wide, at least 26px tall,
   6px side padding, a 1px border (`#CFCDC4`) with 4px corners, the transfers' monospace font at
   12px, right-aligned, as a transfer's volume box is; its placeholder `Mixed` gray and italic;
-  then `µL`, 12px gray. Disabled while moving wells, it takes the page's disabled look.
+  then `µL`, 12px gray. Disabled while moving wells, it takes the page's disabled look. It differs
+  on purpose from a randomization card's All sources row: it's the look Andy approved in the
+  preview (2026-11-11).
 - **Wells:** 36px, 4px apart; an empty well white with a gray border (`#BDBDB5`), its name 10px.
   Grid headings 12px gray.
 - **The open entry** (section 7): a 2px solid border in the text color (`#1C1C1A`) in place of the
@@ -2530,21 +2559,34 @@ page's configuration (ADR 0009):
   stage, with a randomization's card open and while moving wells, Ctrl-click acts as a click; on a
   Mac, Cmd-click keeps the source, and Ctrl-click on a well with a source chosen opens its name box,
   adds nothing and keeps the source;
-- the All transfers box (section 7; 2026-11-11), on a stage with six transfers of one volume: it
-  shows that volume; changing one transfer's volume makes it blank with `Mixed` (and the tooltip
-  saying so), and changing it back shows the volume again; adding and removing a transfer, Undo and
-  Redo each keep it right. Typing `75` and Enter sets all six (one message, `Set all 6 transfers in
-  …`), the focus back in the box with `75` selected, and one Undo puts every volume back (and the
-  box with them); typing a volume then clicking a transfer's `×` saves it and removes that
-  transfer; typing a volume then Tab saves it; blank, or the shown text, saves nothing and shows no
-  message; the same volume they all have records no Undo step; `abc` and `-5` show the logic's
-  message, the box staying with the text after Enter and showing its value again after a click
-  away; Escape puts the value back, keeping the stage open and a chosen source; with one transfer,
-  the message says `Set the only transfer …`; a volume that overdraws a source turns the stage and
-  the volumes red, as a single volume does; while a transfer's volume box is open, a click in the
-  box saves that one first; a mix step, a randomization's stage and a transfer table's stage have
-  no box; while moving wells it's disabled and a click says so; the digits typed in the box never
-  reach the next transfer's volume (section 13);
+- the All transfers box (section 7; 2026-11-11), on a stage with six transfers of one volume:
+  - **what it shows:** that volume; changing one transfer's volume makes it blank with `Mixed`
+    (and the tooltip saying so), and changing it back shows the volume again; transfers of 33.3333
+    and 33.33 µL show `Mixed`; adding and removing a transfer, Undo and Redo each keep it right; it
+    shows after Hide transfers then Show transfers; a stage with one transfer has the box;
+  - **its names:** clicking `All transfers` focuses the box; a screen reader (or the accessibility
+    tree) names it `Volume of every transfer in this stage, in µL`; a click or Tab into it selects
+    its text;
+  - **saving:** `75` and Enter sets all six (one message, `Set all 6 transfers in stage 1, …, to
+    75 µL.`), the focus back in the box with `75` selected, and one Undo puts every volume back
+    (and the box with them); Enter then Ctrl+Z undoes the save, and Ctrl+Y redoes it; with text
+    edited, Ctrl+Z undoes the typing, not the plan; a volume then a click on a transfer's `×` saves
+    it and removes that transfer; a volume then a click on another stage's row saves, then opens
+    that stage; a volume then a press on the header's Undo saves, then undoes that save; a volume
+    then Tab saves, the focus on the first transfer's volume button, and Shift+Tab saves, the focus
+    on `Hide transfers ▾`; blank, or focusing and leaving without typing, saves nothing and shows no
+    message; all at 33.3333 then `33.33` typed saves; typing the volume they all have records no
+    Undo step and shows no message; `  75  ` saves 75; with one transfer, the message says `Set the
+    only transfer …`; a volume that overdraws a source turns the stage and the volumes red, as a
+    single volume does; a chosen source stays after a save;
+  - **refusals and Escape:** `abc` and `-5` show the logic's message, the box staying with the
+    text after Enter, and showing its value again after Tab (the focus moving on) or a click away;
+    Escape puts the value back and saves nothing, keeping the stage open and a chosen source;
+  - **elsewhere:** while a transfer's volume box is open, a click in the box saves that one first;
+    pointing at rows while the box has focus singles out their transfers; a mix step, a
+    randomization's stage and a transfer table's stage have no box; while moving wells it can't be
+    typed in and a click says so; the digits typed in the box never reach the next transfer's
+    volume (section 13);
 - every editing box: Save, Discard, Escape, a click outside with and without changes, Remove;
 - a stage's ✎ beside its name: it opens the stage's box under the card's heading, its menus show
   `Non-Contact` whole, and a stage whose settings aren't one of the modes shows `(not one of the
