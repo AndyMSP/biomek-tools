@@ -189,7 +189,7 @@
 > probes (`biomek.md`, "Not yet known"); a simulation run must check it before any real run.
 > **Decided by Andy** (2026-11-11; section 3, "Its groups"; roadmap, item 34): wells share a mix
 > step only if they also hold about the same volume (`MIX_VOLUME_TOLERANCE`); a fresh-tip batch
-> holds wells of one column of one labware; reservoir troughs are refused for a fresh tip until
+> holds wells of one column of one labware, in rows right next to each other (11:42); reservoir troughs are refused for a fresh tip until
 > checked in simulation; empty wells can be picked. Still to review: every new message. It becomes
 > Final once built, tested by Andy and checked in simulation.
 
@@ -1540,8 +1540,8 @@ transfer table. Each is:
 - **`way`**: the **way to mix** (`docs/glossary.md`), one of **`MIXING_WAYS`**, a constant of this
   module (not `config/`: each way is code), in the order a tool offers them:
   - **`"freshTip"`**, a fresh tip for every well: meant to carry nothing from one well to the next.
-    It puts in a mix step only wells of one column of one labware, no more than there are probes;
-    that the Biomek then mixes each well with its own probe, in one pass, is **not verified**, and
+    It puts in a mix step only wells of one column of one labware, in rows right next to each
+    other, no more than there are probes; that the Biomek then mixes each well with its own probe, in one pass, is **not verified**, and
     is to be checked in simulation (`docs/domain/biomek.md`, "Not yet known", "How Transfer From
     File gives a file's rows to the probes");
   - **`"sameContents"`**, one tip for wells with the same contents: wells holding the same
@@ -1604,15 +1604,22 @@ then grouped by its way's rule:
 - **`"freshTip"`**: in **batches**, meant to give each well a tip of its own (Andy, 2026-11-11;
   whether the Biomek does is to be checked in simulation, `docs/domain/biomek.md`, "Not yet
   known"). **A batch holds wells of one column of one labware** (Andy, 2026-11-11, decision B:
-  "make sure batches are vertical lines as well — it does them all at once that way"), at most
-  `probes.length` of them, all holding **about the same volume** (above). Taking the wells in probe
-  order, a well **starts a new batch** when it's the first well; when it's on another labware, or in
-  another column of its labware's grid, than the batch's wells; when the batch already holds
-  `probes.length` wells; or when the batch, with it, wouldn't hold about the same volume (decision
-  A). Otherwise it joins the batch. So a batch's wells sit one above the next in a column, as the
-  probes do, and batches are in probe order. What the wells hold doesn't matter, only how much. E.g.
-  on 4 probes, all wells holding the same volume:
+  "make sure batches are vertical lines as well — it does them all at once that way"), **in rows
+  right next to each other** (Andy, 2026-11-11 11:42: the probes sit one row apart, so A1, C1 and
+  E1 can't be mixed in one pass; "it does them all at once that way"), at most `probes.length` of
+  them, all holding **about the same volume** (above). Taking the wells in probe order, a well
+  **starts a new batch** when it's the first well; when it's on another labware, or in another
+  column of its labware's grid, than the batch's wells; when it's **not in the row directly below
+  the batch's last well** (a **gap**: e.g. C1 after A1, B1 not picked); when the batch already
+  holds `probes.length` wells; or when the batch, with it, wouldn't hold about the same volume
+  (decision A). Otherwise it joins the batch. So a batch's wells sit one directly above the next in
+  a column, with no well left out between them, as the probes do, and batches are in probe order.
+  What the wells hold doesn't matter, only how much. E.g. on 4 probes, all wells holding the same
+  volume:
   - Plate1 A1 to H1: two batches, A1 to D1 and E1 to H1;
+  - Plate1 A1, C1 and E1: three batches of one well (a gap before C1 and before E1);
+  - Plate1 A1 to H1 without D1: A1 to C1, then E1 to H1 (a gap at D1; the second batch is full);
+  - Plate1 A1, B1, D1, E1, F1: A1 and B1, then D1 to F1;
   - Plate1 A1 to C1, and A2 to C2: two batches, A1 to C1 and A2 to C2 (not A1 to C1 with A2);
   - Plate1 A1 to A12 (one row): 12 batches of one well;
   - 10 wells on Plate1 (A1 to H1, A2, B2) and 4 on Plate2 (A1 to D1): Plate1 A1 to D1, E1 to H1, A2
@@ -1622,8 +1629,8 @@ then grouped by its way's rule:
   (A new batch at each labware also keeps a mix step from spanning two labware types, which the
   file writer would split into substages on the same tips, `substages.md`. The old rule, batches of
   `probes.length` wells across columns within a labware, is gone: a batch never takes a well of a
-  second column.) Whether the Span-8 mixes a column batch in one pass, each well with its own probe,
-  is part of the simulation test (`biomek.md`, "Not yet known"), not a known fact.
+  second column, and never leaves a gap.) Whether the Span-8 mixes a column batch of rows right
+  next to each other in one pass, each well with its own probe, is part of the simulation test (`biomek.md`, "Not yet known"), not a known fact.
   **Reservoir troughs are refused for `"freshTip"`** (Andy, 2026-11-11, decision C) until the
   simulation test has checked several probes in one trough: on a labware whose grid has one well per
   column (a numbered grid, such as `DeepReservoir12`'s troughs), every probe of a mix step may enter
@@ -3735,7 +3742,9 @@ are taken from `TIP_TYPES` and `probesFor`, never named where a test doesn't nee
 and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests follow config/").
 - **`MIXING_WAYS`** is `["freshTip", "sameContents"]` and frozen.
 - **Probe order:** `mixingGroups` with `"freshTip"` on 8 probes for Plate1 A2, B1, A1, H1 (given in
-  that order) gives A1, B1 and H1, then A2: down each column, then the next; wells on Deep1 and
+  that order) gives A1 and B1, then H1 (a gap: C1 to G1 not picked), then A2: down each column,
+  then the next; with `"sameContents"`, all one volume and the same contents, one group A1, B1,
+  H1, A2, in that order; wells on Deep1 and
   Plate1 together come in the deck's labware order (whichever `config/deck.js` lists first, worked
   out from it); Res1 5, 1 and 3 give Res1 1, 3, 5 (each a group of its own, a trough being a column
   of its own).
@@ -3744,6 +3753,12 @@ and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests f
   then A2 to C2 (never A1 to C1 with A2); Plate1 A1 to A12 gives 12 groups of one, in column order.
   On 3 probes, Plate1 G1, H1 and A2 give G1 and H1, then A2 (a new column starts a batch even when
   the last isn't full). On 1 probe, any wells give groups of one.
+- **Fresh tip, gaps** (Andy, 2026-11-11 11:42; wells of one volume): on 4 probes, Plate1 A1, C1 and
+  E1 give three groups of one (three mix steps once added); Plate1 A1, B1, D1, E1 and F1 give A1 and
+  B1, then D1 to F1; on 8 probes, Plate1 A1 to H1 without D1 (a gap inside an otherwise full column)
+  gives A1 to C1, then E1 to H1, never one batch of seven; on 4 probes, the same wells give A1 to C1,
+  then E1 to H1; a gap and a new column at once (Plate1 A1 and C2 on 8 probes) give two groups; with `"sameContents"` (the same
+  contents, one volume), each of these is one group: gaps never split it.
 - **Fresh tip, restart at labware:** Plate1 A1 to C1 and another 96-well labware's A1 to C1 (the
   same labware type), on 8 probes: two batches, one per labware, never a batch with wells on both.
 - **Fresh tip, the test plan:** its 10 wells on Plate1 (A1 to H1, A2, B2) on 4 probes: A1 to D1, E1
@@ -3756,7 +3771,8 @@ and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests f
   whatever they hold, and after an edit before it that changes what they hold but not how much.
 - **Volume tolerance** (decision A; the numbers worked out from `MIX_VOLUME_TOLERANCE`, called `t`
   here, never naming its value: CLAUDE.md, "Tests follow config/"), with wells of the same contents,
-  in one column, on 8 probes, the first holding 100 µL; for each way:
+  in one column, in rows right next to each other (Plate1 A1, B1, C1 …, so no gap plays a part), on
+  8 probes, the first holding 100 µL; for each way:
   - a second well holding `100 × (1 + 0.9 t / 100)` µL shares the first's group; one holding
     `100 × (1 + 1.1 t / 100)` µL doesn't (with `"sameContents"`, it starts a second group; with
     `"freshTip"`, a new batch);
@@ -3891,7 +3907,8 @@ and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests f
   B2: batches A1 to D1, E1 to H1, A2, then B2): `false` after a change to which components its
   wells hold that keeps their volumes (Media at Start replaced by DMSO in the same amount); `true`
   after adding 100 µL of Media to A2 before the box (A2 and B2 then hold the same volume: one
-  batch); `false` after `moveWell` of B2 to C2 (still a batch of its own, out of tolerance with A2);
+  batch); `false` after `moveWell` of B2 to C2 (still a batch of its own: a gap after A2, and out of
+  tolerance with it);
   `true` after `moveWell` of A1 to C2 (now B1 to E1, F1 to H1, then A2, B2 and C2 each alone).
 - **Removing:** takes out the box and its mix steps, as one edit; tip changes on the stage after it
   stay; a randomization without stages sitting before its first mix step then sits before `Wash`;
