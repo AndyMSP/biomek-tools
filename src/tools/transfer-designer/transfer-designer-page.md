@@ -1750,9 +1750,12 @@ becomes the selection).
   included, though Delete with the focus on one of the trash's own buttons or entries does
   nothing), or while the keyboard focus is in the column (Andy, 2026-11-11: so that working on
   the deck and pressing Delete never deletes the open stage). A press anywhere else on the page
-  ends that, until the next press in the column. So clicking a stage's row and pressing Delete
-  deletes it; clicking a well on the deck and pressing Delete does nothing. Not while typing in a
-  text box or menu, which keeps its own Delete.
+  ends that, until the next press in the column. **A delete ends it too**, by any route (Claude's
+  choice, 2026-11-11: Andy's rule is meant to stop deletes he didn't pick, and after a delete what's
+  open or selected is something he didn't pick): a second Delete needs a new press in the column,
+  or the focus moved to a row or heading with the keyboard. So clicking a stage's row and pressing
+  Delete deletes it, and pressing Delete again does nothing; clicking a well on the deck and
+  pressing Delete does nothing. Not while typing in a text box or menu, which keeps its own Delete.
 - **Ctrl+X** (Cmd+X) **cuts**: it copies what's selected exactly as Ctrl+C does (the system
   clipboard and the page's copy, section 7, "Copying and pasting"), then deletes it as Delete does,
   as one edit. It acts under the same condition as the Delete key (Claude's choice, 2026-11-11: the
@@ -1772,11 +1775,19 @@ becomes the selection).
   randomization's or transfer table's whole box) **flash red and shrink away** (section 15), and
   the rows below slide up into the space; only then is the edit recorded and the column redrawn
   (Andy, 2026-11-11: "It's hard to see that something is deleted since it's immediately
-  replaced"). The edit is worked out at once, from the plan as it is; if the plan has changed by the
-  time the animation ends (an Undo pressed meanwhile), nothing is deleted and the note `Nothing was
-  deleted: the plan changed while deleting. Try again.` is shown. A second Delete, Ctrl+X or drop
-  on the trash while it plays is ignored. With the system's "reduce motion" setting, there's no
-  animation: the edit is recorded at once.
+  replaced"). The edit is worked out at once, from the plan as it is, and is **pending** until the
+  animation ends.
+  - **Ctrl+Z, or a message's `Undo` button, while it plays cancels only the pending delete**
+    (Claude's choice, 2026-11-11: the user is taking back what they just did, which hasn't been
+    recorded yet, so undoing the edit before it too would surprise them): the animation stops, the
+    rows come back as they were, nothing is recorded or undone, the history and the trash are
+    unchanged, and the note `Delete canceled.` is shown. Redo (Ctrl+Y, Ctrl+Shift+Z) while it plays
+    is ignored.
+  - **A second Delete, Ctrl+X, menu `Delete` or `Cut`, or drop on the trash while it plays is
+    ignored** (Claude's choice, 2026-11-11: one delete at a time; the first is already under way).
+  - If the plan has changed otherwise by the time the animation ends, nothing is deleted and the
+    note `Nothing was deleted: the plan changed while deleting. Try again.` is shown.
+  With the system's "reduce motion" setting, there's no animation: the edit is recorded at once.
 - **Then**: everything deleted goes into the trash (section 7, "The trash"), one entry per thing
   deleted, as part of the same edit. What was open stays open if it's still there; otherwise the
   stage now where the first deleted stage was opens, or else the stage before it, or else Start
@@ -2627,7 +2638,12 @@ group's tip type and probes from its heading), with what's expected. It checks:
   alone, every stage selected): the logic's message, nothing changed.
 - **The animation**: right after Delete the deleted rows are still drawn, red; after
   `DELETE_ANIMATION_MS` they're gone; with reduced motion (Playwright's `reducedMotion: "reduce"`)
-  they're gone at once; Ctrl+Z pressed during the animation: the note, nothing deleted.
+  they're gone at once; Ctrl+Z pressed during the animation: `Delete canceled.`, nothing deleted,
+  and the edit before it not undone (the column, the trash and Undo's next step as before the
+  Delete); a second Delete pressed during the animation: ignored (deleted once, one set of
+  entries).
+- **A delete ends the last press**: a stage's row clicked, Delete (deleted), Delete again
+  (nothing); then a click on a row and Delete: deleted.
 - **The message's Undo**: brings back what was deleted, the trash losing its entries.
 - **The trash**: its closed line empty and with entries (`Trash (2)`); opening it; one entry per
   thing deleted, newest first, column order within a delete, each row's name and details, and no
@@ -2647,7 +2663,7 @@ group's tip type and probes from its heading), with what's expected. It checks:
 - **Edits around the trash**: Undo and Redo of a delete and of a drag-out moving entries in and
   out; a drag-out with a stage's editing box with changes open (refused, shaking, `Save or
   discard your changes first.`, the trash unchanged); Ctrl+Z pressed during the animation, then
-  Delete again (the note, then deleted once, with one entry); the message's `Undo` pressed after a
+  a click on the row and Delete again (`Delete canceled.`, then deleted once, with one entry); the message's `Undo` pressed after a
   later edit (it undoes the later edit, as Ctrl+Z would); a second tab changing the trash, then
   this tab deleting: both tabs' entries kept; this tab deleting, a second tab deleting, then this
   tab's Undo and Redo: only this tab's entries go out and come back, the other tab's kept;
