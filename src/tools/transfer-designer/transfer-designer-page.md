@@ -1728,7 +1728,8 @@ From the top:
 **Escape** cancels (anywhere on the page while the wizard is open, unless a menu in it is open,
 which closes first, the wizard staying open), as `Cancel` does: the wizard closes and nothing
 changes, and **what was open and selected before it opened is shown and selected again** (the open
-entry, the page's selection, or none) (decided in the
+entry, the page's selection, or none; after a mixing box's ✎, the mixing box, which the ✎ selects
+before the wizard opens) (decided in the
 hands-off workflow: like the transfer table wizard, nothing is asked; a mixing box's picks are
 quick to make again from the deck). A plan opened or reset can't happen while it's open (above).
 
@@ -1767,8 +1768,10 @@ stage outside it first.`
   or Space on it) opens or closes the box and selects the mixing box; its `aria-expanded` says whether
   it's open; its tooltip: `Show its mix steps` / `Hide its mix steps`, or, out of date, `What its
   wells hold before it, or where they are, has changed: press ✎, then Update.` The right-hand text
-  is cut short with `…` first, before `Mixing`, as on a randomization's heading. **The ✎** opens the
-  mixing wizard for it, just after its box, and selects it. The button is what the mixing box is
+  is cut short with `…` first, before `Mixing`, as on a randomization's heading. **The ✎** selects
+  the mixing box, then opens the mixing wizard for it, just after its box, so Cancel or Escape
+  leaves the mixing box selected, as a transfer table's ✎ does (2026-11-11, from the build's
+  review). The button is what the mixing box is
   dragged, copied and given the right-click menu by (a press on the ✎ starts no drag).
 - **No seams with buttons inside it**, and no drop places inside it: its mix steps are in the order
   the logic works out, not one the user chooses.
