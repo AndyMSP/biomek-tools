@@ -1632,18 +1632,29 @@ then grouped by its way's rule:
   second column, and never leaves a gap.) Whether the Span-8 mixes a column batch of rows right
   next to each other in one pass, each well with its own probe, is part of the simulation test (`biomek.md`, "Not yet known"), not a known fact.
   **Reservoir troughs are refused for `"freshTip"`** (Andy, 2026-11-11, decision C) until the
-  simulation test has checked several probes in one trough: on a labware whose grid has one well per
-  column (a numbered grid, such as `DeepReservoir12`'s troughs), every probe of a mix step may enter
-  the same trough together, and whether 8 probes can draw from one trough in Transfer From File is
-  itself unknown (`docs/domain/biomek.md`, "Not yet known"), so a fresh tip might not be fresh.
-  `addMixingBox` and `updateMixingBox` refuse a `"freshTip"` draft holding a well on such a labware,
-  after "at least one well" (section 5's order of checks), with `A fresh tip for every well can't
-  mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip for wells with the
-  same contents, or leave the troughs out.` (naming the first such well in probe order).
-  `mixingGroups` still gives its groups for such a draft (each trough a batch of its own, being a
-  column of its own), so a caller can show them; `"sameContents"` takes troughs like any wells.
-  `setMixingBoxes` doesn't check for troughs: a fresh-tip box holding troughs can't be made in the
-  tool, and if a plan file holds one, Update refuses it as above.
+  simulation test has checked several probes in one trough. **A reservoir trough, for this rule, is
+  a well of a labware whose grid has one row** (`rows` `1`, `well-grid.md`), whatever its naming:
+  one function, `isTroughGrid(grid)`, decides it, so the refusal and "out of date" (below) can't
+  differ. So `DeepReservoir12`'s troughs (a numbered grid of 1 row × 12) count; a one-row lettered
+  labware (`A1` to `A12`) counts too, and so does a one-well reservoir (a grid of 1 row × 1); a
+  numbered grid of more than one row doesn't, nor does a 96-well plate. (Decided in the hands-off
+  workflow, 2026-11-11: what matters is that each column holds one well, so a fresh-tip batch there
+  is one well and every probe of its mix step may enter that well together; on any one-row grid
+  that's so, whatever its wells are called, and on a grid of more rows it isn't.) Whether 8 probes
+  can draw from one trough in Transfer From File is itself unknown (`docs/domain/biomek.md`, "Not
+  yet known"), so a fresh tip might not be fresh. `addMixingBox` and `updateMixingBox` refuse a
+  `"freshTip"` draft holding a reservoir trough, after "at least one well" (section 5's order of
+  checks) and, for `updateMixingBox`, **before** its "nothing changes" test, with `A fresh tip for
+  every well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip
+  for wells with the same contents, or leave the troughs out.` (naming the first such well in probe
+  order). `mixingGroups` still gives its groups for such a draft (each trough a batch of its own,
+  being a column of its own), so a caller can show them; `"sameContents"` takes troughs like any
+  wells. **Two routes get round the refusal**, and both end at "out of date": `moveWell` of a
+  fresh-tip box's well into a trough (moving wells isn't refused for it), and a plan file or a
+  pasted copy holding a fresh-tip box with a trough (`setMixingBoxes` doesn't check for troughs). A
+  `"freshTip"` mixing box holding a reservoir trough is therefore **out of date** (below), so its
+  Biomek files wait, as for any box out of date, and Update with its own draft (`mixingBoxDraft`)
+  gives the refusal above, not the same plan: the user switches its way or takes the trough out.
 - **`"sameContents"`**: each well, in probe order, joins the **first group whose first well holds
   the same contents** as it just before the mixing box (`holdSameContents`; comparing with each
   group's first well, so a group can't drift by small steps) **and that, with it, holds about the
@@ -1746,9 +1757,11 @@ different number, or, for any of its mix steps in order, different wells (compar
 the order of a mix step's wells isn't compared, as the Biomek orders a stage's rows itself,
 B56358AF 22-25); **or when any of its mix steps doesn't have the default mix step settings** as they
 are now (from the specification review, 2026-11-11: after `DEFAULT_MIX` changes in `config/`, a box
-saved before mixes otherwise, and Update, above, remakes it). Its mix steps' names follow their
+saved before mixes otherwise, and Update, above, remakes it); **or when it's a `"freshTip"` box
+holding a reservoir trough** (decision C, "Its groups", above). Its mix steps' names follow their
 number, and its tips are part of what's compared from, so neither is compared. It's the same test
-as Update's "nothing changes" with `mixingBoxDraft`, so one function serves both. So:
+as Update's "nothing changes" with `mixingBoxDraft`, so one function serves both (for a fresh-tip
+box with a trough, Update refuses before that test, so it never gives back the same plan). So:
 - with `"sameContents"`, an edit before it that changes what one of its wells holds so the wells
   group differently (a well topped up with another component, a stage before it removed, a well
   emptied at Start) makes it out of date; one that changes every well of a group alike, or changes
@@ -1762,7 +1775,10 @@ as Update's "nothing changes" with `mixingBoxDraft`, so one function serves both
   volumes;
 - with either way, mix steps whose settings aren't the default mix step settings make it out of date
   (no edit can do this to them: only a plan file or a copy from before a change to `DEFAULT_MIX` or
-  `MIX_STEP_MODE`).
+  `MIX_STEP_MODE`);
+- with `"freshTip"`, **holding a reservoir trough** (`isTroughGrid`, "Its groups", above) makes it
+  out of date, whatever its groups (decision C; a well moved into a trough, or a plan file or copy
+  holding one: no other edit can make one).
 Nothing updates it but `updateMixingBox` (Andy, 2026-11-11: as for a randomization or a transfer
 table, a checked plate never changes by itself).
 
@@ -2358,10 +2374,11 @@ The edits refused on a transfer table's stages (section 3, "Where it sits") thro
 |---|---|
 | `MIXING_WAYS` | (a constant) `["freshTip", "sameContents"]`, frozen: the ways to mix, in the order a tool offers them. |
 | `SAME_SHARE_ALLOWANCE` | (a constant) `0.000001`: how far two wells' shares of a component may differ and still be the same contents (section 3, "Same contents"). |
+| `isTroughGrid(grid)` | `true` if a labware's grid (a `WellGrid`, `well-grid.md`) has one row, so its wells count as reservoir troughs for the fresh-tip refusal (section 3, "Its groups"), e.g. `DeepReservoir12`'s grid → `true`, `GRID_96` → `false`. |
 | `holdSameContents(a, b)` | `true` if two wells' `volumeFractionsOf` (each an object of component names and shares) hold the same contents (section 3, "Same contents"), else `false`. Never throws for two such objects. |
 | `mixingGroups(plan, draft, at)` | which wells share a mix step: `[{ wells, components }]` in order (section 3, "Its groups"); `[]` for no wells. `at` is a stage ID or `null`. Throws if the draft isn't in its form, or `at` isn't a stage or `null`. |
-| `addMixingBox(plan, draft, beforeId)` | `{ plan, id }`: the plan with a new mixing box and its mix steps before stage `beforeId` (or last, for `null`), as one edit. Throws if the draft isn't in its form, has no wells, or `beforeId` isn't a place it can sit. |
-| `updateMixingBox(plan, id, draft)` | the plan with mixing box `id` remade from `draft`, in its place, as one edit; the same plan if nothing would change (section 3, "Updating"). Throws if there's no such mixing box, the draft isn't in its form, or it has no wells. |
+| `addMixingBox(plan, draft, beforeId)` | `{ plan, id }`: the plan with a new mixing box and its mix steps before stage `beforeId` (or last, for `null`), as one edit. Throws if the draft isn't in its form, has no wells, or `beforeId` isn't a place it can sit, or it's a `"freshTip"` draft with a reservoir trough. |
+| `updateMixingBox(plan, id, draft)` | the plan with mixing box `id` remade from `draft`, in its place, as one edit; the same plan if nothing would change (section 3, "Updating"). Throws if there's no such mixing box, the draft isn't in its form, or it has no wells, or it's a `"freshTip"` draft with a reservoir trough (even the box's own). |
 | `removeMixingBox(plan, id)` | the plan without the mixing box and its mix steps. Throws if there's no such mixing box, or its mix steps are all the plan's stages. |
 | `canRemoveMixingBox(plan, id)` | `true` unless its mix steps are all the plan's stages. Throws if there's no such mixing box. |
 | `mixingBoxAt(plan, id)` | the mixing box with ID `id`, or `null`. |
@@ -2594,7 +2611,7 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | the draft's `wells` isn't a list, a well isn't on the deck, or a well is listed twice | `The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], but got null.` (as `mixWells`) / `Well to mix 3: ` and `deck.checkWell`'s message / `Plate1 A1 is a well to mix twice. List each once.` |
 | the draft's `tipType` or `probes` | `setTipType`'s or `setTipProbes`' message, unchanged |
 | `addMixingBox`, `updateMixingBox`: the draft has no wells | `Pick at least one well to mix.` |
-| `addMixingBox`, `updateMixingBox`: a `"freshTip"` draft with a well on a labware whose grid has one well per column (a reservoir trough; Andy, 2026-11-11, decision C; section 3, "Its groups") | `A fresh tip for every well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip for wells with the same contents, or leave the troughs out.` (the first such well in probe order) |
+| `addMixingBox`, `updateMixingBox`: a `"freshTip"` draft with a reservoir trough, a well of a labware whose grid has one row (`isTroughGrid`; Andy, 2026-11-11, decision C; section 3, "Its groups"); for `updateMixingBox`, also when the draft is the box's own (checked before "nothing changes") | `A fresh tip for every well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip for wells with the same contents, or leave the troughs out.` (the first such well in probe order) |
 | `mixingGroups`: `at` isn't a stage or `null` | `There's no stage "9" in the plan.` |
 | `addMixingBox`: `beforeId` isn't a stage or `null` | `There's no stage "9" to add a mixing box before.` |
 | `addMixingBox`: `beforeId` is inside a tip group | `A mixing box sits between tip groups, so it can't go before stage 3, “Drugs”.` (Inside a randomization, a transfer table or another mixing box: each one's "stay together" message.) |
@@ -2720,7 +2737,7 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   `setTipProbes`' order); then `at` (or `beforeId`: a stage or `null`, then, for adding, the "stay
   together" refusals of randomizations, transfer tables and mixing boxes, then a place it can sit);
   then, for adding and updating, at least one well; then no reservoir trough in a `"freshTip"`
-  draft (`mixingGroups` doesn't check this one).
+  draft (`mixingGroups` doesn't check this one); then, for updating, "nothing changes".
 - `mixedContentsOf`: the stage, then whether a mixing box owns it.
 - `setMixingBoxes`: the list; then each mixing box in turn: its form (exactly its properties), its
   ID, `way`, then `stages` (form, each stage in the plan, not twice, each a mix step, mixing at
@@ -3836,6 +3853,20 @@ and the standard mix from `DEFAULT_MIX` and `MIX_STEP_MODE` (CLAUDE.md, "Tests f
   `"freshTip"` draft with troughs and a bad `tipType` reports the tip type; with troughs and an
   unknown `beforeId`, the stage; with troughs and an unknown ID (`updateMixingBox`), the ID; the
   trough refusal comes only once everything else passes.
+- **What counts as a trough** (`isTroughGrid`, tested with grids built in the test, since the deck
+  may hold none of them): `true` for the grid of `DeepReservoir12` (`GRID_1X12_NUMBERED`), for a
+  one-row lettered grid (`new WellGrid(1, 12)`) and for a one-well reservoir's grid (`new
+  WellGrid(1, 1, { naming: "number" })`); `false` for `GRID_96` and for a numbered grid of two rows
+  (`new WellGrid(2, 6, { naming: "number" })`).
+- **Troughs got round the refusal** (decision C): with a `"freshTip"` box of Plate1 A1 alone added
+  (one mix step), `moveWell` of Plate1 A1 to Res1 5 (an unused trough) is allowed and makes the box
+  out of date (`isMixingBoxOutOfDate` `true`, though its one group, Res1 5, matches its one mix
+  step: the trough alone makes it out of date), and `updateMixingBox` with `mixingBoxDraft` then refuses with the trough
+  message (naming Res1 5), not giving back the same plan; with the way changed to `"sameContents"`
+  it updates, and the box is up to date. Likewise a plan built with `setMixingBoxes` (as a plan file
+  gives it) holding a `"freshTip"` box whose one mix step mixes Res1 1: accepted, out of date, and
+  Update with its own draft refused with the trough message. A `"sameContents"` box with a trough
+  is never out of date for it.
 - **The draft's form:** each refusal of section 5, in the order of checks: `5`, `null`, an object
   with a property missing or extra; `way` `"byRow"`; `wells` `null`, a well off the deck (`Well to
   mix 3: …`), a well twice; `tipType` `"BC50"`; `probes` `[9]`, `[1, 1]`; an empty `wells` is in its
