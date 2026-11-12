@@ -6734,7 +6734,8 @@ function isRefusedWhileMixing(target) {
   if (mixingWizard.element !== null && mixingWizard.element.contains(target)) {
     return false;
   }
-  if (elements.stagesList.contains(target)) {
+  // The column, and the trash: its line, entries and Empty trash, so nothing is dragged out of it.
+  if (elements.stagesList.contains(target) || elements.trash.contains(target)) {
     return true;
   }
   const refusedControls = [
@@ -7353,6 +7354,11 @@ function endColumnDrag() {
 // to drop it; otherwise it moves (moveItems) or, with Ctrl (Cmd) held, copies (copyItems) to its
 // place, as one edit.
 function dropColumnDrag({ items, copying, refused, place, overTrash }) {
+  // A drag can't start while the mixing wizard is open, but a drop on the trash is refused then too.
+  if (overTrash && mixingWizard !== null) {
+    refuseWhileMixing();
+    return;
+  }
   if (overTrash) {
     deleteSelection(items);
     return;
@@ -7903,10 +7909,20 @@ function pressDeleteKey(event) {
 }
 
 // Ctrl+X (Cmd+X) on the page (section 7): cuts what's selected when the Delete key would act, the
-// copy going onto the system clipboard through the event, as Ctrl+C's does. Otherwise, and in a text
-// box or menu or with text selected, the browser's own cut.
+// copy going onto the system clipboard through the event, as Ctrl+C's does; refused while the
+// mixing wizard is open. Otherwise, and in a text box or menu or with text selected, the browser's
+// own cut.
 function cutFromClipboardEvent(event) {
-  if (keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed || !deleteKeysAct()) {
+  if (keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
+    return;
+  }
+  // Refused while the mixing wizard is open, whatever the last press was (section 12).
+  if (mixingWizard !== null) {
+    event.preventDefault();
+    refuseWhileMixing();
+    return;
+  }
+  if (!deleteKeysAct()) {
     return;
   }
   event.preventDefault();
@@ -11674,8 +11690,9 @@ function pressEscape() {
 
 // Acts on a key while the mixing wizard is open (section 12), returning true if it did: Escape
 // cancels it (anywhere but a text box, which keeps its own Escape; a menu in the wizard that's open
-// takes Escape itself), Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z, and the menu key or Shift+F10 in the
-// column, are refused, as their buttons are.
+// takes Escape itself), Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z, the menu key or Shift+F10 in the
+// column, and the Delete key outside a text box (whatever the last press was), are refused, as
+// their buttons are.
 function handleKeyWhileMixing(event) {
   if (event.key === "Escape" && !event.target.matches?.("input:not([type=radio]), textarea, [contenteditable]")) {
     event.preventDefault();
@@ -11685,7 +11702,9 @@ function handleKeyWhileMixing(event) {
   const key = event.key.toLowerCase();
   const isUndoOrRedo = (event.ctrlKey || event.metaKey) && (key === "z" || key === "y");
   const isMenuKey = event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
-  if (isUndoOrRedo || (isMenuKey && elements.stagesList.contains(event.target))) {
+  const isDeleteKey =
+    event.key === "Delete" && !event.ctrlKey && !event.metaKey && !event.altKey && !keepsOwnClipboard(event.target);
+  if (isUndoOrRedo || isDeleteKey || (isMenuKey && elements.stagesList.contains(event.target))) {
     event.preventDefault();
     refuseWhileMixing();
     return true;

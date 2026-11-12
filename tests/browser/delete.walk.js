@@ -376,6 +376,14 @@ async function rightClick(page, selector) {
   await page.click(selector, { button: "right" });
 }
 
+// Scrolls the element `selector` finds to the middle of its column, at once.
+async function scrollToMiddle(page, selector) {
+  await page.locator(selector).first().evaluate((target) => {
+    document.getElementById("stages-column").style.scrollBehavior = "auto";
+    target.scrollIntoView({ block: "center" });
+  });
+}
+
 // Chooses `label` from the menu that's open.
 async function chooseFromMenu(page, label) {
   await page.click(`#column-menu .column-menu-item:has(> .column-menu-label:text-is("${label}"))`);
@@ -658,6 +666,84 @@ async function checkMixingBox(page) {
   const removed = await message(page);
   checkSame([removed.text, removed.kind, removed.undo], ["Removed the mixing box and its 5 mix steps.", "ok", true], "the wizard's Remove's message");
   checkSame((await trashRows(page)).map((row) => row.name), ["Mixing box"], "the trash after the wizard's Remove");
+}
+
+// The mixing wizard refuses deleting and the trash (section 16), from the test plan with a mixing
+// box, S04 deleted first so the trash has an entry and the trash's list left open: with the wizard
+// open on the box (its ✎), then on a new mixing (a seam's ⟳⟳ after a click on a stage), Delete and
+// Ctrl+X are refused, and so are a press on the trash's line, a drag of the entry onto the column
+// and a drop of a stage on the trash; the plan and trash don't change. The page throwing fails the
+// check (main).
+async function checkMixingWizardRefusesDeleting(page) {
+  const plan = mixingBoxTestPlan();
+  const column = expectedColumn(deleteItems(plan, [{ kind: "stage", id: stageIdOf(plan, "S04") }]).plan);
+  await deleteStage(page, "S04 Drug B row B");
+  await checkColumn(page, column, "after deleting S04");
+  const trashBefore = JSON.stringify(await storedTrash(page));
+  await trashRows(page);
+  // Counts the wizard's shakes: the class comes and goes with its animation.
+  await page.evaluate(() => {
+    window.wizardShakes = 0;
+    new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.target.matches(".mixing-wizard.shake")) {
+          window.wizardShakes += 1;
+        }
+      }
+    }).observe(document.body, { attributes: true, attributeFilter: ["class"], subtree: true });
+  });
+
+  // Checks the refusal's message and that the wizard shook, then that nothing changed.
+  const checkRefused = async (refusal, what) => {
+    const shown = await message(page);
+    checkSame([shown.text, shown.kind], [refusal, "note"], `${what}: the message`);
+    const shakes = await page.evaluate(() => {
+      const count = window.wizardShakes;
+      window.wizardShakes = 0;
+      return count;
+    });
+    check(shakes > 0, `${what}: the wizard didn't shake.`);
+    await page.evaluate(() => {
+      document.getElementById("message-bar").querySelector(".message-text").textContent = "";
+    });
+    await checkColumn(page, column, `${what}: the column`);
+    check(JSON.stringify(await storedTrash(page)) === trashBefore, `${what}: the trash changed.`);
+  };
+
+  // Tries each refused way of deleting or using the trash, expecting `refusal` each time.
+  const tryEach = async (refusal, where) => {
+    await page.keyboard.press("Delete");
+    await page.waitForTimeout(AFTER_ANIMATION);
+    await checkRefused(refusal, `Delete ${where}`);
+    await page.keyboard.press("Control+X");
+    await page.waitForTimeout(AFTER_ANIMATION);
+    await checkRefused(refusal, `Ctrl+X ${where}`);
+    await page.click("#trash-line");
+    await checkRefused(refusal, `a press on the trash's line ${where}`);
+    check(await page.locator("#trash-list .trash-entry").first().isVisible(), `The trash's list isn't open ${where}.`);
+    await scrollToMiddle(page, stageRow("S03 Drug A row A"));
+    await dragTo(page, "#trash-list .trash-entry >> nth=0", await centerOf(page, stageRow("S03 Drug A row A")));
+    await checkRefused(refusal, `a drag of the entry onto the column ${where}`);
+    await scrollToMiddle(page, stageRow("S07 Media row C"));
+    await dragTo(page, stageRow("S07 Media row C"), await centerOf(page, "#trash-line"));
+    await page.waitForTimeout(AFTER_ANIMATION);
+    await checkRefused(refusal, `a drop of a stage on the trash ${where}`);
+  };
+
+  // The wizard on the box, by its ✎.
+  await page.click("#stages-list > .mixing-box .box-edit");
+  await tryEach("Update the mixing box, or cancel, first.", "with the wizard on the box");
+  await page.keyboard.press("Escape");
+  check((await page.locator(".mixing-wizard").count()) === 0, "Escape didn't cancel the wizard on the box.");
+
+  // A new mixing, after a click on a stage.
+  await page.click(stageRow("S03 Drug A row A"));
+  const seam = "#stages-list .seam:has(.seam-button.add-mixing) >> nth=0";
+  await scrollToMiddle(page, seam);
+  await page.hover(seam);
+  await page.locator(`${seam} >> .seam-button.add-mixing`).click();
+  check((await page.locator(".mixing-wizard").count()) === 1, "The seam's ⟳⟳ didn't open the wizard.");
+  await tryEach("Make the mix steps, or cancel the mixing, first.", "with a new mixing");
 }
 
 // A group's first stage removed with its box's Remove keeps the group's tips; Join refused just
@@ -1251,6 +1337,10 @@ const CHECKS = [
   ["the tip change's box", withTestPlan(checkTipBoxJoin)],
   ["each kind deleted, the refusals and a mixed selection", withTestPlan(checkEachKindAndRefusals)],
   ["a mixing box", withPlanFile(MIXING_BOX_PLAN_FILE, expectedColumn(mixingBoxTestPlan()), checkMixingBox)],
+  [
+    "the mixing wizard refuses deleting and the trash",
+    withPlanFile(MIXING_BOX_PLAN_FILE, expectedColumn(mixingBoxTestPlan()), checkMixingWizardRefusesDeleting),
+  ],
   ["a group's first stage removed, and Join refused after a randomization", withTestPlan(checkRemoveFirstStageAndJoinRefused)],
   ["the animation", withTestPlan(checkAnimation)],
   ["reduced motion", withTestPlan(checkReducedMotion, { reducedMotion: "reduce" })],
