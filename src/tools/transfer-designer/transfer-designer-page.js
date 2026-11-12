@@ -66,6 +66,7 @@ import {
   stagesWithMixProblem,
   addTransfers,
   changeVolume,
+  changeStageVolumes,
   removeTransfer,
   transfersIn,
   tipChangeAt,
@@ -2647,8 +2648,13 @@ function createTransferSection(plan, id) {
     return [createElement("p", "No transfers yet. Add some on the deck.", "note")];
   }
   const toggle = createListToggle(id, "transfers");
-  const shown = expandedStages.has(id);
-  return shown ? [toggle, createTransferList(plan, id, transfers)] : [toggle];
+  if (!expandedStages.has(id)) {
+    return [toggle];
+  }
+  const list = createTransferList(plan, id, transfers);
+  // A randomization's or a transfer table's stage takes its volumes from its owner, so it has no
+  // All transfers box (section 7).
+  return isOwnedStage(plan, id) ? [toggle, list] : [toggle, createAllTransfersRow(id, transfers), list];
 }
 
 // The button that shows or hides an open stage's list, "Show transfers ▸" / "Hide transfers ▾" (or
@@ -2739,6 +2745,240 @@ function createTransferList(plan, id, transfers) {
     ...transfers.map((transfer) => createTransferRow(plan, id, transfer, problems.get(transfer.position), owned)),
   );
   return list;
+}
+
+// --- The All transfers box (section 7) ---
+
+// The All transfers row at the top of a transfer stage's shown list (section 7): "All transfers", a
+// text box and "µL". The box shows the volume the stage's `transfers` share, or nothing with the
+// placeholder "Mixed" when they differ, worked out afresh each time the list is drawn. Enter or
+// leaving the box saves it (saveAllTransfers) when its text was edited since it got the focus.
+function createAllTransfersRow(id, transfers) {
+  const shared = sharedVolume(transfers);
+  const shown = shared === null ? "" : formatVolume(shared);
+  const box = document.createElement("input");
+  box.type = "text";
+  box.inputMode = "decimal";
+  box.id = "all-transfers-box";
+  box.className = "all-transfers-box";
+  box.dataset.stage = id;
+  box.dataset.shown = shown;
+  box.value = shown;
+  box.spellcheck = false;
+  box.autocomplete = "off";
+  box.setAttribute("aria-label", "Volume of every transfer in this stage, in µL");
+  if (shared === null) {
+    box.placeholder = "Mixed";
+    box.title = "The transfers have different volumes: type one to give them all.";
+  } else {
+    box.title = "Type a volume to give every transfer in this stage.";
+  }
+  if (movingWells) {
+    // While moving wells it can't be typed in; a click on it is caught by the column's handler
+    // (clickInColumnWhileMoving), which says why.
+    box.readOnly = true;
+    box.setAttribute("aria-disabled", "true");
+  }
+  connectAllTransfersBox(box);
+  const label = createElement("label", "All transfers", "all-transfers-name");
+  label.htmlFor = box.id;
+  const row = createElement("div", "", "all-transfers-row");
+  row.append(label, box, createElement("span", "µL", "all-transfers-unit"));
+  return row;
+}
+
+// The volume every one of `transfers` has, compared exactly (===, as changeStageVolumes compares
+// them, so 33.3333 and 33.33 differ), or null when they differ, e.g. [{ volume: 50 }, { volume: 50 }]
+// → 50.
+function sharedVolume(transfers) {
+  const first = transfers[0].volume;
+  return transfers.every((transfer) => transfer.volume === first) ? first : null;
+}
+
+// Whether the All transfers box's text has been edited since it last got the focus (section 7):
+// set by its input event, cleared only when it gets the focus (anew, as after the redraw that
+// follows a save). While it's set, Ctrl+Z and Ctrl+Y are the text box's own.
+let allTransfersEdited = false;
+
+// Whether the All transfers box holds an edit not yet saved: set by its input event, cleared once
+// it's saved or put back, so a box is saved at most once per change.
+let allTransfersUnsaved = false;
+
+// Connects the All transfers box's events (section 7): selecting its text when it gets the focus,
+// noting edits, its keys (Enter, Tab, Escape, Ctrl+Z and Ctrl+Y) and saving when it's left.
+function connectAllTransfersBox(box) {
+  // A press that focuses the box would place the caret on release, undoing the selection the focus
+  // made, so that release is stopped.
+  let selectOnRelease = false;
+  box.addEventListener("pointerdown", () => {
+    selectOnRelease = document.activeElement !== box;
+  });
+  box.addEventListener("mouseup", (event) => {
+    if (selectOnRelease) {
+      selectOnRelease = false;
+      event.preventDefault();
+    }
+  });
+  box.addEventListener("focus", () => {
+    allTransfersEdited = false;
+    allTransfersUnsaved = false;
+    box.select();
+  });
+  // A click passed on by another box's saving (guardInlineBox) doesn't focus a text box by itself.
+  box.addEventListener("click", () => {
+    if (document.activeElement !== box) {
+      box.focus();
+    }
+  });
+  box.addEventListener("input", () => {
+    allTransfersEdited = true;
+    allTransfersUnsaved = true;
+    // While edited, it's the open inline box, so a press outside saves it first and passes the
+    // click on (guardInlineBox).
+    inlineBox = { box, finish: (how) => saveAllTransfers(box, how) };
+  });
+  box.addEventListener("keydown", (event) => pressKeyInAllTransfers(box, event));
+  box.addEventListener("blur", () => {
+    // A box taken out of the page while it has the focus (the redraw after a save) saves nothing:
+    // what was to be saved already was, at most once.
+    if (box.isConnected) {
+      saveAllTransfers(box, "away");
+    }
+  });
+}
+
+// One key pressed in the All transfers box (section 7). Enter saves, the focus staying in the box.
+// Tab and Shift+Tab with edited text save, then move the focus themselves, since the save redraws
+// the list. Escape puts the shown value back and leaves the box, doing nothing else. Ctrl+Z and
+// Ctrl+Y (Cmd on a Mac; also Ctrl+Shift+Z) are the page's Undo and Redo until the text is edited.
+function pressKeyInAllTransfers(box, event) {
+  const withCtrl = event.ctrlKey || event.metaKey;
+  const key = event.key.toLowerCase();
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveAllTransfers(box, "enter");
+  } else if (event.key === "Tab" && !withCtrl && !event.altKey && allTransfersUnsaved && box.value.trim() !== "") {
+    event.preventDefault();
+    saveAllTransfers(box, event.shiftKey ? "back" : "next");
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    putBackAllTransfers(box);
+    box.blur();
+  } else if (withCtrl && !allTransfersEdited && (key === "z" || key === "y")) {
+    event.preventDefault();
+    event.stopPropagation();
+    undoOrRedoFromAllTransfers(box.dataset.stage, key === "y" || event.shiftKey);
+  }
+}
+
+// The page's Undo (or Redo, when `isRedo`) from the All transfers box of stage `stage`, as the
+// page's keys do it, then the focus back in that stage's box, if it's still shown.
+function undoOrRedoFromAllTransfers(stage, isRedo) {
+  if (editingBox !== null) {
+    return;
+  }
+  if (isRedo) {
+    redo();
+  } else {
+    undo();
+  }
+  focusAllTransfersBox(stage);
+}
+
+// Puts the value the All transfers box showed back, with nothing left to save; it's no longer the
+// open inline box. Whether it was edited since it got the focus stays as it was (for Ctrl+Z).
+function putBackAllTransfers(box) {
+  allTransfersUnsaved = false;
+  box.value = box.dataset.shown;
+  if (inlineBox !== null && inlineBox.box === box) {
+    inlineBox = null;
+  }
+}
+
+// Saves the All transfers box (section 7), at most once per change, `how` being "enter", "next"
+// (Tab), "back" (Shift+Tab) or "away" (a press outside, or the focus leaving any other way).
+// Nothing is saved unless its text was edited, nor for blank text (the box shows its value again).
+// Otherwise the text, trimmed, goes to changeStageVolumes as one edit; the same plan back records
+// nothing and shows no message. Returns what became of the box, as an inline box's saving does:
+// "closed", "kept-open" (refused after Enter: the text stays, selected, to fix it) or "refused"
+// (refused after leaving: the box shows its value again, and a press outside does nothing else).
+function saveAllTransfers(box, how) {
+  if (inlineBox !== null && inlineBox.box === box) {
+    inlineBox = null;
+  }
+  const text = box.value.trim();
+  if (!allTransfersUnsaved || text === "") {
+    putBackAllTransfers(box);
+    return "closed";
+  }
+  const stage = box.dataset.stage;
+  const plan = currentPlan();
+  const changed = tryLogic(() => changeStageVolumes(plan, stage, volumeValue(text)));
+  if (changed === false) {
+    return refuseAllTransfers(box, how);
+  }
+  putBackAllTransfers(box);
+  if (changed !== plan) {
+    recordEdit(changed);
+    showMessage(allTransfersMessage(changed, stage), "ok");
+  }
+  focusAfterAllTransfers(stage, how);
+  return "closed";
+}
+
+// After the logic refused the All transfers box's text (its message is shown already): after
+// Enter, the text stays, selected, to fix it; otherwise the box shows its value again and nothing
+// is redrawn, Tab and Shift+Tab moving the focus on as they would, and a press outside leaving it.
+function refuseAllTransfers(box, how) {
+  if (how === "enter") {
+    inlineBox = { box, finish: (next) => saveAllTransfers(box, next) };
+    box.select();
+    return "kept-open";
+  }
+  putBackAllTransfers(box);
+  const stage = box.dataset.stage;
+  if (how === "next" || how === "back") {
+    focusAfterAllTransfers(stage, how);
+  } else if (document.activeElement === box) {
+    // A press outside was stopped before it could move the focus: the box is left all the same.
+    box.blur();
+  }
+  return "refused";
+}
+
+// The ok message for a save of the All transfers box of `stage` (section 7), e.g. 'Set all 6
+// transfers in stage 1, “S01 Media row A”, to 75 µL.', or 'Set the only transfer in stage 1, …'.
+function allTransfersMessage(plan, stage) {
+  const transfers = transfersIn(plan, stage);
+  const volume = formatVolume(transfers[0].volume);
+  const which = transfers.length === 1 ? "the only transfer" : `all ${transfers.length} transfers`;
+  return `Set ${which} in ${stageLabel(plan, stage)}, to ${volume} µL.`;
+}
+
+// Puts the focus where it goes after the All transfers box of `stage` is saved (section 7), each
+// found again in the stage's card, as the save may have redrawn the list: after Enter, back in the
+// box, its value selected; after Tab, on the first transfer's volume button; after Shift+Tab, on
+// Hide transfers. After a press outside ("away"), the press decides.
+function focusAfterAllTransfers(stage, how) {
+  if (how === "enter") {
+    focusAllTransfersBox(stage);
+    return;
+  }
+  const card = elements.stagesList.querySelector(`[data-entry="${cssEscape(stage)}"]`);
+  if (card === null || how === "away") {
+    return;
+  }
+  const target = card.querySelector(how === "next" ? ".transfer-row .volume-button" : ".toggle-list");
+  target?.focus();
+}
+
+// Focuses the All transfers box of `stage`, if its list is shown, selecting its text. (A box that
+// has the focus already, when nothing was redrawn, gets no focus event, so it's selected here too.)
+function focusAllTransfersBox(stage) {
+  const box = elements.stagesList.querySelector(`.all-transfers-box[data-stage="${cssEscape(stage)}"]`);
+  box?.focus();
+  box?.select();
 }
 
 // Each transfer's own contents problem over the whole run (`contents-tracking.md`), keyed by its

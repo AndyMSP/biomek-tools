@@ -538,6 +538,11 @@ export function addTransfers(plan, transfers) {
   return transfers.reduce((planSoFar, transfer) => addTransfer(planSoFar, transfer), plan);
 }
 
+// What changeVolume and changeStageVolumes say for a mix step's mixed wells, whose volume is a
+// placeholder (transfer-designer.md, "Mix steps").
+const MIX_STEP_VOLUME_FIXED =
+  "A mix step's wells are mixed with its own settings, so their volume can't be changed.";
+
 // Returns the plan with the transfer at `position` (counting from 0) given `volume`, keeping its
 // place and stage, e.g. changeVolume(plan, 3, 25). The operation list checks both. Throws for a
 // transfer table's or a randomization's stage, and for a mix step's mixed well, whose volume is a
@@ -550,15 +555,53 @@ export function changeVolume(plan, position, volume) {
     checkNotRandomizationTransfers(plan, operation.stage);
   }
   if (operation !== undefined && isMixStep(plan, operation.stage)) {
-    throw new Error(
-      "A mix step's wells are mixed with its own settings, so their volume can't be changed.",
-    );
+    throw new Error(MIX_STEP_VOLUME_FIXED);
   }
   // replace() checks the position before anything else, so a bad position is reported even though
   // `operation` is then undefined (spreading undefined gives nothing).
   return withParts(plan, {
     operationList: plan.operationList.replace(position, { ...operation, volume }),
   });
+}
+
+// Returns the plan with every transfer of stage `id` given `volume`, as one edit, each keeping its
+// position, stage, source and destination, e.g. changeStageVolumes(plan, "2", 25). Gives back the
+// very same plan if every transfer's volume is `volume` already, compared exactly (===, so 33.3333
+// and 33.33 differ), so a caller can tell nothing changed. Throws, in this order, if `id` isn't a
+// stage, it's a transfer table's or a randomization's stage, it's a mix step, it has no transfers,
+// or the operation list refuses `volume` (transfer-designer.md, section 5).
+export function changeStageVolumes(plan, id, volume) {
+  checkStageVolumesCanChange(plan, id);
+  const positions = positionsInStage(plan, id);
+  const operations = plan.operationList.listOperations();
+  if (positions.every((position) => operations[position].volume === volume)) {
+    return plan;
+  }
+  // replace() checks the volume, so a refused one throws at the first position, before any plan is
+  // made: the plan given is never touched.
+  const operationList = positions.reduce(
+    (listSoFar, position) => listSoFar.replace(position, { ...operations[position], volume }),
+    plan.operationList,
+  );
+  return withParts(plan, { operationList });
+}
+
+// Throws, in changeStageVolumes' order, unless stage `id`'s transfers can all be given one volume:
+// 'There's no stage "9" in the plan.' for an ID that isn't a stage; a transfer table's or a
+// randomization's stage (their owners' messages); a mix step (changeVolume's message); or a stage
+// with no transfers yet.
+function checkStageVolumesCanChange(plan, id) {
+  if (!plan.stageList.has(id)) {
+    throw new Error(`There's no stage ${describeValue(id)} in the plan.`);
+  }
+  checkNotTransferTableAmounts(plan, id);
+  checkNotRandomizationTransfers(plan, id);
+  if (isMixStep(plan, id)) {
+    throw new Error(MIX_STEP_VOLUME_FIXED);
+  }
+  if (positionsInStage(plan, id).length === 0) {
+    throw new Error(`${stageNamed(plan, id)}, has no transfers yet, so there's no volume to change.`);
+  }
 }
 
 // Returns the plan without the transfer at `position` (counting from 0). The operation list checks
