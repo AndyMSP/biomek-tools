@@ -6673,8 +6673,8 @@ function selectMixingBox(id) {
   markSelection(selectedItems());
 }
 
-// Remove (section 7): takes out the mixing box and its mix steps at once, as every Remove does; if
-// one of its mix steps was open, the first stage in the stage order opens.
+// Remove (section 7): takes out the mixing box and its mix steps at once, as every Remove does,
+// putting it in the trash; if one of its mix steps was open, the first stage in the stage order opens.
 function removeFromMixingWizard() {
   const plan = currentPlan();
   const { id } = mixingWizard;
@@ -6685,8 +6685,11 @@ function removeFromMixingWizard() {
   }
   mixingWizard = null;
   const open = owned.includes(currentOpen()) ? stageOrder(removed)[0] : currentOpen();
-  recordEdit(removed, open);
-  showMessage(`Removed the mixing box and its ${countOf(owned.length, "mix step")}. Undo brings them back.`, "ok");
+  // It goes into the trash as part of the same edit (section 7, "The trash").
+  const { change } = putInTrash(plan, [{ kind: "mixingBox", id }]);
+  recordEdit(removed, open, change);
+  showMessage(`Removed the mixing box and its ${countOf(owned.length, "mix step")}.`, "ok", { undoButton: true });
+  showTrashStorageNote();
 }
 
 // Watches every press, click and right click on the page while the mixing wizard is open (section
@@ -7430,6 +7433,15 @@ function glowKeysOf(plan, placed) {
   });
 }
 
+// What each kind of container is called in the drag's label, the messages and the trash's labels,
+// e.g. "tip group" (section 7).
+const CONTAINER_NOUNS = Object.freeze({
+  tipGroup: "tip group",
+  randomization: "randomization",
+  transferTable: "transfer table",
+  mixingBox: "mixing box",
+});
+
 // The items described for the drag's label and the messages (section 7), e.g. “Drugs”, "2 stages",
 // "a tip group", "2 tip groups", "a randomization", "a transfer table", "a mixing box", "2 mixing
 // boxes", or "3 items" for a mix.
@@ -7443,7 +7455,7 @@ function describeItems(plan, items) {
   if (kind === "stage") {
     return taken.length === 1 ? `“${plan.stageList.get(taken[0].id).name}”` : countOf(taken.length, "stage");
   }
-  const noun = { tipGroup: "tip group", randomization: "randomization", transferTable: "transfer table", mixingBox: "mixing box" }[kind];
+  const noun = CONTAINER_NOUNS[kind];
   if (taken.length === 1) {
     return `a ${noun}`;
   }
@@ -7912,7 +7924,7 @@ function deleteSelection(items, { cut = false, clipboardData = null } = {}) {
     return;
   }
   if (items.length === 0) {
-    showMessage("Select a stage, a tip group (click its heading), a randomization or a transfer table to delete it.", "note");
+    showMessage("Select a stage, a tip group (click its heading), a randomization, a transfer table or a mixing box to delete it.", "note");
     return;
   }
   if (editingBox !== null) {
@@ -7968,7 +7980,7 @@ function startDeleteAnimation(pending) {
 }
 
 // The column's elements for the deleted items: a stage's card or row, or a tip group's,
-// randomization's or transfer table's whole box.
+// randomization's, transfer table's or mixing box's whole box.
 function deletedRowElements(deleted) {
   return deleted
     .map((item) => elements.stagesList.querySelector(`[data-item="${cssEscape(itemKey(item))}"]`))
@@ -8256,7 +8268,7 @@ function createTrashRow(entry) {
 }
 
 // An entry's name as the list shows it, e.g. "“S03 Drug A”", "Randomization “Randomization1”",
-// "Tip group", "Transfer table".
+// "Tip group", "Transfer table", "Mixing box".
 function trashEntryName(entry) {
   if (entry.kind === "stage") {
     return `“${entry.name}”`;
@@ -8264,7 +8276,8 @@ function trashEntryName(entry) {
   if (entry.kind === "randomization") {
     return `Randomization “${entry.name}”`;
   }
-  return entry.kind === "tipGroup" ? "Tip group" : "Transfer table";
+  const noun = CONTAINER_NOUNS[entry.kind];
+  return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
 
 // An entry's details, e.g. "3 transfers · deleted 12:28 AM" for a stage, "2 stages · 5 transfers ·
@@ -8337,7 +8350,7 @@ function moveTrashDrag(event) {
 }
 
 // Redraws a drag out of the trash: the drop line on the nearest seam (only seams between tip groups
-// for a tip group, randomization or transfer table), none over the trash itself, and the label
+// for a tip group, randomization, transfer table or mixing box), none over the trash itself, and the label
 // "Paste …" (section 7, "Dragging an entry out").
 function updateTrashDrag() {
   const overTrash = isOverTrash(trashDrag.pointer);
@@ -8353,12 +8366,12 @@ function updateTrashDrag() {
 }
 
 // A trash entry described as a drag's label describes what it holds, e.g. "“S03 Drug A”", "a tip
-// group", "a randomization", "a transfer table".
+// group", "a randomization", "a transfer table", "a mixing box".
 function trashEntryDescribed(entry) {
   if (entry.kind === "stage") {
     return `“${entry.name}”`;
   }
-  return { tipGroup: "a tip group", randomization: "a randomization", transferTable: "a transfer table" }[entry.kind];
+  return `a ${CONTAINER_NOUNS[entry.kind]}`;
 }
 
 // True if `pointer` is over the trash's band.

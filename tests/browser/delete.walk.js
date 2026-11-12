@@ -4,8 +4,9 @@
 //
 // With Playwright, against the built Transfer Designer in dist/ (built first if there's none), at
 // 1500 × 950, in Chrome if it's installed, otherwise Playwright's own Chromium. Before each check it
-// opens the test plan with a bit of everything (tests/fixtures/delete-test-plan.js), saved as a plan
-// file and opened with Open, in a fresh browser context, so the trash starts empty. It compares the
+// opens the test plan with a bit of everything (tests/fixtures/delete-test-plan.js), or for a mixing
+// box the test plan with one, saved as a plan file and opened with Open, in a fresh browser context,
+// so the trash starts empty. It compares the
 // column, read from the page (each box in order, each stage by its name, each tip group's tip type
 // and probes from its heading), with what the transfer designer's logic gives for the same edits.
 // It fails if the page throws an error.
@@ -24,6 +25,7 @@ import { DELETE_ANIMATION_MS } from "../../config/animations.js";
 import { TRASH_LIMIT } from "../../config/trash.js";
 import {
   deleteTestPlan,
+  mixingBoxTestPlan,
   stageIdOf,
   PLATE,
 } from "../fixtures/delete-test-plan.js";
@@ -68,10 +70,13 @@ const NOW = new Date().toISOString();
 // A folder for the plan files the walk opens.
 const FILES = mkdtempSync(join(tmpdir(), "delete-walk-"));
 
-// The test plan, as a plan file, and an empty plan's, for "another plan".
+// The test plan, as a plan file, the test plan with a mixing box's, and an empty plan's, for
+// "another plan".
 const TEST_PLAN_FILE = join(FILES, "test-plan.json");
+const MIXING_BOX_PLAN_FILE = join(FILES, "mixing-box-plan.json");
 const EMPTY_PLAN_FILE = join(FILES, "empty-plan.json");
 writeFileSync(TEST_PLAN_FILE, planToText(deleteTestPlan(), "delete walk"));
+writeFileSync(MIXING_BOX_PLAN_FILE, planToText(mixingBoxTestPlan(), "delete walk"));
 writeFileSync(EMPTY_PLAN_FILE, planToText(emptyPlan().plan, "delete walk"));
 
 // --- Checks ---
@@ -96,24 +101,30 @@ function checkSame(actual, expected, what) {
 
 // The column the page shows: each box in order, a tip group as its heading's text ("New tips ·
 // BC230 · 4 tips") and its stages' names, a randomization as its name, a transfer table as its
-// status ("2 stages").
+// status ("2 stages"), a mixing box as its status's count ("5 mix steps", from "5 mix steps · a
+// fresh tip each").
 async function shownColumn(page) {
   return page.evaluate(() =>
-    [...document.querySelectorAll("#stages-list > .tip-group, #stages-list > .randomization, #stages-list > .transfer-table")].map(
-      (box) => {
-        if (box.classList.contains("tip-group")) {
-          const heading = box.querySelector(".tip-group-heading");
-          return {
-            tips: heading.children[1].textContent,
-            stages: [...box.querySelectorAll(".entry-name")].map((name) => name.textContent),
-          };
-        }
-        if (box.classList.contains("randomization")) {
-          return { randomization: box.querySelector(".randomization-name").textContent };
-        }
-        return { transferTable: box.querySelector(".randomization-status").textContent };
-      },
-    ),
+    [
+      ...document.querySelectorAll(
+        "#stages-list > .tip-group, #stages-list > .randomization, #stages-list > .transfer-table, #stages-list > .mixing-box",
+      ),
+    ].map((box) => {
+      if (box.classList.contains("tip-group")) {
+        const heading = box.querySelector(".tip-group-heading");
+        return {
+          tips: heading.children[1].textContent,
+          stages: [...box.querySelectorAll(".entry-name")].map((name) => name.textContent),
+        };
+      }
+      if (box.classList.contains("randomization")) {
+        return { randomization: box.querySelector(".randomization-name").textContent };
+      }
+      if (box.classList.contains("mixing-box")) {
+        return { mixingBox: box.querySelector(".randomization-status").textContent.split(" · ")[0] };
+      }
+      return { transferTable: box.querySelector(".randomization-status").textContent };
+    }),
   );
 }
 
@@ -135,6 +146,9 @@ function expectedColumn(plan) {
       return { randomization: randomizationAt(plan, box.id).name };
     }
     const count = box.tipGroups.length;
+    if (box.kind === "mixingBox") {
+      return { mixingBox: `${count} ${count === 1 ? "mix step" : "mix steps"}` };
+    }
     return { transferTable: `${count} ${count === 1 ? "stage" : "stages"}` };
   });
 }
@@ -172,9 +186,10 @@ function groupHeading(name) {
   return `#stages-list > .tip-group:has(.entry-name:text-is("${name}")) > .tip-group-heading`;
 }
 
-// The run randomization's and the transfer table's headings.
+// The run randomization's, the transfer table's and the mixing box's headings.
 const RANDOMIZATION_HEADING = "#stages-list > .randomization .randomization-heading";
 const TABLE_HEADING = "#stages-list > .transfer-table .randomization-heading";
+const MIXING_BOX_HEADING = "#stages-list > .mixing-box .mixing-box-heading";
 
 // A seam with this drop place.
 function seamAt(place) {
@@ -588,6 +603,61 @@ async function checkEachKindAndRefusals(page) {
   const shown = await message(page);
   checkSame([shown.text, shown.undo], ["Deleted 3 items (7 stages).", true], "the mixed delete's message");
   checkSame((await trashRows(page)).map((row) => row.name), ["“S02 Media row B”", "Tip group", "Transfer table"], "the trash after the mixed delete");
+}
+
+// A mixing box (from the test plan with a mixing box, opened from a plan file): one of its mix
+// steps alone refused; the box deleted by its heading and Delete, into the trash as one entry; the
+// entry dragged back out to where the box was; then the wizard's Remove putting it in the trash.
+// (The refusal is checked first, while the box is there as opened.)
+async function checkMixingBox(page) {
+  const plan = mixingBoxTestPlan();
+  const asOpened = expectedColumn(plan);
+  const mixingBoxItem = { kind: "mixingBox", id: plan.mixingBoxes[0].id };
+
+  // One of its mix steps alone: its box opened by its heading, the mix step clicked, Delete.
+  let refusal = null;
+  try {
+    deleteItems(plan, [{ kind: "stage", id: plan.mixingBoxes[0].stages[0] }]);
+  } catch (error) {
+    refusal = error.message;
+  }
+  check(refusal !== null && refusal.includes("belongs to a mixing box"), `The logic gave "${refusal}" for a mix step alone.`);
+  await page.click(MIXING_BOX_HEADING);
+  await page.click(`#stages-list > .mixing-box .entry-name:text-is("Mix 1 of 5")`);
+  await page.keyboard.press("Delete");
+  await page.waitForTimeout(AFTER_ANIMATION);
+  checkSame(await message(page), { text: refusal, kind: "error", undo: false, lines: [], hidden: false }, "deleting a mix step alone");
+  await checkColumn(page, asOpened, "after refusing a mix step alone");
+
+  // Its heading clicked and Delete pressed.
+  await page.click(MIXING_BOX_HEADING);
+  await page.keyboard.press("Delete");
+  await page.waitForTimeout(AFTER_ANIMATION);
+  await checkColumn(page, expectedColumn(deleteItems(plan, [mixingBoxItem]).plan), "after deleting the mixing box");
+  const deleted = await message(page);
+  checkSame([deleted.text, deleted.kind, deleted.undo], ["Deleted a mixing box (5 stages).", "ok", true], "deleting the mixing box's message");
+  const rows = await trashRows(page);
+  checkSame(rows.map((row) => row.name), ["Mixing box"], "the trash after deleting the mixing box");
+  check(rows[0].details.startsWith("5 stages · 5 transfers · deleted "), `The mixing box's entry says "${rows[0].details}".`);
+
+  // The entry dragged out to the seam where the box was (box 3, between S07's and S08's groups).
+  await dragEntryToSeam(page, 0, { kind: "between", index: 3 }, {
+    whileThere: async () => {
+      const label = await page.textContent("#drag-label");
+      check(label === "Paste a mixing box", `Dragging the mixing box out, the label reads "${label}".`);
+    },
+  });
+  await checkColumn(page, asOpened, "the mixing box dragged back");
+  checkSame(await trashRows(page), [], "the trash after dragging the mixing box out");
+
+  // Its ✎, then the wizard's Remove.
+  await page.click("#trash-line");
+  await page.click("#stages-list > .mixing-box .box-edit");
+  await page.click(".mixing-wizard-footer button.danger-outline");
+  await page.waitForTimeout(150);
+  const removed = await message(page);
+  checkSame([removed.text, removed.kind, removed.undo], ["Removed the mixing box and its 5 mix steps.", "ok", true], "the wizard's Remove's message");
+  checkSame((await trashRows(page)).map((row) => row.name), ["Mixing box"], "the trash after the wizard's Remove");
 }
 
 // A group's first stage removed with its box's Remove keeps the group's tips; Join refused just
@@ -1137,12 +1207,18 @@ async function checkTutorialTrash(browser, tutorialUrl, errors) {
 
 // Runs one check: in a fresh context (with `contextOptions`), the test plan opened, then `run(page)`.
 function withTestPlan(run, contextOptions = {}) {
+  return withPlanFile(TEST_PLAN_FILE, FULL_COLUMN, run, contextOptions);
+}
+
+// Runs one check: in a fresh context (with `contextOptions`), the plan file `file` opened and its
+// column checked against `column`, then `run(page)`.
+function withPlanFile(file, column, run, contextOptions = {}) {
   return async (browser, url, errors) => {
     const context = await freshContext(browser, contextOptions);
     try {
       const page = await openPage(context, url, errors);
-      await openPlanFile(page);
-      await checkColumn(page, FULL_COLUMN, "the test plan as opened");
+      await openPlanFile(page, file);
+      await checkColumn(page, column, "the plan as opened");
       await run(page);
     } finally {
       await context.close();
@@ -1174,6 +1250,7 @@ const CHECKS = [
   ["the menu", withTestPlan(checkMenu)],
   ["the tip change's box", withTestPlan(checkTipBoxJoin)],
   ["each kind deleted, the refusals and a mixed selection", withTestPlan(checkEachKindAndRefusals)],
+  ["a mixing box", withPlanFile(MIXING_BOX_PLAN_FILE, expectedColumn(mixingBoxTestPlan()), checkMixingBox)],
   ["a group's first stage removed, and Join refused after a randomization", withTestPlan(checkRemoveFirstStageAndJoinRefused)],
   ["the animation", withTestPlan(checkAnimation)],
   ["reduced motion", withTestPlan(checkReducedMotion, { reducedMotion: "reduce" })],
