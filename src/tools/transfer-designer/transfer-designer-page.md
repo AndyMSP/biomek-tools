@@ -2067,8 +2067,8 @@ becomes the selection).
   the open stage, the very thing Andy's Delete rule prevents); elsewhere, the browser's own Ctrl+X.
   A text box or menu, or text selected on the page, keeps the browser's own.
 - **With nothing selected** (Start or End open with no picked set, or an empty picked set):
-  `Select a stage, a tip group (click its heading), a randomization or a transfer table to delete
-  it.` (note), and nothing else.
+  `Select a stage, a tip group (click its heading), a randomization, a transfer table or a mixing
+  box to delete it.` (note), and nothing else.
 - **Refused** by the logic (a randomization's, transfer table's or mixing box's stage without its
   owner, every stage of the plan): its message (error), and nothing changes; for Cut, nothing is copied either
   (the refusal is checked first).

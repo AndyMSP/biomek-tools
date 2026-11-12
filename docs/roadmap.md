@@ -580,7 +580,8 @@ Last updated: 2026-11-11
   only mix steps and tip changes the tool already writes, so the Biomek files' format doesn't change.
   **Decided by Andy** (2026-11-11, item 34): grouping by volume too, fresh-tip batches of one
   column, reservoir troughs refused for a fresh tip until checked in simulation, empty wells
-  allowed.
+  allowed. Deleting a mixing box follows #153's container rules (deleted whole, into the trash,
+  dragged back out): specified after `main` was merged into the branch, not yet built.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1312,8 +1313,8 @@ added on 2026-10-28 (Andy).
     It changes neither the Biomek's files nor plan files.
     Built (#152).
 34. **Mixing boxes and the mixing wizard** (Andy, 2026-11-11; hands-off workflow; ADR 0025): a way
-    to mix wells that makes the mix steps for you. (Item numbers 32 and 33 are taken by the open
-    pull requests #153 and #154.) Decided with Andy, from a preview he approved on 2026-11-11:
+    to mix wells that makes the mix steps for you. (Item numbers 32 and 33 are taken by pull
+    requests #153 and #154.) Decided with Andy, from a preview he approved on 2026-11-11:
     - **Two ways to mix for now**: a fresh tip for every well (meant to carry nothing from one well to
       the next; not verified, below), and one tip for wells with the same contents (the same components in the same shares).
       More may come, so a way is one entry in a list of rules.
@@ -1375,8 +1376,11 @@ added on 2026-10-28 (Andy).
       there before any real run with a mixing box.
     - **The Biomek files**: a mixing box writes only mix steps and tip changes, which the tool
       already writes; their format doesn't change.
-    - **Once #153 (deleting and the trash) merges**, deleting a mixing box follows its container
-      rules, as for a transfer table.
+    - **Deleting a mixing box** follows #153's container rules, as for a transfer table: it's
+      deleted whole (`deleteItems`, with the Delete key, the menu, Ctrl+X, dropping on the trash,
+      or its wizard's `Remove`), into the trash as one entry, from where dragging it out pastes it;
+      one of its mix steps alone is refused. Added here, after merging `main` (#153 and #154) into
+      this branch (2026-11-11); specified, not yet built.
     Specified (Draft, 2026-11-11; the specification review's points fixed the same day, and the
     second review's after decision E).
 

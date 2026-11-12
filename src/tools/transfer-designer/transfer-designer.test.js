@@ -6979,11 +6979,11 @@ describe("transfer-designer", () => {
     const plan = deleteTestPlan();
     const s04 = stageIdOf(plan, "S04");
     const cases = [
-      [5, "The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got 5."],
-      [[], "The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got an empty list."],
+      [5, "The things to delete must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got 5."],
+      [[], "The things to delete must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got an empty list."],
       [
         [{ kind: "box", id: "1" }],
-        `Item 1 must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", but got "box".`,
+        `Item 1 must be { kind, id }, with kind "stage", "tipGroup", "randomization", "transferTable" or "mixingBox", but got "box".`,
       ],
       [[{ kind: "stage", id: "99" }], `There's no stage "99" in the plan.`],
       [[{ kind: "tipGroup", id: s04 }], `Stage ${describeValue(s04)} doesn't start a tip group, so it can't name one.`],
