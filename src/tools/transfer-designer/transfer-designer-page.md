@@ -259,8 +259,8 @@
 > 11, 12, 15 and 16):** seams between tip groups gain a fifth button, ⟳⟳ (`Add mixing here`), which
 > opens the **mixing wizard** in its spot in the Stages column: wells picked on the deck, a way to
 > mix, tips, and what it makes; `Make mix steps` adds a **mixing box** (`transfer-designer.md`,
-> "Mixing boxes"), which shows, moves, copies, pastes, goes out of date and is removed like a
-> transfer table's box. From a preview Andy approved on 2026-11-11. Written in the hands-off
+> "Mixing boxes"), which shows, moves, copies, pastes, goes out of date, is removed and is deleted
+> into the trash (and dragged out of it) like a transfer table's box. From a preview Andy approved on 2026-11-11. Written in the hands-off
 > workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request.
 > They become Final once built and tested by Andy, and the fresh-tip way is checked in simulation
 > (`biomek.md`, "Not yet known"). Andy's decisions of 2026-11-11 (grouping by volume too, a
@@ -1866,8 +1866,10 @@ matches.` shows. The new mix steps glow (below, "What changed
 glows"), and the mixing box's box opens. If the logic refuses, its message shows as an error and the
 wizard stays open.
 
-**Remove** (red outline, only when editing) acts at once (`removeMixingBox`), as every Remove does:
-closes the wizard; message `Removed the mixing box and its 3 mix steps. Undo brings them back.` (ok);
+**Remove** (red outline, only when editing) acts at once (`removeMixingBox`), as every Remove does,
+and the mixing box goes into the trash (section 7, "The trash"; 2026-11-11, once deleting and mixing
+boxes were both built): closes the wizard; message `Removed the mixing box and its 3 mix steps.`
+(ok), with an `Undo` button (section 12), as the other Removes' messages have;
 if one of its mix steps was open, the first stage in the stage order opens. Disabled when
 `canRemoveMixingBox` is `false`, with the tooltip `Its mix steps are all the plan's stages. Add a
 stage outside it first.`
@@ -1908,7 +1910,10 @@ stage outside it first.`
   box.` A click or drag on the deck while one is open adds nothing: message `This mix step is part of
   a mixing box: change its wells in the box.` (note).
 - **Moving and copying** (below): a mixing box is selected, dragged, copied and pasted by its
-  heading exactly as a transfer table is, its mix steps counting as its box. Its mix steps can't be
+  heading exactly as a transfer table is, its mix steps counting as its box; and **deleted** the
+  same way (below, "Deleting": the Delete key, the menu's `Delete`, Ctrl+X and the menu's `Cut`,
+  dropping on the trash), whole, into the trash as one entry, from where dragging it out pastes it
+  (2026-11-11, once deleting and mixing boxes were both built). Its mix steps can't be
   dragged without it (to any place, its own box included): a drag holding one without its mixing
   box, without Ctrl, gets the label `A mixing box's mix steps move with it · hold Ctrl to copy`, on
   gray, as a randomization's stage does, and the drop shows the logic's message (error); with Ctrl,
@@ -2064,14 +2069,14 @@ becomes the selection).
 - **With nothing selected** (Start or End open with no picked set, or an empty picked set):
   `Select a stage, a tip group (click its heading), a randomization or a transfer table to delete
   it.` (note), and nothing else.
-- **Refused** by the logic (a randomization's or transfer table's stage without its owner, every
-  stage of the plan): its message (error), and nothing changes; for Cut, nothing is copied either
+- **Refused** by the logic (a randomization's, transfer table's or mixing box's stage without its
+  owner, every stage of the plan): its message (error), and nothing changes; for Cut, nothing is copied either
   (the refusal is checked first).
 - An open editing box or randomization card is handled as for a paste (section 7, "After a move,
   copy or paste"): one without changes closes first; one with changes refuses, and nothing is
   deleted.
 - **What it shows.** The rows of what's deleted (a stage's card or row, a tip group's,
-  randomization's or transfer table's whole box) **flash red and shrink away** (section 15), and
+  randomization's, transfer table's or mixing box's whole box) **flash red and shrink away** (section 15), and
   the rows below slide up into the space; only then is the edit recorded and the column redrawn
   (Andy, 2026-11-11: "It's hard to see that something is deleted since it's immediately
   replaced"). The edit is worked out at once, from the plan as it is, and is **pending** until the
@@ -2101,7 +2106,8 @@ becomes the selection).
 - **Messages** (ok), with an **`Undo` button** after the text (below): `Deleted “S2”.`,
   `Deleted 2 stages.`, `Deleted a tip group (2 stages).`, `Deleted a tip group (1 stage).`,
   `Deleted a randomization (3 stages).`, `Deleted a randomization.` (one that hasn't run: no
-  stages, so no count), `Deleted a transfer table (2 stages).`, `Deleted 2 items (3 stages).`; the
+  stages, so no count), `Deleted a transfer table (2 stages).`, `Deleted a mixing box (5 stages).`,
+  `Deleted 2 items (3 stages).`; the
   things described as in a drag's label (section 7, "Dragging"), then, unless they're all stages,
   the number of stages in brackets (`1 stage`, singular, for one). Cut says `Cut`
   in place of `Deleted`. (Until 2026-11-11 messages ended `Undo brings it back.`; the button says
@@ -2169,7 +2175,8 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   band, and a drop on that seam is never under it.
 - **What goes in.** Everything deleted, by any route (Andy, 2026-11-11): the Delete key, the menu's
   `Delete`, Ctrl+X and the menu's `Cut`, dropping on the trash, a stage's or mix step's box's
-  `Remove`, a randomization's card's `Remove` and a transfer table's wizard's `Remove`: **one entry
+  `Remove`, a randomization's card's `Remove`, a transfer table's wizard's `Remove` and the mixing
+  wizard's `Remove`: **one entry
   per thing deleted** (`addDeleted`, with the plan before the edit and `new Date().toISOString()`
   as `deletedAt`), as part of the same edit.
   Joining a tip group to the one above deletes nothing, so nothing goes in. At most `TRASH_LIMIT`
@@ -2177,7 +2184,7 @@ be made reliable); Undo is the exact way to bring back a recent delete.
 - **The list**, newest first (`trash.md`, "Order"), one row per entry: its **name** in semibold
   14px (a stage: its name in quotes, `“S03 Drug A”`; a randomization: `Randomization` and its
   name, `Randomization “Randomization1”`; a tip group: `Tip group`; a transfer table: `Transfer
-  table`); under it, in 12px gray, `3 transfers · deleted 12:28 AM` for a stage (a mix step's
+  table`; a mixing box: `Mixing box`); under it, in 12px gray, `3 transfers · deleted 12:28 AM` for a stage (a mix step's
   mixed wells counted as transfers, as `trash.md` counts them), or `2 stages · 5 transfers ·
   deleted 12:28 AM` for the others, singular for one (`1 stage · 1 transfer`), and `0 stages ·
   0 transfers` for a randomization that hasn't run. **When**: the time in the browser's own short
@@ -2188,10 +2195,10 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   Empty, the list says `The trash is empty. Deleted stages and tip groups come here.` (12px gray).
 - **Dragging an entry out.** A press on an entry's row and a 5px move (`DRAG_START_DISTANCE`)
   starts a drag, as for the column's items: the label reads `Paste “S03 Drug A”`, `Paste a tip
-  group`, `Paste a randomization` or `Paste a transfer table` (the thing described as in a drag's
-  label, section 7, "Dragging"), and the nearest seam is marked with the
-  drop line, as for any drag (only seams between tip groups for a tip group, randomization or
-  transfer table). Dropped on a marked seam, the entry is pasted there (`pasteEntry`, with that
+  group`, `Paste a randomization`, `Paste a transfer table` or `Paste a mixing box` (the thing
+  described as in a drag's label, section 7, "Dragging"), and the nearest seam is marked with the
+  drop line, as for any drag (only seams between tip groups for a tip group, randomization,
+  transfer table or mixing box). Dropped on a marked seam, the entry is pasted there (`pasteEntry`, with that
   place), as one edit, and leaves the trash; the message `Pasted “S03 Drug A” from the trash.` (ok),
   and what was pasted is selected, glows, scrolls into view and its first stage opens, as after a
   paste (section 7, "After a move, copy or paste"). **The entry is looked up at the drop**, in
@@ -2702,7 +2709,7 @@ tips…`, `Moved…`, `Copied…` (after Ctrl+drag), `Pasted…`, `Deleted…`, 
 
 **A message with an Undo button** (2026-11-11): a delete's or cut's message (section 7, "Deleting
 and cutting"), and the message of a `Remove` that puts something in the trash (a stage's, a mix
-step's, a randomization's card's and the transfer table wizard's; Claude's choice, 2026-11-11: they
+step's, a randomization's card's, the transfer table wizard's and the mixing wizard's; Claude's choice, 2026-11-11: they
 delete as Delete does, so they offer the same way back), has an `Undo` button after its text, which
 undoes as Ctrl+Z does; it goes with the message. These messages no longer end `Undo brings it
 back.` (or `them`): the button says it. Other messages that mention Undo keep their words.
@@ -3013,6 +3020,14 @@ group's tip type and probes from its heading), with what's expected. It checks:
   S03's tip group by its heading with Ctrl-click, and the transfer table's heading) deleted with
   the Delete key: the column as expected, the message `Deleted 3 items (7 stages).` with `Undo`,
   and three entries in the trash, in column order.
+- **A mixing box** (2026-11-11), from the test plan with a mixing box (`mixingBoxTestPlan`,
+  `trash.md`, section 6) opened from a plan file: its heading clicked and Delete pressed: the
+  column as the logic gives it, the message `Deleted a mixing box (5 stages).` with `Undo`, and one
+  trash entry `Mixing box`, `5 stages · 5 transfers`; one of its mix steps alone (its box opened,
+  the mix step clicked, Delete): the logic's mixing box message, nothing changed; the entry
+  dragged out to the seam where the box was (the label `Paste a mixing box`): the column equal to
+  the plan as opened, the trash empty; then the box's ✎ and the wizard's `Remove`: the message
+  `Removed the mixing box and its 5 mix steps.` with `Undo`, and the trash entry `Mixing box`.
 - **A group's first stage removed with its box's `Remove`** (S03, opened, then `Remove`): S04 to
   S06 keep the group's tip type and probes, read from the group's heading.
 - **Join refused just after a randomization**: the right-click menu on S10's tip group heading

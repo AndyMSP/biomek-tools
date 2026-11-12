@@ -199,7 +199,8 @@
 > `mixingGroups`, `addMixingBox`, `updateMixingBox`, `removeMixingBox`, `canRemoveMixingBox`,
 > `mixingBoxAt`, `mixingBoxOf`, `mixingBoxDraft`, `mixedContentsOf`, `isMixingBoxOutOfDate`,
 > `SAME_SHARE_ALLOWANCE`, `holdSameContents` and `setMixingBoxes`; every other edit of its mix steps is refused in the
-> logic; moving, copying (copied items version 6) and moving wells know them (sections 2 to 6).
+> logic; moving, copying (copied items version 6), moving wells and deleting (`deleteItems`, a
+> mixing box taken whole) know them (sections 2 to 6).
 > Plan files hold them from format version 14 (`plan-file.md`). From a preview Andy approved on
 > 2026-11-11; written in the hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for
 > Andy are listed in its pull request. **Not verified:** "a fresh tip for every well" assumes the
@@ -2176,25 +2177,29 @@ mix:
 - **an ordinary tip group** (`{ kind: "tipGroup", id }`, its first stage's ID): every one of its
   stages, and its tip change with them;
 - **a randomization**: as `removeRandomization` removes it, with every stage it owns;
-- **a transfer table**: as `removeTransferTable` removes it, with every stage it owns.
+- **a transfer table**: as `removeTransferTable` removes it, with every stage it owns;
+- **a mixing box** (2026-11-11, once deleting and mixing boxes were both built; roadmap, item 34):
+  as `removeMixingBox` removes it, with every mix step it owns, a whole container as a transfer
+  table is.
 
 The list is taken as `moveItems` takes it: in column order, a stage of a listed tip group (or
-randomization, or transfer table) left out as part of it already, and an item listed twice counted
+randomization, transfer table or mixing box) left out as part of it already, and an item listed twice counted
 once; checked with the same messages (`deleteItems` uses the word `delete`, as `copyOf` uses
 `copy`). Then it's refused, changing nothing:
-- **a stage of a randomization or a transfer table, without its owner** in the list (Claude's
-  choice, 2026-11-11: its stage is one source's, or one column's, so it changes only through its
-  randomization or table, as `removeStage` already refuses it): `Stage 5, “Drug A”, belongs to a
-  randomization: delete the whole randomization, or change it in its card.` / `Stage 3, “Media”,
-  belongs to a transfer table: delete the whole transfer table, or change it in its wizard.`
-  (the first such stage in column order);
+- **a stage of a randomization, a transfer table or a mixing box, without its owner** in the list
+  (Claude's choice, 2026-11-11: its stage is one source's, one column's or one group's, so it
+  changes only through its randomization, table or mixing box, as `removeStage` already refuses
+  it): `Stage 5, “Drug A”, belongs to a randomization: delete the whole randomization, or change it
+  in its card.` / `Stage 3, “Media”, belongs to a transfer table: delete the whole transfer table,
+  or change it in its wizard.` / `Stage 7, “Mix 1 of 3”, belongs to a mixing box: delete the whole
+  mixing box, or change it in its wizard.` (the first such stage in column order);
 - **every stage of the plan** (a plan needs at least one; Claude's choice, 2026-11-11, as
   `removeStage` refuses the only stage): `That's every stage in the plan, and a plan needs at least
   one. Leave one stage, or add a new one first.` A randomization that hasn't run has no stages, so
   it counts nothing here, and deleting only such randomizations is fine.
 
-Everything else is deleted, as these edits would do it one after another: randomizations and
-transfer tables first, in column order, then the stages left, in column order. So:
+Everything else is deleted, as these edits would do it one after another: randomizations,
+transfer tables and mixing boxes first, in column order, then the stages left, in column order. So:
 - **Tips:** a tip group whose first stage goes but whose other stages stay keeps its tips (the
   rule in "Stages"); a tip group whose stages all go is gone, with its tip change. When the plan's
   first tip group goes, the first stage left takes the `START` tips set to the tips it had (section
@@ -2206,7 +2211,7 @@ transfer tables first, in column order, then the stages left, in column order. S
 - **Nothing is kept** of what's deleted: it's the caller's to keep (a tool's trash, `trash.md`).
 
 It gives `{ plan, removed, deleted }`: the new plan; `removed`, how many stages were taken out (a
-randomization's and a transfer table's included; for a tool's message); and `deleted`, the items
+randomization's, a transfer table's and a mixing box's included; for a tool's message); and `deleted`, the items
 deleted, in column order, as the list was taken (stages of listed containers left out, repeats
 once), so a caller can keep each one (`trash.md`).
 
@@ -2505,7 +2510,7 @@ The edits refused on a mixing box's mix steps (section 3, "Mixing boxes") throw 
 **Deleting** (section 3, "Deleting")
 | Function | Returns |
 |---|---|
-| `deleteItems(plan, items)` | `{ plan, removed, deleted }`: the plan without `items` (stages, tip groups, randomizations, transfer tables, in any mix), as one edit; `removed`, the number of stages taken out; `deleted`, the items deleted, in column order. Throws as section 5 says. |
+| `deleteItems(plan, items)` | `{ plan, removed, deleted }`: the plan without `items` (stages, tip groups, randomizations, transfer tables, mixing boxes, in any mix), as one edit; `removed`, the number of stages taken out; `deleted`, the items deleted, in column order. Throws as section 5 says. |
 
 **Moving wells** (section 3, "Moving wells")
 | Function | Returns |
@@ -2717,9 +2722,10 @@ nothing: the plan given is never touched. Messages from the shared modules (`ope
 | `setTransferTables`: a stage is owned by another transfer table, or by a randomization | `Stage "5" belongs to two transfer tables, 1 and 2.` / `Stage "5" belongs to transfer table 2 and randomization 1.` |
 | `pasteItems`: a transfer table item in a version 1 to 3 copy | the form message: `Can't paste: item 2 isn't a stage, tip group or randomization as the transfer designer copies them.` |
 | `pasteItems`: a transfer table's values or stages refused | `Can't paste: item 2: ` and `setTransferTables`' message without its `Transfer table 2: ` prefix, e.g. `Can't paste: item 2: its stage for Dye has no column in its table.` |
-| `deleteItems`: `items` isn't a non-empty list, or an item isn't in its form or in the plan | as for `moveItems` (above), with `delete`: `The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got 5.`, and the item messages unchanged |
+| `deleteItems`: `items` isn't a non-empty list, or an item isn't in its form or in the plan | as for `moveItems` (above), with `delete`: `The things to delete must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got 5.`, and the item messages unchanged (mixing boxes named since 2026-11-11, as for `moveItems`) |
 | `deleteItems`: a randomization's stage without its randomization (the first in column order) | `Stage 5, “Drug A”, belongs to a randomization: delete the whole randomization, or change it in its card.` |
 | `deleteItems`: a transfer table's stage without its transfer table (the first in column order) | `Stage 3, “Media”, belongs to a transfer table: delete the whole transfer table, or change it in its wizard.` |
+| `deleteItems`: a mixing box's mix step without its mixing box (the first in column order) | `Stage 7, “Mix 1 of 3”, belongs to a mixing box: delete the whole mixing box, or change it in its wizard.` |
 | `deleteItems`: every stage of the plan | `That's every stage in the plan, and a plan needs at least one. Leave one stage, or add a new one first.` |
 | A mixing box's `id` isn't one of the plan's (every function taking one, except `mixingBoxAt`, which gives `null`, as `transferTableAt` does) | `There's no mixing box "m9" in the plan.` |
 | a mixing box's draft isn't an object with exactly `way`, `wells`, `tipType` and `probes` | `A mixing box's draft must be an object with exactly "way", "wells", "tipType" and "probes", but got 5.` |
@@ -2874,11 +2880,10 @@ module's other messages do (e.g. `Res1 3`); a tool may show its own wording inst
   refusals in the same order, then the randomization refusals in the same order (inside it, `takeTips` before its first stage, then just after its
   last stage).
 - `addStageWithNewTips`, `addMixStepWithNewTips`: `beforeId` a stage or `null`, then inside a
-  transfer table, then inside a randomization.
-- `deleteItems`: the list, then each item in turn (as `moveItems`); then a stage of a randomization
-  or transfer table without its owner (the first such in column order, whichever kind); then
-  every stage of the plan.
   transfer table, then inside a mixing box, then inside a randomization.
+- `deleteItems`: the list, then each item in turn (as `moveItems`); then a stage of a randomization,
+  transfer table or mixing box without its owner (the first such in column order, whichever kind);
+  then every stage of the plan.
 - `moveWell`: `from` on the deck, then `to` on the deck (`deck.checkWell`'s order), then the same
   well, then `from` in use, then `from` a well to fill, then `to` in use.
 - `pasteItems`: the copied items' form and version, then each item in turn, in order (its form,
@@ -4355,9 +4360,22 @@ then [S10, S11], then a transfer table with two stages, each group's tips differ
 - **Not refused:** a randomization's stage listed with its randomization; a transfer table's stage
   listed with its transfer table (the stage left out of `deleted`, the table and both its stages
   gone); a plan left with one stage; only an unrun randomization.
+- **A mixing box** (2026-11-11), from the test plan with a fresh-tip mixing box added before S08's
+  tip group (the plate's A1 to A4 and C1, on `TIP_TYPES[0]` and `probesFor(4)`: five mix steps;
+  `mixingBoxTestPlan` in the fixture):
+  - alone: one edit (one `PlanHistory` record undoes it to the very same plan), the same plan as
+    `removeMixingBox` gives (compared part by part), `removed` 5, `deleted` the mixing box; the same
+    `planOutline` and Biomek output as `removeMixingBox`;
+  - with other things (S02, the mixing box and the transfer table, given out of order): `deleted`
+    in column order, `removed` 8, and the same `planOutline` and Biomek output as removing them
+    one by one in this section's order (`removeMixingBox`, `removeTransferTable`, then
+    `removeStage`); a mix step of the box listed with it is left out of `deleted`;
+  - one of its mix steps alone, and with other things but without its box: refused with the mixing
+    box message, the plan unchanged; listed with a randomization's stage alone too, the mixing
+    box's message, its mix step being first in column order.
 - **Immutability:** the plan given is unchanged; in the table of which parts each edit may change,
   `deleteItems` may change `operationList`, `stageList`, `stageOrder`, `tipChanges`,
-  `randomizations` and `transferTables`.
+  `randomizations`, `transferTables` and `mixingBoxes`.
 
 **The REPL** (`scripts/repl.js`): `deleteItems` in the transfer designer's topic, with an example
 deleting a tip group's first stage and a whole tip group, showing the tips that stay.

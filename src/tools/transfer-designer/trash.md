@@ -59,14 +59,15 @@ last in the order).
 
 ### Entries
 **One entry per deleted thing** (Andy, 2026-11-11). A deleted thing is an **item**
-(`docs/glossary.md`): a stage (a mix step included), an ordinary tip group, a randomization or a
-transfer table. An entry:
+(`docs/glossary.md`): a stage (a mix step included), an ordinary tip group, a randomization, a
+transfer table or a mixing box (2026-11-11, once deleting and mixing boxes were both built). An
+entry:
 
 ```js
 {
   id:            4,               // a whole number, from the trash's nextEntryId
   deletion:      2,               // the delete it came from; entries of one delete share it
-  kind:          "stage",         // "stage", "tipGroup", "randomization" or "transferTable"
+  kind:          "stage",         // "stage", "tipGroup", "randomization", "transferTable" or "mixingBox"
   name:          "S03 Drug A",    // a stage's or randomization's name; null for the others
   stageCount:    1,               // how many stages it held (0 for a randomization that hasn't run)
   transferCount: 3,               // how many transfers (a mix step's mixed wells included)
@@ -75,7 +76,10 @@ transfer table. An entry:
 }
 ```
 
-`copied` is the copied items for that one item, as `copyOf` writes them. Copied items don't hold a
+`copied` is the copied items for that one item, as `copyOf` writes them (a mixing box's are copied
+items version 6, the first to hold mixing boxes: `transfer-designer.md`, "Moving and copying"). A
+mixing box's entry has `stageCount` its mix steps and `transferCount` their mixed wells, as for a
+mix step. Copied items don't hold a
 randomization's name (`transfer-designer.md`, "Moving and copying"), so `name` keeps it, to give it
 back when it's pasted (below).
 
@@ -96,8 +100,8 @@ entries that were **in the trash before** and were dropped. So undoing the chang
 trash's entries exactly as they were. The counters (`nextEntryId`, `nextDeletion`) aren't put
 back, by design (2026-11-11): an ID is never given twice, even after an undo.
 
-A caller removing one thing by another edit (removing a stage, a randomization or a transfer table)
-calls it with that one item.
+A caller removing one thing by another edit (removing a stage, a randomization, a transfer table or
+a mixing box) calls it with that one item.
 
 ### Pasting an entry
 **`pasteEntry(plan, trash, id, place)`** pastes entry `id` at `place` (a place of
@@ -114,6 +118,9 @@ calls it with that one item.
    `renameRandomization` is never called when it would throw. (An entry read back from text may
    hold a name that breaks the rule; `trashFromText` checks only that it's text.)
 4. It takes the entry out of the trash.
+
+A mixing box's entry pastes the mixing box, with its mix steps, as `pasteItems` pastes any copied
+mixing box (a new mixing box, between tip groups).
 
 It gives `{ plan, placed, trash, change }`: the plan with it pasted; `placed`, `pasteItems`' (the
 randomization's item, after a rename); the new trash; and the change `{ added: [], removed: [the
@@ -155,8 +162,8 @@ convenience, and a damaged one shouldn't stop a tool opening):
 - **Each entry.** One that can't be read is **dropped**, and the others kept: one that isn't an
   object with exactly the properties above, each of its kind (`id` a whole number of at least 1,
   below `nextEntryId`; `deletion` a whole number of at least 1, below `nextDeletion`; `kind` one of
-  the four; **`name` as its `kind` has it**: text for a `"stage"` or `"randomization"`, `null` for
-  a `"tipGroup"` or `"transferTable"`; `stageCount` and `transferCount` whole numbers of at least
+  the five; **`name` as its `kind` has it**: text for a `"stage"` or `"randomization"`, `null` for
+  a `"tipGroup"`, `"transferTable"` or `"mixingBox"`; `stageCount` and `transferCount` whole numbers of at least
   0; `deletedAt` text that `Date` reads as a date; **`copied` a plain object**, not a list and not
   `null`). Of two entries with one `id`, the later is dropped. What's inside `copied` isn't checked
   here: `pasteItems` checks it when it's pasted, and refuses it with its message.
@@ -249,14 +256,18 @@ the tool's other tests: `tests/fixtures/delete-test-plan.js`, exporting
        `TIP_TYPES[0]` on `probesFor(3)` (`setTipType`, `setTipProbes`, as a transfer table's
        stages' tips are edited).
   So groups 1 to 4 have different tips whatever `TIP_TYPES` holds.
+- `mixingBoxTestPlan()` (2026-11-11): `deleteTestPlan()` with a **mixing box** added before S08's
+  tip group (`addMixingBox`, its `beforeId` S08): the way `"freshTip"`, the plate's A1, A2, A3, A4
+  and C1, `TIP_TYPES[0]` on `probesFor(4)`; so five mix steps, `Mix 1 of 5` to `Mix 5 of 5`, each on
+  new tips. It can be written as Biomek files too (a mix step draws nothing from a trough).
 - `stageIdOf(plan, name)`: the ID of the stage called `name` (or just its first word, `S03`).
 - `planOutline(plan)`: the plan **up to its IDs**: the column's boxes in order (`columnBoxes`), each
   tip group as its tip type, probes and stages, each stage as its name, kind, settings and
   transfers (in operation order, as source, destination and volume); each randomization as its
   name, sources, fill, seed, volume and tip groups; each transfer table as its table, sources and
-  tip groups; where an unrun randomization sits, as its place among the boxes; and the components,
-  starting contents, labware labels, well labels and experiment name. Stage, randomization and
-  transfer table IDs, and `beforeId`, aren't in it.
+  tip groups; each mixing box as its way and tip groups (2026-11-11); where an unrun randomization sits, as its place among the boxes; and the components,
+  starting contents, labware labels, well labels and experiment name. Stage, randomization,
+  transfer table and mixing box IDs, and `beforeId`, aren't in it.
 - `biomekOutput(plan)`: the plan's Biomek files, `writeRunFiles(plan, timestamp)`
   (`file-writer.md`) with the fixed timestamp `new Date(2026, 10, 11, 12, 0, 0)`, as its folder
   name and its list of `{ name, text }`, and the plan's `tipsUsed`.
@@ -287,7 +298,9 @@ the tool's other tests: `tests/fixtures/delete-test-plan.js`, exporting
   `transferCount` its transfers, `copied` equal to `copyOf(plan, [item])`); a mix step (S06, its
   mixed wells counted as transfers); a tip group (group 2: `name` `null`, 4 stages); a randomization
   (its name, 3 stages); an unrun randomization (0 stages, 0 transfers); a transfer table (`name`
-  `null`, 2 stages).
+  `null`, 2 stages); a mixing box (2026-11-11; from the test plan with a fresh-tip mixing box
+  before S08's tip group, `mixingBoxTestPlan` in the fixture: `name` `null`, 5 stages, its mixed
+  wells counted as transfers, `copied` equal to `copyOf(plan, [item])`, of version 6).
 - Several items: one entry each, in column order, given out of order; a stage of a listed tip group
   left out; an item listed twice, once.
 - `deleteItems`' refusals (a randomization's stage alone; every stage): its message, the trash
@@ -317,6 +330,9 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
   randomization with S09 and S10; an unrun randomization added before S07, alone and with S07; the
   transfer table; the transfer table with S11; S01, group 2 and the randomization; S06, S11 and the
   transfer table.
+- **A mixing box** (2026-11-11), from the test plan with a mixing box (above): the mixing box
+  alone; the mixing box with S07 and S08. After the last paste, `planOutline` and `biomekOutput`
+  equal that plan's, and the trash is empty.
 - **Separate deletes:** S04, then S03; S03, then S04; S07, then
   S08, then S09; S09, then S08, then S07; S03, then group 2; S03, S04 and S05, then S06; S02, then
   S03; S09, then S10; S10, then the randomization; an unrun randomization added before S07, then
@@ -364,7 +380,7 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
 
 **Text**
 - `trashToText` then `trashFromText` gives an equal trash, for an empty trash and one with an entry
-  of each kind.
+  of each kind (a mixing box's included).
 - The frame unreadable, each giving `emptyTrash()` without throwing: not JSON; `null`; a list; a
   missing or extra property; another `format`; version 2; `nextEntryId` 0 or 1.5; `nextDeletion` 0;
   `entries` not a list.
@@ -372,7 +388,7 @@ that `planOutline` and `biomekOutput` equal the test plan's, and the trash is em
   turn, among them `stageCount` -1, `kind` `"box"`, `deletedAt` `"not a date"`, `deletion` at or
   above `nextDeletion`, `id` at or above `nextEntryId`; an **extra property** (`note: "x"`);
   **`name` not as its `kind` has it**: `null` for a stage and for a randomization, text for a tip
-  group and for a transfer table; **`copied` not a plain object**: `null`, a list (`[]`), text;
+  group, for a transfer table and for a mixing box; **`copied` not a plain object**: `null`, a list (`[]`), text;
   two entries with one `id` (the later dropped).
 - Entries out of order come back in order; more than the limit keeps the newest.
 - `trashTextProblem`: `null` for `trashToText` of an empty trash and of one with an entry of each
