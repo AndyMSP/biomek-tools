@@ -20,6 +20,7 @@ import {
   MIX_STEP_VOLUME,
 } from "../../../config/mixing.js";
 import { checkName } from "../../shared/input-checks/input-checks.js";
+import { describeValue } from "../../shared/error-messages/error-messages.js";
 import { tipGroups as sharedTipGroups } from "../../shared/tip-groups/tip-groups.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
 import { writeRunFiles } from "../../shared/file-writer/file-writer.js";
@@ -109,6 +110,7 @@ import {
   copyOf,
   copyItems,
   pasteItems,
+  deleteItems,
   COPIED_ITEMS_FORMAT,
   COPIED_ITEMS_VERSION,
   isWellUsed,
@@ -146,6 +148,14 @@ import {
   UNIT_SPELLINGS,
 } from "../../../config/concentration-units.js";
 import { COMPONENT_COLORS } from "../../../config/component-colors.js";
+import {
+  deleteTestPlan,
+  stageIdOf,
+  planOutline,
+  biomekOutput,
+  GROUP_TIPS,
+  TABLE_TIPS,
+} from "../../../tests/fixtures/delete-test-plan.js";
 import { familyOf, unitsOf, seedingDensity } from "../../shared/concentrations/concentrations.js";
 
 // Two 96-well labware and the numbered (reservoir) labware, found in DECK.
@@ -214,6 +224,16 @@ function planWithStages(count) {
     plan = addStage(plan, null).plan;
   }
   return plan;
+}
+
+// A plan with stages "1" to "5", each with a transfer, in tip groups [1, 2] on the START tips and
+// [3, 4, 5] on the second tip type on probes [1, 2], keyed by "3" (the specification's example of
+// removing a tip group's first stage). Needs at least 2 tip types.
+function planWithFirstStageTips() {
+  let plan = withTransfersIn(planWithStages(5), ["1", "2", "3", "4", "5"]);
+  plan = addTipChange(plan, "3");
+  plan = setTipType(plan, "3", TIP_TYPES[1]);
+  return setTipProbes(plan, "3", [1, 2]);
 }
 
 // The plan with one transfer added to each of `stages`, in turn, each into its own well of PLATE
@@ -911,7 +931,7 @@ describe("transfer-designer", () => {
     }
   });
 
-  test("removeStage removes a stage and its transfers, takes it out of the stage order leaving the others in their order, and its tip change goes", () => {
+  test("removeStage removes a stage and its transfers, takes it out of the stage order leaving the others in their order, and no tip change stays keyed by it", () => {
     let plan = withTransfersIn(planWithStages(3), ["1", "2", "3"]);
     plan = addTipChange(plan, "2");
     const { plan: withFour, id: four } = addStage(plan, "2");
@@ -920,6 +940,65 @@ describe("transfer-designer", () => {
     assert.deepEqual(stagesOfTransfers(removed), ["1", "3"]);
     assert.deepEqual(stageOrder(removed), ["1", four, "3"]);
     assert.equal(tipChangeAt(removed, "2"), null);
+  });
+
+  test("removing a tip group's first stage keeps the group's tips: its tip change moves to the next stage of the group", { skip: TIP_TYPES.length < 2 && "needs 2 tip types" }, () => {
+    const plan = planWithFirstStageTips();
+    const groupsBefore = tipGroups(plan).map(({ tipType, probes }) => ({ tipType, probes }));
+
+    const withoutThree = removeStage(plan, "3");
+    assert.deepEqual(tipGroups(withoutThree).map(({ key, stages }) => ({ key, stages })), [
+      { key: START, stages: ["1", "2"] },
+      { key: "4", stages: ["4", "5"] },
+    ]);
+    assert.deepEqual(tipChangeAt(withoutThree, "4"), { tipType: TIP_TYPES[1], probes: [1, 2] });
+    assert.equal(tipChangeAt(withoutThree, "3"), null);
+    assert.deepEqual(
+      tipGroups(withoutThree).map(({ tipType, probes }) => ({ tipType, probes })),
+      groupsBefore,
+    );
+
+    const withoutFour = removeStage(withoutThree, "4");
+    assert.deepEqual(tipGroups(withoutFour).map(({ key, stages }) => ({ key, stages })), [
+      { key: START, stages: ["1", "2"] },
+      { key: "5", stages: ["5"] },
+    ]);
+    assert.deepEqual(tipChangeAt(withoutFour, "5"), { tipType: TIP_TYPES[1], probes: [1, 2] });
+
+    const withoutFive = removeStage(withoutFour, "5");
+    assert.deepEqual(tipGroups(withoutFive).map(({ key, stages }) => ({ key, stages })), [
+      { key: START, stages: ["1", "2"] },
+    ]);
+    assert.deepEqual(withoutFive.tipChanges, { [START]: startTips() });
+  });
+
+  test("removing a tip group's only stage takes its tip change with it, and the next group keeps its own", () => {
+    // Groups [1, 2], [3] and [4, 5]: 3 alone, 4 on the last tip type on [1].
+    let plan = withTransfersIn(planWithStages(5), ["1", "2", "3", "4", "5"]);
+    plan = addTipChange(plan, "3");
+    plan = addTipChange(plan, "4");
+    plan = setTipType(plan, "4", TIP_TYPES.at(-1));
+    plan = setTipProbes(plan, "4", [1]);
+    const removed = removeStage(plan, "3");
+    assert.deepEqual(removed.tipChanges, {
+      [START]: startTips(),
+      4: { tipType: TIP_TYPES.at(-1), probes: [1] },
+    });
+  });
+
+  test("removing the last stage in the stage order, first of its group, takes its tip change with it", () => {
+    let plan = withTransfersIn(planWithStages(3), ["1", "2", "3"]);
+    plan = addTipChange(plan, "3");
+    const removed = removeStage(plan, "3");
+    assert.deepEqual(removed.tipChanges, { [START]: startTips() });
+    assert.deepEqual(stageOrder(removed), ["1", "2"]);
+  });
+
+  test("removing a stage in the middle of a tip group moves no tip change", () => {
+    const plan = planWithFirstStageTips();
+    const removed = removeStage(plan, "4");
+    assert.deepEqual(removed.tipChanges, plan.tipChanges);
+    assert.deepEqual(tipGroups(removed).map(({ stages }) => stages), [["1", "2"], ["3", "5"]]);
   });
 
   test("removing the only stage throws, and canRemoveStage is false for it", () => {
@@ -6349,6 +6428,597 @@ describe("transfer-designer", () => {
     assert.equal(moved.stageList, plan.stageList);
   });
 
+  // --- Deleting (section 3, "Deleting"; tests/fixtures/delete-test-plan.js) ---
+
+  // The tips of the test plan's groups, and its randomization's and transfer table's tip groups.
+  const T1 = GROUP_TIPS[1];
+  const T2 = GROUP_TIPS[2];
+  const T3 = GROUP_TIPS[3];
+  const T4 = GROUP_TIPS[4];
+  const T6 = GROUP_TIPS[6];
+  const RANDOMIZATION_GROUPS = [g(T4, "Drug A"), g(T4, "Drug B"), g(T4, "Media")];
+  const TABLE_GROUPS = [g(TABLE_TIPS, "Media"), g(TABLE_TIPS, "Dye")];
+
+  // A tip group as the deleting tests write it: its tips and its stages' short names.
+  function g(tips, ...stages) {
+    return { tips, stages };
+  }
+
+  // A stage's short name: S01 to S11 by their first word, other stages (a randomization's or
+  // transfer table's) by their whole name.
+  function shortName(plan, id) {
+    const { name } = plan.stageList.get(id);
+    return /^S\d\d /.test(name) ? name.slice(0, 3) : name;
+  }
+
+  // The plan's tip groups, in order, as g() writes them.
+  function deleteGroupsOf(plan) {
+    return tipGroups(plan).map((group) => g(
+      { tipType: group.tipType, probes: group.probes },
+      ...group.stages.map((id) => shortName(plan, id)),
+    ));
+  }
+
+  // The test plan's own tip groups, written out.
+  function fullGroups() {
+    return [
+      g(T1, "S01", "S02"),
+      g(T2, "S03", "S04", "S05", "S06"),
+      g(T3, "S07"),
+      g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS,
+      g(T6, "S10", "S11"),
+      ...TABLE_GROUPS,
+    ];
+  }
+
+  // The item of the stage called `name` (or whose name starts with it), e.g. st(plan, "S04").
+  function st(plan, name) {
+    return { kind: "stage", id: stageIdOf(plan, name) };
+  }
+
+  // The item of the ordinary tip group whose first stage is called `name`, e.g. tg(plan, "S03").
+  function tg(plan, name) {
+    return { kind: "tipGroup", id: stageIdOf(plan, name) };
+  }
+
+  // The item of the randomization called `name` (the run Randomization1 by default).
+  function rz(plan, name = "Randomization1") {
+    return { kind: "randomization", id: plan.randomizations.find((entry) => entry.name === name).id };
+  }
+
+  // The item of the plan's (only) transfer table.
+  function tt(plan) {
+    return { kind: "transferTable", id: plan.transferTables[0].id };
+  }
+
+  // The item of Randomization1's stage at `index` (from 0, in its order), e.g. 0 for Drug A's.
+  function randomizationStage(plan, index) {
+    return { kind: "stage", id: randomizationAt(plan, rz(plan).id).stages[index].stage };
+  }
+
+  // The item of the transfer table's stage at `index` (from 0), e.g. 0 for Media's.
+  function tableStage(plan, index) {
+    return { kind: "stage", id: plan.transferTables[0].stages[index].stage };
+  }
+
+  // Asserts two plans are the same, part by part, the two lists through their own methods.
+  function assertSamePlan(actual, expected) {
+    for (const part of PLAN_PARTS) {
+      const written = (plan) =>
+        part === "operationList"
+          ? plan.operationList.listOperations()
+          : part === "stageList"
+            ? plan.stageList.listStages()
+            : plan[part];
+      assert.deepEqual(written(actual), written(expected), part);
+    }
+  }
+
+  // True if the plan has a transfer in stage `id`.
+  function hasTransfersIn(plan, id) {
+    return plan.operationList.listOperations().some((operation) => operation.stage === id);
+  }
+
+  // The test plan with an unrun randomization added before the stage called `name` (or, for null,
+  // last), and that randomization's item.
+  function withUnrunBefore(name) {
+    const plan = deleteTestPlan();
+    const beforeId = name === null ? null : stageIdOf(plan, name);
+    const added = addRandomization(plan, beforeId, { seed: 3, volume: 10 });
+    return { plan: added.plan, item: { kind: "randomization", id: added.id } };
+  }
+
+  test("deleteItems: the test plan has the tip groups the deleting tests start from", () => {
+    assert.deepEqual(deleteGroupsOf(deleteTestPlan()), fullGroups());
+  });
+
+  test("deleteItems: a stage in the middle of a group goes with its transfers; its group keeps its tips", () => {
+    const plan = deleteTestPlan();
+    const s04 = stageIdOf(plan, "S04");
+    const { plan: after, removed, deleted } = deleteItems(plan, [st(plan, "S04")]);
+    assert.equal(after.stageList.has(s04), false);
+    assert.equal(hasTransfersIn(after, s04), false);
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S01", "S02"), g(T2, "S03", "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS,
+    ]);
+    assert.equal(removed, 1);
+    assert.deepEqual(deleted, [st(plan, "S04")]);
+  });
+
+  test("deleteItems: a group's first stage goes; the rest keep the group's tip type and probes, keyed by the next stage", () => {
+    const plan = deleteTestPlan();
+    const { plan: after } = deleteItems(plan, [st(plan, "S03")]);
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S01", "S02"), g(T2, "S04", "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS,
+    ]);
+    assert.deepEqual(tipChangeAt(after, stageIdOf(plan, "S04")), T2);
+  });
+
+  test("deleteItems: a mix step goes with its mixed wells", () => {
+    const plan = deleteTestPlan();
+    const s06 = stageIdOf(plan, "S06");
+    assert.equal(hasTransfersIn(plan, s06), true);
+    const { plan: after } = deleteItems(plan, [st(plan, "S06")]);
+    assert.equal(hasTransfersIn(after, s06), false);
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05"), g(T3, "S07"), g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS,
+    ]);
+  });
+
+  test("deleteItems: a lone group's stage takes its group and tip change with it; the next group is unchanged", () => {
+    const plan = deleteTestPlan();
+    const s07 = stageIdOf(plan, "S07");
+    const { plan: after } = deleteItems(plan, [st(plan, "S07")]);
+    assert.equal(tipChangeAt(after, s07), null);
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05", "S06"), g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS,
+    ]);
+  });
+
+  test("deleteItems: the plan's first stage goes; the next is on the START tips, which keep their tip type and probes", () => {
+    const plan = deleteTestPlan();
+    const { plan: after } = deleteItems(plan, [st(plan, "S01")]);
+    assert.deepEqual(tipChangeAt(after, START), T1);
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S02"), g(T2, "S03", "S04", "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS,
+    ]);
+  });
+
+  test("deleteItems: S11, the last ordinary stage, goes; S10 is alone in its group", () => {
+    const plan = deleteTestPlan();
+    const { plan: after } = deleteItems(plan, [st(plan, "S11")]);
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS, g(T6, "S10"), ...TABLE_GROUPS,
+    ]);
+  });
+
+  test("deleteItems: an ordinary tip group goes with every stage and its tip change; the groups either side are unchanged", () => {
+    const plan = deleteTestPlan();
+    const s03 = stageIdOf(plan, "S03");
+    const { plan: after, removed, deleted } = deleteItems(plan, [tg(plan, "S03")]);
+    assert.equal(tipChangeAt(after, s03), null);
+    for (const name of ["S03", "S04", "S05", "S06"]) {
+      assert.equal(after.stageList.has(stageIdOf(plan, name)), false, name);
+    }
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S01", "S02"), g(T3, "S07"), g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS,
+    ]);
+    assert.equal(removed, 4);
+    assert.deepEqual(deleted, [tg(plan, "S03")]);
+  });
+
+  test("deleteItems: the first tip group goes; the next is first, on the START tips set to its own tip type and probes", () => {
+    const plan = deleteTestPlan();
+    const { plan: after } = deleteItems(plan, [tg(plan, "S01")]);
+    assert.deepEqual(tipChangeAt(after, START), T2);
+    assert.equal(tipChangeAt(after, stageIdOf(plan, "S03")), null);
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T2, "S03", "S04", "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS,
+    ]);
+  });
+
+  test("deleteItems: a randomization goes with its three stages, as removeRandomization gives; S10 keeps its own tips", () => {
+    const plan = deleteTestPlan();
+    const { plan: after, removed, deleted } = deleteItems(plan, [rz(plan)]);
+    assertSamePlan(after, removeRandomization(plan, rz(plan).id));
+    assert.deepEqual(tipChangeAt(after, stageIdOf(plan, "S10")), T6);
+    assert.equal(removed, 3);
+    assert.deepEqual(deleted, [rz(plan)]);
+  });
+
+  test("deleteItems: a randomization that hasn't run goes and nothing else changes, removing no stages", () => {
+    const { plan, item } = withUnrunBefore("S07");
+    const { plan: after, removed, deleted } = deleteItems(plan, [item]);
+    assertSamePlan(after, deleteTestPlan());
+    assert.equal(removed, 0);
+    assert.deepEqual(deleted, [item]);
+  });
+
+  test("deleteItems: a transfer table goes with its stages, as removeTransferTable gives", () => {
+    const plan = deleteTestPlan();
+    const { plan: after, removed } = deleteItems(plan, [tt(plan)]);
+    assertSamePlan(after, removeTransferTable(plan, tt(plan).id));
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"),
+      ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"),
+    ]);
+    assert.equal(removed, 2);
+  });
+
+  test("deleteItems: each kind alone is one edit, one PlanHistory record undoing it to the very same plan", () => {
+    const plan = deleteTestPlan();
+    const items = [
+      st(plan, "S04"), st(plan, "S03"), st(plan, "S06"), st(plan, "S07"), st(plan, "S01"), st(plan, "S11"),
+      tg(plan, "S03"), tg(plan, "S01"), rz(plan), tt(plan),
+    ];
+    for (const item of items) {
+      const history = new PlanHistory({ plan }).record({ plan: deleteItems(plan, [item]).plan });
+      assert.equal(history.undo().present.plan, plan, JSON.stringify(item));
+    }
+  });
+
+  // The "Mixed and scattered" cases: a name, the items (from the test plan), the tip groups left,
+  // and the stages removed.
+  const MIXED_CASES = [
+    [
+      "S02 and S05, from two groups",
+      (plan) => [st(plan, "S02"), st(plan, "S05")],
+      [g(T1, "S01"), g(T2, "S03", "S04", "S06"), g(T3, "S07"), g(T4, "S08", "S09"), ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS],
+      2,
+    ],
+    [
+      "S02 and S03, either side of a group boundary",
+      (plan) => [st(plan, "S02"), st(plan, "S03")],
+      [g(T1, "S01"), g(T2, "S04", "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"), ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS],
+      2,
+    ],
+    [
+      "S03 and S04, a group's first two",
+      (plan) => [st(plan, "S03"), st(plan, "S04")],
+      [g(T1, "S01", "S02"), g(T2, "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"), ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS],
+      2,
+    ],
+    [
+      "S07, S08 and S09, a lone group and the whole next group",
+      (plan) => [st(plan, "S07"), st(plan, "S08"), st(plan, "S09")],
+      [g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05", "S06"), ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS],
+      3,
+    ],
+    [
+      "S01, S03's tip group and the randomization",
+      (plan) => [st(plan, "S01"), tg(plan, "S03"), rz(plan)],
+      [g(T1, "S02"), g(T3, "S07"), g(T4, "S08", "S09"), g(T6, "S10", "S11"), ...TABLE_GROUPS],
+      8,
+    ],
+    [
+      "S06, S11 and the transfer table",
+      (plan) => [st(plan, "S06"), st(plan, "S11"), tt(plan)],
+      [g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05"), g(T3, "S07"), g(T4, "S08", "S09"), ...RANDOMIZATION_GROUPS, g(T6, "S10")],
+      4,
+    ],
+    [
+      "S09 and S10, either side of the randomization",
+      (plan) => [st(plan, "S09"), st(plan, "S10")],
+      [g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05", "S06"), g(T3, "S07"), g(T4, "S08"), ...RANDOMIZATION_GROUPS, g(T6, "S11"), ...TABLE_GROUPS],
+      2,
+    ],
+  ];
+
+  // The plan after `items` are removed one edit at a time, as section 3, "Deleting", says:
+  // randomizations and transfer tables first, in column order, then the stages left, in column
+  // order (a tip group's stages each), with removeRandomization, removeTransferTable and removeStage.
+  // The containers' column order is worked out here, from columnBoxes of the plan before, not taken
+  // from deleteItems.
+  function removedOneByOne(plan, items) {
+    let removing = plan;
+    const boxIndex = (item) =>
+      columnBoxes(plan).findIndex((box) => box.kind === item.kind && box.id === item.id);
+    const containers = items
+      .filter((entry) => entry.kind === "randomization" || entry.kind === "transferTable")
+      .sort((first, second) => boxIndex(first) - boxIndex(second));
+    for (const item of containers) {
+      removing =
+        item.kind === "randomization" ? removeRandomization(removing, item.id) : removeTransferTable(removing, item.id);
+    }
+    const groups = tipGroups(plan);
+    const stages = items.flatMap((item) => {
+      if (item.kind === "stage") {
+        return [item.id];
+      }
+      return item.kind === "tipGroup" ? groups.find((group) => group.stages[0] === item.id).stages : [];
+    });
+    for (const id of stages) {
+      removing = removeStage(removing, id);
+    }
+    return removing;
+  }
+
+  for (const [name, itemsOf, expected, count] of MIXED_CASES) {
+    test(`deleteItems, mixed and scattered: ${name}: the stages and tips left, the stages removed, the items deleted`, () => {
+      const plan = deleteTestPlan();
+      const before = snapshot(plan);
+      const items = itemsOf(plan);
+      const { plan: after, removed, deleted } = deleteItems(plan, items);
+      assert.deepEqual(deleteGroupsOf(after), expected);
+      assert.equal(removed, count);
+      assert.deepEqual(deleted, items);
+      assert.equal(snapshot(plan), before);
+    });
+
+    test(`deleteItems, mixed and scattered: ${name}: the same outline and Biomek output as the removals one by one`, () => {
+      const plan = deleteTestPlan();
+      const items = itemsOf(plan);
+      const { plan: after } = deleteItems(plan, items);
+      const oneByOne = removedOneByOne(plan, items);
+      assert.deepEqual(planOutline(after), planOutline(oneByOne));
+      assert.deepEqual(biomekOutput(after), biomekOutput(oneByOne));
+    });
+  }
+
+  // The test plan with the transfer table moved to the top (the first box), so it comes before the
+  // randomization in column order.
+  function tableFirstPlan() {
+    const plan = deleteTestPlan();
+    return moveItems(plan, [tt(plan)], between(0)).plan;
+  }
+
+  test("deleteItems, mixed and scattered: the transfer table at the top and the randomization, listed randomization first: the stages and tips left", () => {
+    const plan = tableFirstPlan();
+    assert.deepEqual(deleteGroupsOf(plan).slice(0, 2), TABLE_GROUPS);
+    const items = [rz(plan), tt(plan)];
+    const { plan: after, removed, deleted } = deleteItems(plan, items);
+    assert.deepEqual(deleteGroupsOf(after), [
+      g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05", "S06"), g(T3, "S07"), g(T4, "S08", "S09"), g(T6, "S10", "S11"),
+    ]);
+    assert.equal(removed, 5);
+    assert.deepEqual(deleted, [tt(plan), rz(plan)]);
+  });
+
+  test("deleteItems: the transfer table at the top and the randomization give the same outline and Biomek output as removing them in column order, the table first", () => {
+    const plan = tableFirstPlan();
+    const items = [rz(plan), tt(plan)];
+    const after = deleteItems(plan, items).plan;
+    const tableFirst = removeRandomization(removeTransferTable(plan, tt(plan).id), rz(plan).id);
+    assertSamePlan(after, tableFirst);
+    assert.deepEqual(planOutline(after), planOutline(removedOneByOne(plan, items)));
+    assert.deepEqual(biomekOutput(after), biomekOutput(removedOneByOne(plan, items)));
+  });
+
+  test("a transfer table followed by an ordinary stage: removing it leaves that stage's own tip change as it was; none of the table's moves onto it", () => {
+    const plan = deleteTestPlan();
+    // Box 5 is S10's tip group: the table goes just before it.
+    const moved = moveItems(plan, [tt(plan)], between(5)).plan;
+    const s10 = stageIdOf(moved, "S10");
+    assert.deepEqual(tipChangeAt(moved, s10), T6);
+    const tableStages = moved.transferTables[0].stages.map((owned) => owned.stage);
+    for (const after of [removeTransferTable(moved, tt(moved).id), deleteItems(moved, [tt(moved)]).plan]) {
+      assert.deepEqual(tipChangeAt(after, s10), T6);
+      const keysLeft = Object.keys(after.tipChanges);
+      assert.equal(tableStages.some((id) => keysLeft.includes(id)), false);
+      assert.deepEqual(
+        after.tipChanges,
+        Object.fromEntries(Object.entries(moved.tipChanges).filter(([key]) => !tableStages.includes(key))),
+      );
+    }
+  });
+
+  test("deleteItems: S09 and S10 either side of the randomization leave its place and tips as removeStage does, the stage after it on tips of its own", () => {
+    const plan = deleteTestPlan();
+    const s11 = stageIdOf(plan, "S11");
+    const { plan: after } = deleteItems(plan, [st(plan, "S09"), st(plan, "S10")]);
+    const viaRemoveStage = removeStage(removeStage(plan, stageIdOf(plan, "S09")), stageIdOf(plan, "S10"));
+    assert.equal(randomizationAt(after, rz(plan).id).beforeId, randomizationAt(viaRemoveStage, rz(plan).id).beforeId);
+    assert.equal(randomizationAt(after, rz(plan).id).beforeId, s11);
+    assert.deepEqual(tipChangeAt(after, s11), T6);
+    assert.deepEqual(after.tipChanges, viaRemoveStage.tipChanges);
+  });
+
+  test("deleteItems: an unrun randomization before S07 moves to S08 when S07 is deleted, as through removeStage", () => {
+    const { plan, item } = withUnrunBefore("S07");
+    const { plan: after } = deleteItems(plan, [st(plan, "S07")]);
+    const s08 = stageIdOf(plan, "S08");
+    assert.equal(randomizationAt(after, item.id).beforeId, s08);
+    assert.equal(randomizationAt(removeStage(plan, stageIdOf(plan, "S07")), item.id).beforeId, s08);
+  });
+
+  test("deleteItems: an unrun randomization before S07, with S07's and S08's tip groups deleted, sits before the run randomization's first stage, as through removeStage", () => {
+    const { plan, item } = withUnrunBefore("S07");
+    const { plan: after } = deleteItems(plan, [tg(plan, "S07"), tg(plan, "S08")]);
+    const firstOwned = randomizationStage(plan, 0).id;
+    assert.equal(randomizationAt(after, item.id).beforeId, firstOwned);
+    let oneByOne = plan;
+    for (const name of ["S07", "S08", "S09"]) {
+      oneByOne = removeStage(oneByOne, stageIdOf(plan, name));
+    }
+    assert.equal(randomizationAt(oneByOne, item.id).beforeId, firstOwned);
+  });
+
+  test("deleteItems: an unrun randomization before S03, with S03's tip group deleted, sits before S07, as through removeStage", () => {
+    const { plan, item } = withUnrunBefore("S03");
+    const { plan: after } = deleteItems(plan, [tg(plan, "S03")]);
+    const s07 = stageIdOf(plan, "S07");
+    assert.equal(randomizationAt(after, item.id).beforeId, s07);
+    let oneByOne = plan;
+    for (const name of ["S03", "S04", "S05", "S06"]) {
+      oneByOne = removeStage(oneByOne, stageIdOf(plan, name));
+    }
+    assert.equal(randomizationAt(oneByOne, item.id).beforeId, s07);
+  });
+
+  test("deleteItems: an unrun randomization before the transfer table's first stage sits last when the table is deleted, as removeTransferTable leaves it", () => {
+    const plan = deleteTestPlan();
+    const added = addRandomization(plan, tableStage(plan, 0).id, { seed: 3, volume: 10 });
+    const { plan: after } = deleteItems(added.plan, [tt(added.plan)]);
+    assert.equal(randomizationAt(after, added.id).beforeId, null);
+    assert.equal(randomizationAt(removeTransferTable(added.plan, tt(added.plan).id), added.id).beforeId, null);
+  });
+
+  test("deleteItems of each stage removeStage can remove gives the same plan as removeStage, removing 1", () => {
+    const plan = deleteTestPlan();
+    const ordinary = plan.stageOrder.filter(
+      (id) => randomizationOf(plan, id) === null && transferTableOf(plan, id) === null,
+    );
+    assert.equal(ordinary.length, 11);
+    for (const id of ordinary) {
+      const { plan: after, removed } = deleteItems(plan, [{ kind: "stage", id }]);
+      assertSamePlan(after, removeStage(plan, id));
+      assert.equal(removed, 1, id);
+    }
+  });
+
+  test("deleteItems: the Biomek files can be written after every mixed case", () => {
+    for (const [name, itemsOf] of MIXED_CASES) {
+      const plan = deleteTestPlan();
+      assert.doesNotThrow(() => biomekOutput(deleteItems(plan, itemsOf(plan)).plan), name);
+    }
+  });
+
+  test("deleteItems: items given out of column order are deleted in column order", () => {
+    const plan = deleteTestPlan();
+    const { deleted, removed } = deleteItems(plan, [tt(plan), st(plan, "S02"), tg(plan, "S03")]);
+    assert.deepEqual(deleted, [st(plan, "S02"), tg(plan, "S03"), tt(plan)]);
+    assert.equal(removed, 7);
+  });
+
+  test("deleteItems: a stage of a listed tip group, randomization or transfer table is left out of deleted and not counted twice; an item listed twice counts once", () => {
+    const plan = deleteTestPlan();
+    const inGroup = deleteItems(plan, [st(plan, "S04"), tg(plan, "S03")]);
+    assert.deepEqual(inGroup.deleted, [tg(plan, "S03")]);
+    assert.equal(inGroup.removed, 4);
+    const inRandomization = deleteItems(plan, [randomizationStage(plan, 1), rz(plan)]);
+    assert.deepEqual(inRandomization.deleted, [rz(plan)]);
+    assert.equal(inRandomization.removed, 3);
+    const inTable = deleteItems(plan, [tableStage(plan, 0), tt(plan)]);
+    assert.deepEqual(inTable.deleted, [tt(plan)]);
+    assert.equal(inTable.removed, 2);
+    for (const { stage } of plan.transferTables[0].stages) {
+      assert.equal(inTable.plan.stageList.has(stage), false);
+    }
+    const twice = deleteItems(plan, [st(plan, "S04"), st(plan, "S04")]);
+    assert.deepEqual(twice.deleted, [st(plan, "S04")]);
+    assert.equal(twice.removed, 1);
+  });
+
+  // The refusal messages for the test plan's owned stages: Drug A is stage 10 and Drug B stage 11
+  // (after S01 to S09); the transfer table's Media is stage 15 (after the randomization's three
+  // stages and S10 and S11).
+  const DRUG_A_REFUSAL = "Stage 10, “Drug A”, belongs to a randomization: delete the whole randomization, or change it in its card.";
+  const DRUG_B_REFUSAL = "Stage 11, “Drug B”, belongs to a randomization: delete the whole randomization, or change it in its card.";
+  const TABLE_MEDIA_REFUSAL = "Stage 15, “Media”, belongs to a transfer table: delete the whole transfer table, or change it in its wizard.";
+  const EVERY_STAGE_REFUSAL = "That's every stage in the plan, and a plan needs at least one. Leave one stage, or add a new one first.";
+
+  test("deleteItems refuses a randomization's stage alone, or with other things, and a transfer table's stage alone, the plan unchanged", () => {
+    const plan = deleteTestPlan();
+    const before = snapshot(plan);
+    assert.throws(() => deleteItems(plan, [randomizationStage(plan, 0)]), { message: DRUG_A_REFUSAL });
+    assert.throws(() => deleteItems(plan, [st(plan, "S02"), randomizationStage(plan, 0), tg(plan, "S03")]), {
+      message: DRUG_A_REFUSAL,
+    });
+    assert.throws(() => deleteItems(plan, [tableStage(plan, 0)]), { message: TABLE_MEDIA_REFUSAL });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("deleteItems with a randomization's and a transfer table's stage names the first in column order, the randomization's", () => {
+    const plan = deleteTestPlan();
+    assert.throws(() => deleteItems(plan, [tableStage(plan, 0), randomizationStage(plan, 1)]), {
+      message: DRUG_B_REFUSAL,
+    });
+  });
+
+  test("deleteItems refuses every stage of the plan: every item listed; every tip group, the randomization and the table; a plan of one stage", () => {
+    const plan = deleteTestPlan();
+    const before = snapshot(plan);
+    const everyStage = [
+      ...plan.stageOrder
+        .filter((id) => randomizationOf(plan, id) === null && transferTableOf(plan, id) === null)
+        .map((id) => ({ kind: "stage", id })),
+      rz(plan),
+      tt(plan),
+    ];
+    assert.throws(() => deleteItems(plan, everyStage), { message: EVERY_STAGE_REFUSAL });
+    const everyGroup = [
+      ...["S01", "S03", "S07", "S08", "S10"].map((name) => tg(plan, name)),
+      rz(plan),
+      tt(plan),
+    ];
+    assert.throws(() => deleteItems(plan, everyGroup), { message: EVERY_STAGE_REFUSAL });
+    assert.equal(snapshot(plan), before);
+    const single = planWithStages(1);
+    assert.throws(() => deleteItems(single, [{ kind: "stage", id: "1" }]), { message: EVERY_STAGE_REFUSAL });
+    assert.throws(() => deleteItems(single, [{ kind: "tipGroup", id: "1" }]), { message: EVERY_STAGE_REFUSAL });
+  });
+
+  test("deleteItems gives moveItems' list and item messages, with delete", () => {
+    const plan = deleteTestPlan();
+    const s04 = stageIdOf(plan, "S04");
+    const cases = [
+      [5, "The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got 5."],
+      [[], "The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got an empty list."],
+      [
+        [{ kind: "box", id: "1" }],
+        `Item 1 must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", but got "box".`,
+      ],
+      [[{ kind: "stage", id: "99" }], `There's no stage "99" in the plan.`],
+      [[{ kind: "tipGroup", id: s04 }], `Stage ${describeValue(s04)} doesn't start a tip group, so it can't name one.`],
+    ];
+    for (const [items, message] of cases) {
+      assert.throws(() => deleteItems(plan, items), { message });
+      // copyOf checks the list and items the same way, with its own verb.
+      if (typeof items === "object" && items.length > 0) {
+        assert.throws(() => copyOf(plan, items), { message });
+      }
+    }
+    // A randomization or transfer table that isn't there: the same message as moveItems'.
+    for (const missing of [{ kind: "randomization", id: "r9" }, { kind: "transferTable", id: "t9" }]) {
+      let moveMessage = null;
+      try {
+        moveItems(plan, [missing], between(0));
+      } catch (error) {
+        moveMessage = error.message;
+      }
+      assert.notEqual(moveMessage, null);
+      assert.throws(() => deleteItems(plan, [missing]), { message: moveMessage });
+    }
+  });
+
+  test("deleteItems checks in order: a bad item before an owned stage; an owned stage before every stage", () => {
+    const plan = deleteTestPlan();
+    assert.throws(() => deleteItems(plan, [randomizationStage(plan, 0), { kind: "stage", id: "99" }]), {
+      message: `There's no stage "99" in the plan.`,
+    });
+    const everyOrdinaryAndOwned = [
+      ...plan.stageOrder.filter((id) => transferTableOf(plan, id) === null).map((id) => ({ kind: "stage", id })),
+      tt(plan),
+    ];
+    assert.throws(() => deleteItems(plan, everyOrdinaryAndOwned), { message: DRUG_A_REFUSAL });
+  });
+
+  test("deleteItems doesn't refuse: a plan left with one stage; only an unrun randomization", () => {
+    const plan = deleteTestPlan();
+    const allButS11 = [
+      ...["S01", "S03", "S07", "S08"].map((name) => tg(plan, name)),
+      rz(plan),
+      st(plan, "S10"),
+      tt(plan),
+    ];
+    const { plan: after, removed } = deleteItems(plan, allButS11);
+    assert.deepEqual(deleteGroupsOf(after), [g(T6, "S11")]);
+    assert.equal(removed, plan.stageOrder.length - 1);
+    const { plan: lone, id } = addRandomization(planWithStages(1), null, { seed: 1, volume: 5 });
+    const unrunOnly = deleteItems(lone, [{ kind: "randomization", id }]);
+    assert.deepEqual(unrunOnly.plan.randomizations, []);
+    assert.equal(unrunOnly.removed, 0);
+  });
+
   // --- Immutability and sharing ---
 
   // Each edit, made on a plan with something in every part, and the parts it may change.
@@ -6442,6 +7112,11 @@ describe("transfer-designer", () => {
       (plan) =>
         pasteItems(plan, copyOf(plan, [{ kind: "randomization", id: "r1" }]), { kind: "between", index: 1 }).plan,
       ["stageList", "stageOrder", "tipChanges", "operationList", "randomizations"],
+    ],
+    [
+      "deleteItems",
+      (plan) => deleteItems(plan, [{ kind: "stage", id: "3" }, { kind: "randomization", id: "r1" }]).plan,
+      ["operationList", "stageList", "stageOrder", "tipChanges", "randomizations", "transferTables"],
     ],
     [
       "moveWell",
@@ -8372,6 +9047,19 @@ describe("transfer-designer", () => {
     const joined = runRandomization(setRandomization(plan, id, { sources: setSourceSharesTips(sources, 2, true) }), id);
     assert.equal(tipChangeAt(joined, a3), null);
     assert.equal(tipsOfStage(joined, a3).tipType, otherTips().tipType);
+  });
+
+  test("the removal rule's reach: a run after a sharing group's first source is taken out keys the group's tips, the same tip type and probes, by the next source's stage", () => {
+    const { plan: setUp, id } = sharingPlan([false, true, false, false]);
+    const run = runRandomization(setUp, id);
+    const a1 = stageFor(run, id, "A1");
+    const a2 = stageFor(run, id, "A2");
+    let plan = setTipType(run, a1, otherTips().tipType);
+    plan = setTipProbes(plan, a1, [1, 3]);
+    const sources = randomizationAt(plan, id).sources;
+    const withoutA1 = runRandomization(setRandomization(plan, id, { sources: removeSources(sources, [0]) }), id);
+    assert.equal(withoutA1.stageList.has(a1), false);
+    assert.deepEqual(tipChangeAt(withoutA1, a2), { tipType: otherTips().tipType, probes: [1, 3] });
   });
 
   test("nothing kept: every new stage starts like the old first stage; new filler wells start like the old filler stage", () => {

@@ -3,7 +3,7 @@
 // are. These tests check only the configuration files the page uses (ADR 0009), so a typo in
 // config/ makes npm test fail rather than reaching the lab. PLAN_FILE_SUFFIX in config/records.js and
 // BASE_FOLDER_PICKER_START in config/paths.js are checked here because the page is what uses them
-// (sections 5 and 14).
+// (sections 5 and 14), and so is DELETE_ANIMATION_MS in config/animations.js (sections 7 and 14).
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,6 +17,7 @@ import {
   WELL_MAP_SUFFIX,
 } from "../../../config/records.js";
 import { BASE_FOLDER_PICKER_START } from "../../../config/paths.js";
+import { DELETE_ANIMATION_MS } from "../../../config/animations.js";
 import { folderNameFor } from "../../shared/file-writer/file-writer.js";
 import { zipFiles } from "../../shared/zip/zip.js";
 
@@ -93,6 +94,12 @@ describe("transfer-designer-page", () => {
         PICKER_STARTING_PLACES.includes(BASE_FOLDER_PICKER_START),
         `${BASE_FOLDER_PICKER_START} isn't one of ${PICKER_STARTING_PLACES.join(", ")}`,
       );
+    });
+  });
+  describe("config/animations.js", () => {
+    test("DELETE_ANIMATION_MS is a whole number of at least 1", () => {
+      assert.ok(Number.isInteger(DELETE_ANIMATION_MS), `${DELETE_ANIMATION_MS} isn't a whole number`);
+      assert.ok(DELETE_ANIMATION_MS >= 1);
     });
   });
 });

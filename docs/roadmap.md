@@ -546,6 +546,20 @@ Last updated: 2026-11-11
   reviewed by a separate agent, and checked in headless Chrome (the Biomek files byte for byte
   main's; the tutorials' walk-throughs pass). Still to check by Andy, including the remembered
   folder with a real folder, which headless Chrome can't read back.
+- **Decided: deleting and the trash** (Andy, 2026-11-11; item 32, below; ADR 0024, Proposed):
+  select anything in the Stages column and press Delete (right after a click in the column),
+  choose Delete or Cut from the right-click menu, or drag it onto the trash; a short red animation
+  and an Undo button in the message; Join with the group above in place of a tip change's Remove;
+  and a trash at the bottom of the column that keeps everything deleted, to drag out to any gap.
+  From a preview Andy shaped on 2026-11-11, where he also found that removing a tip group's first
+  stage joined the rest of the group to the tips before it (fixed: the group keeps its tips).
+  **Specified** (Draft, 2026-11-11, hands-off workflow): `transfer-designer.md` ("Stages",
+  "Deleting"), a new logic module `trash` (`trash.md`, `TRASH_LIMIT` in `config/trash.js`),
+  `DELETE_ANIMATION_MS` in `config/animations.js`,
+  `transfer-designer-page.md` (sections 2, 4, 5, 7, 10, 12, 14, 15, 16 and 17), a shared test plan
+  `tests/fixtures/delete-test-plan.js` and a browser walk-through `tests/browser/delete.walk.js`;
+  glossary term Trash; and **built (#153)**. Plan files don't change; what a plan writes changes
+  only after a tip group's first stage is removed, which now keeps the group's tips.
 - **Decided: every transfer's volume at once** (Andy, 2026-11-11; item 33, below): a transfer
   stage's shown transfer list starts with an **All transfers** box, showing the volume its
   transfers share, or `Mixed` when they differ ("just like randomizer sources"), which sets them
@@ -1284,6 +1298,33 @@ added on 2026-10-28 (Andy).
     It changes neither the Biomek's files nor plan files.
     Built (#152).
 
+32. **Deleting and the trash** (Andy, 2026-11-11; hands-off workflow; ADR 0024): Andy's feature
+    ideas "Easy delete" and "Trash can". Decided with Andy, from a preview on 2026-11-11:
+    - **Delete what's selected**, any mix of stages, tip groups, randomizations and transfer tables
+      ("anything that is a stage or a container can be deleted"): the Delete key, the right-click
+      menu's `Delete` and `Cut`, and Ctrl+X. **Deleting a tip group deletes every stage in it.**
+    - **The Delete key only right after a click in the Stages column** (Andy chose this over the
+      open stage counting as selected: "you could intend to delete something on the deck and then
+      delete the entire stage"). Ctrl+X follows the same rule (Claude's choice).
+    - **Join with the group above**, on a tip group's right-click menu and in place of a tip
+      change's `Remove`, instead of deleting a tip change to join two groups.
+    - **Seeing it go:** the deleted rows flash red and shrink away, and the message has an `Undo`
+      button (Andy chose both, from three options).
+    - **The trash**, at the bottom of the Stages column: drag onto it to delete, and drag an entry
+      out of it to any gap, in this plan or another, to paste it there. Everything deleted goes in,
+      by any route, one entry per thing. At most `TRASH_LIMIT`, kept by the browser across reloads,
+      not in plan files and not tied to a plan; Empty trash and Reset clear it, Reset undoably.
+    - **No Put back** (Andy, 2026-11-11, 01:51): the preview's button that put an entry back where
+      it was went wrong in ways two reviews couldn't fix (stage IDs renumber on reopening, and
+      moves, splits, joins and renames after a delete), so the trash is drag-out only, and Undo is
+      the exact way to bring back a recent delete.
+    - **Removing a tip group's first stage keeps the group's tips** (Andy found the old behavior,
+      2026-11-11): a bug fix in every removal of a stage.
+    - **Very thorough tests** (Andy asked): deleting every kind alone and mixed, and each entry
+      pasted back where it was giving the same plan and the same Biomek files, in Node, and a
+      browser walk-through.
+    It changes neither plan files nor the Biomek files' format; what a plan writes changes only
+    after a removal of a tip group's first stage.
 33. **Every transfer's volume at once** (Andy, 2026-11-11; hands-off workflow): Andy's feature idea
     "Change all volumes at once in a stage". Decided with Andy, from a preview on 2026-11-11:
     - **An All transfers box** at the top of a stage's shown transfer list: the volume all its
@@ -1348,9 +1389,13 @@ final Biomek runs, so they test the files as they will be:
     It changes no Biomek files and no plan files, so it needn't come before the final runs.
 22. Writing the run as a folder (item 31), added on 2026-11-10: preview, specifications, then
     build. It changes no Biomek files or plan files, so it needn't come before the final runs.
-23. Every transfer's volume at once (item 33), added on 2026-11-11: preview, specifications, then
+23. Deleting and the trash (item 32), added on 2026-11-11: preview, specifications, then build. It
+    changes no plan files and not the Biomek files' format; it changes what a plan writes only
+    after a tip group's first stage is removed (now keeping the group's tips), which Andy confirms
+    by merging.
+24. Every transfer's volume at once (item 33), added on 2026-11-11: preview, specifications, then
     build. It changes no Biomek files or plan files, so it needn't come before the final runs.
-24. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+25. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a
@@ -1420,6 +1465,19 @@ final Biomek runs, so they test the files as they will be:
 
 ## Technical debt
 Shortcuts taken knowingly, each with what doing it properly would mean.
+- **No keyboard way to take something out of the trash** (2026-11-11, item 32): an entry can only
+  be dragged out with the mouse, so someone who can't use one can't get anything back except by
+  Undo. Properly: entries in the tab order, with a key (or a menu) to paste the focused entry below
+  the selection, as Ctrl+V does.
+- **A stored trash a tab can't read in full is left alone** (2026-11-11, item 32): one written by a
+  newer version, or damaged, is never written over; each tab then keeps a trash of its own in
+  memory, lost when it closes, and says so once. Properly: offer to empty the stored trash (or
+  keep what can be read of it) from the note, so the trash can be kept again without clearing the
+  browser's storage by hand.
+- **Tabs don't follow each other's trash** (2026-11-11, item 32): each change to the trash reads the
+  stored trash first and writes it back, so no tab undoes another's change, but a tab left alone
+  shows the trash as it last read it, until its own next change or a reload. Properly: listen for
+  the browser's `storage` event and redraw the trash from it.
 - **The tutorial can't run unbuilt** (2026-11-08, item 29): the build joins the transfer
   designer's page and the guide panel, adding `data-tutorial` to the page's HTML, so `npm run serve`
   has no tutorial page. Trying it means `npm run build` first. Doing it properly would mean a small
