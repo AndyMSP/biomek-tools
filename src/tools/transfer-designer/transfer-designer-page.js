@@ -152,6 +152,17 @@ import {
   readStockTable,
   addStocks,
   stockTable,
+  MIXING_WAYS,
+  mixingGroups,
+  addMixingBox,
+  updateMixingBox,
+  removeMixingBox,
+  canRemoveMixingBox,
+  mixingBoxAt,
+  mixingBoxOf,
+  mixingBoxDraft,
+  mixedContentsOf,
+  isMixingBoxOutOfDate,
 } from "./transfer-designer.js";
 import {
   CONCENTRATION_UNITS,
@@ -293,6 +304,23 @@ const wideLayout = window.matchMedia("(min-width: 1001px)");
 
 // With the system's "reduce motion" setting, the column jumps rather than scrolls smoothly.
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+// What a mixing box's heading says of each way to mix, after its count (section 7, "Its heading").
+const WAY_SHORT_TEXT = { freshTip: "fresh tip per well", sameContents: "same contents share a tip" };
+
+// Each way to mix's name and its one-line note in the mixing wizard (section 7, "2 · How to mix").
+// The fresh-tip note says it's still to be checked in simulation, as it isn't verified (biomek.md,
+// "Not yet known").
+const WAY_CHOICES = {
+  freshTip: {
+    name: "A fresh tip for every well",
+    note: "Meant to give each well its own tip (to be checked in simulation).",
+  },
+  sameContents: {
+    name: "One tip for wells with the same contents",
+    note: "Wells holding the same things, in the same shares, share a tip.",
+  },
+};
 
 // --- The page's state (section 4) ---
 
@@ -459,16 +487,29 @@ const outOfDateByPlan = new WeakMap();
 // randomizations, since each check reads its table again.
 const tablesOutOfDateByPlan = new WeakMap();
 
+// The mixing boxes found out of date (section 6), worked out once per plan as for transfer tables.
+const mixingBoxesOutOfDateByPlan = new WeakMap();
+
 // The transfer table wizard while it's open (section 7, "The wizard"), or null: see openNewWizard.
 let wizard = null;
+
+// The mixing wizard while it's open (section 7, "The mixing wizard"), or null: { id, beforeId,
+// toPlace, seamIndex, draft, extraProbes, before, element, pointedChip, refocus }. `id` is the mixing
+// box it edits (null for a new one, added before stage `beforeId`, keeping the randomizations
+// `toPlace` above it, drawn just after the seam between tip groups numbered `seamIndex`); `draft` is
+// { way, wells, tipType, probes }; `extraProbes` the probes the probe menu names in an extra entry,
+// or null; `before` what was selected when it opened ({ pickedSet, selectionAnchor }); `element` the
+// panel as drawn; `pointedChip` the Makes chip whose wells are ringed, or null; `refocus` the focus
+// key of the control to give the focus back to after drawing. Not kept by the browser copy.
+let mixingWizard = null;
 
 // The stock dialog while it's open (section 8, "Pasting stocks"), or null: { table, pasteRefused,
 // gridElement, mainButton }, `table` the pasted rows of cells (null before a paste).
 let stockDialog = null;
 
-// The IDs of the transfer tables and randomizations whose box is open, showing its stages (section
-// 7, "Its box"): remembered while the page is open, not saved in plan files and not an undo step.
-// Their IDs never clash ("t1", "r1").
+// The IDs of the transfer tables, mixing boxes and randomizations whose box is open, showing its
+// stages (section 7, "Its box"): remembered while the page is open, not saved in plan files and not
+// an undo step. Their IDs never clash ("t1", "m1", "r1").
 const openBoxes = new Set();
 
 // The open entry when refresh last looked, so a transfer table's or randomization's box opens once
@@ -592,6 +633,7 @@ function setUpPage() {
   connectHeaderBoxGuard();
   connectWizard();
   connectStockDialog();
+  connectMixingWizardGuard();
   window.addEventListener("scroll", fitStagesColumn);
   window.addEventListener("resize", () => {
     fitStagesColumn();
@@ -873,7 +915,7 @@ function refresh() {
   requestAnimationFrame(fitStagesColumn);
 }
 
-// Opens the box of the transfer table or randomization whose stage, or the randomization whose
+// Opens the box of the transfer table, mixing box or randomization whose stage, or the randomization whose
 // card, has just become the open entry (section 7, "Its box"), once: after that, its heading can
 // close it while the stage stays open.
 function openBoxOfNewlyOpenEntry(plan) {
@@ -884,7 +926,7 @@ function openBoxOfNewlyOpenEntry(plan) {
   openEntrySeen = open;
   let owner = null;
   if (isStage(plan, open)) {
-    owner = transferTableOf(plan, open) ?? randomizationOf(plan, open);
+    owner = transferTableOf(plan, open) ?? mixingBoxOf(plan, open) ?? randomizationOf(plan, open);
   } else if (isRandomization(plan, open)) {
     owner = open;
   }
@@ -1259,7 +1301,7 @@ function toggleBiomekBox() {
   const now = new Date();
   const summary = elements.biomekSummary;
   try {
-    checkNoRandomizationOutOfDate(currentPlan());
+    checkNoBoxOutOfDate(currentPlan());
     const { folderName, files } = writeRunFiles(currentPlan(), now);
     const sheet = labwareSheet(currentPlan(), folderName, now);
     const planFile = recordsPlanFile(currentPlan(), folderName);
@@ -1306,13 +1348,14 @@ function showBiomekSummary() {
   }
 }
 
-// Throws if a randomization or transfer table of the plan is out of date (section 5), naming the
-// first in the column's order by its first stage: 'A randomization (at stage 1, “Drug”) is out of
-// date: open it and press Update.' or 'A transfer table (at stage 3, “Media”) is out of date: …'.
-function checkNoRandomizationOutOfDate(plan) {
+// Throws if a randomization, transfer table or mixing box of the plan is out of date (section 5),
+// naming the first in the column's order by its first stage: 'A randomization (at stage 1, “Drug”)
+// is out of date: open it and press Update.', 'A transfer table (at stage 3, “Media”) is out of
+// date: …' or 'A mixing box (at stage 7, “Mix 1 of 3”) is out of date: …'.
+function checkNoBoxOutOfDate(plan) {
   const box = firstOutOfDateBox(plan);
   if (box !== null) {
-    const what = box.kind === "randomization" ? "A randomization" : "A transfer table";
+    const what = { randomization: "A randomization", transferTable: "A transfer table", mixingBox: "A mixing box" }[box.kind];
     throw new Error(
       `${what} (at ${stageLabel(plan, box.tipGroups[0].stages[0])}) is out of date: open it and press Update.`,
     );
@@ -1722,15 +1765,17 @@ function readBrowserCopy() {
 // component colors, the labware and the arrows, for the point the deck shows.
 function refreshDeck() {
   const plan = currentPlan();
-  const open = currentOpen();
-  shownOperationCount = operationCountShown(plan, open);
+  // While the mixing wizard is open, the deck shows the plates where its mix steps go, as no
+  // stage: nothing faded, no arrows, no stage's badges (section 7, "While it's open").
+  const open = mixingWizard === null ? currentOpen() : null;
+  shownOperationCount = mixingWizard === null ? operationCountShown(plan, open) : operationCountAtMixing(plan);
   shownSnapshot = replay(plan.startingContents, plan.operationList, shownOperationCount);
   shownTraces = null;
   stageStartSnapshot = isStage(plan, open)
     ? replay(plan.startingContents, plan.operationList, operationCountBefore(plan, open))
     : null;
   openStageMixedWells = mixedWellsOf(plan, open);
-  lastingMixProblems = lastingMixProblemsOf(plan, open);
+  lastingMixProblems = lastingMixProblemsOf(plan, mixingWizard === null ? open : (mixingAt(plan) ?? END));
   refreshTimeline(plan, open);
   // Undo and Redo are off while a randomization's card is open: its changes aren't in the plan yet.
   elements.undo.disabled = !history.canUndo() || card !== null;
@@ -1817,6 +1862,13 @@ function addMixedWell(mixed, entry, problem, volume) {
   mixed.set(wellKeyText, well);
 }
 
+// How many operations have run where the mixing wizard's mix steps go (section 11): those of the
+// stages with transfers before them, or all for the end of the run.
+function operationCountAtMixing(plan) {
+  const at = mixingAt(plan);
+  return at === null ? plan.operationList.listOperations().length : operationCountBefore(plan, at);
+}
+
 // True if stage `id` mixes at either end.
 function stageMixes(plan, id) {
   const { settings } = plan.stageList.get(id);
@@ -1873,7 +1925,7 @@ function transfersDoneUpTo(plan, id, including) {
 
 // Shows the timeline's caption and whether ‹ and › can go anywhere (section 11).
 function refreshTimeline(plan, open) {
-  elements.timelineCaption.textContent = timelineCaption(plan, open);
+  elements.timelineCaption.textContent = mixingWizard === null ? timelineCaption(plan, open) : mixingCaption(plan);
   // From a randomization's card, both step somewhere: Start is before it and End after it at most.
   elements.previousPoint.disabled = open === START;
   elements.nextPoint.disabled = open === END;
@@ -1902,8 +1954,8 @@ function timelineCaption(plan, open) {
 
 // Shows "No problems" in green or "N problems" in red (section 6): each contents problem in the
 // whole plan (a draw into the dead volume, an overdraw or an overfill, including a well that starts
-// over its capacity) counts as one, and so does each randomization or transfer table that's out of
-// date and each stage with a mix problem.
+// over its capacity) counts as one, and so does each randomization, transfer table or mixing box
+// that's out of date and each stage with a mix problem.
 function refreshProblemCount(plan) {
   const count = problemCount(plan);
   elements.problemCount.textContent = count === 0 ? "No problems" : countOf(count, "problem");
@@ -1912,13 +1964,14 @@ function refreshProblemCount(plan) {
 }
 
 // The number of problems in the whole plan, as the problem count shows it (section 6, "First bar"):
-// each contents problem, each randomization or transfer table that's out of date, and each stage
-// with a mix problem, e.g. 2.
+// each contents problem, each randomization, transfer table or mixing box that's out of date, and
+// each stage with a mix problem, e.g. 2.
 function problemCount(plan) {
   return (
     replay(plan.startingContents, plan.operationList).listProblems().length +
     outOfDateRandomizations(plan).size +
     outOfDateTransferTables(plan).size +
+    outOfDateMixingBoxes(plan).size +
     stagesWithMixProblem(plan).size
   );
 }
@@ -1937,15 +1990,17 @@ function outOfDateTransferTables(plan) {
   return tablesOutOfDateByPlan.get(plan);
 }
 
-// The first box in the column's order that's a run randomization or a transfer table out of date
-// (columnBoxes' box), or null (section 5).
+// The first box in the column's order that's a run randomization, a transfer table or a mixing box
+// out of date (columnBoxes' box), or null (section 5).
 function firstOutOfDateBox(plan) {
   const randomizations = outOfDateRandomizations(plan);
   const tables = outOfDateTransferTables(plan);
+  const mixingBoxes = outOfDateMixingBoxes(plan);
   const box = columnBoxes(plan).find(
     (candidate) =>
       (candidate.kind === "randomization" && randomizations.has(candidate.id)) ||
-      (candidate.kind === "transferTable" && tables.has(candidate.id)),
+      (candidate.kind === "transferTable" && tables.has(candidate.id)) ||
+      (candidate.kind === "mixingBox" && mixingBoxes.has(candidate.id)),
   );
   return box ?? null;
 }
@@ -2373,6 +2428,14 @@ function markWells(plan, open) {
       wellElements.get(wellKey(end))?.classList.add("to-fill");
     }
   }
+  // The mixing wizard's picked wells, as a randomization's wells to fill, and its pointed chip's
+  // wells ringed (section 6).
+  if (mixingWizard !== null) {
+    for (const end of mixingWizard.draft.wells) {
+      wellElements.get(wellKey(end))?.classList.add("to-fill");
+    }
+    markChipWells(plan);
+  }
 }
 
 // --- Arrows (section 6) ---
@@ -2384,7 +2447,7 @@ function drawStageArrows() {
   const open = currentOpen();
   const layer = arrowGroup("stage-arrows");
   layer.replaceChildren();
-  if (!arrowsShown || !isStage(plan, open)) {
+  if (!arrowsShown || !isStage(plan, open) || mixingWizard !== null) {
     return;
   }
   for (const transfer of transfersIn(plan, open)) {
@@ -2503,39 +2566,58 @@ function createArrow(from, to, color, { insetEnd, dashed }) {
 // --- The Stages column (section 7) ---
 
 // Redraws the Stages column from the plan: Start, the tip group boxes with their stages, each
-// randomization's and transfer table's box where it sits (columnBlocks), End, a seam between tip
-// groups above each box and above End, and the open editing box.
+// randomization's, transfer table's and mixing box's box where it sits (columnBlocks), End, a seam
+// between tip groups above each box and above End, the mixing wizard while it's open (just after
+// its seam, or after the mixing box it edits, with nothing shown as open or selected), and the
+// open editing box.
 function refreshStages() {
   const plan = currentPlan();
-  const open = currentOpen();
+  // While the mixing wizard is open, no entry is shown as open (section 7, "While it's open").
+  const open = mixingWizard === null ? currentOpen() : null;
   const problems = stageProblems(plan);
   const blocks = columnBlocks(plan);
   const drawnKeys = new Set();
   const items = [createEntry(plan, START, open, problems)];
+  // The mixing wizard, drawn just after the seam it was opened from or the box it edits.
+  const pushWizardIf = (here) => {
+    if (here && mixingWizard !== null) {
+      items.push(createMixingWizard(plan));
+    }
+  };
   // Tip group boxes alternate light blue and light sand, counting those inside randomizations too.
   let groupIndex = 0;
   blocks.forEach((block, index) => {
-    items.push(withDropPlace(createSeamBetweenGroups(plan, seamPlace(blocks, index)), betweenBoxes(index)));
+    items.push(withDropPlace(createSeamBetweenGroups(plan, seamPlace(blocks, index), index), betweenBoxes(index)));
+    pushWizardIf(mixingWizard?.id === null && mixingWizard.seamIndex === index);
     if (block.kind === "group") {
       items.push(createTipGroupBox(plan, block, groupIndex, open, problems, drawnKeys, false, index));
       groupIndex += 1;
     } else if (block.kind === "randomization") {
       items.push(createRandomizationBox(plan, block, groupIndex, open, problems, drawnKeys));
       groupIndex += block.groups.length;
+    } else if (block.kind === "mixingBox") {
+      items.push(createMixingBoxBox(plan, block, groupIndex, open, problems, drawnKeys));
+      groupIndex += block.groups.length;
+      pushWizardIf(mixingWizard !== null && mixingWizard.id === block.mixingBox.id);
     } else {
       items.push(createTransferTableBox(plan, block, groupIndex, open, problems, drawnKeys, index));
       groupIndex += block.groups.length;
     }
   });
-  const lastSeam = createSeamBetweenGroups(plan, seamPlace(blocks, blocks.length));
+  const lastSeam = createSeamBetweenGroups(plan, seamPlace(blocks, blocks.length), blocks.length);
   items.push(withDropPlace(lastSeam, betweenBoxes(blocks.length)));
+  pushWizardIf(mixingWizard?.id === null && mixingWizard.seamIndex === blocks.length);
   items.push(createEntry(plan, END, open, problems));
   elements.stagesList.replaceChildren(...items);
+  if (mixingWizard !== null && mixingWizard.refocus !== null) {
+    focusWizardElement(mixingWizard.refocus, mixingWizard.element);
+  }
   // While moving wells, the ✎ buttons, the ×s and the seams are hidden, their space kept (section 7).
   elements.stagesList.classList.toggle("moving-wells", movingWells);
   lastDrawnKeys = drawnKeys;
   glowsToStart.clear();
-  markSelection(selectedItems());
+  // While the mixing wizard is open, no selection mark shows (section 7, "While it's open").
+  markSelection(mixingWizard === null ? selectedItems() : []);
   placeEditingBox();
   // The box for a new component's name keeps the keyboard focus while it's open (section 8).
   elements.stagesList.querySelector(".new-component-box")?.focus();
@@ -2549,7 +2631,8 @@ function stageProblems(plan) {
 
 // Start, a stage or End as a row (closed) or a card (open), sharing one look: a number in a badge, a
 // name and a count; a card adds its contents, and a stage's card its ✎ after the name. A mix step has
-// a ⟳ after its name, and the open entry a "Shown on deck" tag. A stage with
+// a ⟳ after its name, and the open entry a "Shown on deck" tag; a mixing box's mix step has no ✎, and
+// says what it mixes in its tooltip. A stage with
 // a problem (`problems`, from stageProblems) is marked, with a tooltip saying which; one with both a
 // contents problem and a mix problem has the contents problem's tooltip.
 function createEntry(plan, key, open, problems) {
@@ -2597,7 +2680,13 @@ function createEntry(plan, key, open, problems) {
   // An open stage's ✎ sits just after its name, so its editing box floats under the heading
   // (section 10); the count stays at the right. A randomization's or transfer table's stage has one
   // too, for its pipetting (section 7).
-  if (isOpen && isStage(plan, key)) {
+  // A mixing box's mix step has none: nothing on it can be changed (section 7, "The mixing box"); its
+  // row and card heading say what it mixes instead.
+  const ofMixingBox = isStage(plan, key) && mixingBoxOf(plan, key) !== null;
+  if (ofMixingBox) {
+    row.title = mixStepTooltip(plan, key);
+  }
+  if (isOpen && isStage(plan, key) && !ofMixingBox) {
     row.classList.add("with-pencil");
     row.append(createPencil("stage", key, `Edit stage ${stageOrder(plan).indexOf(key) + 1}`));
   }
@@ -2688,6 +2777,12 @@ function createEntryBody(plan, key) {
         "The deck shows the plates after every stage has run. Open a stage to add or change transfers.",
         "note",
       ),
+    );
+  } else if (isMixStep(plan, key) && mixingBoxOf(plan, key) !== null) {
+    // A mixing box's mix step: nothing on it changes here (section 7, "The mixing box").
+    body.append(
+      createElement("p", "Part of a mixing box: its wells and tips change in the box.", "note"),
+      ...createMixedWellSection(plan, key),
     );
   } else if (isMixStep(plan, key)) {
     // A mix step's card has no settings line: the ⟳ after its name says what it is (section 7).
@@ -2797,7 +2892,7 @@ function createMixedWellSection(plan, id) {
 
 // One mixed well's row (section 7), e.g. "⟳ Plate1 A2", then how much of the well is mixed,
 // "33% of well" ("too little" in red for the well causing a mix problem, "–" for the other wells of
-// that row), and × at the right, which stops mixing it. Pointing at the row singles its well out on
+// that row), and × at the right, which stops mixing it (none for a mixing box's mix step). Pointing at the row singles its well out on
 // the deck, as for a transfer. `howMixed` is the mix step's wells from mixedWellsOf.
 function createMixedWellRow(plan, id, transfer, howMixed) {
   const row = createElement("li", "", "transfer-row mixed-well-row");
@@ -2806,16 +2901,20 @@ function createMixedWellRow(plan, id, transfer, howMixed) {
   const mixed = howMixed.get(wellKey(transfer.source));
   const share = createElement("span", mixedShareText(mixed), "mixed-share");
   share.classList.toggle("problem", mixed !== undefined && mixed.problemVolume !== null);
-  const remove = createElement("button", "×", "remove-transfer");
-  remove.type = "button";
-  remove.setAttribute("aria-label", `Stop mixing ${name}`);
-  remove.addEventListener("click", () => {
-    highlightTransfer(null);
-    if (tryEdit(() => unmixWell(plan, id, transfer.source)) !== false) {
-      showMessage(`Stopped mixing ${name}.`, "note");
-    }
-  });
-  row.append(createElement("span", `⟳ ${name}`, "transfer-text"), share, remove);
+  row.append(createElement("span", `⟳ ${name}`, "transfer-text"), share);
+  // A mixing box's mix step has no × (section 7, "The mixing box"): its wells change in the box.
+  if (mixingBoxOf(plan, id) === null) {
+    const remove = createElement("button", "×", "remove-transfer");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `Stop mixing ${name}`);
+    remove.addEventListener("click", () => {
+      highlightTransfer(null);
+      if (tryEdit(() => unmixWell(plan, id, transfer.source)) !== false) {
+        showMessage(`Stopped mixing ${name}.`, "note");
+      }
+    });
+    row.append(remove);
+  }
   row.addEventListener("pointerenter", () => highlightTransfer(transfer.position));
   row.addEventListener("pointerleave", () => highlightTransfer(null));
   return row;
@@ -3248,7 +3347,8 @@ function highlightTransfer(position) {
 // The column's blocks between Start and End, in the order the logic's columnBoxes gives (section
 // 7: the page doesn't work the order out itself): each ordinary tip group, as { kind: "group",
 // group, nextGroup }, each randomization, as { kind: "randomization", randomization, groups }, and
-// each transfer table, as { kind: "transferTable", transferTable, groups }, `groups` being its
+// each transfer table, as { kind: "transferTable", transferTable, groups }, and each mixing box, as
+// { kind: "mixingBox", mixingBox, groups }, `groups` being its
 // stages' tip groups in that form (none until a randomization has run). `nextGroup` is the tip
 // group just after, in stage order, if any.
 function columnBlocks(plan) {
@@ -3263,6 +3363,9 @@ function columnBlocks(plan) {
       return groupBlock(box.key);
     }
     const groups = box.tipGroups.map((group) => groupBlock(group.key));
+    if (box.kind === "mixingBox") {
+      return { kind: "mixingBox", mixingBox: mixingBoxAt(plan, box.id), groups };
+    }
     return box.kind === "randomization"
       ? { kind: "randomization", randomization: randomizationAt(plan, box.id), groups }
       : { kind: "transferTable", transferTable: transferTableAt(plan, box.id), groups };
@@ -3301,7 +3404,7 @@ function seamPlace(blocks, index) {
 // alternate light blue and light sand. `block` is { group, nextGroup }, `nextGroup` being the box
 // after it, if any. A randomization's or transfer table's own tip group (`owned`: "randomization"
 // or "transferTable", otherwise false) has no seams inside it; its heading's ✎ edits its tips, as
-// any tip group's does (section 7).
+// any tip group's does (section 7). A mixing box's ("mixingBox") has no ✎ either.
 // `boxIndex` is its box's index in the column (columnBoxes), for an ordinary tip group: its seams
 // are the places inside it where moved or pasted stages can go.
 function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, drawnKeys, owned, boxIndex) {
@@ -3309,7 +3412,8 @@ function createTipGroupBox(plan, { group, nextGroup }, index, open, problems, dr
   box.classList.toggle("sand", index % 2 === 1);
   box.classList.toggle("owned", owned !== false);
   box.dataset.group = group.key;
-  const heading = createTipGroupHeading(group);
+  // A mixing box's mix steps' tips change only in the mixing box: no ✎ (section 7).
+  const heading = createTipGroupHeading(group, owned !== "mixingBox");
   // An ordinary tip group is an item, selected and dragged by its heading; a randomization's own
   // tip group's heading counts as its first stage's row, since that tip group may hold several
   // stages when sources share tips (section 7, "Moving and copying").
@@ -3393,9 +3497,10 @@ function applyBoxGlow(box, group, drawnKeys) {
 }
 
 // A tip group's heading: a tip icon, "New tips · BC230 · 2 tips" and the ✎ that opens the tip
-// change's box. The count is how many tips the tip change loads: one per probe it loads, chosen in
-// its box, and every stage in the group uses all of them (section 7).
-function createTipGroupHeading(group) {
+// change's box (unless `withPencil` is false, for a mixing box's). The count is how many tips the tip
+// change loads: one per probe it loads, chosen in its box, and every stage in the group uses all of
+// them (section 7).
+function createTipGroupHeading(group, withPencil = true) {
   const tips = countOf(group.probes.length, "tip");
   const heading = createElement("div", "", "tip-group-heading");
   heading.title = `Loads ${tips}. Every stage until the next new tips uses all of them.`;
@@ -3403,7 +3508,9 @@ function createTipGroupHeading(group) {
     createElement("span", "", "tip-icon"),
     createElement("span", `New tips · ${group.tipType} · ${tips}`),
   );
-  heading.append(createPencil("tip", group.key, "Edit these new tips"));
+  if (withPencil) {
+    heading.append(createPencil("tip", group.key, "Edit these new tips"));
+  }
   return heading;
 }
 
@@ -3438,9 +3545,11 @@ function createSeamInBox(plan, { addBefore, takeTips, accessibleName, tipsBefore
 // box among them), or above End, whose stage or mix step gets new tips, as a tip group of its own,
 // and whose right spot holds the dice button, adding a randomization there. `place` is
 // { beforeId, toPlace } (seamPlace): the first stage of the box below it, or null above End, and
-// the randomizations that haven't run just above it, which stay above a stage added here.
+// the randomizations that haven't run just above it, which stay above a stage added here. Its fifth
+// spot holds the mixing button, which opens a new mixing wizard just after it; `seamIndex` is its
+// place among the seams between tip groups, from 0 above the first box.
 // e.g. the seam above End, whose + is named "Add a stage with new tips at the end of the run".
-function createSeamBetweenGroups(plan, { beforeId, toPlace }) {
+function createSeamBetweenGroups(plan, { beforeId, toPlace }, seamIndex) {
   const where = beforeId === null ? "at the end of the run" : `before ${stageLabel(plan, beforeId)}`;
   // Adds with `add` ({ plan, id } from the plan), then keeps the randomizations above the seam
   // above the new stage, as one edit.
@@ -3470,19 +3579,34 @@ function createSeamBetweenGroups(plan, { beforeId, toPlace }) {
     fourthButton: createSeamTableButton(`Add a transfer table ${where}`, () =>
       openNewWizard(beforeId, toPlace),
     ),
+    mixingButton: createSeamMixingButton(`Add mixing ${where}`, () => openNewMixingWizard(beforeId, toPlace, seamIndex)),
   });
 }
 
-// A seam's line and its four fixed spots (section 7), shown while pointed at or focused: the mix
+// A seam's line and its five fixed spots (section 7), shown while pointed at or focused: the fifth
+// spot, holding `mixingButton` (seams between tip groups: the mixing button) or left empty, the mix
 // step button, the + in the middle, the right spot, holding `rightButton` or left empty, and the
 // fourth spot, holding `fourthButton` (seams between tip groups: the table button) or left empty, in
 // that order, so keyboard focus moves through them left to right. `className` is the seam's
 // classes; `tooltips` the +'s and the mix step button's ({ stage, mixStep }); `accessibleName` the
 // +'s, which says "a stage" (the mix step button's says "a mix step" instead); `addStageHere` and
 // `addMixStepHere` what the two buttons do.
-function createSeam({ className, tooltips, accessibleName, addStageHere, addMixStepHere, rightButton, fourthButton = null }) {
+function createSeam({
+  className,
+  tooltips,
+  accessibleName,
+  addStageHere,
+  addMixStepHere,
+  rightButton,
+  fourthButton = null,
+  mixingButton = null,
+}) {
   const seam = createElement("div", "", className);
   seam.append(createElement("span", "", "seam-line"));
+  // The fifth spot, just left of the mix step button: first, so keyboard focus reaches it first.
+  if (mixingButton !== null) {
+    seam.append(mixingButton);
+  }
   const mix = createElement("button", "⟳", "seam-button add-mix-step");
   mix.type = "button";
   mix.title = tooltips.mixStep;
@@ -4942,9 +5066,13 @@ function pickFillBox(wells, firstWell) {
   draftChangedOnDeck();
 }
 
-// The note for a click or drag on the deck while a randomization's or transfer table's stage `id`
-// is open (section 7).
+// The note for a click or drag on the deck while a randomization's, transfer table's or mixing box's
+// stage `id` is open (section 7).
 function showOwnedStageNote(plan, id) {
+  if (mixingBoxOf(plan, id) !== null) {
+    showMessage("This mix step is part of a mixing box: change its wells in the box.", "note");
+    return;
+  }
   if (transferTableOf(plan, id) !== null) {
     showMessage("This stage is part of a transfer table: change its amounts in the table.", "note");
     return;
@@ -4952,10 +5080,10 @@ function showOwnedStageNote(plan, id) {
   showMessage("This stage is part of a randomization: change it in its card.", "note");
 }
 
-// True if stage `id` belongs to a randomization or a transfer table, so its transfers change only
-// through them (section 7).
+// True if stage `id` belongs to a randomization, a transfer table or a mixing box, so its transfers
+// change only through them (section 7).
 function isOwnedStage(plan, id) {
-  return randomizationOf(plan, id) !== null || transferTableOf(plan, id) !== null;
+  return randomizationOf(plan, id) !== null || transferTableOf(plan, id) !== null || mixingBoxOf(plan, id) !== null;
 }
 
 // --- Transfer tables (section 7, "Transfer tables") ---
@@ -6032,6 +6160,600 @@ function removeFromWizard() {
   showTrashStorageNote();
 }
 
+// --- Mixing boxes (section 7, "Mixing boxes") ---
+
+// A mixing box's box in the Stages column (section 7, "The mixing box"): its heading and ✎, then,
+// while the box is open (openBoxes), its mix steps' tip group boxes (one mix step each), with no
+// seams or drop places inside. `block` is from columnBlocks; `groupIndex` the place of its first tip
+// group among all of them, for their colors.
+function createMixingBoxBox(plan, block, groupIndex, open, problems, drawnKeys) {
+  const { mixingBox, groups } = block;
+  const box = createElement("div", "", "mixing-box");
+  box.dataset.item = itemKey({ kind: "mixingBox", id: mixingBox.id });
+  applyGlow(box, box.dataset.item, drawnKeys, { whenNew: false });
+  const expanded = openBoxes.has(mixingBox.id);
+  const heading = createMixingBoxHeading(mixingBox, outOfDateMixingBoxes(plan).has(mixingBox.id), expanded);
+  heading.dataset.itemHandle = box.dataset.item;
+  box.append(createBoxHead(heading, createMixingBoxPencil(mixingBox.id)));
+  if (!expanded) {
+    groups.forEach(({ group }) => noteDrawnWithoutGlow(group, drawnKeys));
+    return box;
+  }
+  const stages = createElement("div", "", "mixing-box-stages");
+  groups.forEach((groupBlock, place) => {
+    stages.append(createTipGroupBox(plan, groupBlock, groupIndex + place, open, problems, drawnKeys, "mixingBox"));
+  });
+  box.append(stages);
+  return box;
+}
+
+// A mixing box's heading (section 7): ▸ (closed) or ▾ (open, `expanded`), ⟳, "Mixing", and, at the
+// right, "3 mix steps · fresh tip per well" (or "· same contents share a tip"), or, when `outOfDate`,
+// "needs update" in red. Clicking it opens or closes the box (clickItem). The right-hand text is
+// cut short first.
+function createMixingBoxHeading(mixingBox, outOfDate, expanded) {
+  return createBoxHeading({
+    className: "mixing-box-heading",
+    expanded,
+    icon: createElement("span", "⟳", "mixing-box-icon"),
+    title: "Mixing",
+    status: `${countOf(mixingBox.stages.length, "mix step")} · ${WAY_SHORT_TEXT[mixingBox.way]}`,
+    outOfDate,
+    outOfDateTooltip: "What its wells hold before it, or where they are, has changed: press ✎, then Update.",
+    tooltip: expanded ? "Hide its mix steps" : "Show its mix steps",
+  });
+}
+
+// The ✎ on a mixing box's heading (section 7): opens the mixing wizard for it, just after its box,
+// and selects it.
+function createMixingBoxPencil(id) {
+  return createBoxPencil({
+    tooltip: "Change its wells, how it mixes and its tips, or remove it",
+    accessibleName: "Edit mixing box",
+    onClick: () => afterClosingCard(() => openMixingWizardFor(id)),
+  });
+}
+
+// The seam's mixing button (section 7, "The seam's mixing button"): a circle with ⟳⟳ in the fifth
+// spot, just left of the mix step button, with the tooltip "Add mixing here", `accessibleName` and
+// `onClick`.
+function createSeamMixingButton(accessibleName, onClick) {
+  const button = createElement("button", "⟳⟳", "seam-button add-mixing");
+  button.type = "button";
+  button.title = "Add mixing here";
+  button.setAttribute("aria-label", accessibleName);
+  button.addEventListener("click", () => afterClosingCard(onClick));
+  return button;
+}
+
+// The IDs of the plan's mixing boxes that are out of date (isMixingBoxOutOfDate), as a Set, worked
+// out once per plan, as for randomizations and transfer tables (section 6).
+function outOfDateMixingBoxes(plan) {
+  if (!mixingBoxesOutOfDateByPlan.has(plan)) {
+    const ids = new Set(
+      plan.mixingBoxes.filter((mixingBox) => isMixingBoxOutOfDate(plan, mixingBox.id)).map((mixingBox) => mixingBox.id),
+    );
+    mixingBoxesOutOfDateByPlan.set(plan, ids);
+  }
+  return mixingBoxesOutOfDateByPlan.get(plan);
+}
+
+// What a mixing box's mix step mixes, as its tooltip and its wizard chip say it (section 7): its
+// components joined by " + " ("Drug A + Media"), "empty" for none, or "its wells hold different
+// things" when they differ, from `components` (mixedContentsOf, or a group's components).
+function mixedContentsText(components) {
+  if (components === null) {
+    return "its wells hold different things";
+  }
+  return components.length === 0 ? "empty" : components.join(" + ");
+}
+
+// The tooltip of a mixing box's mix step `id` (section 7): its name and what its wells hold, e.g.
+// "Mix 1 of 3: Media + Drug A".
+function mixStepTooltip(plan, id) {
+  return `${plan.stageList.get(id).name}: ${mixedContentsText(mixedContentsOf(plan, id))}`;
+}
+
+// --- The mixing wizard (section 7, "The mixing wizard") ---
+
+// Opens a new mixing wizard just after the seam between tip groups at `seamIndex` (its place among
+// the column's seams between tip groups), for mix steps before stage `beforeId` (or at the end, for
+// null); `toPlace` are the randomizations that haven't run just above the seam, which Make keeps
+// above the mixing box. Its tips start from the tips in use there. Nothing is added until Make.
+function openNewMixingWizard(beforeId, toPlace, seamIndex) {
+  const tips = tipsInUseBefore(currentPlan(), beforeId);
+  startMixingWizard({
+    id: null,
+    beforeId,
+    toPlace,
+    seamIndex,
+    draft: { way: MIXING_WAYS[0], wells: [], tipType: tips.tipType, probes: [...tips.probes] },
+  });
+}
+
+// Opens the mixing wizard for mixing box `id`, just after its box, with its wells, way and tips
+// (mixingBoxDraft), selecting the mixing box first, as its ✎ does (so Cancel leaves it selected).
+function openMixingWizardFor(id) {
+  pickedSet = [{ kind: "mixingBox", id }];
+  selectionAnchor = pickedSet[0];
+  startMixingWizard({ id, beforeId: null, toPlace: [], seamIndex: null, draft: mixingBoxDraft(currentPlan(), id) });
+}
+
+// Opens the mixing wizard as `opening` ({ id, beforeId, toPlace, seamIndex, draft }) says, keeping
+// what was selected so Cancel can select it again (section 7, "Escape"), and closing an editing box
+// and any chosen source first. The column shows it and scrolls just enough to show it.
+function startMixingWizard(opening) {
+  closeEditingBox();
+  source = null;
+  mixingWizard = {
+    ...opening,
+    // The probes the probe menu can't show as "N probes" (section 7, "3 · Tips"), or null.
+    extraProbes: isFirstProbes(opening.draft.probes) ? null : [...opening.draft.probes],
+    before: { pickedSet, selectionAnchor },
+    element: null,
+    pointedChip: null,
+    refocus: null,
+  };
+  refresh();
+  scrollIntoColumnView(mixingWizard.element);
+}
+
+// True if `probes` (smallest first) are the first N, e.g. [1, 2, 3] → true, [2, 3, 4] → false.
+function isFirstProbes(probes) {
+  return probes.every((probe, index) => probe === index + 1);
+}
+
+// The tips in use just before stage `beforeId` (section 7, "3 · Tips"): the tip group of the stage
+// before it in the stage order; the START tips when it's the first stage; for null, the plan's last
+// stage's, e.g. { tipType: "BC230", probes: [1, 2, 3, 4] }.
+function tipsInUseBefore(plan, beforeId) {
+  const order = stageOrder(plan);
+  const place = beforeId === null ? order.length : order.indexOf(beforeId);
+  if (place <= 0) {
+    return tipChangeAt(plan, START);
+  }
+  const before = order[place - 1];
+  const group = tipGroups(plan).find((candidate) => candidate.stages.includes(before));
+  return { tipType: group.tipType, probes: group.probes };
+}
+
+// Closes the mixing wizard, changing nothing, and selects again what was selected before it opened
+// (section 7, "Escape"); what was open is still open.
+function cancelMixingWizard() {
+  if (mixingWizard === null) {
+    return;
+  }
+  ({ pickedSet, selectionAnchor } = mixingWizard.before);
+  mixingWizard = null;
+  refresh();
+}
+
+// Shows that something else was refused while the mixing wizard is open (section 7, "While it's
+// open"): the wizard shakes and the message bar says what to do.
+function refuseWhileMixing() {
+  if (mixingWizard.element !== null) {
+    restartAnimation(mixingWizard.element, "shake");
+  }
+  showMessage(
+    mixingWizard.id === null ? "Make the mix steps, or cancel the mixing, first." : "Update the mixing box, or cancel, first.",
+    "note",
+  );
+}
+
+// The stage the mixing wizard's mix steps go before (section 11): a mixing box's first mix step, or
+// a new one's beforeId; null for the end of the run.
+function mixingAt(plan) {
+  return mixingWizard.id === null ? mixingWizard.beforeId : mixingBoxAt(plan, mixingWizard.id).stages[0];
+}
+
+// The timeline's caption while the mixing wizard is open (section 11), e.g. 'Mixing, before stage 7,
+// “S07 Media row C”', or "Mixing, after all stages".
+function mixingCaption(plan) {
+  const at = mixingAt(plan);
+  return at === null ? "Mixing, after all stages" : `Mixing, before ${stageLabel(plan, at)}`;
+}
+
+// The groups the wizard's draft makes now (mixingGroups), or [] if the logic can't work them out.
+function wizardGroups(plan) {
+  try {
+    return mixingGroups(plan, mixingWizard.draft, mixingAt(plan));
+  } catch {
+    return [];
+  }
+}
+
+// True if `end` is one of the wizard's picked wells.
+function isPickedToMix(end) {
+  return mixingWizard.draft.wells.some((well) => wellKey(well) === wellKey(end));
+}
+
+// A click (or Enter or Space) on a well while the mixing wizard is open: picks it, or takes it out
+// if it's picked (section 7, "1 · Wells to mix").
+function toggleWellToMix(end) {
+  const { draft } = mixingWizard;
+  draft.wells = isPickedToMix(end)
+    ? draft.wells.filter((well) => wellKey(well) !== wellKey(end))
+    : [...draft.wells, { labware: end.labware, well: end.well }];
+  mixingDraftChanged();
+}
+
+// A drag across a box of wells while the mixing wizard is open: adds the box's wells, or takes them
+// out if the well the drag started on (`firstWell`) was picked (section 7, "1 · Wells to mix").
+function pickBoxToMix(wells, firstWell) {
+  const { draft } = mixingWizard;
+  const inBox = new Set(wells.map(wellKey));
+  if (isPickedToMix(firstWell)) {
+    draft.wells = draft.wells.filter((well) => !inBox.has(wellKey(well)));
+  } else {
+    const picked = new Set(draft.wells.map(wellKey));
+    draft.wells = [...draft.wells, ...wells.filter((well) => !picked.has(wellKey(well))).map(({ labware, well }) => ({ labware, well }))];
+  }
+  mixingDraftChanged();
+}
+
+// Redraws what the wizard's draft changes: the deck's picked wells and the wizard itself.
+function mixingDraftChanged() {
+  mixingWizard.pointedChip = null;
+  refreshDeck();
+  refreshStages();
+  updateCursorLabel();
+}
+
+// Rings the wells of the wizard's chip number `index` on the deck (section 6), or none for null.
+function ringChipWells(index) {
+  mixingWizard.pointedChip = index;
+  markChipWells(currentPlan());
+}
+
+// Puts the ring on the wells of the wizard's pointed or focused chip, and takes it off the rest.
+function markChipWells(plan) {
+  const ringed = new Set();
+  if (mixingWizard !== null && mixingWizard.pointedChip !== null) {
+    const group = wizardGroups(plan)[mixingWizard.pointedChip];
+    for (const end of group?.wells ?? []) {
+      ringed.add(wellKey(end));
+    }
+  }
+  for (const [key, wellElement] of wellElements) {
+    wellElement.classList.toggle("chip-ring", ringed.has(key));
+  }
+}
+
+// The mixing wizard (section 7, "The mixing wizard"): a panel in the Stages column with its header,
+// the three sections, Makes and the footer, drawn from `mixingWizard`, which it remembers as its
+// element. The focus, if it was on one of its controls, goes back to the same control.
+function createMixingWizard(plan) {
+  const focused = document.activeElement?.closest?.("[data-wizard-focus]")?.dataset.wizardFocus;
+  const panel = createElement("section", "", "mixing-wizard");
+  panel.setAttribute("aria-label", mixingWizard.id === null ? "New mixing" : "Mixing");
+  const header = createElement("div", "", "mixing-wizard-header");
+  header.append(
+    createElement("span", "⟳⟳", "mixing-wizard-icon"),
+    createElement("span", mixingWizard.id === null ? "New mixing" : "Mixing", "mixing-wizard-title"),
+  );
+  const groups = wizardGroups(plan);
+  const body = createElement("div", "", "mixing-wizard-body");
+  body.append(
+    createWellsToMixSection(plan),
+    createHowToMixSection(),
+    createTipsSection(),
+    createMakesSection(plan, groups),
+  );
+  panel.append(header, body, createMixingWizardFooter(plan));
+  mixingWizard.element = panel;
+  // Given back by refreshStages once the panel is on the page.
+  mixingWizard.refocus = focused ?? null;
+  return panel;
+}
+
+// A section of the mixing wizard: its heading (e.g. "1 · Wells to mix") and `parts`.
+function createWizardSection(heading, ...parts) {
+  const section = createElement("div", "", "mixing-wizard-section");
+  section.append(createElement("div", heading, "mixing-wizard-heading"), ...parts);
+  return section;
+}
+
+// 1 · Wells to mix: how many are picked on each labware, in the deck's order, by label, e.g.
+// "10 on Plate1 · 4 on Plate2", then Clear; with none, a gray hint (section 7).
+function createWellsToMixSection(plan) {
+  const { wells } = mixingWizard.draft;
+  if (wells.length === 0) {
+    return createWizardSection("1 · Wells to mix", createElement("p", "Click or drag across wells on the deck.", "note"));
+  }
+  const counts = labwareNames()
+    .map((name) => ({ name, count: wells.filter((well) => well.labware === name).length }))
+    .filter(({ count }) => count > 0)
+    .map(({ name, count }) => `${count} on ${labelOf(plan, name)}`);
+  const line = createElement("div", "", "mixing-wizard-line");
+  const clear = withFocusKey(createElement("button", "Clear", "action"), "mixing-clear");
+  clear.type = "button";
+  clear.addEventListener("click", () => {
+    mixingWizard.draft.wells = [];
+    mixingDraftChanged();
+  });
+  line.append(createElement("span", counts.join(" · "), "mixing-wizard-counts"), clear);
+  return createWizardSection("1 · Wells to mix", line);
+}
+
+// 2 · How to mix: a radio choice per way to mix (MIXING_WAYS order), each its name and a note
+// (section 7).
+function createHowToMixSection() {
+  const choices = MIXING_WAYS.map((way) => {
+    const label = createElement("label", "", "mixing-way");
+    const radio = withFocusKey(document.createElement("input"), `mixing-way:${way}`);
+    radio.type = "radio";
+    radio.name = "mixing-way";
+    radio.value = way;
+    radio.checked = mixingWizard.draft.way === way;
+    radio.addEventListener("change", () => {
+      mixingWizard.draft.way = way;
+      mixingDraftChanged();
+    });
+    const text = createElement("span", "", "mixing-way-text");
+    text.append(
+      createElement("span", WAY_CHOICES[way].name, "mixing-way-name"),
+      createElement("span", WAY_CHOICES[way].note, "mixing-way-note"),
+    );
+    label.append(radio, text);
+    return label;
+  });
+  return createWizardSection("2 · How to mix", ...choices);
+}
+
+// 3 · Tips: a menu of tip types, "on", and a menu of probe counts (section 7), with one more entry,
+// first, naming the probes when they aren't the first N (extraProbes).
+function createTipsSection() {
+  const { draft } = mixingWizard;
+  const tipType = withFocusKey(document.createElement("select"), "mixing-tip-type");
+  tipType.setAttribute("aria-label", "Tip type");
+  for (const type of TIP_TYPES) {
+    tipType.append(new Option(type, type, false, type === draft.tipType));
+  }
+  tipType.addEventListener("change", () => {
+    draft.tipType = tipType.value;
+    mixingDraftChanged();
+  });
+  const probes = withFocusKey(document.createElement("select"), "mixing-probes");
+  probes.setAttribute("aria-label", "Probes");
+  const chosen = isFirstProbes(draft.probes) ? String(draft.probes.length) : "extra";
+  if (mixingWizard.extraProbes !== null) {
+    probes.append(new Option(probesText(mixingWizard.extraProbes), "extra", false, chosen === "extra"));
+  }
+  for (let count = 1; count <= PROBE_COUNT; count += 1) {
+    probes.append(new Option(countOf(count, "probe"), String(count), false, chosen === String(count)));
+  }
+  probes.addEventListener("change", () => {
+    draft.probes = probes.value === "extra" ? [...mixingWizard.extraProbes] : probesFor(Number(probes.value));
+    mixingDraftChanged();
+  });
+  const line = createElement("div", "", "mixing-wizard-line");
+  line.append(tipType, createElement("span", "on", "mixing-wizard-on"), probes);
+  return createWizardSection("3 · Tips", line);
+}
+
+// The probes named as the wizard names them (section 7, "3 · Tips"): "3 probes" for the first 3,
+// otherwise "probes 2, 3, 4"; "1 probe" for probe 1 alone.
+function probesText(probes) {
+  return isFirstProbes(probes) ? countOf(probes.length, "probe") : `probes ${probes.join(", ")}`;
+}
+
+// Makes (section 7): what the draft makes (`groups`, from mixingGroups): with no wells, a gray
+// hint; otherwise one line (how many mix steps, how many wells each and the tips), the numbered
+// chips, one per mix step, and, for one tip per contents with more wells than probes in a mix step,
+// a note.
+function createMakesSection(plan, groups) {
+  if (groups.length === 0) {
+    return createWizardSection("Makes", createElement("p", "Nothing yet: pick the wells to mix.", "note"));
+  }
+  const { draft } = mixingWizard;
+  const sizes = groups.map((group) => group.wells.length);
+  const fewest = Math.min(...sizes);
+  const most = Math.max(...sizes);
+  const tips = `new ${draft.tipType} tips on ${probesText(draft.probes)}`;
+  const each = fewest === most ? countOf(fewest, "well") : `${fewest} to ${most} wells`;
+  const line =
+    groups.length === 1
+      ? `1 mix step · ${each} · ${tips}`
+      : `${countOf(groups.length, "mix step")} · ${each} each · ${tips}`;
+  const chips = createElement("div", "", "mixing-chips");
+  groups.forEach((group, index) => chips.append(createMixingChip(plan, group, index, groups.length)));
+  const parts = [createElement("div", line, "mixing-makes-line"), chips];
+  if (draft.way === "sameContents" && most > draft.probes.length) {
+    parts.push(
+      createElement("p", "Some mix steps have more wells than probes, so a tip mixes several wells with the same contents.", "note"),
+    );
+  }
+  return createWizardSection("Makes", ...parts);
+}
+
+// One numbered chip of Makes (section 7): pointing at it or focusing it rings its wells on the deck;
+// its tooltip and accessible name say what it mixes and its wells, e.g. "Mix 2 of 12: Drug A +
+// Media" then "Plate1 A1, Plate1 B1".
+function createMixingChip(plan, group, index, count) {
+  const chip = withFocusKey(createElement("button", String(index + 1), "mixing-chip"), `mixing-chip:${index}`);
+  chip.type = "button";
+  const wells = group.wells.map((end) => wellName(plan, end)).join(", ");
+  const description = `Mix ${index + 1} of ${count}: ${mixedContentsText(group.components)}`;
+  chip.title = `${description}\n${wells}`;
+  chip.setAttribute("aria-label", `${description}. ${wells}`);
+  chip.addEventListener("pointerenter", () => ringChipWells(index));
+  chip.addEventListener("pointerleave", () => ringChipWells(null));
+  chip.addEventListener("focus", () => ringChipWells(index));
+  chip.addEventListener("blur", () => ringChipWells(null));
+  return chip;
+}
+
+// The mixing wizard's footer (section 7): Remove (editing only, red outline), then Cancel and the
+// main button, Make mix steps or Update, disabled with no wells picked.
+function createMixingWizardFooter(plan) {
+  const footer = createElement("div", "", "mixing-wizard-footer");
+  if (mixingWizard.id !== null) {
+    const remove = withFocusKey(createElement("button", "Remove", "danger-outline"), "mixing-remove");
+    remove.type = "button";
+    if (!canRemoveMixingBox(plan, mixingWizard.id)) {
+      remove.disabled = true;
+      remove.title = "Its mix steps are all the plan's stages. Add a stage outside it first.";
+    }
+    remove.addEventListener("click", removeFromMixingWizard);
+    footer.append(remove);
+  }
+  footer.append(createElement("span", "", "spacer"));
+  const cancel = withFocusKey(createElement("button", "Cancel", "action"), "mixing-cancel");
+  cancel.type = "button";
+  cancel.addEventListener("click", cancelMixingWizard);
+  const main = withFocusKey(
+    createElement("button", mixingWizard.id === null ? "Make mix steps" : "Update", "primary"),
+    "mixing-main",
+  );
+  main.type = "button";
+  if (mixingWizard.draft.wells.length === 0) {
+    main.disabled = true;
+    main.title = "Pick the wells to mix first.";
+  }
+  main.addEventListener("click", mixingWizard.id === null ? makeMixSteps : updateFromMixingWizard);
+  footer.append(cancel, main);
+  return footer;
+}
+
+// "3 mix steps, each on new tips" (or "1 mix step"), for mixing box `id`'s messages.
+function mixStepsText(plan, id) {
+  return `${countOf(mixingBoxAt(plan, id).stages.length, "mix step")}, each on new tips`;
+}
+
+// Make mix steps (section 7): adds the mixing box at the seam's place, keeping the randomizations
+// above the seam above it, as one undoable edit; closes the wizard, opens its first mix step and
+// selects the mixing box. If the logic refuses, its message shows and the wizard stays open.
+function makeMixSteps() {
+  const plan = currentPlan();
+  const { draft, beforeId, toPlace } = mixingWizard;
+  const result = tryLogic(() => {
+    const added = addMixingBox(plan, draft, beforeId);
+    const first = mixingBoxAt(added.plan, added.id).stages[0];
+    const placed = toPlace.reduce((planSoFar, id) => placeRandomization(planSoFar, id, first), added.plan);
+    return { plan: placed, id: added.id, first };
+  });
+  if (result === false) {
+    return;
+  }
+  mixingWizard = null;
+  recordEdit(result.plan, result.first);
+  selectMixingBox(result.id);
+  showMessage(`Added a mixing box: ${mixStepsText(result.plan, result.id)}.`, "ok");
+  scrollIntoColumnView(elements.stagesList.querySelector(`[data-item="${cssEscape(itemKey({ kind: "mixingBox", id: result.id }))}"]`));
+}
+
+// Update (section 7): remakes the mixing box from the draft, as one undoable edit; closes the wizard,
+// opens its first mix step and selects the mixing box. When nothing would change, nothing is
+// recorded and a note says so.
+function updateFromMixingWizard() {
+  const plan = currentPlan();
+  const { id, draft } = mixingWizard;
+  const updated = tryLogic(() => updateMixingBox(plan, id, draft));
+  if (updated === false) {
+    return;
+  }
+  mixingWizard = null;
+  const first = mixingBoxAt(updated, id).stages[0];
+  if (updated === plan) {
+    history = history.replacePresent({ plan, open: first });
+    refresh();
+    selectMixingBox(id);
+    showMessage("Nothing to update: the mixing box already matches.", "note");
+    return;
+  }
+  recordEdit(updated, first);
+  selectMixingBox(id);
+  showMessage(`Updated the mixing box: ${mixStepsText(updated, id)}.`, "ok");
+}
+
+// Selects mixing box `id` alone (as clicking its heading does) and marks it.
+function selectMixingBox(id) {
+  pickedSet = [{ kind: "mixingBox", id }];
+  selectionAnchor = pickedSet[0];
+  markSelection(selectedItems());
+}
+
+// Remove (section 7): takes out the mixing box and its mix steps at once, as every Remove does,
+// putting it in the trash; if one of its mix steps was open, the first stage in the stage order opens.
+function removeFromMixingWizard() {
+  const plan = currentPlan();
+  const { id } = mixingWizard;
+  const owned = mixingBoxAt(plan, id).stages;
+  const removed = tryLogic(() => removeMixingBox(plan, id));
+  if (removed === false) {
+    return;
+  }
+  mixingWizard = null;
+  const open = owned.includes(currentOpen()) ? stageOrder(removed)[0] : currentOpen();
+  // It goes into the trash as part of the same edit (section 7, "The trash").
+  const { change } = putInTrash(plan, [{ kind: "mixingBox", id }]);
+  recordEdit(removed, open, change);
+  showMessage(`Removed the mixing box and its ${countOf(owned.length, "mix step")}.`, "ok", { undoButton: true });
+  showTrashStorageNote();
+}
+
+// Watches every press, click and right click on the page while the mixing wizard is open (section
+// 7, "While it's open"): one on a control that would change the plan or what's open (the Stages
+// column outside the wizard, the timeline's ‹ and ›, Move wells, Undo, Redo, Copy deck, Paste deck,
+// and the header's Save, Open, Reset and Biomek files) does nothing, and the wizard shakes. Looking
+// and naming (the deck, the tray, Names, Arrows, the experiment's name) work as usual.
+function connectMixingWizardGuard() {
+  for (const type of ["pointerdown", "mousedown", "click", "contextmenu"]) {
+    document.addEventListener(type, guardMixingWizard, true);
+  }
+}
+
+// True from a press the mixing wizard's guard refused, until its click has come, so the click
+// doesn't shake the wizard a second time.
+let mixingPressRefused = false;
+
+// One event's share of connectMixingWizardGuard: refuses it if it's aimed at a refused control.
+function guardMixingWizard(event) {
+  if (mixingWizard === null || isTutorialPanelPress(event) || !isRefusedWhileMixing(event.target)) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.type === "pointerdown" || event.type === "contextmenu") {
+    mixingPressRefused = event.type === "pointerdown";
+    refuseWhileMixing();
+  } else if (event.type === "click") {
+    if (!mixingPressRefused) {
+      // A click from the keyboard comes without a press.
+      refuseWhileMixing();
+    }
+    mixingPressRefused = false;
+  }
+}
+
+// True if `target` is in what the mixing wizard refuses while it's open (guardMixingWizard).
+function isRefusedWhileMixing(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  if (mixingWizard.element !== null && mixingWizard.element.contains(target)) {
+    return false;
+  }
+  // The column, and the trash: its line, entries and Empty trash, so nothing is dragged out of it.
+  if (elements.stagesList.contains(target) || elements.trash.contains(target)) {
+    return true;
+  }
+  const refusedControls = [
+    elements.previousPoint,
+    elements.nextPoint,
+    elements.moveWells,
+    elements.undo,
+    elements.redo,
+    elements.copyDeck,
+    elements.pasteDeck,
+    elements.save,
+    elements.open,
+    elements.reset,
+    elements.biomekFiles,
+  ];
+  return refusedControls.some((control) => control.contains(target));
+}
+
 // --- The glow (section 7) ---
 
 // Makes `element` glow if `key` (a stage or box) wasn't drawn last time (unless `whenNew` is
@@ -6271,7 +6993,7 @@ function clickItem(item, keys) {
     forgetPickedSet();
   } else if (item.kind === "tipGroup") {
     pickedSet = [item];
-  } else if (item.kind === "transferTable") {
+  } else if (item.kind === "transferTable" || item.kind === "mixingBox") {
     // Its heading opens or closes its box, and selects it alone (section 7); its ✎ opens the wizard.
     if (closeRandomizationCard()) {
       pickedSet = [item];
@@ -6407,13 +7129,32 @@ function setDragCopying(copying) {
   }
 }
 
-// True if the drag can't move what it holds: a randomization's stage without its randomization,
-// while not copying (section 7, "Dragging").
+// True if the drag can't move what it holds: a randomization's or mixing box's stage without its
+// owner, while not copying (section 7, "Dragging").
 function dragIsRefused() {
+  return draggedOwnerRefused() !== null;
+}
+
+// What owns a stage the drag holds without its owner, while not copying: "randomization" or
+// "mixingBox" (section 7, "Dragging"), or null if nothing does.
+function draggedOwnerRefused() {
   if (columnDrag.copying) {
-    return false;
+    return null;
   }
   const plan = currentPlan();
+  const takenBoxes = new Set(columnDrag.items.filter((item) => item.kind === "mixingBox").map((item) => item.id));
+  const aloneFromBox = columnDrag.items.some((item) => {
+    const owner = item.kind === "stage" ? mixingBoxOf(plan, item.id) : null;
+    return owner !== null && !takenBoxes.has(owner);
+  });
+  if (aloneFromBox) {
+    return "mixingBox";
+  }
+  return randomizationStageDragged(plan) ? "randomization" : null;
+}
+
+// True if the drag holds a randomization's stage without its randomization.
+function randomizationStageDragged(plan) {
   const takenRandomizations = new Set(
     columnDrag.items.filter((item) => item.kind === "randomization").map((item) => item.id),
   );
@@ -6445,7 +7186,7 @@ function updateColumnDrag() {
   showDropLine(seam);
   showDragLabel(
     refused
-      ? "A randomization's stages move with it · hold Ctrl to copy"
+      ? refusedDragLabel()
       : `${columnDrag.copying ? "+ Copy" : "Move"} ${describeItems(currentPlan(), columnDrag.items)}`,
     refused ? "refused" : null,
   );
@@ -6463,8 +7204,15 @@ function showDragLabel(text, look) {
   label.hidden = false;
 }
 
-// True if `items` hold a tip group, a randomization or a transfer table, which go only between tip
-// groups.
+// The drag's label when it's refused (section 7): what owns the stage says it moves with it.
+function refusedDragLabel() {
+  return draggedOwnerRefused() === "mixingBox"
+    ? "A mixing box's mix steps move with it · hold Ctrl to copy"
+    : "A randomization's stages move with it · hold Ctrl to copy";
+}
+
+// True if `items` hold a tip group, a randomization, a transfer table or a mixing box, which go only
+// between tip groups.
 function holdsContainerItem(items) {
   return items.some((item) => item.kind !== "stage");
 }
@@ -6606,6 +7354,11 @@ function endColumnDrag() {
 // to drop it; otherwise it moves (moveItems) or, with Ctrl (Cmd) held, copies (copyItems) to its
 // place, as one edit.
 function dropColumnDrag({ items, copying, refused, place, overTrash }) {
+  // A drag can't start while the mixing wizard is open, but a drop on the trash is refused then too.
+  if (overTrash && mixingWizard !== null) {
+    refuseWhileMixing();
+    return;
+  }
   if (overTrash) {
     deleteSelection(items);
     return;
@@ -6686,8 +7439,18 @@ function glowKeysOf(plan, placed) {
   });
 }
 
+// What each kind of container is called in the drag's label, the messages and the trash's labels,
+// e.g. "tip group" (section 7).
+const CONTAINER_NOUNS = Object.freeze({
+  tipGroup: "tip group",
+  randomization: "randomization",
+  transferTable: "transfer table",
+  mixingBox: "mixing box",
+});
+
 // The items described for the drag's label and the messages (section 7), e.g. “Drugs”, "2 stages",
-// "a tip group", "2 tip groups", "a randomization", "a transfer table", or "3 items" for a mix.
+// "a tip group", "2 tip groups", "a randomization", "a transfer table", "a mixing box", "2 mixing
+// boxes", or "3 items" for a mix.
 function describeItems(plan, items) {
   const taken = itemsInColumnOrder(plan, items);
   const kinds = new Set(taken.map((item) => item.kind));
@@ -6698,8 +7461,11 @@ function describeItems(plan, items) {
   if (kind === "stage") {
     return taken.length === 1 ? `“${plan.stageList.get(taken[0].id).name}”` : countOf(taken.length, "stage");
   }
-  const noun = { tipGroup: "tip group", randomization: "randomization", transferTable: "transfer table" }[kind];
-  return taken.length === 1 ? `a ${noun}` : countOf(taken.length, noun);
+  const noun = CONTAINER_NOUNS[kind];
+  if (taken.length === 1) {
+    return `a ${noun}`;
+  }
+  return kind === "mixingBox" ? `${taken.length} mixing boxes` : countOf(taken.length, noun);
 }
 
 // --- Moving and copying: copying and pasting ---
@@ -6710,6 +7476,12 @@ function describeItems(plan, items) {
 function copyFromClipboardEvent(event) {
   // Ctrl+C is ignored while moving wells (section 12), and while the wizard or stock dialog is open.
   if (movingWells || isDialogOpen() || keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
+    return;
+  }
+  // Refused while the mixing wizard is open (section 7, "While it's open").
+  if (mixingWizard !== null) {
+    event.preventDefault();
+    refuseWhileMixing();
     return;
   }
   const copied = copySelection();
@@ -6794,9 +7566,10 @@ function copiedItemsIn(text) {
   }
 }
 
-// True if copied items (perhaps damaged) hold a tip group, a randomization or a transfer table.
+// True if copied items (perhaps damaged) hold a tip group, a randomization, a transfer table or a
+// mixing box.
 function copiedHoldsContainer(copied) {
-  const containers = ["tipGroup", "randomization", "transferTable"];
+  const containers = ["tipGroup", "randomization", "transferTable", "mixingBox"];
   return Array.isArray(copied?.items) && copied.items.some((item) => containers.includes(item?.kind));
 }
 
@@ -6811,6 +7584,11 @@ function pasteFromClipboardEvent(event) {
     return;
   }
   event.preventDefault();
+  // Refused while the mixing wizard is open (section 7, "While it's open").
+  if (mixingWizard !== null) {
+    refuseWhileMixing();
+    return;
+  }
   const copied = copiedItemsIn(event.clipboardData?.getData("text/plain") ?? "") ?? pageCopy();
   if (copied === null) {
     showMessage("Nothing to paste yet: select a stage, tip group or randomization and press Ctrl+C.", "note");
@@ -7131,10 +7909,20 @@ function pressDeleteKey(event) {
 }
 
 // Ctrl+X (Cmd+X) on the page (section 7): cuts what's selected when the Delete key would act, the
-// copy going onto the system clipboard through the event, as Ctrl+C's does. Otherwise, and in a text
-// box or menu or with text selected, the browser's own cut.
+// copy going onto the system clipboard through the event, as Ctrl+C's does; refused while the
+// mixing wizard is open. Otherwise, and in a text box or menu or with text selected, the browser's
+// own cut.
 function cutFromClipboardEvent(event) {
-  if (keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed || !deleteKeysAct()) {
+  if (keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed) {
+    return;
+  }
+  // Refused while the mixing wizard is open, whatever the last press was (section 12).
+  if (mixingWizard !== null) {
+    event.preventDefault();
+    refuseWhileMixing();
+    return;
+  }
+  if (!deleteKeysAct()) {
     return;
   }
   event.preventDefault();
@@ -7152,7 +7940,7 @@ function deleteSelection(items, { cut = false, clipboardData = null } = {}) {
     return;
   }
   if (items.length === 0) {
-    showMessage("Select a stage, a tip group (click its heading), a randomization or a transfer table to delete it.", "note");
+    showMessage("Select a stage, a tip group (click its heading), a randomization, a transfer table or a mixing box to delete it.", "note");
     return;
   }
   if (editingBox !== null) {
@@ -7208,7 +7996,7 @@ function startDeleteAnimation(pending) {
 }
 
 // The column's elements for the deleted items: a stage's card or row, or a tip group's,
-// randomization's or transfer table's whole box.
+// randomization's, transfer table's or mixing box's whole box.
 function deletedRowElements(deleted) {
   return deleted
     .map((item) => elements.stagesList.querySelector(`[data-item="${cssEscape(itemKey(item))}"]`))
@@ -7496,7 +8284,7 @@ function createTrashRow(entry) {
 }
 
 // An entry's name as the list shows it, e.g. "“S03 Drug A”", "Randomization “Randomization1”",
-// "Tip group", "Transfer table".
+// "Tip group", "Transfer table", "Mixing box".
 function trashEntryName(entry) {
   if (entry.kind === "stage") {
     return `“${entry.name}”`;
@@ -7504,7 +8292,8 @@ function trashEntryName(entry) {
   if (entry.kind === "randomization") {
     return `Randomization “${entry.name}”`;
   }
-  return entry.kind === "tipGroup" ? "Tip group" : "Transfer table";
+  const noun = CONTAINER_NOUNS[entry.kind];
+  return noun.charAt(0).toUpperCase() + noun.slice(1);
 }
 
 // An entry's details, e.g. "3 transfers · deleted 12:28 AM" for a stage, "2 stages · 5 transfers ·
@@ -7577,7 +8366,7 @@ function moveTrashDrag(event) {
 }
 
 // Redraws a drag out of the trash: the drop line on the nearest seam (only seams between tip groups
-// for a tip group, randomization or transfer table), none over the trash itself, and the label
+// for a tip group, randomization, transfer table or mixing box), none over the trash itself, and the label
 // "Paste …" (section 7, "Dragging an entry out").
 function updateTrashDrag() {
   const overTrash = isOverTrash(trashDrag.pointer);
@@ -7593,12 +8382,12 @@ function updateTrashDrag() {
 }
 
 // A trash entry described as a drag's label describes what it holds, e.g. "“S03 Drug A”", "a tip
-// group", "a randomization", "a transfer table".
+// group", "a randomization", "a transfer table", "a mixing box".
 function trashEntryDescribed(entry) {
   if (entry.kind === "stage") {
     return `“${entry.name}”`;
   }
-  return { tipGroup: "a tip group", randomization: "a randomization", transferTable: "a transfer table" }[entry.kind];
+  return `a ${CONTAINER_NOUNS[entry.kind]}`;
 }
 
 // True if `pointer` is over the trash's band.
@@ -8377,6 +9166,10 @@ function clickWell(end, keepSource = false) {
     pickWell(end);
     return;
   }
+  if (mixingWizard !== null) {
+    toggleWellToMix(end);
+    return;
+  }
   if (isStage(currentPlan(), open) && isOwnedStage(currentPlan(), open)) {
     showOwnedStageNote(currentPlan(), open);
     return;
@@ -8641,7 +9434,7 @@ function movePointer(event) {
     // Dragging does nothing with End open (section 9), except while moving wells (section 6).
     if (movingWells) {
       beginMovingDrag();
-    } else if (currentOpen() === END) {
+    } else if (currentOpen() === END && mixingWizard === null) {
       press = null;
     } else {
       beginDrag();
@@ -8672,6 +9465,8 @@ function beginDrag() {
   let kind = source !== null ? "box" : "transfer";
   if (card !== null) {
     kind = "pick";
+  } else if (mixingWizard !== null) {
+    kind = "pickToMix";
   } else if (open === START) {
     kind = "fill";
   } else if (isStage(plan, open) && isOwnedStage(plan, open)) {
@@ -8768,6 +9563,13 @@ function finishDrag({ kind, from, over, onLabware }, keepSource = false) {
     }
     return;
   }
+  if (kind === "pickToMix") {
+    // The mixing wizard's wells (section 7): a drag that ends off its labware picks nothing.
+    if (over !== null && over.labware === from.labware) {
+      pickBoxToMix(wellsInBox(from, over), from);
+    }
+    return;
+  }
   if (kind === "fill") {
     if (over !== null && over.labware === from.labware) {
       fillWells(wellsInBox(from, over));
@@ -8845,6 +9647,12 @@ function updateDragMarks() {
       wellElements.get(wellKey(well))?.classList.add("in-box");
     }
   }
+}
+
+// The well at `position` ({ x, y } in window coordinates) on the labware, { labware, well }, or null.
+function wellUnderPosition(position) {
+  const element = document.elementFromPoint(position.x, position.y);
+  return element === null || !elements.labwareArea.contains(element) ? null : endOf(element);
 }
 
 // The well under the pointer, { labware, well }, or null. Uses the pointer's position rather than
@@ -9293,11 +10101,16 @@ function updateCursorLabel() {
   const open = currentOpen();
   // A mix step has no volume at the cursor (section 9).
   const isMixStepOpen = isStage(currentPlan(), open) && isMixStep(currentPlan(), open);
-  if (pointerPosition === null || open === END || isMixStepOpen || movingWells) {
+  const hidden = pointerPosition === null || open === END || isMixStepOpen || movingWells;
+  if (hidden && (mixingWizard === null || pointerPosition === null)) {
     label.hidden = true;
     return;
   }
-  if (card !== null) {
+  if (mixingWizard !== null) {
+    // Pick, or Unpick over a picked well (section 12).
+    const over = wellUnderPosition(pointerPosition);
+    label.textContent = over !== null && isPickedToMix(over) ? "Unpick" : "Pick";
+  } else if (card !== null) {
     label.textContent = card.draft.tab === "sources" ? "Source" : "Fill";
   } else if (open === START) {
     if (brush.pick.kind === "component") {
@@ -10780,6 +11593,9 @@ function handleKey(event) {
   if (isDialogOpen()) {
     return;
   }
+  if (mixingWizard !== null && handleKeyWhileMixing(event)) {
+    return;
+  }
   // While a drag is on in the Stages column, Escape cancels it and Ctrl (Cmd) switches it to
   // copying (section 12).
   if (columnDrag !== null || columnPress !== null) {
@@ -10872,6 +11688,30 @@ function pressEscape() {
   }
 }
 
+// Acts on a key while the mixing wizard is open (section 12), returning true if it did: Escape
+// cancels it (anywhere but a text box, which keeps its own Escape; a menu in the wizard that's open
+// takes Escape itself), Ctrl+Z, Ctrl+Y and Ctrl+Shift+Z, the menu key or Shift+F10 in the
+// column, and the Delete key outside a text box (whatever the last press was), are refused, as
+// their buttons are.
+function handleKeyWhileMixing(event) {
+  if (event.key === "Escape" && !event.target.matches?.("input:not([type=radio]), textarea, [contenteditable]")) {
+    event.preventDefault();
+    cancelMixingWizard();
+    return true;
+  }
+  const key = event.key.toLowerCase();
+  const isUndoOrRedo = (event.ctrlKey || event.metaKey) && (key === "z" || key === "y");
+  const isMenuKey = event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey);
+  const isDeleteKey =
+    event.key === "Delete" && !event.ctrlKey && !event.metaKey && !event.altKey && !keepsOwnClipboard(event.target);
+  if (isUndoOrRedo || isDeleteKey || (isMenuKey && elements.stagesList.contains(event.target))) {
+    event.preventDefault();
+    refuseWhileMixing();
+    return true;
+  }
+  return false;
+}
+
 // True for the keys that type a volume: digits, "." and Backspace.
 function isVolumeKey(key) {
   return /^[0-9]$/.test(key) || key === "." || key === "Backspace";
@@ -10883,7 +11723,7 @@ function typeVolume(key) {
   const open = currentOpen();
   // Typed volumes are ignored while a randomization's card is open (section 9), and while moving
   // wells (section 12).
-  if (open === END || card !== null || movingWells) {
+  if (open === END || card !== null || movingWells || mixingWizard !== null) {
     return;
   }
   if (open === START) {

@@ -14,6 +14,8 @@
 //   5. Randomization1, run: Drug A, Drug B (4 replicates each), Media filler, into D1–D6 and E1–E6
 //   6. [S10 Media row G, S11 Dye row G]                           TIP_TYPES[0] on probesFor(4)
 //   7. a transfer table: Media into F1–F4, Dye into F3 and F4     TIP_TYPES[0] on probesFor(3) each
+// mixingBoxTestPlan() adds a fresh-tip mixing box before S08's tip group: the plate's A1 to A4 and
+// C1, five mix steps (Mix 1 of 5 to Mix 5 of 5), each on new tips, TIP_TYPES[0] on probesFor(4).
 
 import { DECK } from "../../config/deck.js";
 import { TIP_TYPES } from "../../config/tip-types.js";
@@ -41,9 +43,11 @@ import {
   runRandomization,
   setWellLabel,
   addTransferTable,
+  addMixingBox,
   columnBoxes,
   randomizationAt,
   transferTableAt,
+  mixingBoxAt,
   tipsUsed,
   transfersIn,
   isMixStep,
@@ -125,6 +129,20 @@ export function deleteTestPlan() {
   plan = withOrdinaryStages(plan);
   plan = withRandomization(plan);
   return withTransferTable(plan);
+}
+
+// The test plan with a mixing box added before S08's tip group (trash.md, section 6): the way
+// "freshTip", the plate's A1 to A4 and C1, on TIP_TYPES[0] and probesFor(4), so five mix steps, each
+// on new tips. A new plan each time.
+export function mixingBoxTestPlan() {
+  const plan = deleteTestPlan();
+  const draft = {
+    way: "freshTip",
+    wells: ["A1", "A2", "A3", "A4", "C1"].map(plateWell),
+    tipType: TIP_TYPES[0],
+    probes: probesFor(4),
+  };
+  return addMixingBox(plan, draft, stageIdOf(plan, "S08")).plan;
 }
 
 // The plan with the four components, each filling its trough (troughVolume).
@@ -232,8 +250,8 @@ export function stageIdOf(plan, name) {
 }
 
 // The plan up to its IDs (trash.md, section 6): the column's boxes in order, each tip group as its
-// tips and stages, each stage as its name, kind, settings and transfers; each randomization and
-// transfer table with what it holds and its tip groups; then the plan's other parts. Two plans with
+// tips and stages, each stage as its name, kind, settings and transfers; each randomization,
+// transfer table and mixing box with what it holds and its tip groups; then the plan's other parts. Two plans with
 // equal outlines differ only in their IDs.
 export function planOutline(plan) {
   return {
@@ -255,6 +273,9 @@ function boxOutline(plan, box) {
   if (box.kind === "randomization") {
     const { name, sources, fill, seed, volume, settings, tipType, probes } = randomizationAt(plan, box.id);
     return { kind: "randomization", name, sources, fill, seed, volume, settings, tipType, probes, tipGroups };
+  }
+  if (box.kind === "mixingBox") {
+    return { kind: "mixingBox", way: mixingBoxAt(plan, box.id).way, tipGroups };
   }
   const { table, sources } = transferTableAt(plan, box.id);
   return { kind: "transferTable", table, sources, tipGroups };

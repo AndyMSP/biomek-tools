@@ -5,7 +5,7 @@ The project's own terms, each defined once. Use a term here with this meaning on
 
 **Box**
 One of the parts the transfer designer's Stages column is made of, between Start and End: an
-ordinary tip group, or a randomization with its stages' tip groups (`transfer-designer.md`,
+ordinary tip group, or a randomization, transfer table or mixing box with its stages' tip groups (`transfer-designer.md`,
 "Moving and copying"). Moving and copying put things between boxes, or inside a tip group's box.
 
 **Capacity**
@@ -34,7 +34,7 @@ that fits the value best (476 µM, not 0.476 mM), on the contents card.
 
 **Container rule**
 How moving and copying treat tips (Andy, 2026-11-01; ADR 0014). Containers are ordinary tip groups,
-randomizations and transfer tables. A container moved or copied brings its tips and stages with it, and goes only
+randomizations, transfer tables and mixing boxes. A container moved or copied brings its tips and stages with it, and goes only
 between tip groups. A stage put inside a tip group takes that group's tips; one put between tip
 groups keeps the tips it had, as a tip group of its own. A tip group a stage leaves keeps its tips.
 The same rule orders a randomization's sources in its card (Andy, 2026-11-05; ADR 0018): there the
@@ -57,7 +57,7 @@ another plan's starting contents (only a plan whose start is empty): the end of 
 isn't kept in the plan.
 
 **Copied items**
-Stages, tip groups, randomizations or transfer tables copied from a plan, as plain data, so they can be pasted into
+Stages, tip groups, randomizations, transfer tables or mixing boxes copied from a plan, as plain data, so they can be pasted into
 the same plan or another one, through the system clipboard or the designer's own copy
 (`transfer-designer.md`, "Moving and copying"). Pasting checks them as opening a plan file does.
 
@@ -86,8 +86,8 @@ what to use next (`tutorial-page.md`; ADR 0022).
 
 **Item**
 Something in the Stages column that can be selected, moved, copied or deleted: a stage (a mix step
-included), an ordinary tip group (one not belonging to a randomization or transfer table), a
-randomization or a transfer table.
+included), an ordinary tip group (one not belonging to a randomization, transfer table or mixing
+box), a randomization, a transfer table or a mixing box.
 
 **Labware label**
 The name the user gives one labware on the deck, such as "Drug plate", shown wherever the page
@@ -106,6 +106,15 @@ How a stage mixes at one end: before aspirating, at its sources, or after dispen
 destinations. A mix is a share of the well's volume (a percentage), a number of times and a speed.
 The tool turns the share into one volume for each stage-worklist row, from what the wells hold
 (ADR 0007, "Mixing"). An end of a stage either has a mix or doesn't mix.
+
+**Mixing box**
+Part of a plan that mixes a set of wells and makes the mix steps for it (Andy, 2026-11-11; ADR
+0025): given the wells and a way to mix, it works out which wells share a mix step, and owns those
+mix steps, each on new tips of its own, named by their place (`Mix 1 of 12`). It stores only its
+way to mix: its wells and tips are its mix steps'. Its mix steps change only through it. It's **out
+of date** when its wells would now be grouped differently, from what they hold just before it or
+where they are, or its mix steps don't mix with the standard mix as it now is
+(`transfer-designer.md`, "Mixing boxes").
 
 **Mix problem**
 A mix whose volume is under the minimum mix volume (1 µL): the well a row's mix volume is worked
@@ -150,7 +159,8 @@ pipette. Some pipetting modes suit only one end; Non-Contact, for example, is fo
 **Plan**
 Everything the tools hold about one experiment's liquid handling: its experiment name, its
 components (each with its constituents and osmolality), its starting contents (what each well holds before the run), its operation list, its
-stage list, its tip changes, its labware labels, its well labels and its randomizations. The transfer designer builds a plan, and the file writer turns it into the
+stage list, its tip changes, its labware labels, its well labels, its randomizations, its transfer
+tables and its mixing boxes. The transfer designer builds a plan, and the file writer turns it into the
 files the Biomek runs. A plan isn't a Biomek method: the general-purpose method stays the same for
 every plan (ADR 0006, ADR 0007).
 
@@ -164,6 +174,12 @@ A component that a tip could have carried into a well although the well doesn't 
 point in the plan: a well reached by tips that had touched a well holding (or itself carrying) that
 component, since the tips' last change (ADR 0021; `possible-contamination.md`). "Possible" means it
 can't be ruled out from the plan, not that it's likely or measured; a trace has no amount.
+
+**Probe order**
+Wells in the order the Span-8's probes sit: labware in the deck's order, then down each column of a
+labware's grid, top to bottom, one column after another (`A1`, `B1` … `H1`, `A2` …). A mixing box
+takes its wells in this order (`transfer-designer.md`, "Mixing boxes"). Not the same as the deck
+order elsewhere, which reads each grid row by row.
 
 **Randomization**
 Part of a plan that spreads replicates of several sources at random over a set of wells to fill, on
@@ -189,7 +205,8 @@ A place in the transfer designer's Stages column where a stage, a mix step or a 
 added. A seam inside a tip group (between two of its stages, or at its top or bottom) adds stages
 and mix steps with that group's tips, and between two stages can split the group with new tips; a
 seam between tip groups (above the first, between two, or above End) adds them with new tips, as a
-tip group of their own, or adds a randomization. A randomization's card has seams of the same two
+tip group of their own, or adds a randomization (its dice button), a transfer table (its table
+button) or a mixing box (its ⟳⟳ button). A randomization's card has seams of the same two
 kinds between its source groups and between their sources, where a source is dropped or two
 groups are joined or split.
 
@@ -272,6 +289,16 @@ One of the guided lessons in the tutorial file, such as "Your first run": a shor
 done on the transfer designer's own page, each checked from what the page shows, with a starting
 plan of its own (`tutorial.md`; ADR 0022). The tutorials build on each other, but any can be
 started first.
+
+**Way to mix**
+How a mixing box decides which wells share a mix step, and so a set of tips (Andy, 2026-11-11):
+**a fresh tip for every well** (wells in batches, each holding wells of one column of one labware,
+in rows right next to each other, at most as many as there are probes, meant to give each well a tip of its own; whether the Biomek
+does is still to be checked in simulation, `docs/domain/biomek.md`, "Not yet known") or **one
+tip for wells with the same contents** (wells holding the same components in the same shares share
+a tip). With either way, wells share a mix step only if
+they also hold about the same volume, within `MIX_VOLUME_TOLERANCE` (`transfer-designer.md`,
+"About the same volume"). More ways may be added.
 
 **Well in use**
 A well the plan names anywhere: in its starting contents, as a transfer's source or destination (a

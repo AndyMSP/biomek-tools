@@ -2,7 +2,7 @@
 // transfer-designer.md, and each row of its error table and each order of checks has one.
 //
 // They use the real config/pipetting-modes.js, config/tip-types.js and config/deck.js, and also check
-// the first two, and DEFAULT_MIX, MIX_STEP_MODE and MIX_STEP_VOLUME in config/mixing.js (ADR 0009). Tests find what they need in the config files rather than naming it, so
+// the first two, and DEFAULT_MIX, MIX_STEP_MODE, MIX_STEP_VOLUME and MIX_VOLUME_TOLERANCE in config/mixing.js (ADR 0009). Tests find what they need in the config files rather than naming it, so
 // they still pass when the configuration changes.
 
 import { describe, test } from "node:test";
@@ -12,12 +12,13 @@ import { PIPETTING_MODES, DEFAULT_PIPETTING_MODE } from "../../../config/pipetti
 import { TIP_TYPES, DEFAULT_PROBE_COUNT } from "../../../config/tip-types.js";
 import { DECK } from "../../../config/deck.js";
 import { gridOf, capacityOf, deadVolumeOf, growthAreaOf } from "../../shared/deck/deck.js";
-import { GRID_96, GRID_1X12_NUMBERED } from "../../shared/well-grid/well-grid.js";
+import { GRID_96, GRID_1X12_NUMBERED, WellGrid } from "../../shared/well-grid/well-grid.js";
 import {
   DEFAULT_MIX as CONFIGURED_DEFAULT_MIX,
   MIN_MIX_VOLUME,
   MIX_STEP_MODE,
   MIX_STEP_VOLUME,
+  MIX_VOLUME_TOLERANCE,
 } from "../../../config/mixing.js";
 import { checkName } from "../../shared/input-checks/input-checks.js";
 import { describeValue } from "../../shared/error-messages/error-messages.js";
@@ -138,6 +139,21 @@ import {
   pasteDeck,
   COPIED_DECK_FORMAT,
   COPIED_DECK_VERSION,
+  MIXING_WAYS,
+  SAME_SHARE_ALLOWANCE,
+  isTroughGrid,
+  holdSameContents,
+  mixingGroups,
+  addMixingBox,
+  updateMixingBox,
+  removeMixingBox,
+  canRemoveMixingBox,
+  mixingBoxAt,
+  mixingBoxOf,
+  mixingBoxDraft,
+  mixedContentsOf,
+  isMixingBoxOutOfDate,
+  setMixingBoxes,
 } from "./transfer-designer.js";
 import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
@@ -150,6 +166,7 @@ import {
 import { COMPONENT_COLORS } from "../../../config/component-colors.js";
 import {
   deleteTestPlan,
+  mixingBoxTestPlan,
   stageIdOf,
   planOutline,
   biomekOutput,
@@ -186,6 +203,7 @@ const PLAN_PARTS = [
   "wellLabels",
   "randomizations",
   "transferTables",
+  "mixingBoxes",
   "experimentName",
 ];
 
@@ -602,6 +620,7 @@ describe("transfer-designer", () => {
     assert.deepEqual(plan.labwareLabels, {});
     assert.deepEqual(plan.wellLabels, {});
     assert.deepEqual(plan.transferTables, []);
+    assert.deepEqual(plan.mixingBoxes, []);
     assert.equal(plan.experimentName, "");
   });
 
@@ -3883,7 +3902,7 @@ describe("transfer-designer", () => {
     const end = { kind: "between", index: columnBoxes(plan).length };
     const { plan: pasted, placed } = copyItems(plan, [{ kind: "randomization", id }], end);
     assert.equal(randomizationAt(pasted, placed[0].id).name, "Randomization1");
-    assert.equal(copyOf(plan, [{ kind: "randomization", id }]).version, 5);
+    assert.equal(copyOf(plan, [{ kind: "randomization", id }]).version, 6);
   });
 
   test("pasting two randomizations at once into a plan holding Randomization1 gives Randomization2 and Randomization3", () => {
@@ -4412,7 +4431,7 @@ describe("transfer-designer", () => {
   test("copying: a run randomization with three filler wells pastes with the same filler wells and one filler stage; version 1 pastes", () => {
     const { plan, id } = runFillerPlan();
     const copied = copyOf(plan, [{ kind: "randomization", id }]);
-    assert.equal(copied.version, 5);
+    assert.equal(copied.version, 6);
     const end = { kind: "between", index: columnBoxes(plan).length };
     const { plan: pasted, placed } = copyItems(plan, [{ kind: "randomization", id }], end);
     const copy = randomizationAt(pasted, placed[0].id);
@@ -5211,8 +5230,8 @@ describe("transfer-designer", () => {
     assert.deepEqual(groupsIn(moved, id), [3, 1]);
     assert.equal(isRandomizationOutOfDate(moved, id), false);
     const copied = copyOf(plan, [randomizationItem(id)]);
-    assert.equal(copied.version, 5);
-    assert.equal(COPIED_ITEMS_VERSION, 5);
+    assert.equal(copied.version, 6);
+    assert.equal(COPIED_ITEMS_VERSION, 6);
     assert.deepEqual(copied.items[0].randomization.sources.map((entry) => entry.sharesTips), [false, true, true, false]);
     assert.deepEqual(copied.items[0].stages.map((owned) => owned.tips), [sharingTips(), null, null, sharingTips()]);
     const { plan: pasted, placed } = pasteItems(plan, copied, between(columnBoxes(plan).length));
@@ -5221,7 +5240,7 @@ describe("transfer-designer", () => {
     assert.equal(isRandomizationOutOfDate(pasted, placed[0].id), false);
   });
 
-  test("copied items: a version 2 copy pastes each stage alone; version 3 with a first owned stage sharing, and version 6, are refused", () => {
+  test("copied items: a version 2 copy pastes each stage alone; version 3 with a first owned stage sharing, and version 7, are refused", () => {
     const { plan: apartPlan, id: apartId } = sharingPlan([false, false, false, false]);
     const apart = runRandomization(apartPlan, apartId);
     const version2 = copiedAsVersion(copyOf(apart, [randomizationItem(apartId)]), 2);
@@ -5237,8 +5256,8 @@ describe("transfer-designer", () => {
     assert.throws(() => pasteItems(plan, copied, between(0)), {
       message: "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.",
     });
-    assert.throws(() => pasteItems(plan, { ...copyOf(plan, [randomizationItem(id)]), version: 6 }, between(0)), {
-      message: "Can't paste: these were copied by a newer version of the tools (version 6).",
+    assert.throws(() => pasteItems(plan, { ...copyOf(plan, [randomizationItem(id)]), version: 7 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 7).",
     });
   });
 
@@ -6033,7 +6052,7 @@ describe("transfer-designer", () => {
     const copied = copyOf(plan, [groupItem("3")]);
     assert.equal(snapshot(plan), before);
     assert.equal(copied.format, "biomek-tools copied items");
-    assert.equal(copied.version, 5);
+    assert.equal(copied.version, 6);
     assert.equal(COPIED_ITEMS_FORMAT, copied.format);
     assert.equal(COPIED_ITEMS_VERSION, copied.version);
     const throughJson = JSON.parse(JSON.stringify(copied));
@@ -6061,12 +6080,12 @@ describe("transfer-designer", () => {
     const plan = movingPlan();
     const before = snapshot(plan);
     const cases = [
-      [() => moveItems(plan, 5, between(0)), "The things to move must be a list of stages, tip groups, randomizations or transfer tables, but got 5."],
-      [() => copyOf(plan, []), "The things to copy must be a list of stages, tip groups, randomizations or transfer tables, but got an empty list."],
-      [() => copyItems(plan, 5, between(0)), "The things to copy must be a list of stages, tip groups, randomizations or transfer tables, but got 5."],
+      [() => moveItems(plan, 5, between(0)), "The things to move must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got 5."],
+      [() => copyOf(plan, []), "The things to copy must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got an empty list."],
+      [() => copyItems(plan, 5, between(0)), "The things to copy must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got 5."],
       [
         () => moveItems(plan, [stageItem("1"), { kind: "box", id: "1" }], between(0)),
-        'Item 2 must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", but got "box".',
+        'Item 2 must be { kind, id }, with kind "stage", "tipGroup", "randomization", "transferTable" or "mixingBox", but got "box".',
       ],
       [() => moveItems(plan, [stageItem("9")], between(0)), 'There\'s no stage "9" in the plan.'],
       [() => moveItems(plan, [groupItem("2")], between(0)), 'Stage "2" doesn\'t start a tip group, so it can\'t name one.'],
@@ -6084,11 +6103,11 @@ describe("transfer-designer", () => {
       [() => moveItems(plan, [stageItem("1")], inGroup(2, 0)), "Box 2 is a randomization: nothing can be put inside it."],
       [
         () => moveItems(plan, [groupItem("3")], inGroup(0, 1)),
-        "A tip group or randomization can't go inside another tip group: put it between tip groups.",
+        "A tip group, randomization, transfer table or mixing box can't go inside another tip group: put it between tip groups.",
       ],
       [
         () => copyItems(plan, [randomizationItem("r1")], inGroup(0, 1)),
-        "A tip group or randomization can't go inside another tip group: put it between tip groups.",
+        "A tip group, randomization, transfer table or mixing box can't go inside another tip group: put it between tip groups.",
       ],
       [
         () => moveItems(plan, [stageItem("5")], between(0)),
@@ -6133,7 +6152,7 @@ describe("transfer-designer", () => {
 
   test("pasteItems refuses what isn't copied items, a newer version, and an entry not in its form", () => {
     const plan = movingPlan();
-    const notCopied = "Can't paste: this isn't stages, tip groups, randomizations or transfer tables copied from the transfer designer.";
+    const notCopied = "Can't paste: this isn't stages, tip groups, randomizations, transfer tables or mixing boxes copied from the transfer designer.";
     for (const copied of [
       "text",
       null,
@@ -6143,8 +6162,8 @@ describe("transfer-designer", () => {
     ]) {
       assert.throws(() => pasteItems(plan, copied, between(0)), { message: notCopied });
     }
-    assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 6 }, between(0)), {
-      message: "Can't paste: these were copied by a newer version of the tools (version 6).",
+    assert.throws(() => pasteItems(plan, { ...copiedStageItems(copiedStage()), version: 7 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 7).",
     });
     const second = { kind: "stage", stage: copiedStage(), tips: { tipType: FIRST_TIPS }, group: 2 };
     assert.throws(
@@ -6251,7 +6270,7 @@ describe("transfer-designer", () => {
       message: `Can't paste: item 1: "Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`,
     });
     assert.throws(() => pasteItems(plan, { format: "other" }, between(99)), {
-      message: "Can't paste: this isn't stages, tip groups, randomizations or transfer tables copied from the transfer designer.",
+      message: "Can't paste: this isn't stages, tip groups, randomizations, transfer tables or mixing boxes copied from the transfer designer.",
     });
   });
 
@@ -6961,11 +6980,11 @@ describe("transfer-designer", () => {
     const plan = deleteTestPlan();
     const s04 = stageIdOf(plan, "S04");
     const cases = [
-      [5, "The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got 5."],
-      [[], "The things to delete must be a list of stages, tip groups, randomizations or transfer tables, but got an empty list."],
+      [5, "The things to delete must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got 5."],
+      [[], "The things to delete must be a list of stages, tip groups, randomizations, transfer tables or mixing boxes, but got an empty list."],
       [
         [{ kind: "box", id: "1" }],
-        `Item 1 must be { kind, id }, with kind "stage", "tipGroup", "randomization" or "transferTable", but got "box".`,
+        `Item 1 must be { kind, id }, with kind "stage", "tipGroup", "randomization", "transferTable" or "mixingBox", but got "box".`,
       ],
       [[{ kind: "stage", id: "99" }], `There's no stage "99" in the plan.`],
       [[{ kind: "tipGroup", id: s04 }], `Stage ${describeValue(s04)} doesn't start a tip group, so it can't name one.`],
@@ -7017,6 +7036,87 @@ describe("transfer-designer", () => {
     const unrunOnly = deleteItems(lone, [{ kind: "randomization", id }]);
     assert.deepEqual(unrunOnly.plan.randomizations, []);
     assert.equal(unrunOnly.removed, 0);
+  });
+
+  // --- Deleting a mixing box (section 3, "Deleting"; mixingBoxTestPlan in the fixture) ---
+
+  // The item of the plan's (only) mixing box.
+  function mb(plan) {
+    return { kind: "mixingBox", id: plan.mixingBoxes[0].id };
+  }
+
+  // The item of the mixing box's mix step at `index` (from 0, in its order), e.g. 0 for Mix 1 of 5.
+  function mixingBoxStage(plan, index) {
+    return { kind: "stage", id: plan.mixingBoxes[0].stages[index] };
+  }
+
+  // The refusal message for one of the mixing box's mix steps alone: S01 to S07 come before the
+  // box, so Mix 1 of 5 is stage 8 and Mix 3 of 5 stage 10.
+  const MIX_1_REFUSAL = "Stage 8, “Mix 1 of 5”, belongs to a mixing box: delete the whole mixing box, or change it in its wizard.";
+  const MIX_3_REFUSAL = "Stage 10, “Mix 3 of 5”, belongs to a mixing box: delete the whole mixing box, or change it in its wizard.";
+
+  test("deleteItems: the mixing box test plan has its five mix steps, each on new tips, before S08's tip group", () => {
+    const plan = mixingBoxTestPlan();
+    const mixTips = { tipType: TIP_TYPES[0], probes: probesFor(4) };
+    assert.deepEqual(deleteGroupsOf(plan), [
+      g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05", "S06"), g(T3, "S07"),
+      ...[1, 2, 3, 4, 5].map((number) => g(mixTips, `Mix ${number} of 5`)),
+      g(T4, "S08", "S09"), ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS,
+    ]);
+    assert.equal(plan.mixingBoxes[0].way, "freshTip");
+    assert.doesNotThrow(() => biomekOutput(plan));
+  });
+
+  test("deleteItems: a mixing box alone goes with its five mix steps, as removeMixingBox gives, as one edit", () => {
+    const plan = mixingBoxTestPlan();
+    const before = snapshot(plan);
+    const { plan: after, removed, deleted } = deleteItems(plan, [mb(plan)]);
+    const removedByItsRemove = removeMixingBox(plan, mb(plan).id);
+    assertSamePlan(after, removedByItsRemove);
+    assert.deepEqual(planOutline(after), planOutline(removedByItsRemove));
+    assert.deepEqual(biomekOutput(after), biomekOutput(removedByItsRemove));
+    assert.equal(removed, 5);
+    assert.deepEqual(deleted, [mb(plan)]);
+    const history = new PlanHistory({ plan }).record({ plan: after });
+    assert.equal(history.undo().present.plan, plan);
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("deleteItems: S02, the mixing box and the transfer table, given out of order, go in column order, as removing them one by one", () => {
+    const plan = mixingBoxTestPlan();
+    const items = [tt(plan), mb(plan), st(plan, "S02")];
+    const { plan: after, removed, deleted } = deleteItems(plan, items);
+    assert.deepEqual(deleted, [st(plan, "S02"), mb(plan), tt(plan)]);
+    assert.equal(removed, 8);
+    let oneByOne = removeMixingBox(plan, mb(plan).id);
+    oneByOne = removeTransferTable(oneByOne, tt(plan).id);
+    oneByOne = removeStage(oneByOne, stageIdOf(plan, "S02"));
+    assert.deepEqual(planOutline(after), planOutline(oneByOne));
+    assert.deepEqual(biomekOutput(after), biomekOutput(oneByOne));
+  });
+
+  test("deleteItems: a mix step listed with its mixing box is left out of deleted and not counted twice", () => {
+    const plan = mixingBoxTestPlan();
+    const { deleted, removed } = deleteItems(plan, [mixingBoxStage(plan, 2), mb(plan)]);
+    assert.deepEqual(deleted, [mb(plan)]);
+    assert.equal(removed, 5);
+  });
+
+  test("deleteItems refuses a mixing box's mix step alone, or with other things but not its box, the plan unchanged", () => {
+    const plan = mixingBoxTestPlan();
+    const before = snapshot(plan);
+    assert.throws(() => deleteItems(plan, [mixingBoxStage(plan, 0)]), { message: MIX_1_REFUSAL });
+    assert.throws(() => deleteItems(plan, [st(plan, "S02"), mixingBoxStage(plan, 2), tt(plan)]), {
+      message: MIX_3_REFUSAL,
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("deleteItems with a randomization's stage and a mix step names the mix step, first in column order", () => {
+    const plan = mixingBoxTestPlan();
+    assert.throws(() => deleteItems(plan, [randomizationStage(plan, 0), mixingBoxStage(plan, 0)]), {
+      message: MIX_1_REFUSAL,
+    });
   });
 
   // --- Immutability and sharing ---
@@ -7116,7 +7216,7 @@ describe("transfer-designer", () => {
     [
       "deleteItems",
       (plan) => deleteItems(plan, [{ kind: "stage", id: "3" }, { kind: "randomization", id: "r1" }]).plan,
-      ["operationList", "stageList", "stageOrder", "tipChanges", "randomizations", "transferTables"],
+      ["operationList", "stageList", "stageOrder", "tipChanges", "randomizations", "transferTables", "mixingBoxes"],
     ],
     [
       "moveWell",
@@ -8155,7 +8255,7 @@ describe("transfer-designer", () => {
     assert.ok(tipChangeAt(moved, "1") !== null);
     assert.equal(isTransferTableOutOfDate(moved, id), false);
     assert.throws(() => moveItems(plan, [{ kind: "transferTable", id }], inGroup(0, 0)), {
-      message: "A tip group or randomization can't go inside another tip group: put it between tip groups.",
+      message: "A tip group, randomization, transfer table or mixing box can't go inside another tip group: put it between tip groups.",
     });
     assert.throws(() => moveItems(plan, [stageItem(media)], between(0)), {
       message: "Stage 2, “Media”, belongs to a transfer table, which moves its stages with it: move it within the table, move the whole transfer table, or copy the stage.",
@@ -8170,7 +8270,7 @@ describe("transfer-designer", () => {
     const [media] = tableStages(plan, id);
     plan = setTipType(plan, media, TIP_TYPES.at(-1));
     const copied = copyOf(plan, [{ kind: "transferTable", id }]);
-    assert.equal(copied.version, 5);
+    assert.equal(copied.version, 6);
     assert.deepEqual(copied.items[0].transferTable, { table: exampleTable(), sources: exampleDraft().sources });
     assert.deepEqual(copied.items[0].stages.map((entry) => [entry.component, entry.tips.tipType]), [
       ["Media", TIP_TYPES.at(-1)],
@@ -8905,7 +9005,7 @@ describe("transfer-designer", () => {
     const a1 = stageFor(run, id, "A1");
     const plan = withStageSettingsAndTips(run, a1, otherSettings(), otherTips());
     const copied = copyOf(plan, [randomizationItem(id)]);
-    assert.equal(copied.version, 5);
+    assert.equal(copied.version, 6);
     assert.deepEqual(
       FIRST_RUN_VALUES.map((property) => copied.items[0].randomization[property]),
       [null, null, null],
@@ -8934,8 +9034,8 @@ describe("transfer-designer", () => {
     assert.deepEqual(missing.items[0].randomization.settings, notRunPlan.randomizations[0].settings);
     missing.items[0].randomization.probes = null;
     assert.throws(() => pasteItems(notRunPlan, missing, between(0)), { message: formMessage });
-    assert.throws(() => pasteItems(plan, { ...copied, version: 6 }, between(0)), {
-      message: "Can't paste: these were copied by a newer version of the tools (version 6).",
+    assert.throws(() => pasteItems(plan, { ...copied, version: 7 }, between(0)), {
+      message: "Can't paste: these were copied by a newer version of the tools (version 7).",
     });
   });
 
@@ -10123,5 +10223,1201 @@ describe("transfer-designer", () => {
     const pasted = pasteDeck(emptyWells(byHand, byHand.startingContents), copy, COMPONENT_COLORS);
     const timestamp = new Date(2026, 10, 6, 9, 7, 2);
     assert.deepEqual(writeRunFiles(pasted, timestamp), writeRunFiles(byHand, timestamp));
+  });
+
+  // --- Mixing boxes (2026-11-11; transfer-designer.md, section 6, "Mixing boxes") ---
+
+  // MIX_VOLUME_TOLERANCE, called t as the specification's tests call it: every volume in these tests
+  // is worked out from it, never naming its value (CLAUDE.md, "Tests follow config/").
+  const TOLERANCE = MIX_VOLUME_TOLERANCE;
+
+  // The ten wells of the test plan's Fill stage, on PLATE: A1 to H1, A2 and B2.
+  const TEN_WELLS = ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1", "A2", "B2"];
+
+  // The test plan (section 6): components Media, Drug A and DMSO; RESERVOIR 1 holding Media, DEEP A1
+  // Drug A and DEEP A3 DMSO, plenty of each; stage "1", Fill, on the START tips, filling PLATE A1 to
+  // D1 with 90 µL of Media and 10 µL of Drug A each, E1 to H1 and A2 with 100 µL of Media, and B2
+  // with 180 µL of Media and 20 µL of Drug A; then stage "2", Wash, on tips of its own, without
+  // transfers.
+  function mixingTestPlan() {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addComponent(plan, "Drug A", "#e15759");
+    plan = addComponent(plan, "DMSO", "#59a14f");
+    plan = addToWells(plan, [trough("1")], "Media", capacityOf(RESERVOIR));
+    plan = addToWells(plan, [deepWell("A1")], "Drug A", capacityOf(DEEP));
+    plan = addToWells(plan, [deepWell("A3")], "DMSO", capacityOf(DEEP));
+    plan = renameStage(plan, "1", "Fill");
+    plan = fillPlate(plan, "1", ["A1", "B1", "C1", "D1"], 90, 10);
+    plan = fillPlate(plan, "1", ["E1", "F1", "G1", "H1", "A2"], 100, 0);
+    plan = fillPlate(plan, "1", ["B2"], 180, 20);
+    const added = addStageWithNewTips(plan, null);
+    return renameStage(added.plan, added.id, "Wash");
+  }
+
+  // A well on DEEP, e.g. mixDeepWell("A1").
+  function mixDeepWell(well) {
+    return { labware: DEEP, well };
+  }
+
+  // The plan with transfers in `stage` putting `media` µL of Media (from RESERVOIR 1) and `drug` µL
+  // of Drug A (from DEEP A1; none for 0) into each of `wells` on PLATE.
+  function fillPlate(plan, stage, wells, media, drug) {
+    let filling = plan;
+    for (const well of wells) {
+      filling = addTransfer(filling, { ...transferTo(stage, well, media) });
+      if (drug > 0) {
+        filling = addTransfer(filling, { ...transferTo(stage, well, drug), source: mixDeepWell("A1") });
+      }
+    }
+    return filling;
+  }
+
+  // A plan whose wells on PLATE, OTHER_PLATE and DEEP each hold 100 µL of Media at Start, every
+  // trough of RESERVOIR empty, and one stage: all wells of one volume and one contents.
+  function evenPlan() {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    for (const labware of [PLATE, OTHER_PLATE, DEEP]) {
+      plan = addToWells(plan, GRID_96.wellNames().map((well) => ({ labware, well })), "Media", 100);
+    }
+    return plan;
+  }
+
+  // A plan holding Media at Start in PLATE's wells of column 1, from A1 down, one well per volume in
+  // `volumes` (µL), e.g. columnPlan([100, 109]) → A1 100 µL, B1 109 µL.
+  function columnPlan(volumes) {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    volumes.forEach((volume, index) => {
+      plan = addToWells(plan, [plateWell(`${"ABCDEFGH"[index]}1`)], "Media", volume);
+    });
+    return plan;
+  }
+
+  // A draft of `way` for `wells` (each a well name on PLATE, or { labware, well }), loading the tip
+  // type `tipType` on the first `probeCount` probes. A new object each time.
+  function mixDraft(way, wells, probeCount = 4, tipType = TIP_TYPES[0]) {
+    return {
+      way,
+      wells: wells.map((well) => (typeof well === "string" ? plateWell(well) : well)),
+      tipType,
+      probes: probesFor(probeCount),
+    };
+  }
+
+  // The groups' wells as names (or "labware well" text with `withLabware`), e.g. [["A1", "B1"], ["H1"]].
+  function groupNames(groups, withLabware = false) {
+    return groups.map((group) =>
+      group.wells.map((end) => (withLabware ? `${end.labware} ${end.well}` : end.well)),
+    );
+  }
+
+  // The wells each of mixing box `id`'s mix steps mixes, as names, in order.
+  function boxWells(plan, id) {
+    return mixingBoxAt(plan, id).stages.map((stage) => transfersIn(plan, stage).map((transfer) => transfer.source.well));
+  }
+
+  // The test plan with a same-contents mixing box of the ten wells on 3 probes of TIP_TYPES[0], added
+  // before Wash: { plan, id } (section 6, "Adding").
+  function sameContentsBoxPlan(plan = mixingTestPlan(), probeCount = 3) {
+    return addMixingBox(plan, mixDraft("sameContents", TEN_WELLS, probeCount), "2");
+  }
+
+  // The test plan with a fresh-tip mixing box of the ten wells on 4 probes, added before Wash:
+  // { plan, id } (batches A1 to D1, E1 to H1, A2, then B2).
+  function freshTipBoxPlan(plan = mixingTestPlan()) {
+    return addMixingBox(plan, mixDraft("freshTip", TEN_WELLS, 4), "2");
+  }
+
+  // The plan with a new stage, on the tips before stage `beforeId`, putting `volume` µL of DMSO
+  // (from DEEP A3) into PLATE `well`: an edit before a mixing box whose first mix step is `beforeId`.
+  function withDmsoBefore(plan, beforeId, well, volume = 1) {
+    const added = addStage(plan, beforeId);
+    return addTransfer(added.plan, { ...transferTo(added.id, well, volume), source: mixDeepWell("A3") });
+  }
+
+  test("config/mixing.js: MIX_VOLUME_TOLERANCE is a number above 0 and below 100", () => {
+    assert.ok(Number.isFinite(MIX_VOLUME_TOLERANCE) && MIX_VOLUME_TOLERANCE > 0 && MIX_VOLUME_TOLERANCE < 100);
+  });
+
+  test('MIXING_WAYS is ["freshTip", "sameContents"] and frozen; SAME_SHARE_ALLOWANCE is 0.000001', () => {
+    assert.deepEqual(MIXING_WAYS, ["freshTip", "sameContents"]);
+    assert.ok(Object.isFrozen(MIXING_WAYS));
+    assert.equal(SAME_SHARE_ALLOWANCE, 0.000001);
+  });
+
+  test("probe order: down each column, then the next; labware in the deck's order; troughs each a column of their own", () => {
+    const plan = evenPlan();
+    const fresh = mixingGroups(plan, mixDraft("freshTip", ["A2", "B1", "A1", "H1"], 8), null);
+    assert.deepEqual(groupNames(fresh), [["A1", "B1"], ["H1"], ["A2"]]);
+    const same = mixingGroups(plan, mixDraft("sameContents", ["A2", "B1", "A1", "H1"], 8), null);
+    assert.deepEqual(groupNames(same), [["A1", "B1", "H1", "A2"]]);
+    // Wells on DEEP and PLATE together come in the deck's labware order.
+    const deckFirst = DECK.findIndex((entry) => entry.name === PLATE) < DECK.findIndex((entry) => entry.name === DEEP)
+      ? [PLATE, DEEP]
+      : [DEEP, PLATE];
+    const mixed = mixingGroups(plan, mixDraft("sameContents", [mixDeepWell("A1"), plateWell("A1")], 8), null);
+    assert.deepEqual(mixed[0].wells.map((end) => end.labware), deckFirst);
+    const troughs = mixingGroups(plan, mixDraft("freshTip", [trough("5"), trough("1"), trough("3")], 8), null);
+    assert.deepEqual(groupNames(troughs), [["1"], ["3"], ["5"]]);
+  });
+
+  test("fresh tip, column batches: one column of one labware per batch, at most as many wells as probes", () => {
+    const plan = evenPlan();
+    const column = ["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"];
+    assert.deepEqual(groupNames(mixingGroups(plan, mixDraft("freshTip", column, 4), null)), [
+      ["A1", "B1", "C1", "D1"],
+      ["E1", "F1", "G1", "H1"],
+    ]);
+    assert.deepEqual(
+      groupNames(mixingGroups(plan, mixDraft("freshTip", ["A1", "B1", "C1", "A2", "B2", "C2"], 4), null)),
+      [["A1", "B1", "C1"], ["A2", "B2", "C2"]],
+    );
+    const row = Array.from({ length: 12 }, (_, index) => `A${index + 1}`);
+    assert.deepEqual(groupNames(mixingGroups(plan, mixDraft("freshTip", row, 4), null)), row.map((well) => [well]));
+    assert.deepEqual(groupNames(mixingGroups(plan, mixDraft("freshTip", ["G1", "H1", "A2"], 3), null)), [
+      ["G1", "H1"],
+      ["A2"],
+    ]);
+    assert.deepEqual(
+      groupNames(mixingGroups(plan, mixDraft("freshTip", ["A1", "B1", "C1", "A2"], 1), null)),
+      [["A1"], ["B1"], ["C1"], ["A2"]],
+    );
+  });
+
+  test("fresh tip, gaps: a batch starts again at any well not in the row just below its last; same contents ignores gaps", () => {
+    const plan = evenPlan();
+    // Each case: the wells, the probes, and the fresh-tip batches.
+    const cases = [
+      [["A1", "C1", "E1"], 4, [["A1"], ["C1"], ["E1"]]],
+      [["A1", "B1", "D1", "E1", "F1"], 4, [["A1", "B1"], ["D1", "E1", "F1"]]],
+      [["A1", "B1", "C1", "E1", "F1", "G1", "H1"], 8, [["A1", "B1", "C1"], ["E1", "F1", "G1", "H1"]]],
+      [["A1", "B1", "C1", "E1", "F1", "G1", "H1"], 4, [["A1", "B1", "C1"], ["E1", "F1", "G1", "H1"]]],
+      [["A1", "C2"], 8, [["A1"], ["C2"]]],
+    ];
+    for (const [wells, probes, batches] of cases) {
+      assert.deepEqual(groupNames(mixingGroups(plan, mixDraft("freshTip", wells, probes), null)), batches, wells.join());
+      assert.equal(mixingGroups(plan, mixDraft("sameContents", wells, probes), null).length, 1, wells.join());
+    }
+    const added = addMixingBox(plan, mixDraft("freshTip", ["A1", "C1", "E1"], 4), null);
+    assert.equal(mixingBoxAt(added.plan, added.id).stages.length, 3);
+  });
+
+  test("fresh tip, restart at labware: wells on two labware of the same type never share a batch", () => {
+    const plan = evenPlan();
+    assert.equal(
+      DECK.find((entry) => entry.name === PLATE).labwareType,
+      DECK.find((entry) => entry.name === OTHER_PLATE).labwareType,
+    );
+    const wells = ["A1", "B1", "C1"].flatMap((well) => [plateWell(well), { labware: OTHER_PLATE, well }]);
+    assert.deepEqual(groupNames(mixingGroups(plan, mixDraft("freshTip", wells, 8), null), true), [
+      [`${PLATE} A1`, `${PLATE} B1`, `${PLATE} C1`],
+      [`${OTHER_PLATE} A1`, `${OTHER_PLATE} B1`, `${OTHER_PLATE} C1`],
+    ]);
+  });
+
+  test("fresh tip, the test plan: batches on 4 and 8 probes, and their components", () => {
+    const plan = mixingTestPlan();
+    const onFour = mixingGroups(plan, mixDraft("freshTip", TEN_WELLS, 4), "2");
+    assert.deepEqual(groupNames(onFour), [["A1", "B1", "C1", "D1"], ["E1", "F1", "G1", "H1"], ["A2"], ["B2"]]);
+    assert.deepEqual(onFour.map((group) => group.components), [
+      ["Media", "Drug A"],
+      ["Media"],
+      ["Media"],
+      ["Media", "Drug A"],
+    ]);
+    const onEight = mixingGroups(plan, mixDraft("freshTip", TEN_WELLS, 8), "2");
+    assert.deepEqual(groupNames(onEight), [["A1", "B1", "C1", "D1", "E1", "F1", "G1", "H1"], ["A2"], ["B2"]]);
+    assert.equal(onEight[0].components, null);
+  });
+
+  test("fresh tip ignores contents: the same volumes give the same batches whatever the wells hold", () => {
+    const plan = mixingTestPlan();
+    const before = groupNames(mixingGroups(plan, mixDraft("freshTip", TEN_WELLS, 4), "2"));
+    // Media at Start replaced by DMSO in the same amount: every well holds other things, as much.
+    let replaced = emptyWells(plan, [trough("1")]);
+    replaced = addToWells(replaced, [trough("1")], "DMSO", capacityOf(RESERVOIR));
+    assert.deepEqual(groupNames(mixingGroups(replaced, mixDraft("freshTip", TEN_WELLS, 4), "2")), before);
+  });
+
+  test("volume tolerance: wells share a group only within MIX_VOLUME_TOLERANCE of the group's smallest, judged on the whole group", () => {
+    // The groups `volumes` (in PLATE's column 1, from A1) make with `way` on 8 probes, as row letters.
+    const groupsOf = (way, volumes) => {
+      const wells = volumes.map((_, index) => `${"ABCDEFGH"[index]}1`);
+      return groupNames(mixingGroups(columnPlan(volumes), mixDraft(way, wells, 8), null)).map((group) =>
+        group.map((well) => well[0]),
+      );
+    };
+    const far = 100 * (1 + (2 * TOLERANCE) / 100);
+    for (const way of MIXING_WAYS) {
+      assert.deepEqual(groupsOf(way, [100, 100 * (1 + (0.9 * TOLERANCE) / 100)]), [["A", "B"]], way);
+      assert.deepEqual(groupsOf(way, [100, 100 * (1 + (1.1 * TOLERANCE) / 100)]), [["A"], ["B"]], way);
+      assert.deepEqual(groupsOf(way, [100, 100 / (1 + (0.9 * TOLERANCE) / 100)]), [["A", "B"]], way);
+      assert.deepEqual(groupsOf(way, [100, 100 / (1 + (1.1 * TOLERANCE) / 100)]), [["A"], ["B"]], way);
+      // No chaining: the third is within t% of the second, but not of the group's smallest.
+      const chained = [100, 100 * (1 + (0.6 * TOLERANCE) / 100), 100 * (1 + (1.2 * TOLERANCE) / 100)];
+      assert.deepEqual(groupsOf(way, chained), [["A", "B"], ["C"]], way);
+      // Exactly at the limit, as the arithmetic gives it.
+      assert.deepEqual(groupsOf(way, [100, 100 * (1 + TOLERANCE / 100)]), [["A", "B"]], way);
+    }
+    assert.deepEqual(groupsOf("freshTip", [100, far, 100]), [["A"], ["B"], ["C"]]);
+    assert.deepEqual(groupsOf("sameContents", [100, far, 100]), [["A", "C"], ["B"]]);
+    assert.deepEqual(groupsOf("sameContents", [100, far, 100, far]), [["A", "C"], ["B", "D"]]);
+    assert.deepEqual(groupsOf("freshTip", [100, far, 100, far]), [["A"], ["B"], ["C"], ["D"]]);
+  });
+
+  test("volume tolerance: volumes are what the wells hold just before the box", () => {
+    let plan = columnPlan([100, 100]);
+    plan = addTransfer(plan, {
+      type: "transfer",
+      source: trough("1"),
+      destination: plateWell("B1"),
+      volume: 100 * ((2 * TOLERANCE) / 100),
+      stage: "1",
+    });
+    plan = addToWells(plan, [trough("1")], "Media", capacityOf(RESERVOIR));
+    for (const way of MIXING_WAYS) {
+      const draft = mixDraft(way, ["A1", "B1"], 8);
+      assert.deepEqual(groupNames(mixingGroups(plan, draft, null)), [["A1"], ["B1"]], way);
+      assert.deepEqual(groupNames(mixingGroups(plan, draft, "1")), [["A1", "B1"]], way);
+    }
+  });
+
+  test("same contents, grouping: the test plan's wells on 4 probes make three groups, split by volume", () => {
+    const groups = mixingGroups(mixingTestPlan(), mixDraft("sameContents", TEN_WELLS, 4), "2");
+    assert.deepEqual(groupNames(groups), [["A1", "B1", "C1", "D1"], ["E1", "F1", "G1", "H1", "A2"], ["B2"]]);
+    assert.deepEqual(groups.map((group) => group.components), [["Media", "Drug A"], ["Media"], ["Media", "Drug A"]]);
+    // A group of 5 wells on 4 probes, in two columns, is kept whole.
+    assert.equal(groups[1].wells.length, 5);
+  });
+
+  test("same contents, order of first appearance: groups come in the probe order of their first wells", () => {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addComponent(plan, "Drug A", "#e15759");
+    plan = addToWells(plan, [plateWell("A1")], "Media", 100);
+    plan = addToWells(plan, ["B1", "C1", "D1"].map(plateWell), "Media", 90);
+    plan = addToWells(plan, ["B1", "C1", "D1"].map(plateWell), "Drug A", 10);
+    const groups = mixingGroups(plan, mixDraft("sameContents", ["D1", "C1", "B1", "A1"], 4), null);
+    assert.deepEqual(groupNames(groups), [["A1"], ["B1", "C1", "D1"]]);
+    assert.deepEqual(groups.map((group) => group.components), [["Media"], ["Media", "Drug A"]]);
+  });
+
+  test("same contents, precision: holdSameContents allows SAME_SHARE_ALLOWANCE for a component both wells hold, and nothing for one only one holds", () => {
+    const half = SAME_SHARE_ALLOWANCE / 2;
+    const ten = SAME_SHARE_ALLOWANCE * 10;
+    const base = { Media: 0.9, "Drug A": 0.1 };
+    // Each pair, and whether they hold the same contents; each is checked both ways round.
+    const pairs = [
+      [base, { Media: 0.9 + half, "Drug A": 0.1 - half }, true],
+      [base, { Media: 0.9 + ten, "Drug A": 0.1 - ten }, false],
+      [{ Media: 1 }, { Media: 0.99, DMSO: 0.01 }, false],
+      [{ Media: 1 }, { DMSO: 1 }, false],
+      [{}, {}, true],
+      [{}, { Media: 1 }, false],
+      [base, { "Drug A": 0.1, Media: 0.9 }, true],
+      [{ Media: 1 }, { Media: 1 - half, DMSO: half }, false],
+    ];
+    for (const [a, b, same] of pairs) {
+      assert.equal(holdSameContents(a, b), same, JSON.stringify([a, b]));
+      assert.equal(holdSameContents(b, a), same, JSON.stringify([b, a]));
+    }
+  });
+
+  test("same contents, precision in mixingGroups: 0.1% apart in shares is two groups; the same shares by different routes is one", () => {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addComponent(plan, "Drug A", "#e15759");
+    plan = addToWells(plan, [trough("1")], "Media", capacityOf(RESERVOIR));
+    plan = addToWells(plan, [mixDeepWell("A1")], "Drug A", capacityOf(DEEP));
+    plan = addToWells(plan, [plateWell("A1")], "Media", 90);
+    plan = addToWells(plan, [plateWell("A1")], "Drug A", 10);
+    plan = addToWells(plan, [plateWell("B1")], "Media", 89.9);
+    plan = addToWells(plan, [plateWell("B1")], "Drug A", 10.1);
+    // C1 gets the same shares as A1 by transfers.
+    plan = fillPlate(plan, "1", ["C1"], 90, 10);
+    const groups = mixingGroups(plan, mixDraft("sameContents", ["A1", "B1", "C1"], 8), null);
+    assert.deepEqual(groupNames(groups), [["A1", "C1"], ["B1"]]);
+  });
+
+  test("no chaining (shares): a well joins a group only within the allowance of its first well's shares", () => {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addComponent(plan, "Drug A", "#e15759");
+    const x = 0.1;
+    [0, 0.8, 1.6].forEach((steps, index) => {
+      const drug = x + steps * SAME_SHARE_ALLOWANCE;
+      const well = plateWell(`${"ABC"[index]}1`);
+      plan = addToWells(plan, [well], "Drug A", 100 * drug);
+      plan = addToWells(plan, [well], "Media", 100 * (1 - drug));
+    });
+    const groups = mixingGroups(plan, mixDraft("sameContents", ["A1", "B1", "C1"], 8), null);
+    assert.deepEqual(groupNames(groups), [["A1", "B1"], ["C1"]]);
+  });
+
+  test("empty wells: they group only with empty wells, their mix step has a contents problem, and nothing refuses them", () => {
+    const plan = mixingTestPlan();
+    const draft = mixDraft("sameContents", ["A1", "B1", "C1", "D1", "C3", "D3"], 4);
+    const groups = mixingGroups(plan, draft, "2");
+    assert.deepEqual(groupNames(groups), [["A1", "B1", "C1", "D1"], ["C3", "D3"]]);
+    assert.deepEqual(groups[1].components, []);
+    const { plan: added, id } = addMixingBox(plan, draft, "2");
+    const emptyStep = mixingBoxAt(added, id).stages[1];
+    assert.ok(stagesWithContentsProblem(added).has(emptyStep));
+    // With a fresh tip on 8 probes, A3 holding 100 µL and B3 and C3 empty.
+    const withA3 = addToWells(plan, [plateWell("A3")], "Media", 100);
+    assert.deepEqual(
+      groupNames(mixingGroups(withA3, mixDraft("freshTip", ["A3", "B3", "C3"], 8), "2")),
+      [["A3"], ["B3", "C3"]],
+    );
+  });
+
+  test("contents just before it: before Fill sees the plate empty, before Wash sees Fill's, at the end every stage, a later stage nothing", () => {
+    let plan = mixingTestPlan();
+    const draft = mixDraft("sameContents", TEN_WELLS, 4);
+    const beforeFill = mixingGroups(plan, draft, "1");
+    assert.deepEqual(groupNames(beforeFill), [TEN_WELLS]);
+    assert.deepEqual(beforeFill[0].components, []);
+    assert.equal(mixingGroups(plan, draft, "2").length, 3);
+    // DMSO into A1 in Wash: seen at the end, not before Wash.
+    plan = addTransfer(plan, { ...transferTo("2", "A1", 1), source: mixDeepWell("A3") });
+    assert.equal(mixingGroups(plan, draft, "2").length, 3);
+    assert.equal(mixingGroups(plan, draft, null).length, 4);
+  });
+
+  test("many labware: a same-contents group may span labware; fresh-tip batches never span labware or columns", () => {
+    const plan = evenPlan();
+    const wells = [plateWell("A1"), plateWell("B1"), { labware: OTHER_PLATE, well: "A1" }, mixDeepWell("A1"), mixDeepWell("B1")];
+    const same = mixingGroups(plan, mixDraft("sameContents", wells, 8), null);
+    assert.equal(same.length, 1);
+    const fresh = mixingGroups(plan, mixDraft("freshTip", wells, 8), null);
+    for (const group of fresh) {
+      assert.equal(new Set(group.wells.map((end) => end.labware)).size, 1);
+      assert.equal(new Set(group.wells.map((end) => gridOf(end.labware).wellPosition(end.well).column)).size, 1);
+    }
+    assert.equal(fresh.length, 3);
+  });
+
+  test("reservoir troughs: a fresh-tip draft holding one is refused by adding and updating, after every other check, naming the first in probe order", () => {
+    const plan = mixingTestPlan();
+    const message =
+      `A fresh tip for every well can't mix reservoir troughs until that's checked in simulation: ${RESERVOIR} 1. ` +
+      "Use one tip for wells with the same contents, or leave the troughs out.";
+    const draft = mixDraft("freshTip", [plateWell("A1"), trough("3"), trough("1")], 4);
+    const before = snapshot(plan);
+    assert.throws(() => addMixingBox(plan, draft, "2"), { message });
+    assert.equal(snapshot(plan), before);
+    assert.deepEqual(groupNames(mixingGroups(plan, draft, "2"), true), [[`${PLATE} A1`], [`${RESERVOIR} 1`], [`${RESERVOIR} 3`]]);
+    const { plan: added, id } = addMixingBox(plan, { ...draft, way: "sameContents" }, "2");
+    assert.equal(mixingBoxAt(added, id).way, "sameContents");
+    assert.throws(() => updateMixingBox(added, id, draft), { message });
+    // Order of checks: the tip type, the place and the ID come first.
+    assert.throws(() => addMixingBox(plan, { ...draft, tipType: "BC50" }, "2"), {
+      message: `"BC50" isn't a tip type. Choose one of ${TIP_TYPES.map((type) => `"${type}"`).join(", ")}.`,
+    });
+    assert.throws(() => addMixingBox(plan, draft, "9"), { message: 'There\'s no stage "9" to add a mixing box before.' });
+    assert.throws(() => updateMixingBox(added, "m9", draft), { message: 'There\'s no mixing box "m9" in the plan.' });
+  });
+
+  test("what counts as a trough: a grid of one row, whatever its naming", () => {
+    assert.equal(isTroughGrid(GRID_1X12_NUMBERED), true);
+    assert.equal(isTroughGrid(new WellGrid(1, 12)), true);
+    assert.equal(isTroughGrid(new WellGrid(1, 1, { naming: "number" })), true);
+    assert.equal(isTroughGrid(GRID_96), false);
+    assert.equal(isTroughGrid(new WellGrid(2, 6, { naming: "number" })), false);
+  });
+
+  test("troughs got round the refusal: a well moved into one, or a plan file holding one, makes a fresh-tip box out of date, and Update refuses", () => {
+    const plan = mixingTestPlan();
+    const { plan: added, id } = addMixingBox(plan, mixDraft("freshTip", ["A1"], 4), "2");
+    const moved = moveWell(added, plateWell("A1"), trough("5"));
+    assert.equal(isMixingBoxOutOfDate(moved, id), true);
+    assert.throws(() => updateMixingBox(moved, id, mixingBoxDraft(moved, id)), {
+      message:
+        `A fresh tip for every well can't mix reservoir troughs until that's checked in simulation: ${RESERVOIR} 5. ` +
+        "Use one tip for wells with the same contents, or leave the troughs out.",
+    });
+    const switched = updateMixingBox(moved, id, { ...mixingBoxDraft(moved, id), way: "sameContents" });
+    assert.notEqual(switched, moved);
+    assert.equal(mixingBoxAt(switched, id).way, "sameContents");
+    assert.ok(mixingBoxAt(switched, id).stages.every((stage) => !mixingBoxAt(moved, id).stages.includes(stage)));
+    assert.deepEqual(boxWells(switched, id), [["5"]]);
+    assert.equal(isMixingBoxOutOfDate(switched, id), false);
+    // A plan built with setMixingBoxes, as a plan file gives it.
+    const { plan: withStep, id: step } = addMixStepWithNewTips(plan, null);
+    const named = mixWells(renameStage(withStep, step, "Mix 1 of 1"), step, [trough("1")]);
+    const fromFile = setMixingBoxes(named, [{ id: "m1", way: "freshTip", stages: [step] }]);
+    assert.equal(isMixingBoxOutOfDate(fromFile, "m1"), true);
+    assert.throws(() => updateMixingBox(fromFile, "m1", mixingBoxDraft(fromFile, "m1")), { message: /reservoir troughs/ });
+    const sameWay = setMixingBoxes(named, [{ id: "m1", way: "sameContents", stages: [step] }]);
+    assert.equal(isMixingBoxOutOfDate(sameWay, "m1"), false);
+  });
+
+  test("the draft's form: each refusal in the order of checks", () => {
+    const plan = mixingTestPlan();
+    const good = mixDraft("sameContents", ["A1"], 4);
+    const formMessage = (got) =>
+      `A mixing box's draft must be an object with exactly "way", "wells", "tipType" and "probes", but got ${got}.`;
+    const { probes, ...missing } = good;
+    const cases = [
+      [5, formMessage("5")],
+      [null, formMessage("null")],
+      [missing, formMessage("an object")],
+      [{ ...good, extra: 1 }, formMessage("an object")],
+      [{ ...good, way: "byRow", wells: [{ labware: PLATE, well: "Z99" }] }, 'The way to mix must be one of "freshTip", "sameContents", but got "byRow".'],
+      [{ ...good, wells: null }, 'The wells to mix must be a list of wells, like [{ labware: "Plate1", well: "A1" }], but got null.'],
+      [{ ...good, wells: [plateWell("A1"), plateWell("B1"), { labware: PLATE, well: "Z99" }] }, `Well to mix 3: "Z99" isn't a well on ${PLATE}. Its wells are A1 to H12.`],
+      [{ ...good, wells: [plateWell("A1"), plateWell("A1")] }, `${PLATE} A1 is a well to mix twice. List each once.`],
+      [{ ...good, tipType: "BC50" }, `"BC50" isn't a tip type. Choose one of ${TIP_TYPES.map((type) => `"${type}"`).join(", ")}.`],
+      [{ ...good, probes: [9] }, "Probe numbers must be whole numbers from 1 to 8, but got 9."],
+      [{ ...good, probes: [1, 1] }, "Probe 1 is listed more than once. List each probe once."],
+    ];
+    for (const [draft, message] of cases) {
+      assert.throws(() => mixingGroups(plan, draft, null), { message }, message);
+      assert.throws(() => addMixingBox(plan, draft, null), { message }, message);
+    }
+    const empty = { ...good, wells: [] };
+    assert.deepEqual(mixingGroups(plan, empty, null), []);
+    assert.throws(() => addMixingBox(plan, empty, null), { message: "Pick at least one well to mix." });
+    const { plan: added, id } = sameContentsBoxPlan(plan);
+    assert.throws(() => updateMixingBox(added, id, empty), { message: "Pick at least one well to mix." });
+    assert.throws(() => mixingGroups(plan, good, "9"), { message: 'There\'s no stage "9" in the plan.' });
+  });
+
+  test("adding: one mix step per group before Wash, each on its own tips, named by its place, with the default mix step settings", () => {
+    // A mix step with another mix before the box, which the box mustn't copy.
+    let plan = mixingTestPlan();
+    const other = addMixStepWithNewTips(plan, "2");
+    plan = withMixStepMix(mixWells(other.plan, other.id, [plateWell("H12")]), other.id, { share: 50, times: 2, speed: 100 });
+    const washTips = tipChangeAt(plan, "2");
+    const history = new PlanHistory(plan);
+    const { plan: added, id } = sameContentsBoxPlan(plan);
+    assert.equal(id, "m1");
+    const box = mixingBoxAt(added, id);
+    assert.deepEqual(box, { id: "m1", way: "sameContents", stages: box.stages });
+    assert.equal(box.stages.length, 3);
+    assert.deepEqual(stageOrder(added).slice(-4), [...box.stages, "2"]);
+    box.stages.forEach((stage, index) => {
+      assert.equal(added.stageList.get(stage).name, `Mix ${index + 1} of 3`);
+      assert.ok(isMixStep(added, stage));
+      assert.deepEqual(added.stageList.get(stage).settings, mixStepDefaults());
+      assert.deepEqual(tipChangeAt(added, stage), { tipType: TIP_TYPES[0], probes: probesFor(3) });
+      for (const transfer of transfersIn(added, stage)) {
+        assert.equal(transfer.volume, MIX_STEP_VOLUME);
+        assert.deepEqual(transfer.source, transfer.destination);
+      }
+    });
+    assert.deepEqual(boxWells(added, id), [["A1", "B1", "C1", "D1"], ["E1", "F1", "G1", "H1", "A2"], ["B2"]]);
+    assert.deepEqual(tipChangeAt(added, "2"), washTips);
+    assert.equal(history.record(added).undo().present, plan);
+    // A second box is m2; with m1 removed and m2 kept, the next is m3.
+    const second = addMixingBox(added, mixDraft("freshTip", ["A3"], 4), null);
+    assert.equal(second.id, "m2");
+    const third = addMixingBox(removeMixingBox(second.plan, "m1"), mixDraft("freshTip", ["A4"], 4), null);
+    assert.equal(third.id, "m3");
+  });
+
+  test("adding at the end and before the plan's first stage", () => {
+    const plan = mixingTestPlan();
+    const atEnd = addMixingBox(plan, mixDraft("freshTip", ["A1"], 4), null);
+    const [last] = mixingBoxAt(atEnd.plan, atEnd.id).stages;
+    assert.equal(stageOrder(atEnd.plan).at(-1), last);
+    assert.deepEqual(tipChangeAt(atEnd.plan, "2"), tipChangeAt(plan, "2"));
+    const fillTips = tipChangeAt(plan, START);
+    const atTop = addMixingBox(plan, mixDraft("freshTip", ["A1"], 2, TIP_TYPES.at(-1)), "1");
+    const [first] = mixingBoxAt(atTop.plan, atTop.id).stages;
+    assert.equal(stageOrder(atTop.plan)[0], first);
+    assert.deepEqual(tipChangeAt(atTop.plan, START), { tipType: TIP_TYPES.at(-1), probes: probesFor(2) });
+    assert.deepEqual(tipChangeAt(atTop.plan, "1"), fillTips);
+  });
+
+  test("one mix step: a draft of one well gives Mix 1 of 1", () => {
+    const { plan, id } = addMixingBox(mixingTestPlan(), mixDraft("sameContents", ["A1"], 4), "2");
+    assert.equal(plan.stageList.get(mixingBoxAt(plan, id).stages[0]).name, "Mix 1 of 1");
+  });
+
+  test("addMixingBox with an unknown beforeId is refused, the plan unchanged", () => {
+    const plan = mixingTestPlan();
+    const before = snapshot(plan);
+    assert.throws(() => addMixingBox(plan, mixDraft("sameContents", ["A1"], 4), "9"), {
+      message: 'There\'s no stage "9" to add a mixing box before.',
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("mixingBoxAt and mixingBoxOf", () => {
+    let { plan, id } = sameContentsBoxPlan();
+    assert.ok(Object.isFrozen(mixingBoxAt(plan, id)) && Object.isFrozen(mixingBoxAt(plan, id).stages));
+    assert.equal(mixingBoxAt(plan, "m9"), null);
+    for (const stage of mixingBoxAt(plan, id).stages) {
+      assert.equal(mixingBoxOf(plan, stage), id);
+    }
+    // A randomization's stage and a transfer table's stage are owned by no mixing box.
+    plan = addToWells(plan, [mixDeepWell("A5")], "Media", capacityOf(DEEP));
+    plan = setWellLabel(plan, plateWell("A12"), "Row");
+    const table = addTransferTable(plan, { table: [["Label", "Media"], ["Row", "10"]], sources: { Media: [trough("1")] } }, null);
+    plan = table.plan;
+    const randomized = addRandomization(plan, null, { seed: 5, volume: 5 });
+    plan = setRandomization(randomized.plan, randomized.id, {
+      sources: [{ labware: DEEP, well: "A5", replicates: 1, filler: false, sharesTips: false }],
+      fill: [plateWell("H11")],
+    });
+    plan = runRandomization(plan, randomized.id);
+    for (const stage of ["1", "2", transferTableAt(plan, table.id).stages[0].stage, randomizationAt(plan, randomized.id).stages[0].stage, "99"]) {
+      assert.equal(mixingBoxOf(plan, stage), null, stage);
+    }
+  });
+
+  test("where it can be added: the end, a tip group's first stage, above a box's first stage; refused inside a tip group or a box", () => {
+    let plan = mixingTestPlan();
+    const rinse = addStage(plan, "2");
+    const insideGroup = rinse.id;
+    plan = renameStage(rinse.plan, insideGroup, "Rinse");
+    const draft = mixDraft("sameContents", ["A1"], 4);
+    assert.doesNotThrow(() => addMixingBox(plan, draft, null));
+    assert.doesNotThrow(() => addMixingBox(plan, draft, "2"));
+    assert.throws(() => addMixingBox(plan, draft, insideGroup), {
+      message: `A mixing box sits between tip groups, so it can't go before stage 2, “Rinse”.`,
+    });
+    const { plan: boxed, id } = addMixingBox(plan, mixDraft("freshTip", ["A1", "A2"], 4), null);
+    const [first, second] = mixingBoxAt(boxed, id).stages;
+    assert.doesNotThrow(() => addMixingBox(boxed, draft, first));
+    assert.throws(() => addMixingBox(boxed, draft, second), {
+      message: "A mixing box's mix steps stay together, each on its own tips: add before its first mix step or after its last.",
+    });
+    // Inside a transfer table and a randomization: each one's own message.
+    let tabled = setWellLabel(boxed, plateWell("A12"), "Row");
+    tabled = setWellLabel(tabled, plateWell("B12"), "Row 2");
+    const table = addTransferTable(
+      tabled,
+      { table: [["Label", "Media", "DMSO"], ["Row", "10", "5"]], sources: { Media: [trough("1")], DMSO: [mixDeepWell("A3")] } },
+      null,
+    );
+    const [tableFirst, tableSecond] = transferTableAt(table.plan, table.id).stages.map((owned) => owned.stage);
+    assert.doesNotThrow(() => addMixingBox(table.plan, draft, tableFirst));
+    assert.throws(() => addMixingBox(table.plan, draft, tableSecond), {
+      message: "A transfer table's stages stay together, each on its own tips: add before its first stage or after its last.",
+    });
+    // A run randomization of two sources, each on tips of its own.
+    const randomized = addRandomization(table.plan, null, { seed: 5, volume: 5 });
+    let run = setRandomization(randomized.plan, randomized.id, {
+      sources: ["A1", "A3"].map((well) => ({ labware: DEEP, well, replicates: 1, filler: false, sharesTips: false })),
+      fill: [plateWell("H10"), plateWell("H11")],
+    });
+    run = runRandomization(run, randomized.id);
+    const [randomFirst, randomSecond] = randomizationAt(run, randomized.id).stages.map((owned) => owned.stage);
+    assert.doesNotThrow(() => addMixingBox(run, draft, randomFirst));
+    assert.throws(() => addMixingBox(run, draft, randomSecond), {
+      message: "A randomization's stages stay together: add before its first stage or after its last.",
+    });
+  });
+
+  test("mixingBoxDraft: its way, every well in probe order, its tips; START's at the top; a new object each time", () => {
+    const plan = mixingTestPlan();
+    const { plan: added, id } = addMixingBox(plan, mixDraft("sameContents", [...TEN_WELLS].reverse(), 3), "2");
+    const draft = mixingBoxDraft(added, id);
+    assert.deepEqual(draft, { way: "sameContents", wells: TEN_WELLS.map(plateWell), tipType: TIP_TYPES[0], probes: probesFor(3) });
+    draft.wells.push(plateWell("H12"));
+    draft.probes.push(8);
+    assert.deepEqual(mixingBoxDraft(added, id).wells, TEN_WELLS.map(plateWell));
+    assert.deepEqual(mixingBoxDraft(added, id).probes, probesFor(3));
+    const atTop = addMixingBox(plan, mixDraft("freshTip", ["A1"], 2, TIP_TYPES.at(-1)), "1");
+    assert.deepEqual(mixingBoxDraft(atTop.plan, atTop.id).probes, probesFor(2));
+    assert.equal(mixingBoxDraft(atTop.plan, atTop.id).tipType, TIP_TYPES.at(-1));
+    assert.throws(() => mixingBoxDraft(added, "m9"), { message: 'There\'s no mixing box "m9" in the plan.' });
+  });
+
+  test("mixedContentsOf: each mix step's components; null when a fresh-tip batch's differ; [] for empty wells; follows a rename", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    assert.deepEqual(mixingBoxAt(plan, id).stages.map((stage) => mixedContentsOf(plan, stage)), [
+      ["Media", "Drug A"],
+      ["Media"],
+      ["Media", "Drug A"],
+    ]);
+    const fresh = addMixingBox(mixingTestPlan(), mixDraft("freshTip", TEN_WELLS, 8), "2");
+    assert.equal(mixedContentsOf(fresh.plan, mixingBoxAt(fresh.plan, fresh.id).stages[0]), null);
+    const empty = addMixingBox(mixingTestPlan(), mixDraft("sameContents", ["C3", "D3"], 4), "2");
+    assert.deepEqual(mixedContentsOf(empty.plan, mixingBoxAt(empty.plan, empty.id).stages[0]), []);
+    const renamed = renameComponent(plan, "Media", "DMEM");
+    assert.deepEqual(mixedContentsOf(renamed, mixingBoxAt(plan, id).stages[0]), ["DMEM", "Drug A"]);
+    assert.throws(() => mixedContentsOf(plan, "1"), { message: "Stage 1, “Fill”, isn't part of a mixing box." });
+    assert.throws(() => mixedContentsOf(plan, "9"), { message: 'There\'s no stage "9" in the plan.' });
+  });
+
+  test("updating: the same draft gives back the same plan; a new way, tip type, probe count or wells remakes it in place as one edit", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const draft = mixingBoxDraft(plan, id);
+    assert.equal(updateMixingBox(plan, id, draft), plan);
+    assert.equal(updateMixingBox(plan, id, { ...draft, wells: [...draft.wells].reverse() }), plan);
+    const old = mixingBoxAt(plan, id).stages;
+    const washTips = tipChangeAt(plan, "2");
+    const fresh = updateMixingBox(plan, id, { ...draft, way: "freshTip" });
+    const stages = mixingBoxAt(fresh, id).stages;
+    assert.equal(stages.length, 5);
+    assert.ok(stages.every((stage) => !old.includes(stage)));
+    assert.deepEqual(stages.map((stage) => fresh.stageList.get(stage).name), [1, 2, 3, 4, 5].map((n) => `Mix ${n} of 5`));
+    assert.deepEqual(boxWells(fresh, id), [["A1", "B1", "C1"], ["D1", "E1", "F1"], ["G1", "H1"], ["A2"], ["B2"]]);
+    assert.deepEqual(stageOrder(fresh), ["1", ...stages, "2"]);
+    assert.deepEqual(tipChangeAt(fresh, "2"), washTips);
+    assert.equal(fresh.mixingBoxes.length, 1);
+    assert.deepEqual(mixingBoxAt(fresh, id), { id, way: "freshTip", stages });
+    assert.equal(new PlanHistory(plan).record(fresh).undo().present, plan);
+    // The tip type, the probe count, a well added or taken out: each remakes it.
+    for (const changed of [
+      { ...draft, tipType: TIP_TYPES.at(-1) },
+      { ...draft, probes: probesFor(4) },
+      { ...draft, wells: [...draft.wells, plateWell("A3")] },
+      { ...draft, wells: draft.wells.slice(1) },
+    ]) {
+      const updated = updateMixingBox(plan, id, changed);
+      assert.notEqual(updated, plan);
+      assert.deepEqual(mixingBoxDraft(updated, id).wells.length, changed.wells.length);
+      assert.equal(mixingBoxDraft(updated, id).tipType, changed.tipType);
+    }
+  });
+
+  test("updating a box whose mix steps are all but one of the plan's stages", () => {
+    let { plan } = emptyPlan();
+    plan = addComponent(plan, "Media", "#4e79a7");
+    plan = addToWells(plan, ["A1", "B1"].map(plateWell), "Media", 100);
+    const { plan: added, id } = addMixingBox(plan, mixDraft("freshTip", ["A1", "B1"], 1), null);
+    const updated = updateMixingBox(added, id, mixDraft("freshTip", ["A1", "B1"], 2));
+    assert.equal(mixingBoxAt(updated, id).stages.length, 1);
+    assert.equal(stageOrder(updated).length, 2);
+  });
+
+  test("randomizations around an update: one above stays above the new first mix step; one below stays below", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const [first] = mixingBoxAt(plan, id).stages;
+    // A randomization without stages above the box, and one below it.
+    const above = addRandomization(plan, first, { seed: 5, volume: 5 });
+    const below = addRandomization(above.plan, "2", { seed: 6, volume: 5 });
+    const updated = updateMixingBox(below.plan, id, { ...mixingBoxDraft(below.plan, id), way: "freshTip" });
+    const newFirst = mixingBoxAt(updated, id).stages[0];
+    assert.equal(randomizationAt(updated, above.id).beforeId, newFirst);
+    assert.equal(randomizationAt(updated, below.id).beforeId, "2");
+    assert.doesNotThrow(() => setRandomizations(updated, updated.randomizations));
+    // One run just above it.
+    let run = addToWells(plan, [mixDeepWell("A5")], "Media", capacityOf(DEEP));
+    const randomized = addRandomization(run, first, { seed: 5, volume: 5 });
+    run = setRandomization(randomized.plan, randomized.id, {
+      sources: [{ labware: DEEP, well: "A5", replicates: 1, filler: false, sharesTips: false }],
+      fill: [plateWell("H11")],
+    });
+    run = runRandomization(run, randomized.id);
+    assert.equal(randomizationAt(run, randomized.id).beforeId, first);
+    const runUpdated = updateMixingBox(run, id, { ...mixingBoxDraft(run, id), way: "freshTip" });
+    assert.equal(randomizationAt(runUpdated, randomized.id).beforeId, mixingBoxAt(runUpdated, id).stages[0]);
+    assert.doesNotThrow(() => setRandomizations(runUpdated, runUpdated.randomizations));
+  });
+
+  test("updating at the top of the plan: the new first mix step gets the START tips, the rest their own, Wash keeps its own", () => {
+    const plan = mixingTestPlan();
+    const { plan: added, id } = addMixingBox(plan, mixDraft("sameContents", TEN_WELLS, 3), "1");
+    assert.equal(stageOrder(added)[0], mixingBoxAt(added, id).stages[0]);
+    const washTips = tipChangeAt(added, "2");
+    // Before Fill every well is empty: one fresh-tip batch for every two rows of a column.
+    const updated = updateMixingBox(added, id, mixDraft("freshTip", TEN_WELLS, 2, TIP_TYPES.at(-1)));
+    const stages = mixingBoxAt(updated, id).stages;
+    assert.equal(stages.length, 5);
+    assert.equal(stageOrder(updated)[0], stages[0]);
+    assert.deepEqual(tipChangeAt(updated, START), { tipType: TIP_TYPES.at(-1), probes: probesFor(2) });
+    for (const stage of stages.slice(1)) {
+      assert.deepEqual(tipChangeAt(updated, stage), { tipType: TIP_TYPES.at(-1), probes: probesFor(2) });
+    }
+    assert.deepEqual(tipChangeAt(updated, "2"), washTips);
+  });
+
+  test("updateMixingBox's order of checks", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    assert.throws(() => updateMixingBox(plan, "m9", 5), { message: 'There\'s no mixing box "m9" in the plan.' });
+    assert.throws(
+      () => updateMixingBox(plan, id, { ...mixingBoxDraft(plan, id), way: "byRow", wells: [{ labware: PLATE, well: "Z99" }] }),
+      { message: 'The way to mix must be one of "freshTip", "sameContents", but got "byRow".' },
+    );
+    assert.throws(() => updateMixingBox(plan, "m9", { ...mixingBoxDraft(plan, id), wells: [] }), {
+      message: 'There\'s no mixing box "m9" in the plan.',
+    });
+    assert.throws(() => updateMixingBox(plan, id, { ...mixingBoxDraft(plan, id), wells: [] }), {
+      message: "Pick at least one well to mix.",
+    });
+  });
+
+  test("out of date, same contents: what changes the grouping makes it out of date; what keeps it doesn't", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const [first] = mixingBoxAt(plan, id).stages;
+    assert.equal(isMixingBoxOutOfDate(plan, id), false);
+    // DMSO into A1 before the box: by a new stage, or at Start.
+    assert.equal(isMixingBoxOutOfDate(withDmsoBefore(plan, first, "A1"), id), true);
+    assert.equal(isMixingBoxOutOfDate(addToWells(plan, [plateWell("A1")], "DMSO", 1), id), true);
+    // DMSO into B2 alone: alone in its group, it groups the same.
+    assert.equal(isMixingBoxOutOfDate(withDmsoBefore(plan, first, "B2"), id), false);
+    assert.equal(isMixingBoxOutOfDate(addToWells(plan, [plateWell("B2")], "DMSO", 1), id), false);
+    // 10 µL of Media into every well of the Media group, before the box.
+    const mediaGroup = ["E1", "F1", "G1", "H1", "A2"];
+    const topping = addStage(plan, first);
+    const toppedGroup = addTransfers(topping.plan, mediaGroup.map((well) => transferTo(topping.id, well, 10)));
+    assert.equal(isMixingBoxOutOfDate(toppedGroup, id), false);
+    assert.equal(isMixingBoxOutOfDate(addToWells(plan, mediaGroup.map(plateWell), "Media", 10), id), false);
+    // A1 topped up with the same shares, twice the volume: it groups with B2.
+    const toppedA1 = addStage(plan, first);
+    assert.equal(isMixingBoxOutOfDate(fillPlate(toppedA1.plan, toppedA1.id, ["A1"], 90, 10), id), true);
+    // Every well of A1 to D1 brought to B2's volume: the two groups would merge.
+    const merged = addStage(plan, first);
+    assert.equal(isMixingBoxOutOfDate(fillPlate(merged.plan, merged.id, ["A1", "B1", "C1", "D1"], 90, 10), id), true);
+    // Fill removed: every well empty, one group.
+    assert.equal(isMixingBoxOutOfDate(removeStage(plan, "1"), id), true);
+    // Drug A removed: worked out from t, never by mixingGroups.
+    assert.equal(isMixingBoxOutOfDate(removeComponent(plan, "Drug A"), id), TOLERANCE >= 100 / 9);
+    assert.equal(isMixingBoxOutOfDate(renameComponent(plan, "Media", "DMEM"), id), false);
+    assert.equal(isMixingBoxOutOfDate(changeStageSettings(plan, "1", otherSettings()), id), false);
+    const changed = withDmsoBefore(plan, first, "A1");
+    const updated = updateMixingBox(changed, id, mixingBoxDraft(changed, id));
+    assert.equal(isMixingBoxOutOfDate(updated, id), false);
+  });
+
+  test("out of date, fresh tip: volumes and places count, which components don't", () => {
+    const { plan, id } = freshTipBoxPlan();
+    assert.deepEqual(boxWells(plan, id), [["A1", "B1", "C1", "D1"], ["E1", "F1", "G1", "H1"], ["A2"], ["B2"]]);
+    assert.equal(isMixingBoxOutOfDate(plan, id), false);
+    let replaced = emptyWells(plan, [trough("1")]);
+    replaced = addToWells(replaced, [trough("1")], "DMSO", capacityOf(RESERVOIR));
+    assert.equal(isMixingBoxOutOfDate(replaced, id), false);
+    const [first] = mixingBoxAt(plan, id).stages;
+    const toppedA2 = addStage(plan, first);
+    assert.equal(isMixingBoxOutOfDate(fillPlate(toppedA2.plan, toppedA2.id, ["A2"], 100, 0), id), true);
+    assert.equal(isMixingBoxOutOfDate(moveWell(plan, plateWell("B2"), plateWell("C2")), id), false);
+    assert.equal(isMixingBoxOutOfDate(moveWell(plan, plateWell("A1"), plateWell("C2")), id), true);
+  });
+
+  test("removing: the box and its mix steps go as one edit; refused when they're all the plan's stages", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const [first] = mixingBoxAt(plan, id).stages;
+    const sitting = addRandomization(plan, first, { seed: 5, volume: 5 });
+    const removed = removeMixingBox(sitting.plan, id);
+    assert.deepEqual(removed.mixingBoxes, []);
+    assert.deepEqual(stageOrder(removed), ["1", "2"]);
+    assert.deepEqual(tipChangeAt(removed, "2"), tipChangeAt(plan, "2"));
+    assert.equal(randomizationAt(removed, sitting.id).beforeId, "2");
+    assert.equal(canRemoveMixingBox(plan, id), true);
+    // A plan of one box, by removing the other stages through their own edits.
+    const only = removeStage(removeStage(plan, "2"), "1");
+    assert.equal(canRemoveMixingBox(only, id), false);
+    assert.throws(() => removeMixingBox(only, id), {
+      message: "This mixing box's mix steps are all the plan's stages, and a plan needs at least one. Add a stage outside it first.",
+    });
+    for (const call of [
+      () => removeMixingBox(plan, "m9"),
+      () => canRemoveMixingBox(plan, "m9"),
+      () => updateMixingBox(plan, "m9", mixingBoxDraft(plan, id)),
+      () => mixingBoxDraft(plan, "m9"),
+      () => isMixingBoxOutOfDate(plan, "m9"),
+      () => moveItems(plan, [{ kind: "mixingBox", id: "m9" }], between(0)),
+    ]) {
+      assert.throws(call, { message: 'There\'s no mixing box "m9" in the plan.' });
+    }
+  });
+
+  test("protection: every edit of a mixing box's mix steps one by one is refused, the plan unchanged", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const [first, second, last] = mixingBoxAt(plan, id).stages;
+    const named = `Stage 2, “Mix 1 of 3”`;
+    const wellsMessage = `${named}, is part of a mixing box: change its wells in the mixing box.`;
+    const settingsMessage = `${named}, is part of a mixing box: its tips are set in the mixing box, and it mixes with the standard mix.`;
+    const together = "A mixing box's mix steps stay together, each on its own tips: add before its first mix step or after its last.";
+    const sharing = "A stage added here would share the mixing box's tips. Add it with new tips, from the seam between tip groups.";
+    const position = transfersIn(plan, first)[0].position;
+    const cases = [
+      [() => addTransfer(plan, mixedWell(first, plateWell("H12"))), wellsMessage],
+      [() => addTransfers(plan, [mixedWell(first, plateWell("H12"))]), wellsMessage],
+      [() => changeVolume(plan, position, 5), wellsMessage],
+      [() => removeTransfer(plan, position), wellsMessage],
+      [() => mixWells(plan, first, null), wellsMessage],
+      [() => unmixWell(plan, first, null), wellsMessage],
+      [() => renameStage(plan, first, "Mine"), `${named}, is part of a mixing box: it's named by its place in the box.`],
+      [() => changeStageSettings(plan, first, plan.stageList.get(first).settings), settingsMessage],
+      [() => setStageMix(plan, first, "nowhere", null), settingsMessage],
+      [() => setTipType(plan, first, "BC50"), settingsMessage],
+      [() => setTipProbes(plan, first, [9]), settingsMessage],
+      [() => removeStage(plan, first), `${named}, is part of a mixing box: change its wells in the mixing box, or remove the whole mixing box.`],
+      [() => removeTipChange(plan, second), "Every mix step of a mixing box starts on new tips, so these can't be removed."],
+      [() => removeTipChange(plan, "2"), "This tip change keeps stage 5, “Wash”, off the mixing box's tips. A mixing box never shares tips with other stages."],
+      [() => addStage(plan, second), together],
+      [() => addMixStep(plan, second), together],
+      [() => addStageWithNewTips(plan, second), together],
+      [() => addMixStepWithNewTips(plan, second), together],
+      [() => addRandomization(plan, second), together],
+      [() => addMixingBox(plan, mixDraft("freshTip", ["A3"], 4), second), together],
+      [() => addStage(plan, first, { takeTips: true }), together],
+      [() => addMixStep(plan, first, { takeTips: true }), together],
+      [() => addStage(plan, "2"), sharing],
+      [() => addMixStep(plan, "2"), sharing],
+      [() => addTipChange(plan, second), `There are already new tips before stage "${second}".`],
+    ];
+    const before = snapshot(plan);
+    for (const [call, message] of cases) {
+      assert.throws(call, { message }, message);
+    }
+    assert.equal(snapshot(plan), before);
+    // addTransferTable and placeRandomization inside it.
+    const tabled = setWellLabel(plan, plateWell("A12"), "Row");
+    assert.throws(
+      () => addTransferTable(tabled, { table: [["Label", "Media"], ["Row", "10"]], sources: { Media: [trough("1")] } }, last),
+      { message: together },
+    );
+    const notRun = addRandomization(plan, null, { seed: 5, volume: 5 });
+    assert.throws(() => placeRandomization(notRun.plan, notRun.id, second), { message: together });
+    // At the end, when its last mix step is the plan's last.
+    const atEnd = addMixingBox(mixingTestPlan(), mixDraft("freshTip", ["A1"], 4), null);
+    assert.throws(() => addStage(atEnd.plan, null), { message: sharing });
+    assert.throws(() => addMixStep(atEnd.plan, null), { message: sharing });
+    // START, with its first mix step the plan's first.
+    const atTop = addMixingBox(mixingTestPlan(), mixDraft("freshTip", ["A1"], 4), "1");
+    const topMessage = `Stage 1, “Mix 1 of 1”, is part of a mixing box: its tips are set in the mixing box, and it mixes with the standard mix.`;
+    assert.throws(() => setTipType(atTop.plan, START, TIP_TYPES.at(-1)), { message: topMessage });
+    assert.throws(() => setTipProbes(atTop.plan, START, [1]), { message: topMessage });
+  });
+
+  test("protection: what's allowed beside a mixing box works", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const [first] = mixingBoxAt(plan, id).stages;
+    const last = mixingBoxAt(plan, id).stages.at(-1);
+    const washTips = tipChangeAt(plan, "2");
+    for (const add of [addStageWithNewTips, addMixStepWithNewTips]) {
+      const above = add(plan, first);
+      assert.ok(Object.hasOwn(above.plan.tipChanges, above.id));
+      assert.deepEqual(tipChangeAt(above.plan, first), tipChangeAt(plan, first));
+      const below = add(plan, "2");
+      assert.equal(stageOrder(below.plan)[stageOrder(below.plan).indexOf(last) + 1], below.id);
+      assert.ok(Object.hasOwn(below.plan.tipChanges, below.id));
+      assert.deepEqual(tipChangeAt(below.plan, "2"), washTips);
+    }
+    for (const add of [addStage, addMixStep]) {
+      const joining = add(plan, first);
+      assert.ok(!Object.hasOwn(joining.plan.tipChanges, joining.id));
+      assert.deepEqual(tipChangeAt(joining.plan, first), tipChangeAt(plan, first));
+    }
+    // With its first mix step the plan's first: the new stage first on the START tips.
+    const atTop = addMixingBox(mixingTestPlan(), mixDraft("freshTip", ["A1"], 2, TIP_TYPES.at(-1)), "1");
+    const [topStep] = mixingBoxAt(atTop.plan, atTop.id).stages;
+    const startTipsBefore = tipChangeAt(atTop.plan, START);
+    const added = addStage(atTop.plan, topStep);
+    assert.equal(stageOrder(added.plan)[0], added.id);
+    assert.deepEqual(tipChangeAt(added.plan, START), startTipsBefore);
+    assert.deepEqual(tipChangeAt(added.plan, topStep), startTipsBefore);
+    // removeStage of the stage just after it gives the next stage the removed one's tips.
+    const withNext = addStage(plan, null);
+    const removed = removeStage(withNext.plan, "2");
+    assert.deepEqual(tipChangeAt(removed, withNext.id), washTips);
+  });
+
+  test("its own edits skip the refusals: adding, updating, removing, moving, pasting and moving wells give the expected plan on its mix steps", () => {
+    // A randomization without stages sitting before the box's first mix step: removeStage's rules
+    // for it still apply inside the box's own edits.
+    const { plan: boxed, id } = sameContentsBoxPlan();
+    const [first] = mixingBoxAt(boxed, id).stages;
+    const sitting = addRandomization(boxed, first, { seed: 5, volume: 5 });
+    const plan = sitting.plan;
+    // Adding: its mix steps hold their groups' wells.
+    assert.deepEqual(boxWells(plan, id), [["A1", "B1", "C1", "D1"], ["E1", "F1", "G1", "H1", "A2"], ["B2"]]);
+    // Updating: the old mix steps go, the new ones hold the fresh-tip batches, the randomization
+    // sits before the new first mix step.
+    const updated = updateMixingBox(plan, id, { ...mixingBoxDraft(plan, id), way: "freshTip" });
+    const newStages = mixingBoxAt(updated, id).stages;
+    assert.ok(mixingBoxAt(plan, id).stages.every((stage) => !updated.stageList.has(stage)));
+    assert.deepEqual(boxWells(updated, id), [["A1", "B1", "C1"], ["D1", "E1", "F1"], ["G1", "H1"], ["A2"], ["B2"]]);
+    assert.equal(randomizationAt(updated, sitting.id).beforeId, newStages[0]);
+    // Removing: the box and its mix steps go, the randomization moves before Wash.
+    const removed = removeMixingBox(plan, id);
+    assert.deepEqual(stageOrder(removed), ["1", "2"]);
+    assert.deepEqual(removed.mixingBoxes, []);
+    assert.equal(randomizationAt(removed, sitting.id).beforeId, "2");
+    // Moving: the box goes above Fill with its mix steps and their tips.
+    const moved = moveItems(boxed, [{ kind: "mixingBox", id }], between(0)).plan;
+    assert.deepEqual(stageOrder(moved), [...mixingBoxAt(boxed, id).stages, "1", "2"]);
+    assert.deepEqual(boxWells(moved, id), boxWells(boxed, id));
+    assert.deepEqual(tipChangeAt(moved, START), tipChangeAt(boxed, first));
+    // Pasting, called directly: a new box with mix steps of the same names and wells.
+    const pasted = pasteItems(boxed, copyOf(boxed, [{ kind: "mixingBox", id }]), between(0));
+    const copyId = pasted.placed[0].id;
+    assert.deepEqual(boxWells(pasted.plan, copyId), boxWells(boxed, id));
+    assert.deepEqual(
+      mixingBoxAt(pasted.plan, copyId).stages.map((stage) => pasted.plan.stageList.get(stage).name),
+      ["Mix 1 of 3", "Mix 2 of 3", "Mix 3 of 3"],
+    );
+    // Moving wells: its mixed well moves, the box stores nothing new.
+    const movedWell = moveWell(boxed, plateWell("A1"), plateWell("H12"));
+    assert.deepEqual(boxWells(movedWell, id)[0], ["H12", "B1", "C1", "D1"]);
+    assert.equal(movedWell.mixingBoxes, boxed.mixingBoxes);
+  });
+
+  test("mixingBoxes is in column order after a move", () => {
+    const { plan: first } = sameContentsBoxPlan();
+    const { plan, id } = addMixingBox(first, mixDraft("freshTip", ["A3"], 4), null);
+    assert.deepEqual(plan.mixingBoxes.map((box) => box.id), ["m1", "m2"]);
+    const m1Index = columnBoxes(plan).findIndex((box) => box.kind === "mixingBox" && box.id === "m1");
+    const moved = moveItems(plan, [{ kind: "mixingBox", id }], between(m1Index)).plan;
+    assert.deepEqual(moved.mixingBoxes.map((box) => box.id), ["m2", "m1"]);
+  });
+
+  test("setMixingBoxes accepts what adding gives, and refuses each wrong value in the order of checks", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const boxes = plan.mixingBoxes;
+    assert.deepEqual(setMixingBoxes(plan, boxes).mixingBoxes, boxes);
+    const [first, second, third] = mixingBoxAt(plan, id).stages;
+    const box = (changes) => [{ id: "m1", way: "sameContents", stages: [first, second, third], ...changes }];
+    const { stages, ...noStages } = box({})[0];
+    // A plan whose second box's first two mix steps share tips, and one with a box of steps on different tips.
+    const cases = [
+      [5, "The mixing boxes must be a list, but got 5."],
+      [[5], 'Mixing box 1 must be an object with exactly "id", "way" and "stages".'],
+      [[noStages], 'Mixing box 1 must be an object with exactly "id", "way" and "stages".'],
+      [[{ ...box({})[0], extra: 1 }], 'Mixing box 1 must be an object with exactly "id", "way" and "stages".'],
+      [box({ id: "x" }), 'Mixing box 1\'s ID must be "m" and a whole number, like "m1", but got "x".'],
+      [box({ id: "m0" }), 'Mixing box 1\'s ID must be "m" and a whole number, like "m1", but got "m0".'],
+      [box({ id: "m1.5" }), 'Mixing box 1\'s ID must be "m" and a whole number, like "m1", but got "m1.5".'],
+      [box({ id: 5 }), 'Mixing box 1\'s ID must be "m" and a whole number, like "m1", but got 5.'],
+      [box({ way: "byRow" }), 'Mixing box 1: The way to mix must be one of "freshTip", "sameContents", but got "byRow".'],
+      [box({ stages: "7" }), "Mixing box 1: its stages must be a non-empty list of stage IDs."],
+      [box({ stages: [] }), "Mixing box 1: its stages must be a non-empty list of stage IDs."],
+      [box({ stages: [5] }), "Mixing box 1: its stages must be a non-empty list of stage IDs."],
+      [box({ stages: [first, "9"] }), 'Mixing box 1: its stage "9" isn\'t in the plan.'],
+      [box({ stages: [first, first] }), `Mixing box 1: stage "${first}" is listed twice.`],
+      [box({ stages: ["1"] }), 'Mixing box 1: stage "1" isn\'t a mix step.'],
+      [box({ stages: [second, first, third] }), `Mixing box 1: stage "${second}" must be named “Mix 1 of 3”, by its place.`],
+    ];
+    for (const [value, message] of cases) {
+      assert.throws(() => setMixingBoxes(plan, value), { message }, message);
+    }
+    // Two boxes with one ID; a stage in two boxes.
+    const two = addMixingBox(plan, mixDraft("freshTip", ["A3"], 4), null);
+    const [fourth] = mixingBoxAt(two.plan, two.id).stages;
+    assert.throws(() => setMixingBoxes(two.plan, [box({})[0], { id: "m1", way: "freshTip", stages: [fourth] }]), {
+      message: 'Mixing boxes 1 and 2 both have the ID "m1".',
+    });
+    assert.throws(() => setMixingBoxes(two.plan, [box({})[0], { id: "m2", way: "freshTip", stages: [fourth] }, { id: "m3", way: "freshTip", stages: [fourth] }]), {
+      message: `Stage "${fourth}" belongs to two mixing boxes, 2 and 3.`,
+    });
+    // A mix step with no wells; a name on the second of two; a well in two of its mix steps.
+    let emptyList = plan.operationList;
+    for (const { position } of transfersIn(plan, second).reverse()) {
+      emptyList = emptyList.remove(position);
+    }
+    const emptyStep = withParts(plan, { operationList: emptyList });
+    assert.throws(() => setMixingBoxes(emptyStep, box({})), { message: `Mixing box 1: stage "${second}" mixes no wells.` });
+    const twoOfThree = withParts(plan, { stageList: plan.stageList.rename(second, "Mix 1 of 3") });
+    assert.throws(() => setMixingBoxes(twoOfThree, box({ stages: [first, second] })), {
+      message: `Mixing box 1: stage "${first}" must be named “Mix 1 of 2”, by its place.`,
+    });
+    let renamedTwo = withParts(plan, { stageList: plan.stageList.rename(first, "Mix 1 of 2").rename(second, "Mix 2 of 2") });
+    renamedTwo = withParts(renamedTwo, {
+      operationList: renamedTwo.operationList.add(mixedWell(second, plateWell("A1"))),
+    });
+    assert.throws(() => setMixingBoxes(renamedTwo, box({ stages: [first, second] })), {
+      message: `Mixing box 1: ${PLATE} A1 is mixed by two of its mix steps.`,
+    });
+    // Stages out of order or apart.
+    const reordered = withParts(plan, { stageList: plan.stageList.rename(first, "Mix 2 of 2").rename(second, "Mix 1 of 2") });
+    assert.throws(() => setMixingBoxes(reordered, box({ stages: [second, first] })), {
+      message: "Mixing box 1: its stages must come one after another, in stage order.",
+    });
+    const apart = withParts(plan, { stageList: plan.stageList.rename(first, "Mix 1 of 2").rename(third, "Mix 2 of 2") });
+    assert.throws(() => setMixingBoxes(apart, box({ stages: [first, third] })), {
+      message: "Mixing box 1: its stages must come one after another, in stage order.",
+    });
+    // A mix step sharing its tip group with another stage; two mix steps on different tips.
+    const sharing = withParts(plan, { tipChanges: Object.fromEntries(Object.entries(plan.tipChanges).filter(([key]) => key !== second)) });
+    assert.throws(() => setMixingBoxes(sharing, box({})), {
+      message: `Mixing box 1: stage "${second}" shares tips with another stage. Every mix step of a mixing box starts on new tips.`,
+    });
+    const otherTips = withParts(plan, {
+      tipChanges: { ...plan.tipChanges, [second]: { tipType: TIP_TYPES.at(-1), probes: probesFor(8) } },
+    });
+    assert.throws(() => setMixingBoxes(otherTips, box({})), {
+      message: `Mixing box 1: its mix steps must all load the same tips, but stage "${second}" loads ${TIP_TYPES.at(-1)} on 8 probes and stage "${first}" ${TIP_TYPES[0]} on 3.`,
+    });
+    // A not-run randomization sitting before its second mix step.
+    const inside = withParts(plan, {
+      randomizations: [{ ...addRandomization(plan, null, { seed: 5, volume: 5 }).plan.randomizations[0], beforeId: second }],
+    });
+    assert.throws(() => setMixingBoxes(inside, box({})), {
+      message: `Randomization 1 sits before stage "${second}", inside mixing box 1. A randomization sits between tip groups.`,
+    });
+  });
+
+  test("setMixingBoxes accepts a box whose mix steps use another mix; it's out of date, and Update gives them the standard mix", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    let otherMix = plan;
+    for (const stage of mixingBoxAt(plan, id).stages) {
+      otherMix = withParts(otherMix, {
+        stageList: otherMix.stageList.changeSettings(stage, {
+          ...mixStepDefaults(),
+          destinationMix: { ...CONFIGURED_DEFAULT_MIX, share: CONFIGURED_DEFAULT_MIX.share === 100 ? 50 : CONFIGURED_DEFAULT_MIX.share + 1 },
+        }),
+      });
+    }
+    const set = setMixingBoxes(otherMix, otherMix.mixingBoxes);
+    assert.equal(isMixingBoxOutOfDate(set, id), true);
+    const updated = updateMixingBox(set, id, mixingBoxDraft(set, id));
+    assert.notEqual(updated, set);
+    for (const stage of mixingBoxAt(updated, id).stages) {
+      assert.deepEqual(updated.stageList.get(stage).settings, mixStepDefaults());
+    }
+    assert.equal(isMixingBoxOutOfDate(updated, id), false);
+  });
+
+  test("columnBoxes: a mixing box is a mixingBox box whose tip groups each hold one mix step", () => {
+    let { plan, id } = sameContentsBoxPlan();
+    plan = setWellLabel(plan, plateWell("A12"), "Row");
+    const table = addTransferTable(plan, { table: [["Label", "Media"], ["Row", "10"]], sources: { Media: [trough("1")] } }, null);
+    plan = table.plan;
+    const randomized = addRandomization(plan, null, { seed: 5, volume: 5 });
+    plan = randomized.plan;
+    const boxes = columnBoxes(plan);
+    const mixing = boxes.find((box) => box.kind === "mixingBox");
+    assert.equal(mixing.id, id);
+    assert.deepEqual(mixing.tipGroups.map((group) => group.stages), mixingBoxAt(plan, id).stages.map((stage) => [stage]));
+    assert.deepEqual(boxes.map((box) => box.kind).filter((kind) => kind !== "tipGroup"), ["mixingBox", "transferTable", "randomization"]);
+  });
+
+  test("tipsUsed counts a mixing box's tips as any tip changes'", () => {
+    const plan = mixingTestPlan();
+    const { plan: added } = addMixingBox(plan, mixDraft("sameContents", TEN_WELLS, 4), "2");
+    // The count of TIP_TYPES[0] tips in a plan's tipsUsed.
+    const countOf = (candidate) => tipsUsed(candidate).find((entry) => entry.tipType === TIP_TYPES[0])?.count ?? 0;
+    assert.equal(countOf(added) - countOf(plan), 12);
+  });
+
+  test("moving a mixing box: kept whole, its IDs, wells and tips; to its own place the same plan; refused inside a tip group; a mix step alone refused anywhere", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const before = stagesById(plan);
+    const boxIndex = columnBoxes(plan).findIndex((box) => box.kind === "mixingBox");
+    const moved = moveItems(plan, [{ kind: "mixingBox", id }], between(columnBoxes(plan).length));
+    assert.deepEqual(stagesById(moved.plan), before);
+    assert.deepEqual(mixingBoxAt(moved.plan, id), mixingBoxAt(plan, id));
+    assert.deepEqual(moved.placed, [{ kind: "mixingBox", id }]);
+    for (const stage of mixingBoxAt(plan, id).stages) {
+      assert.deepEqual(tipChangeAt(moved.plan, stage), tipChangeAt(plan, stage));
+    }
+    assert.equal(moveItems(plan, [{ kind: "mixingBox", id }], between(boxIndex)).plan, plan);
+    assert.equal(moveItems(plan, [{ kind: "mixingBox", id }], between(boxIndex + 1)).plan, plan);
+    // Listing the box and one of its mix steps moves or copies the box once.
+    const [first] = mixingBoxAt(plan, id).stages;
+    const both = [{ kind: "mixingBox", id }, stageItem(first)];
+    assert.deepEqual(moveItems(plan, both, between(columnBoxes(plan).length)).plan.stageOrder, moved.plan.stageOrder);
+    const copiedBoth = copyOf(plan, both);
+    assert.deepEqual(copiedBoth.items.map((item) => item.kind), ["mixingBox"]);
+    assert.throws(() => moveItems(plan, [{ kind: "mixingBox", id }], inGroup(0, 0)), {
+      message: "A tip group, randomization, transfer table or mixing box can't go inside another tip group: put it between tip groups.",
+    });
+    const alone = `Stage 2, “Mix 1 of 3”, belongs to a mixing box, which moves its mix steps with it: move the whole mixing box, or copy the mix step.`;
+    assert.throws(() => moveItems(plan, [stageItem(first)], between(0)), { message: alone });
+    assert.throws(() => moveItems(plan, [stageItem(first)], inGroup(0, 0)), { message: alone });
+    assert.throws(() => moveItems(plan, [stageItem(first)], inGroup(boxIndex, 0)), {
+      message: `Box ${boxIndex} is a mixing box: nothing can be put inside it.`,
+    });
+    assert.throws(() => moveItems(plan, [stageItem(first)], inTable(boxIndex, 0)), { message: `Box ${boxIndex} isn't a transfer table.` });
+    assert.throws(() => moveItems(plan, [stageItem("2")], inGroup(boxIndex, 0)), {
+      message: `Box ${boxIndex} is a mixing box: nothing can be put inside it.`,
+    });
+    // Moved above Fill, its wells are empty there: a same-contents box is out of date.
+    assert.equal(isMixingBoxOutOfDate(moveItems(plan, [{ kind: "mixingBox", id }], between(0)).plan, id), true);
+  });
+
+  test("copying a mixing box: version 6, a new box with new mix steps, on their own tips; START at the top; through JSON into another plan", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const copied = copyOf(plan, [{ kind: "mixingBox", id }]);
+    assert.equal(copied.version, 6);
+    assert.equal(COPIED_ITEMS_VERSION, 6);
+    assert.deepEqual(Object.keys(copied.items[0]), ["kind", "mixingBox", "stages"]);
+    assert.deepEqual(copied.items[0].mixingBox, { way: "sameContents" });
+    assert.deepEqual(copied.items[0].stages.map((entry) => Object.keys(entry)), [["stage", "tips"], ["stage", "tips"], ["stage", "tips"]]);
+    const pasted = pasteItems(plan, copied, between(columnBoxes(plan).length));
+    assert.deepEqual(pasted.placed, [{ kind: "mixingBox", id: "m2" }]);
+    const copy = mixingBoxAt(pasted.plan, "m2");
+    assert.equal(copy.way, "sameContents");
+    copy.stages.forEach((stage, index) => {
+      const original = mixingBoxAt(plan, id).stages[index];
+      assert.deepEqual(stageContents(pasted.plan, stage), stageContents(plan, original));
+      assert.deepEqual(tipChangeAt(pasted.plan, stage), tipChangeAt(plan, original));
+    });
+    // Pasted at the top: its first mix step's tips are START's.
+    const top = pasteItems(plan, copied, between(0));
+    assert.equal(stageOrder(top.plan)[0], mixingBoxAt(top.plan, "m2").stages[0]);
+    assert.deepEqual(tipChangeAt(top.plan, START), tipChangeAt(plan, mixingBoxAt(plan, id).stages[0]));
+    // Through JSON, into another plan whose wells hold other things: out of date there.
+    const another = pasteItems(evenPlan(), JSON.parse(JSON.stringify(copied)), between(1));
+    const pastedId = another.placed[0].id;
+    assert.equal(isMixingBoxOutOfDate(another.plan, pastedId), true);
+    // Its mix steps copied alone are ordinary mix steps.
+    const [first] = mixingBoxAt(plan, id).stages;
+    const single = copyItems(plan, [stageItem(first)], between(0));
+    assert.equal(mixingBoxOf(single.plan, single.placed[0].id), null);
+    assert.ok(isMixStep(single.plan, single.placed[0].id));
+    // mixingBoxes is in column order after a paste.
+    assert.deepEqual(top.plan.mixingBoxes.map((box) => box.id), ["m2", "m1"]);
+  });
+
+  test("pasting a mixing box: a version 5 copy is refused with the form message; each setMixingBoxes refusal with its item's prefix", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const copied = copyOf(plan, [{ kind: "mixingBox", id }]);
+    const formMessage = "Can't paste: item 1 isn't a stage, tip group or randomization as the transfer designer copies them.";
+    assert.throws(() => pasteItems(plan, { ...copied, version: 5 }, between(0)), { message: formMessage });
+    // Changes to a fresh copy, and what each is refused with.
+    const cases = [
+      [(item) => { item.mixingBox.way = "byRow"; }, 'Can\'t paste: item 1: The way to mix must be one of "freshTip", "sameContents", but got "byRow".'],
+      [(item) => { item.stages = []; }, "Can't paste: item 1: its stages must be a non-empty list of stage IDs."],
+      [(item) => { item.stages[0].stage.name = "Mix 9 of 3"; }, /^Can't paste: item 1: stage "\d+" must be named “Mix 1 of 3”, by its place\.$/],
+      [(item) => { item.stages[1].stage.transfers = []; }, /^Can't paste: item 1: stage "\d+" mixes no wells\.$/],
+      [(item) => { item.stages[1].tips = { tipType: TIP_TYPES.at(-1), probes: [1] }; }, /^Can't paste: item 1: its mix steps must all load the same tips/],
+      [(item) => { item.stages[1].stage.transfers.push(item.stages[0].stage.transfers[0]); }, `Can't paste: item 1: ${PLATE} A1 is mixed by two of its mix steps.`],
+      [(item) => { item.stages[0].stage.settings = defaultSettings(); item.stages[0].stage.transfers = []; }, /^Can't paste: item 1: stage "\d+" isn't a mix step\.$/],
+    ];
+    for (const [change, message] of cases) {
+      const broken = structuredClone(copied);
+      change(broken.items[0]);
+      assert.throws(() => pasteItems(plan, broken, between(0)), { message }, String(message));
+    }
+  });
+
+  test("moving wells: a mixing box's well is in use; moving it moves its mixed well, nothing in the box", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    assert.equal(isWellUsed(plan, plateWell("A1")), true);
+    const [first] = mixingBoxAt(plan, id).stages;
+    const moved = moveWell(plan, plateWell("A1"), plateWell("H12"));
+    assert.equal(moved.mixingBoxes, plan.mixingBoxes);
+    assert.ok(transfersIn(moved, first).some((transfer) => transfer.source.well === "H12" && transfer.destination.well === "H12"));
+    assert.ok(mixingBoxDraft(moved, id).wells.some((end) => end.well === "H12"));
+  });
+
+  test("undo: one undo takes out an added box, brings back an updated one's old mix steps, brings back a removed one", () => {
+    const plan = mixingTestPlan();
+    const { plan: added, id } = sameContentsBoxPlan(plan);
+    let history = new PlanHistory(plan).record(added);
+    assert.equal(history.undo().present, plan);
+    const updated = updateMixingBox(added, id, { ...mixingBoxDraft(added, id), way: "freshTip" });
+    history = history.record(updated);
+    assert.deepEqual(mixingBoxAt(history.undo().present, id).stages, mixingBoxAt(added, id).stages);
+    history = history.record(removeMixingBox(updated, id));
+    assert.equal(history.undo().present, updated);
+  });
+
+  test("immutability: every mixing box function leaves the plan and the draft unchanged; mixing boxes are frozen", () => {
+    const { plan, id } = sameContentsBoxPlan();
+    const draft = mixDraft("freshTip", ["H12", "G12"], 4);
+    const before = snapshot(plan);
+    const draftBefore = JSON.stringify(draft);
+    mixingGroups(plan, draft, null);
+    addMixingBox(plan, draft, null);
+    updateMixingBox(plan, id, draft);
+    removeMixingBox(plan, id);
+    mixingBoxDraft(plan, id);
+    mixedContentsOf(plan, mixingBoxAt(plan, id).stages[0]);
+    isMixingBoxOutOfDate(plan, id);
+    setMixingBoxes(plan, plan.mixingBoxes);
+    assert.equal(snapshot(plan), before);
+    assert.equal(JSON.stringify(draft), draftBefore);
+    assert.ok(Object.isFrozen(plan.mixingBoxes) && Object.isFrozen(plan.mixingBoxes[0].stages));
   });
 });

@@ -947,6 +947,15 @@ input.experiment-name-box.invalid {
   background: var(--blue-tint);
 }
 
+/* The wells of the mixing wizard's chip pointed at or focused: as a chosen source's ring, at full
+   opacity (section 6), over the picked wells' dashed outline. */
+.well.to-fill.chip-ring,
+.well.chip-ring {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
 .well.in-box:not(.holding) {
   background: var(--blue-tint);
 }
@@ -1642,6 +1651,16 @@ input.all-transfers-box[aria-disabled="true"] {
   color: var(--blue);
 }
 
+/* The mixing button sits in a seam's fifth spot, just left of the mix step button (section 7): as
+   the dice button, with ⟳⟳ in blue, 9px, letter spacing -1px, centered (section 15). */
+.seam-button.add-mixing {
+  left: calc(50% - var(--seam-button-size) * 2.5 - var(--seam-button-gap) * 2);
+  background: var(--panel-background);
+  color: var(--blue);
+  font-size: 9px;
+  letter-spacing: -1px;
+}
+
 /* The mix step button has a fixed spot just left of the +, on every seam (section 7): white with a
    blue border and a blue ⟳, like the tip button. */
 .seam-button.add-mix-step {
@@ -1886,6 +1905,188 @@ input.all-transfers-box[aria-disabled="true"] {
 .seam-button.add-transfer-table .table-icon {
   width: 16px;
   height: 16px;
+}
+
+/* --- Mixing boxes in the Stages column (sections 7 and 15) --- */
+
+/* A mixing box's box: as a transfer table's (12px corners, a 1px light blue border, the page's
+   background inside). */
+.mixing-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--blue-border);
+  border-radius: 12px;
+  background: var(--page-background);
+}
+
+.mixing-box.glowing {
+  --glow-end: var(--page-background);
+}
+
+.mixing-box-stages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The ⟳ in place of the table icon: 15px, in the text's color. */
+.mixing-box-icon {
+  flex: none;
+  width: 20px;
+  color: var(--text);
+  font-size: 15px;
+  text-align: center;
+}
+
+/* "Mixing" keeps its room; the right-hand text is cut short with … first (section 7). */
+.mixing-box-heading .randomization-title {
+  flex: none;
+}
+
+.mixing-box-heading .randomization-status {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- The mixing wizard (sections 7 and 15) --- */
+
+/* A panel the Stages column's width, in the column's flow, 6px above and below. */
+.mixing-wizard {
+  margin: 6px 0;
+  border: 2px solid var(--blue);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgba(28, 28, 26, 0.12);
+  font-size: 14px;
+}
+
+.mixing-wizard.shake {
+  animation: shake 0.3s ease-in-out;
+}
+
+.mixing-wizard-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.mixing-wizard-icon {
+  color: var(--blue);
+  letter-spacing: -1px;
+}
+
+.mixing-wizard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 20px;
+}
+
+/* Section headings: 12px semibold gray capitals, 8px above their contents. */
+.mixing-wizard-heading {
+  margin-bottom: 8px;
+  color: var(--muted-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.mixing-wizard-section .note {
+  margin: 0;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.mixing-wizard-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.mixing-wizard-on {
+  color: var(--muted-text);
+}
+
+/* The two ways to mix: radio choices, one per line, each its name with a note under it. */
+.mixing-way {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.mixing-way input {
+  margin-top: 3px;
+}
+
+.mixing-way-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.mixing-way-name {
+  font-weight: 600;
+}
+
+.mixing-way-note {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.mixing-makes-line {
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+/* The numbered chips, one per mix step, wrapping: light blue, solid blue when pointed at or
+   focused. */
+.mixing-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+button.mixing-chip {
+  min-width: 22px;
+  min-height: 0;
+  padding: 1px 6px;
+  border: 1px solid var(--blue-border);
+  border-radius: 10px;
+  background: var(--blue-tint);
+  color: var(--blue);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+}
+
+button.mixing-chip:hover,
+button.mixing-chip:focus-visible,
+button.mixing-chip:focus {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #ffffff;
+}
+
+.mixing-wizard-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.mixing-wizard-footer .spacer {
+  flex: 1;
 }
 
 /* --- The transfer table wizard (sections 7 and 15) --- */

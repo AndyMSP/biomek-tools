@@ -255,6 +255,19 @@
 > Still to review: the new messages and tooltips, and where the focus goes after a save. They
 > become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-11, mixing boxes, item 34 of v0.2.0; ADR 0025; sections 2, 4, 5, 6, 7,
+> 11, 12, 15 and 16):** seams between tip groups gain a fifth button, ⟳⟳ (`Add mixing here`), which
+> opens the **mixing wizard** in its spot in the Stages column: wells picked on the deck, a way to
+> mix, tips, and what it makes; `Make mix steps` adds a **mixing box** (`transfer-designer.md`,
+> "Mixing boxes"), which shows, moves, copies, pastes, goes out of date, is removed and is deleted
+> into the trash (and dragged out of it) like a transfer table's box. From a preview Andy approved on 2026-11-11. Written in the hands-off
+> workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request.
+> They become Final once built and tested by Andy, and the fresh-tip way is checked in simulation
+> (`biomek.md`, "Not yet known"). Andy's decisions of 2026-11-11 (grouping by volume too, a
+> fresh-tip batch holding one column, in rows right next to each other, troughs refused for a fresh tip, empty wells allowed) are the
+> logic's; the page shows the trough refusal as Make's or Update's error (section 7, "2 · How to
+> mix").
+
 ## 1. Purpose
 The transfer designer's page: the screen where people plan an experiment's liquid handling. This
 specification covers the three page files:
@@ -280,7 +293,7 @@ how typing a volume works and how numbers are shown (section 13), as for the ran
 Version 1 does everything below: naming the experiment, filling wells with components before the
 run, building stages, adding transfers by clicking and dragging, tip changes, labels, undo and redo,
 saving and opening plans, with a browser copy, writing the Biomek files as one zip, moving,
-copying and pasting stages, tip groups and randomizations, and moving wells.
+copying and pasting stages, tip groups and randomizations, moving wells, and mixing boxes.
 
 Not in version 1 (see `docs/roadmap.md`):
 - **A guided start** for an empty plan (Andy considered it, 2026-10-26: not now).
@@ -355,6 +368,9 @@ data everyone has to clear first).
 - a chosen **source** well, while a transfer is being made (section 9);
 - the **open randomization's card** and its unsaved changes (section 7, "Randomizations"), which
   tab it shows, and whether each randomization's source list is shown in full;
+- the **open mixing wizard** and its draft (section 7, "Mixing boxes"): where it adds (a new one)
+  or which mixing box it edits, and the wells picked, the way and the tips; not kept by the browser
+  copy (a reload closes it, as Cancel does);
 - the **Biomek files box**, while it's open, and the run it will write (section 5);
 - the **Save as** choice (section 5), kept in the browser's local storage, so the box opens with
   the last one chosen; and the **remembered Ento folder**, the base folder last written into, kept
@@ -439,7 +455,11 @@ files?** It works out the run's files at once, with `writeRunFiles(plan, now)` (
   date: open it and press Update.` (its first stage, as messages name stages; Andy, 2026-11-02).
   Transfer tables likewise (2026-11-05; `isTransferTableOutOfDate`): the first randomization or
   transfer table out of date, in column order, is named: `A transfer table (at stage 3, “Media”) is
-  out of date: open it and press Update.`
+  out of date: open it and press Update.` Mixing boxes likewise (2026-11-11;
+  `isMixingBoxOutOfDate`): `A mixing box (at stage 7, “Mix 1 of 3”) is out of date: open it and
+  press Update.` (its first mix step). There's still **one message**: the first randomization,
+  transfer table or mixing box out of date **in column order** (`columnBoxes`), whichever kind it
+  is, so a mixing box above an out-of-date randomization is the one named.
 
 **Save as** (Andy, 2026-11-10; ADR 0023): when the files can be written, the box shows a choice
 under its text, headed `Save as`, with two options, one per line, each a radio button, its name and
@@ -616,7 +636,8 @@ problems` in green, or `N problems` in red: each contents problem in the whole p
 the dead volume, an overdraw or an overfill, including a well that starts over its capacity;
 `contents-tracking.md`) counts as one, and so does each randomization that's out of date
 (`isRandomizationOutOfDate`; section 7), each transfer table that's out of date
-(`isTransferTableOutOfDate`; 2026-11-05), and each stage with a mix problem. Since that check
+(`isTransferTableOutOfDate`; 2026-11-05), each mixing box that's out of date
+(`isMixingBoxOutOfDate`; 2026-11-11), and each stage with a mix problem. Since that check
 reruns each randomization on a copy (and reads each transfer table again), the page works it out
 once per plan (after each edit, undo or
 redo) and reuses it for the headings, the problem count, the card and the Biomek files box
@@ -863,7 +884,10 @@ source (section 9) stays chosen.
   shows on a filled well too (Andy, 2026-11-01: the ring hugging the well was hard to see on a
   fill). **A randomization's wells to fill**, while its card is open: a 2px dashed blue outline,
   standing 2px outside the well, and, when empty, a light blue fill (Andy, 2026-11-01: sources and
-  wells to fill must look different). **The well under a drag:** a dashed blue outline. **A box being
+  wells to fill must look different). **The mixing wizard's picked wells** (section 7, "Mixing
+  boxes"), while it's open: as a randomization's wells to fill. **The wells of the mixing wizard's
+  chip pointed at or focused:** a 3px solid blue ring standing 2px outside the well, with a gap, as
+  a chosen source's, at full opacity. **The well under a drag:** a dashed blue outline. **A box being
   dragged across** (when filling wells, or sending a source into several): each well in it gets a
   blue outline, and an empty one a light blue fill.
 
@@ -1153,7 +1177,8 @@ Pointing at a seam, or moving keyboard focus to its buttons, shows its line and 
 over the cards. A seam never takes a click meant for a card or a box. While a seam's buttons
 show, they sit above every other seam, so a button reaching past its own seam (the 26px buttons of
 a box's last seam reach below the box) can still be pointed at and clicked. Keyboard focus moves
-through a seam's buttons left to right: the mix step button, the `+`, then the right spot's button.
+through a seam's buttons left to right: the mixing button (between tip groups, since 2026-11-11),
+the mix step button, the `+`, then the right spot's button, then the fourth spot's.
 Inside a box the line is solid blue (2px, 8px in from the cards' sides); between tip groups it's **dashed** blue (2px),
 across the column's whole width, so it reads as "a new group here". Every seam has the same
 **three fixed spots**, each a 26px circle centered on the line: the **mix step button** (white,
@@ -1164,7 +1189,10 @@ spot** just right of the `+`, 6px from it. A seam with nothing in its right spot
 so nothing moves from one seam to the next (Andy, 2026-10-30: buttons spread along the line looked
 scattered, and buttons that shift when one is missing jump around). Since 2026-11-05 every seam has
 a **fourth spot**, just right of the right spot, 6px from it: seams between tip groups hold the
-table button there (below, "Transfer tables"); seams inside a tip group box leave it empty.
+table button there (below, "Transfer tables"); seams inside a tip group box leave it empty. Since
+2026-11-11 every seam has a **fifth spot**, just left of the mix step button, 6px from it: seams
+between tip groups hold the **mixing button** there (below, "Mixing boxes"); seams inside a tip
+group box leave it empty.
 
 **Inside a tip group box.** The `+` adds a stage to this box, and the mix step button a mix step
 where the `+` would add a stage, with the same tips (`addMixStep`, with the same `beforeId` and
@@ -1709,6 +1737,194 @@ into the trash (section 7, "The trash"): closes the wizard; message
 open, the first stage in the stage order opens. Disabled when `canRemoveTransferTable` is `false`,
 with the tooltip `Its stages are all the plan's stages. Add a stage outside it first.`
 
+**Mixing boxes** (`transfer-designer.md`, "Mixing boxes"; Andy, 2026-11-11, from a preview he
+approved; ADR 0025). A way to mix wells that makes the mix steps for you: the user picks the wells
+on the deck and a **way to mix**, and the page asks the logic which wells share a mix step. What it
+makes is a **mixing box**, an entry in the column between tip groups, like a transfer table: a box
+of its own, with seams between tip groups above and below it as for any box.
+
+**The seam's mixing button.** Seams **between tip groups** hold, in their fifth spot (just left of
+the mix step button, 6px from it; section 7, "Adding stages and tip changes: the seams"), the
+**mixing button**: a 26px circle, white with a blue border, `⟳⟳` in blue (section 15). Tooltip
+`Add mixing here`; accessible name `Add mixing before stage 3, “Drugs”`, or `Add mixing at the end
+of the run`. It opens a new **mixing wizard** there (below), `beforeId` as the seam's `+`; nothing
+is added until `Make mix steps`. Opening it first closes an open editing box or randomization's
+card, as the seam's other buttons do. On the seam **below a randomization that hasn't run**, `Make
+mix steps` works as that seam's `+` does: `addMixingBox` before the same stage, then
+`placeRandomization` onto the mixing box's first mix step, in the same edit, so the mixing box lands
+below the randomization. Seams inside a tip group box have no mixing button, and their fifth spot is
+empty. Keyboard focus reaches it first among the seam's buttons.
+
+**The mixing wizard** opens **in its spot in the Stages column**, as a randomization's card does,
+not over the page (Andy, 2026-11-11: the deck must stay in view and usable, since wells are picked
+on it): just after the seam it was opened from, or, when editing a mixing box, just after that box.
+It's a panel the column's width (section 15), and the column scrolls just enough to show it.
+**While it's open:**
+- **Nothing in the column is shown as open or selected:** no entry has the open entry's look or the
+  `Shown on deck` tag, and no selection mark shows. What was open is still what the page keeps open
+  (section 4), shown again when the wizard closes.
+- **The deck shows the plate at the mixing's point**: the plates just before where its mix steps
+  go (as for a randomization's card: after the stages with transfers before `beforeId`, or after
+  every stage for `null`; for a mixing box in the plan, before its first mix step), with the caption
+  `Mixing, before stage 7, “S07 Media row C”`, or `Mixing, after all stages` (section 11). No
+  stage's transfers fade the deck or draw arrows, and no stage's ⟳ badges show (red badges, which
+  stay wherever you look, still do).
+- **Clicks and drags on the deck pick wells** (below), on any labware that's out.
+- **Only looking and naming work elsewhere:** bringing out and putting away labware, `Names` and
+  `Arrows`, the contents card, scrolling, naming a well by right-click, renaming labware and the
+  experiment work as usual (they don't change what the wizard makes). **Everything else that would
+  change the plan or what's open is refused**: clicking an entry, a heading, a ✎ or a seam's button
+  in the column, `‹` and `›`, `Move wells`, `Undo`, `Redo`, `Save`, `Open`, `Reset`, `Biomek files`,
+  `Copy deck`, `Paste deck`, `Paste table` and `Copy table`, dragging (into the column, onto the
+  trash or out of it), any press on the trash, the right-click menu, Ctrl+C, Ctrl+V, Ctrl+X and the
+  Delete key: the wizard shakes, as an editing box with unsaved changes does (section 10), and the
+  message bar says `Make the mix steps, or cancel the mixing, first.` (editing: `Update the mixing
+  box, or cancel, first.`) (note). (Decided in the hands-off workflow, 2026-11-11: picking many wells
+  is work a stray click shouldn't lose, and saving or copying while a draft is open would leave it
+  out without saying so.)
+- **Typed volumes are ignored.**
+
+From the top:
+- **The header**: `⟳⟳` (blue) and `New mixing` (from a seam) or `Mixing` (a mixing box in the plan),
+  17px semibold.
+- **1 · Wells to mix** (a section heading, section 15). The wells are **picked on the deck**: a
+  click on a well toggles it (picks it, or takes it out); **dragging across a box** of wells (as
+  filling does, section 8) adds the box's wells, or **takes them out if its first well was picked**
+  (the well the drag started on); a drag that ends off the labware it started on picks nothing.
+  Enter or Space on a focused well does what a click would. Picked wells are marked on the deck as a
+  randomization's wells to fill are (section 6). The section shows how many are picked on each
+  labware, in the deck's order, by labware label: `10 on Plate1 · 4 on Plate2`, then a `Clear`
+  button (action) that takes them all out; with none, in gray, `Click or drag across wells on the
+  deck.` Wells picked on labware that's then put away stay picked (and counted).
+- **2 · How to mix**: two radio choices, one per line, each its name (semibold) with a one-line
+  note under it (13px gray), in `MIXING_WAYS` order:
+  - **`A fresh tip for every well`** (`"freshTip"`): `Meant to give each well its own tip (to be
+    checked in simulation).` (From the specification review, 2026-11-11: the preview's `Nothing is
+    carried from one well to the next.` stated as fact what isn't verified, `biomek.md`, "Not yet
+    known", "How Transfer From File gives a file's rows to the probes". This note was chosen over a
+    softer one that leaves the check out, so the user knows it's unchecked; once the simulation
+    confirms it, the note becomes `Nothing is carried from one well to the next.`)
+  - **`One tip for wells with the same contents`** (`"sameContents"`): `Wells holding the same
+    things, in the same shares, share a tip.`
+  A new wizard starts on the first. **Reservoir troughs** (Andy, 2026-11-11; `transfer-designer.md`,
+  "Its groups"): the logic refuses them for `A fresh tip for every well`, and the refusal (`A fresh
+  tip for every well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use
+  one tip for wells with the same contents, or leave the troughs out.`) shows as Make's or Update's
+  error, the wizard staying open with its wells, way and tips (below), and the user switches the way
+  or unpicks the troughs; the troughs can still be picked, and Makes still shows their groups.
+  Nothing else on the page changes. (Grouping by volume, and a fresh-tip batch holding one column
+  of one labware in rows right next to each other, are the logic's, `transfer-designer.md`, "Its groups"; the page shows the groups
+  it gives, and needs nothing of its own for them.)
+- **3 · Tips**: a menu of tip types (`TIP_TYPES`), then `on` (gray), then a menu of probe counts
+  (`1 probe` … `8 probes`, choosing `probesFor`). A new wizard starts from **the tips in use at that
+  point**: the tip group of the stage just before `beforeId` in the stage order, or of the plan's
+  last stage for `null`, or the `START` tips when `beforeId` is the first stage (as a new
+  randomization's are, `transfer-designer.md`, "Where a new randomization's settings come from").
+  Editing, from its mix steps' tips (`mixingBoxDraft`). **Probes that aren't the first N** (a
+  mixing box from a plan file or a copy may load, say, probes 2, 3 and 4, which the menu's `probesFor`
+  choices can't show; likewise the tips in use at a new wizard's seam): the probe menu gets **one
+  more entry, first and chosen**, naming them, smallest first, `probes 2, 3, 4`, and
+  the draft keeps those probes until another entry is chosen; the entry goes when the wizard closes.
+  (Decided in the specification review, 2026-11-11, over showing `3 probes` with a note: choosing
+  `3 probes` would quietly change the probes to 1 to 3, and Update with nothing else changed would
+  remake the box.) The Makes line names them the same way (`new BC230 tips on probes 2, 3, 4`).
+- **Makes** (a section heading), from `mixingGroups(plan, draft, at)` on the wizard's draft, worked
+  out again on every change:
+  - With no wells: `Nothing yet: pick the wells to mix.` (gray).
+  - Otherwise **one line** (semibold): how many mix steps, how many wells each, and the tips, e.g.
+    `12 mix steps · 5 wells each · new BC230 tips on 3 probes`; `3 to 4 wells each` when they differ
+    (the fewest to the most); with one mix step, `1 mix step · 5 wells · new BC230 tips on 3 probes`
+    (counts by section 13: `1 well`, `1 probe`).
+  - Then a **row of small numbered chips** (`1`, `2` …, wrapping), one per mix step, in order.
+    Pointing at a chip, or focusing it (each is in the Tab order), **rings its wells on the deck**:
+    a solid 3px blue ring standing 2px outside each well (section 6). Its tooltip and accessible
+    name: `Mix 2 of 12: Drug A + Media`, then, on a second line, its wells as messages name them
+    (`Plate1 A1, Plate1 B1, Plate1 C1`). What its wells hold is the group's `components`, joined by
+    ` + ` (`Drug A + Media`), `empty` for `[]`, or `its wells hold different things` for `null`
+    (a fresh-tip batch).
+  - With `One tip for wells with the same contents`, if any mix step has more wells than probes, a
+    note under the chips (13px gray): `Some mix steps have more wells than probes, so a tip mixes
+    several wells with the same contents.`
+- **The footer**, from the left: `Remove` (red outline; only when editing), then at the right
+  `Cancel` (action) and the main button (solid blue), **`Make mix steps`** (new) or **`Update`**
+  (editing), disabled with no wells picked, with the tooltip `Pick the wells to mix first.`
+
+**Escape** cancels (anywhere on the page while the wizard is open, unless a menu in it is open,
+which closes first, the wizard staying open), as `Cancel` does: the wizard closes and nothing
+changes, and **what was open and selected before it opened is shown and selected again** (the open
+entry, the page's selection, or none; after a mixing box's ✎, the mixing box, which the ✎ selects
+before the wizard opens) (decided in the
+hands-off workflow: like the transfer table wizard, nothing is asked; a mixing box's picks are
+quick to make again from the deck). A plan opened or reset can't happen while it's open (above).
+
+**Make mix steps** adds it (`addMixingBox(plan, draft, beforeId)`), closes the wizard and opens its
+first mix step, **selecting the mixing box** (as clicking its heading does), as one undoable edit; message `Added a mixing box: 3 mix steps, each on new tips.`
+(ok; `1 mix step`). **Update** (`updateMixingBox(plan, id, draft)`) likewise, opening its first mix
+step and selecting the mixing box: `Updated the mixing box: 3 mix steps, each on new tips.`; when the update would change nothing
+(the logic gives back the same plan), nothing is recorded, the wizard closes, the mixing box is
+selected and its first mix step opens, and the note `Nothing to update: the mixing box already
+matches.` shows. The new mix steps glow (below, "What changed
+glows"), and the mixing box's box opens. If the logic refuses, its message shows as an error and the
+wizard stays open.
+
+**Remove** (red outline, only when editing) acts at once (`removeMixingBox`), as every Remove does,
+and the mixing box goes into the trash (section 7, "The trash"; 2026-11-11, once deleting and mixing
+boxes were both built): closes the wizard; message `Removed the mixing box and its 3 mix steps.`
+(ok), with an `Undo` button (section 12), as the other Removes' messages have;
+if one of its mix steps was open, the first stage in the stage order opens. Disabled when
+`canRemoveMixingBox` is `false`, with the tooltip `Its mix steps are all the plan's stages. Add a
+stage outside it first.`
+
+**The mixing box** (Andy, 2026-11-11: "like a transfer table's box"):
+- **Its box**: as a transfer table's (12px corners, 1px `#9DB7DB` border, the page's background
+  inside): its heading, then its mix steps' tip group boxes (`columnBoxes`' `mixingBox` box; one mix
+  step each). It's **open** (showing its mix steps) or **closed** (its heading only), like a folder,
+  exactly as a transfer table's box (above): clicking its heading opens or closes it; it opens
+  whenever one of its mix steps becomes the open entry (Make and Update open its first; `‹` and `›`
+  step through its mix steps) and stays open until its heading closes it; whether each is open is
+  remembered while the page is open, by its ID, with the transfer tables' (not saved, not an undo
+  step); a new page, or a plan opened from a file, starts with every box closed, except one whose mix
+  step is open.
+- **Its heading**, a row the box's width: a button (most of the row) holding `▸` (closed) or `▾`
+  (open), **`⟳`** (in the text's color, 15px), then `Mixing`, semibold, then at the right, in gray,
+  how many mix steps and its way: `3 mix steps · fresh tip per well` or `3 mix steps · same contents
+  share a tip` (`1 mix step`), or, when it's out of date (`isMixingBoxOutOfDate`), `needs update` in
+  red, semibold; then, after the button, a **✎** (as a stage's, accessible name `Edit mixing box`,
+  tooltip `Change its wells, how it mixes and its tips, or remove it`). Clicking the button (or Enter
+  or Space on it) opens or closes the box and selects the mixing box; its `aria-expanded` says whether
+  it's open; its tooltip: `Show its mix steps` / `Hide its mix steps`, or, out of date, `What its
+  wells hold before it, or where they are, has changed: press ✎, then Update.` The right-hand text
+  is cut short with `…` first, before `Mixing`, as on a randomization's heading. **The ✎** selects
+  the mixing box, then opens the mixing wizard for it, just after its box, so Cancel or Escape
+  leaves the mixing box selected, as a transfer table's ✎ does (2026-11-11, from the build's
+  review). The button is what the mixing box is
+  dragged, copied and given the right-click menu by (a press on the ✎ starts no drag).
+- **No seams with buttons inside it**, and no drop places inside it: its mix steps are in the order
+  the logic works out, not one the user chooses.
+- **Its mix steps** look like any mix step (a ⟳ after the name, `Mix 1 of 3 ⟳`; count `N wells
+  mixed`). **Pointing at one** (its row, or its card's heading) shows the tooltip `Mix 1 of 3: Drug
+  A + Media` (`mixedContentsOf`, written as a chip's: `empty`, or `its wells hold different
+  things`), so the short name doesn't hide what it mixes (Andy, 2026-11-11). **Nothing on them can be
+  changed** (Andy, 2026-11-11: "its mix steps change only through its wizard"): no ✎ beside a mix
+  step's name and none on its tip group's heading, no `×` on its wells in `Show wells ▸`, no seams
+  inside. Each one's card says, in gray, `Part of a mixing box: its wells and tips change in the
+  box.` A click or drag on the deck while one is open adds nothing: message `This mix step is part of
+  a mixing box: change its wells in the box.` (note).
+- **Moving and copying** (below): a mixing box is selected, dragged, copied and pasted by its
+  heading exactly as a transfer table is, its mix steps counting as its box; and **deleted** the
+  same way (below, "Deleting": the Delete key, the menu's `Delete`, Ctrl+X and the menu's `Cut`,
+  dropping on the trash), whole, into the trash as one entry, from where dragging it out pastes it
+  (2026-11-11, once deleting and mixing boxes were both built). Its mix steps can't be
+  dragged without it (to any place, its own box included): a drag holding one without its mixing
+  box, without Ctrl, gets the label `A mixing box's mix steps move with it · hold Ctrl to copy`, on
+  gray, as a randomization's stage does, and the drop shows the logic's message (error); with Ctrl,
+  or Ctrl+C, one copies as an ordinary mix step. Messages and labels name it `a mixing box` (`2
+  mixing boxes`; `Move a mixing box`). Paste below a mixing box's mix step pastes between boxes,
+  below its box.
+- **While moving wells** (section 6), its heading opens and closes its box as usual; its ✎ is hidden
+  with the others; its mix steps' wells are wells in use and can be moved like any (the box may
+  then read `needs update`).
+
 **What changed glows.** When a stage or a tip group box appears that wasn't there at the last
 drawing, it glows soft yellow (`#FFF1BF` background, a 4px `#F3D36B` ring) and fades over 1.2
 seconds. So does whatever a move, copy or paste placed (the logic's `placed`: its stages, and a
@@ -1731,7 +1947,9 @@ dragged by their rows, and by their tip group's heading (each stage has its own 
 same as dragging the stage), only to a place **inside their own transfer table** (above); dropped
 anywhere else, the logic refuses with its message and nothing moves. Ctrl+C or Ctrl+drag (copying)
 one of its stages without the table copies it as an ordinary stage, as for a randomization's. Nothing else can be dropped inside its box. Messages name it `a transfer table`
-(`2 transfer tables`). The page keeps a **picked set**, or none:
+(`2 transfer tables`). **A mixing box** (2026-11-11) is selected, dragged, copied and pasted by
+its heading exactly as a transfer table is; its mix steps can't be moved without it, even inside
+it (above, "Mixing boxes"). The page keeps a **picked set**, or none:
 - With **no picked set**, what's selected is what's open: a stage, or a randomization whose card is
   open; with Start or End open, nothing.
 - **Click** a stage's row opens it, as before, and forgets the picked set (so it's selected alone).
@@ -1827,7 +2045,7 @@ becomes the selection).
 
 *Deleting and cutting* (Andy, 2026-11-11; `transfer-designer.md`, "Deleting").
 - **Delete** deletes what's selected (`deleteItems`), as one edit: stages (mix steps included),
-  tip groups, randomizations and transfer tables, with every stage in them, in any mix (Andy,
+  tip groups, randomizations, transfer tables and mixing boxes, with every stage in them, in any mix (Andy,
   2026-11-11: "anything that is a stage or a container can be deleted"). No question first: Undo
   brings it back, as for every Remove. It's the **Delete key**, the right-click menu's `Delete`
   (below), and dropping on the trash (section 7, "The trash").
@@ -1850,16 +2068,16 @@ becomes the selection).
   the open stage, the very thing Andy's Delete rule prevents); elsewhere, the browser's own Ctrl+X.
   A text box or menu, or text selected on the page, keeps the browser's own.
 - **With nothing selected** (Start or End open with no picked set, or an empty picked set):
-  `Select a stage, a tip group (click its heading), a randomization or a transfer table to delete
-  it.` (note), and nothing else.
-- **Refused** by the logic (a randomization's or transfer table's stage without its owner, every
-  stage of the plan): its message (error), and nothing changes; for Cut, nothing is copied either
+  `Select a stage, a tip group (click its heading), a randomization, a transfer table or a mixing
+  box to delete it.` (note), and nothing else.
+- **Refused** by the logic (a randomization's, transfer table's or mixing box's stage without its
+  owner, every stage of the plan): its message (error), and nothing changes; for Cut, nothing is copied either
   (the refusal is checked first).
 - An open editing box or randomization card is handled as for a paste (section 7, "After a move,
   copy or paste"): one without changes closes first; one with changes refuses, and nothing is
   deleted.
 - **What it shows.** The rows of what's deleted (a stage's card or row, a tip group's,
-  randomization's or transfer table's whole box) **flash red and shrink away** (section 15), and
+  randomization's, transfer table's or mixing box's whole box) **flash red and shrink away** (section 15), and
   the rows below slide up into the space; only then is the edit recorded and the column redrawn
   (Andy, 2026-11-11: "It's hard to see that something is deleted since it's immediately
   replaced"). The edit is worked out at once, from the plan as it is, and is **pending** until the
@@ -1889,7 +2107,8 @@ becomes the selection).
 - **Messages** (ok), with an **`Undo` button** after the text (below): `Deleted “S2”.`,
   `Deleted 2 stages.`, `Deleted a tip group (2 stages).`, `Deleted a tip group (1 stage).`,
   `Deleted a randomization (3 stages).`, `Deleted a randomization.` (one that hasn't run: no
-  stages, so no count), `Deleted a transfer table (2 stages).`, `Deleted 2 items (3 stages).`; the
+  stages, so no count), `Deleted a transfer table (2 stages).`, `Deleted a mixing box (5 stages).`,
+  `Deleted 2 items (3 stages).`; the
   things described as in a drag's label (section 7, "Dragging"), then, unless they're all stages,
   the number of stages in brackets (`1 stage`, singular, for one). Cut says `Cut`
   in place of `Deleted`. (Until 2026-11-11 messages ended `Undo brings it back.`; the button says
@@ -1957,7 +2176,8 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   band, and a drop on that seam is never under it.
 - **What goes in.** Everything deleted, by any route (Andy, 2026-11-11): the Delete key, the menu's
   `Delete`, Ctrl+X and the menu's `Cut`, dropping on the trash, a stage's or mix step's box's
-  `Remove`, a randomization's card's `Remove` and a transfer table's wizard's `Remove`: **one entry
+  `Remove`, a randomization's card's `Remove`, a transfer table's wizard's `Remove` and the mixing
+  wizard's `Remove`: **one entry
   per thing deleted** (`addDeleted`, with the plan before the edit and `new Date().toISOString()`
   as `deletedAt`), as part of the same edit.
   Joining a tip group to the one above deletes nothing, so nothing goes in. At most `TRASH_LIMIT`
@@ -1965,7 +2185,7 @@ be made reliable); Undo is the exact way to bring back a recent delete.
 - **The list**, newest first (`trash.md`, "Order"), one row per entry: its **name** in semibold
   14px (a stage: its name in quotes, `“S03 Drug A”`; a randomization: `Randomization` and its
   name, `Randomization “Randomization1”`; a tip group: `Tip group`; a transfer table: `Transfer
-  table`); under it, in 12px gray, `3 transfers · deleted 12:28 AM` for a stage (a mix step's
+  table`; a mixing box: `Mixing box`); under it, in 12px gray, `3 transfers · deleted 12:28 AM` for a stage (a mix step's
   mixed wells counted as transfers, as `trash.md` counts them), or `2 stages · 5 transfers ·
   deleted 12:28 AM` for the others, singular for one (`1 stage · 1 transfer`), and `0 stages ·
   0 transfers` for a randomization that hasn't run. **When**: the time in the browser's own short
@@ -1976,10 +2196,10 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   Empty, the list says `The trash is empty. Deleted stages and tip groups come here.` (12px gray).
 - **Dragging an entry out.** A press on an entry's row and a 5px move (`DRAG_START_DISTANCE`)
   starts a drag, as for the column's items: the label reads `Paste “S03 Drug A”`, `Paste a tip
-  group`, `Paste a randomization` or `Paste a transfer table` (the thing described as in a drag's
-  label, section 7, "Dragging"), and the nearest seam is marked with the
-  drop line, as for any drag (only seams between tip groups for a tip group, randomization or
-  transfer table). Dropped on a marked seam, the entry is pasted there (`pasteEntry`, with that
+  group`, `Paste a randomization`, `Paste a transfer table` or `Paste a mixing box` (the thing
+  described as in a drag's label, section 7, "Dragging"), and the nearest seam is marked with the
+  drop line, as for any drag (only seams between tip groups for a tip group, randomization,
+  transfer table or mixing box). Dropped on a marked seam, the entry is pasted there (`pasteEntry`, with that
   place), as one edit, and leaves the trash; the message `Pasted “S03 Drug A” from the trash.` (ok),
   and what was pasted is selected, glows, scrolls into view and its first stage opens, as after a
   paste (section 7, "After a move, copy or paste"). **The entry is looked up at the drop**, in
@@ -2023,7 +2243,9 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   nothing.
 - **While a randomization's card or the transfer table wizard is open**, the trash works as the
   rest of the column does then (a drag closes the card as a paste does, or is refused with the
-  card's message).
+  card's message). **While the mixing wizard is open**, a press on the trash (its line, an entry,
+  `Empty trash`) and a drop on it are refused as the column's are: the wizard shakes with its
+  message, and the trash and plan don't change (code review, 2026-11-11).
 
 **Keeping things in view.** When a different entry opens, the column scrolls just enough to show
 all of it; when an editing box opens, it scrolls just enough to show the box. When `Show
@@ -2422,6 +2644,7 @@ The deck shows the plates at one point in the run, chosen by what's open:
 | a stage without transfers | the plates as it will start: after the stages with transfers before it | `As stage 3, “New stage”, will start (no transfers yet)` |
 | End | the plates after every stage | `At the end, after all stages` |
 | a randomization's card | the plates where it sits: before its first stage (after the stages with transfers before it), or before the stage it sits before | `Randomizing, before stage 3, “Drugs”` or `Randomizing, after all stages` |
+| the mixing wizard (2026-11-11; whatever is open behind it) | the plates where its mix steps go: before the stage it adds before (a new one) or before its first mix step (one in the plan), after the stages with transfers before that | `Mixing, before stage 7, “S07 Media row C”` or `Mixing, after all stages` |
 
 Only a stage's end is shown, never part-way through a stage, because within a stage the Biomek
 chooses its own order (B56358AF, 22-25). Stage numbers in captions are places in the stage order,
@@ -2431,7 +2654,8 @@ The caption sits at the top left of the deck panel, after two small buttons `‹
 side, before the caption, so they stay put however long it is). `‹` opens the entry before (Start,
 the stages in stage order, End), and `›` the one after; `‹` is disabled at Start and `›` at End.
 They're the same as clicking that entry in the Stages column. A randomization isn't a stop: they
-step from the stage before it to its first stage.
+step from the stage before it to its first stage. While the mixing wizard is open, both are
+refused (section 7, "Mixing boxes").
 
 After any edit, what's open stays open (unless the edit opens something else: sections 5, 7 and 10),
 and the deck shows its point again.
@@ -2445,23 +2669,30 @@ and the deck shows its point again.
   picked, nothing. It never ends moving wells; typed volumes, Ctrl+C, Ctrl+V and the menu key are ignored; Ctrl+Z and
   Ctrl+Y work.
 - **Escape** closes the open editing box without saving, or the open header box (section 5), or
-  the open randomization's card (saving or discarding, section 7); otherwise clears a chosen source.
-  Typed volumes (above) are ignored while a randomization's card is open.
+  the open randomization's card (saving or discarding, section 7), or cancels the mixing wizard
+  (section 7, "Mixing boxes"); otherwise clears a chosen source. Typed volumes (above) are ignored
+  while a randomization's card or the mixing wizard is open.
 - **Ctrl** or **Cmd** held while clicking a destination, or at the end of a drag across a box, with
   a transfer stage open and a source chosen, keeps the source chosen (section 9, "Keeping the
   source", which says where it applies). On a focused well, **Ctrl+Enter** or **Cmd+Enter** does
   what a Ctrl-click would (not Ctrl+Space or Cmd+Space, which systems take for themselves).
 - **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac), the trash's change
-  with each (section 4, "The history"). Not while an editing box or a randomization's card is open,
-  since their changes aren't in the plan yet. While a delete's animation plays, Ctrl+Z cancels the
-  delete instead, and Redo is ignored (section 7, "Deleting and cutting").
+  with each (section 4, "The history"). Not while an editing
+  box, a randomization's card or the mixing wizard is open, since their changes aren't in the plan
+  yet. While a delete's animation plays, Ctrl+Z cancels the delete instead, and Redo is ignored
+  (section 7, "Deleting and cutting"). While the mixing wizard is open they act as its `Undo` and `Redo` buttons do (section 7,
+  "Mixing boxes"): the wizard shakes and the message bar shows the same message, `Make the mix
+  steps, or cancel the mixing, first.` (editing: `Update the mixing box, or cancel, first.`). While the mixing wizard is open, Ctrl+C and Ctrl+V of stages and the menu key are refused as
+  section 7 says ("Mixing boxes").
 - **While the transfer table wizard is open** (section 7), none of these keys act on the page: the
   wizard's own keys apply (Enter, Tab and Escape in its cells; Escape elsewhere in it closes it, as
   Cancel), and Ctrl+V pastes only into its paste zone or a cell.
 - **Delete** deletes, and **Ctrl+X** (Cmd+X) cuts, what's selected in the Stages column, only right
   after a press in the column or with the focus in it (section 7, "Deleting and cutting"; Andy,
-  2026-11-11). Backspace stays a volume key (above). Neither works while moving wells.
-- **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups, randomizations and transfer tables
+  2026-11-11). Backspace stays a volume key (above). Neither works while moving wells; while the
+  mixing wizard is open, both are refused as its other edits are (the wizard shakes with its
+  message; nothing is deleted or copied), whatever the last press was (code review, 2026-11-11).
+- **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups, randomizations, transfer tables and mixing boxes
   (section 7, "Moving and copying"); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
   right-click menu. While a drag is on, **Escape** cancels it, and **Ctrl** switches it between
   moving and copying. Escape, when nothing above uses it, forgets the selection.
@@ -2469,7 +2700,8 @@ and the deck shows its point again.
 **The cursor's label.** While the pointer is over the deck, a small label beside it (14px right,
 26px up) shows what a click does: with a stage open, the next transfer's volume, `50 µL`; with Start
 open, `+ 1000 µL Media`, `Eraser`, or `No component picked`; with a randomization's card open,
-`Source` or `Fill`, by its tab; with End open, or while moving wells, nothing.
+`Source` or `Fill`, by its tab; with the mixing wizard open, `Pick`, or `Unpick` over a picked
+well; with End open, or while moving wells, nothing.
 
 **The message bar** floats at the bottom center of the window, at most 720px wide, and shows the
 latest message until the next replaces it; it's hidden when empty. It's announced to screen readers.
@@ -2482,7 +2714,7 @@ tips…`, `Moved…`, `Copied…` (after Ctrl+drag), `Pasted…`, `Deleted…`, 
 
 **A message with an Undo button** (2026-11-11): a delete's or cut's message (section 7, "Deleting
 and cutting"), and the message of a `Remove` that puts something in the trash (a stage's, a mix
-step's, a randomization's card's and the transfer table wizard's; Claude's choice, 2026-11-11: they
+step's, a randomization's card's, the transfer table wizard's and the mixing wizard's; Claude's choice, 2026-11-11: they
 delete as Delete does, so they offer the same way back), has an `Undo` button after its text, which
 undoes as Ctrl+Z does; it goes with the message. These messages no longer end `Undo brings it
 back.` (or `them`): the button says it. Other messages that mention Undo keep their words.
@@ -2707,6 +2939,19 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   body 14px, its grid 13px, help text 13px gray, notes 11px gray; its colors only the page's own
   (blue for the current step and focus, sand for the header row and label column, red for problems,
   pale green for done steps).
+- **Mixing boxes** (2026-11-11; from the preview Andy approved): the box and heading as a transfer
+  table's, `⟳` (15px, the text's color) in place of the table icon. **The mixing button**: as the
+  dice button (26px, white, 1px blue border), `⟳⟳` in blue, 9px, letter spacing -1px, centered.
+  **The mixing wizard**: a panel the Stages column's width, in the column's flow (6px above and
+  below), a 2px blue (`#2F5DA8`) border, 12px corners, white, the shadow `0 4px 16px` at 12% of the
+  text color, text 14px; its header and footer as the transfer table wizard's (the footer with a 1px
+  top border in the panels' border color, 12px 20px padding); its body in sections 14px apart,
+  padding 14px 20px; **section headings** (`1 · Wells to mix`, `Makes` …) 12px semibold gray
+  capitals, 0.03em letter spacing, 8px below; the radio choices' notes 13px gray; the Makes line
+  semibold; **chips** at least 22px wide, padding 1px 6px, a 1px light blue (`#9DB7DB`) border,
+  10px corners, the blue tint background, blue 12px text, centered, 4px apart, wrapping; a chip
+  pointed at or focused solid blue with white text. The wizard **shakes** as an editing box does
+  (section 10).
 - **The name box:** 140px wide, at least 30px tall, the shadow `0 6px 20px` at 20% of the text
   color.
 - **⟳ badges** (section 6): a 14px circle centered on the well's top-right edge (at 45° from its
@@ -2780,6 +3025,20 @@ group's tip type and probes from its heading), with what's expected. It checks:
   S03's tip group by its heading with Ctrl-click, and the transfer table's heading) deleted with
   the Delete key: the column as expected, the message `Deleted 3 items (7 stages).` with `Undo`,
   and three entries in the trash, in column order.
+- **A mixing box** (2026-11-11), from the test plan with a mixing box (`mixingBoxTestPlan`,
+  `trash.md`, section 6) opened from a plan file: its heading clicked and Delete pressed: the
+  column as the logic gives it, the message `Deleted a mixing box (5 stages).` with `Undo`, and one
+  trash entry `Mixing box`, `5 stages · 5 transfers`; one of its mix steps alone (its box opened,
+  the mix step clicked, Delete): the logic's mixing box message, nothing changed; the entry
+  dragged out to the seam where the box was (the label `Paste a mixing box`): the column equal to
+  the plan as opened, the trash empty; then the box's ✎ and the wizard's `Remove`: the message
+  `Removed the mixing box and its 5 mix steps.` with `Undo`, and the trash entry `Mixing box`.
+  (The mix step's refusal may be checked before the box is deleted, while it's there to open.)
+- **The mixing wizard refuses deleting and the trash** (code review, 2026-11-11): with the wizard
+  open on the box (its ✎) and on a new mixing (a seam's ⟳⟳ after a click on a stage), Delete and
+  Ctrl+X each shake the wizard with its message and change nothing (no page error); with an entry in
+  the trash, a press on the trash line, a drag of the entry onto the column and a drop of a stage
+  on the trash are each refused the same way, the trash and plan unchanged.
 - **A group's first stage removed with its box's `Remove`** (S03, opened, then `Remove`): S04 to
   S06 keep the group's tip type and probes, read from the group's heading.
 - **Join refused just after a randomization**: the right-click menu on S10's tip group heading
@@ -3184,6 +3443,100 @@ group's tip type and probes from its heading), with what's expected. It checks:
   “Control” and a well the table fills. Choose another well.` shown, Next disabled. Existing
   checks whose expected text changes: the paste zone's error (`… at least one column of
   amounts.`), the Table step's summary (`4 columns.`) and the no-stock-well wording on Sources;
+- mixing boxes (2026-11-11, item 34), with a plan whose stage `Fill` leaves Plate1 A1 to D1 and B2
+  holding Media and Drug A (B2 twice the volume) and E1 to H1 and A2 Media alone:
+  - **The seam's button:** ⟳⟳ on every seam between tip groups (above the first box, between boxes,
+    above End, below a randomization and a transfer table), never inside a tip group box; the five
+    buttons evenly spaced and none moving between seams; Tab order ⟳⟳, ⟳, `+`, dice, table; its
+    tooltip and accessible names (`Add mixing before stage 3, “Drugs”`, `… at the end of the run`).
+  - **Opening:** the wizard appears in the column just after the seam (and after its box when
+    editing), the column scrolling to it; no entry looks open, no `Shown on deck` tag, no selection;
+    the caption reads `Mixing, before stage N, “…”` (or `Mixing, after all stages` from the seam
+    above End); the deck shows the plates at that point, no arrows, no faded wells; closing it with
+    Cancel shows what was open before, its caption and look back.
+  - **Picking:** a click picks a well and a second click takes it out; a drag across A1 to D2 picks
+    the box; a drag starting on a picked well takes the box out; a drag ending on other labware
+    picks nothing; Enter and Space on a focused well; picked wells marked as wells to fill; the
+    count `10 on Plate1 · 4 on Plate2` (labels as given), `Clear`; with none, the gray hint and
+    `Make mix steps` disabled with its tooltip; the cursor's label `Pick` and `Unpick`; typed digits
+    ignored; a picked well's labware put away and brought back keeps its picks.
+  - **Makes:** with `A fresh tip for every well` on 4 probes, the 10 Plate1 wells give `4 mix steps
+    · 1 to 4 wells each · new BC230 tips on 4 probes` (the tip type as chosen; A1 to D1, E1 to H1,
+    A2, then B2, which holds twice A2's volume) and chips 1 to 4; pointing at chip 1 rings A1 to D1
+    (solid blue, standing off the well) and its tooltip reads `Mix 1 of 4: Media + Drug A` (or the
+    plan's component order) with the wells; on 8 probes, chip 1 (A1 to H1) `… its wells hold
+    different things`; Tab reaches each chip and rings its wells; with wells on two plates, no chip
+    has wells of both, and with wells in two columns, no chip has wells of both; on 4 probes, Plate1
+    A1, C1 and E1 alone give `3 mix steps · 1 well each · …` (a gap starts a batch again); with `One tip for
+    wells with the same contents`: 3 mix steps, `1 to 5 wells each` (B2 a mix step of its own, split
+    by volume), the note about more wells than probes on 4 probes, and none on 8 probes; one well
+    picked: `1 mix step · 1 well · …`; the tips menus starting from the tips in use at the seam, and
+    changing the line and chips as changed.
+  - **Reservoir troughs:** with `A fresh tip for every well` and Res1 1 picked with the Plate1
+    wells, Makes shows Res1 1 as a chip of its own, and `Make mix steps` shows `A fresh tip for every
+    well can't mix reservoir troughs until that's checked in simulation: Res1 1. Use one tip for
+    wells with the same contents, or leave the troughs out.` as an error, the wizard staying open
+    with its wells, way and tips and nothing added; switching to `One tip for wells with the same
+    contents`, Make adds the box; likewise `Update` on a box being edited.
+  - **Elsewhere while open:** clicking a stage, a heading, a ✎, a seam's button, `‹`, `›`, `Move
+    wells`, `Undo`, `Save`, `Open`, `Reset`, `Biomek files`, the deck panel's copy and paste buttons,
+    a drag in the column, right-click in the column, Ctrl+C, Ctrl+V, **Ctrl+Z and Ctrl+Y** (with
+    something to undo and redo): each shakes the wizard and shows `Make the mix steps, or cancel the
+    mixing, first.` (editing: `Update the mixing box, or cancel, first.`), changing nothing (the
+    undo history as it was); bringing out labware, `Names`, `Arrows`, the contents card,
+    naming a well by right-click, and renaming labware work.
+  - **Make mix steps:** the mixing box appears where the seam was, open, its mix steps glowing, each
+    in a tip group of its own (`New tips · BC230 · 4 tips`), the stage below keeping its tips; its
+    first mix step opens and the mixing box is selected; the message; one Undo takes it all out;
+    from the seam below a randomization that hasn't run, the randomization stays above (one undo).
+    **A logic refusal on Make** (for the check, `addMixingBox` made to throw in the page under test)
+    shows its message as an error, and the wizard stays open with its wells, way and tips.
+  - **Escape and Cancel:** Escape with the tip type or probe menu open closes only the menu, the
+    wizard staying open with its picks; a second Escape cancels it; after Escape or Cancel, the stage
+    that was open before the wizard opened is open again and what was selected (a stage, a box, or
+    nothing) is selected again.
+  - **Probes that aren't the first N:** a mixing box opened from a plan file whose mix steps load
+    probes 2, 3 and 4: its ✎ shows the probe menu's extra first entry `probes 2, 3, 4`, chosen, and
+    the Makes line `… on probes 2, 3, 4`; Update with nothing changed shows `Nothing to update: …`;
+    choosing `3 probes` changes the line to `… on 3 probes`.
+  - **The box** (the 10 Plate1 wells on 4 probes, each way in turn): its heading `▸`/`▾`, ⟳, `Mixing`, `4 mix steps · fresh tip per well` or `3 mix steps
+    · same contents share a tip` (the 10 Plate1 wells on 4 probes); opening and closing by click, Enter and Space, `aria-expanded`;
+    open state kept across edits, undo and redo but not a reload; a narrow column cutting the
+    right-hand text first; the same-contents box's mix steps named `Mix 1 of 3` …, its first with
+    the tooltip `Mix 1 of 3: Media + Drug A`; no ✎ on a mix step or its tip group heading, no `×` on its wells, no seam buttons
+    inside; its card's gray note; a click on the deck with one open gives its note and changes
+    nothing; End's tips count including its tips.
+  - **Editing:** its ✎ opens the wizard just after its box, with its wells, way and tips; changing the
+    way and pressing Update remakes it in place (the box stays put, new mix steps, the message, one
+    undo), the mixing box selected after it and its first mix step open; Update with nothing changed
+    shows `Nothing to update: …` and records nothing; Remove (red outline) acts at once, with its
+    message, the first stage opening when one of its mix steps was open before the ✎ (and the stage
+    that was open staying open otherwise), Undo bringing it back; Remove disabled, with its tooltip, when its mix steps are all
+    the plan's stages; Escape and Cancel change nothing.
+  - **Out of date:** with `One tip for wells with the same contents` (the box of 3 mix steps, `Mix 1
+    of 3` to `Mix 3 of 3`), adding DMSO to Plate1 A1 in `Fill`, the amount worked out in the test
+    from `MIX_VOLUME_TOLERANCE` as half of its percentage of A1's volume (`A1's volume ×
+    MIX_VOLUME_TOLERANCE / 200` µL, so A1 stays within tolerance of B1 to D1 and only its contents
+    change): the heading reads `needs update` in red, with its tooltip; the problem count goes up by
+    one; the Biomek files box names it (`A mixing box (at stage N, “Mix 1 of 3”) is out of date: …`)
+    with Write files disabled; ✎ on the out-of-date box opens the wizard with its stored wells, way
+    and tips and its Makes showing the new grouping (4 mix steps), and Update clears all three; a
+    fresh-tip box isn't affected by the same edit (A1's volume stays within `MIX_VOLUME_TOLERANCE`
+    of the others), but is by adding 100 µL of Media to Plate1 A2 in `Fill` (A2 and B2 then hold
+    the same volume, so they'd share a batch). **Which is named:** with a mixing box out of date
+    above a randomization out of date, the Biomek files box names the mixing box; with the
+    randomization moved above it, the randomization.
+  - **Moving and copying:** dragging the box by its heading between other boxes (moved whole, its
+    tips kept, one undo); refused inside a tip group; one of its mix steps dragged alone shows the
+    gray label and is refused on drop, and with Ctrl copies as an ordinary mix step (which has its ✎
+    and `×`); Ctrl+C and Ctrl+V of the box pasting a new mixing box below it (out of date only if
+    its wells hold something else there); the right-click menu's Copy and Paste on its heading;
+    with one of its mix steps selected, Ctrl+V pastes between boxes, just below the mixing box's box,
+    never inside it.
+  - **Moving wells:** its heading opens and closes, its ✎ hidden; moving one of its wells moves the
+    mix step's well; a move that changes which wells go together makes it `needs update`.
+  - **Plan files:** saving and opening a plan with two mixing boxes (version 14) gives them back, up
+    to date; a version 13 file opens with none; the browser copy brings them back after a reload.
 - the Stages column with 20 stages stays inside the window, at the top of the page and scrolled down;
 - a window narrower than 1000px stacks the panels;
 - the version line: the built file's name and the line show the same version; a click selects the

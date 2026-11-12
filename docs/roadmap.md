@@ -567,6 +567,21 @@ Last updated: 2026-11-11
   hands-off workflow): `changeStageVolumes` (`transfer-designer.md`, sections 3 to 6) and the
   page (`transfer-designer-page.md`, sections 7, 12, 15 and 16), and **built (#154)**. Plan files
   and the Biomek files don't change.
+- **Decided: mixing boxes and the mixing wizard** (Andy, 2026-11-11; item 34, below; ADR 0025,
+  Proposed): a ⟳⟳ button on seams between tip groups opens a wizard in the Stages column where wells
+  are picked on the deck, with a way to mix (a fresh tip for every well, or one tip for wells with
+  the same contents) and tips; it makes a **mixing box** owning one mix step per group, each on new
+  tips. From a preview Andy approved on 2026-11-11. **Specified** (Draft, 2026-11-11, hands-off
+  workflow): `transfer-designer.md` ("Mixing boxes", and moving and copying with copied items
+  version 6), `plan-file.md` (format version 14), `transfer-designer-page.md` (sections 2, 4, 5, 6,
+  7, 11, 12, 15 and 16), glossary terms Mixing box, Probe order and Way to mix, and an open question
+  in `biomek.md`; and **built (#155)**. **Not verified:** "a fresh tip for every well" assumes the Biomek mixes each well
+  of a mix step with its own probe; a simulation run must check it before any real run. It writes
+  only mix steps and tip changes the tool already writes, so the Biomek files' format doesn't change.
+  **Decided by Andy** (2026-11-11, item 34): grouping by volume too, fresh-tip batches of one
+  column, reservoir troughs refused for a fresh tip until checked in simulation, empty wells
+  allowed. Deleting a mixing box follows #153's container rules (deleted whole, into the trash,
+  dragged back out): specified after `main` was merged into the branch, and built (#155).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1297,6 +1312,77 @@ added on 2026-10-28 (Andy).
       from the specification review), so the folder and the zip can't drift apart.
     It changes neither the Biomek's files nor plan files.
     Built (#152).
+34. **Mixing boxes and the mixing wizard** (Andy, 2026-11-11; hands-off workflow; ADR 0025): a way
+    to mix wells that makes the mix steps for you. (Item numbers 32 and 33 are taken by pull
+    requests #153 and #154.) Decided with Andy, from a preview he approved on 2026-11-11:
+    - **Two ways to mix for now**: a fresh tip for every well (meant to carry nothing from one well to
+      the next; not verified, below), and one tip for wells with the same contents (the same components in the same shares).
+      More may come, so a way is one entry in a list of rules.
+    - **Started from a seam between tip groups**, a fifth button, ⟳⟳ (`Add mixing here`), left of
+      the mix step button.
+    - **The wizard opens in its spot in the Stages column**, as a randomization's card does, with
+      the deck showing the plate at the mixing's point and no stage shown as open: 1 · Wells to mix
+      (picked on the deck), 2 · How to mix, 3 · Tips (from the tips in use there), then Makes (a
+      line and numbered chips that ring their wells on the deck), Remove, Cancel and `Make mix
+      steps` / `Update`.
+    - **A mixing box** in the Stages column, like a transfer table's box: `Mixing`, `3 mix steps ·
+      fresh tip per well` or `· same contents share a tip`, ▸/▾ and ✎; mix steps named `Mix 1 of
+      12`, with what their wells hold in a tooltip; the standard mix (`DEFAULT_MIX`,
+      `MIX_STEP_MODE`).
+    - **Fresh tip**: wells in probe order (labware as on the deck, then down each column), in
+      batches of wells of one column of one labware, in rows right next to each other, at most as
+      many as there are probes (decisions B and E, below). **Same contents**: wells grouped by what they hold just before it, compared to a
+      stated precision, in order of first appearance. Both also by volume (decision A, below).
+    - **It moves, copies, pastes and is removed as a whole**; its mix steps change only through its
+      wizard; `needs update` when its wells would be grouped differently; saved in plan files and
+      copied items.
+    - **Specified properly, as its own kind of container** (Andy: the preview stored it as a
+      transfer table with an extra field, didn't save it and refused to copy it).
+    - Decided in the hands-off workflow (2026-11-11; reasons in its pull request): its mix steps'
+      mix and tips are locked too, not only their wells; it stores only its way, its wells and tips
+      being its mix steps'; Update remakes every mix step; while the wizard is open, anything else
+      that would change the plan or what's open is refused with a shake.
+    - **Decided by Andy** (2026-11-11, A to D 08:38 to 08:44, raised in the specification review;
+      E 11:42; each changing what goes into the Biomek files):
+      - **A. Grouping by volume too** (option 1, of three: also group by volume; warn; or split a
+        stage's rows by well volume). With either way, wells share a mix step only if they also
+        hold about the same volume: the largest at most `MIX_VOLUME_TOLERANCE` percent (new, in
+        `config/mixing.js`) above the smallest, judged on the whole group, so no chaining. With
+        "same contents", groups are split by volume; with a fresh tip, a batch starts again at a
+        well out of tolerance. Reason: a mix step mixes every well with one volume, from its
+        emptiest well (`mix-volumes.md`), so a fuller well would be under-mixed without warning.
+      - **B. Fresh-tip batches in one column** (option 1, a new batch at each labware, plus
+        columns; Andy: "make sure batches are vertical lines as well — it does them all at once
+        that way"). A batch holds wells of one column of one labware, at most as many as there are
+        probes; it starts again at each new column, each new labware, when full, and at a volume
+        break. On 4 probes: A1 to H1 gives A1 to D1 and E1 to H1; A1 to C1 with A2 to C2 gives two
+        batches; A1 to A12 gives 12 batches of one. Whether a column batch runs in one pass is in
+        `biomek.md`'s simulation test.
+      - **C. Reservoir troughs refused for a fresh tip** (option 1) until the simulation test has
+        checked several probes in one trough; the reservoir case stays in `biomek.md`'s
+        simulation test. A trough, for this, is a well of a grid with one row (a one-row lettered
+        labware and a one-well reservoir included; decided in the hands-off workflow); a fresh-tip
+        box that comes to hold one (a well moved into a trough, or a plan file) is out of date, so
+        the Biomek files wait and Update gives the refusal.
+      - **Empty wells can be picked** (option 1): the existing overdraw problem catches their mix
+        step, and with "same contents" they form a group of their own.
+      - **E. Fresh-tip batches only in rows right next to each other** (2026-11-11, 11:42): a batch
+        also starts again at any gap, a well not in the row directly below the batch's last well.
+        Reason (Andy): the probes sit one row apart, so A1, C1 and E1 can't be done in one pass
+        ("it does them all at once that way"). On 4 probes, A1, C1 and E1 give three mix steps; A1
+        to H1 without D1 gives A1 to C1, then E1 to H1.
+    - **Not verified** (`biomek.md`, "Not yet known"): that Transfer From File gives each well of a
+      mix step its own probe when it has no more wells than probes. Andy runs the simulation test
+      there before any real run with a mixing box.
+    - **The Biomek files**: a mixing box writes only mix steps and tip changes, which the tool
+      already writes; their format doesn't change.
+    - **Deleting a mixing box** follows #153's container rules, as for a transfer table: it's
+      deleted whole (`deleteItems`, with the Delete key, the menu, Ctrl+X, dropping on the trash,
+      or its wizard's `Remove`), into the trash as one entry, from where dragging it out pastes it;
+      one of its mix steps alone is refused. Added here, after merging `main` (#153 and #154) into
+      this branch (2026-11-11); specified and built (#155).
+    Specified (Draft, 2026-11-11; the specification review's points fixed the same day, and the
+    second review's after decision E).
 
 32. **Deleting and the trash** (Andy, 2026-11-11; hands-off workflow; ADR 0024): Andy's feature
     ideas "Easy delete" and "Trash can". Decided with Andy, from a preview on 2026-11-11:
@@ -1395,7 +1481,11 @@ final Biomek runs, so they test the files as they will be:
     by merging.
 24. Every transfer's volume at once (item 33), added on 2026-11-11: preview, specifications, then
     build. It changes no Biomek files or plan files, so it needn't come before the final runs.
-25. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
+25. Mixing boxes and the mixing wizard (item 34), added on 2026-11-11: preview, specifications,
+    then build. It changes plan files (version 14) but not the Biomek files' format; what a plan
+    writes changes only through the mix steps and tip changes a user asks for, and the fresh-tip
+    way needs a simulation run first (`biomek.md`).
+26. The release: `CHANGELOG.md`, README, `npm run build`, the tag `v0.2.0` and a GitHub Release.
 
 **Later** (after v0.2.0):
 - **Moving a randomization's stages inside it** (Andy, 2026-11-05: skipped for now): dragging a

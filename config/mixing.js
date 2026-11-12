@@ -1,5 +1,5 @@
 // mixing.js — how a stage mixes when mixing is switched on, how a mix step mixes, when a mix counts
-// as short, and the smallest mix that runs.
+// as short, the smallest mix that runs, and how close the volumes in one mixing box mix step must be.
 //
 // A tool offers mixing only as on or off (Andy, 2026-10-29), so switching it on gives an end
 // DEFAULT_MIX (transfer-designer.md, "Mixing"). A mix step (docs/glossary.md) is a stage that only
@@ -7,10 +7,13 @@
 // itself of MIX_STEP_VOLUME (transfer-designer.md, "Mix steps"). A mix is short when it stirs less
 // than SHORT_MIX_SHARE percent of what a well holds (mix-volumes.md, "How much of each well is
 // mixed"); a short mix is a warning, not a problem. A mix volume under MIN_MIX_VOLUME is a mix
-// problem (mix-volumes.md, "How much of each well is mixed"). Data only (ADR 0009).
+// problem (mix-volumes.md, "How much of each well is mixed"). A mixing box (docs/glossary.md) puts
+// wells in one mix step only if they hold about the same volume, within MIX_VOLUME_TOLERANCE
+// (transfer-designer.md, "About the same volume"), since a mix step mixes every well with one
+// volume, worked out from its emptiest well. Data only (ADR 0009).
 // Which tests check which value:
-// - DEFAULT_MIX, MIX_STEP_MODE and MIX_STEP_VOLUME: the transfer-designer module's tests
-//   (transfer-designer.md, "Configuration");
+// - DEFAULT_MIX, MIX_STEP_MODE, MIX_STEP_VOLUME and MIX_VOLUME_TOLERANCE: the transfer-designer
+//   module's tests (transfer-designer.md, "Configuration");
 // - SHORT_MIX_SHARE and MIN_MIX_VOLUME: the mix-volumes module's tests (mix-volumes.md,
 //   "Configuration").
 
@@ -40,3 +43,10 @@ export const SHORT_MIX_SHARE = 40;
 // how the Biomek handles 1 µL is to be checked at the instrument). Mix volumes needn't be accurate,
 // only possible. A number above 0.
 export const MIN_MIX_VOLUME = 1;
+
+// How far apart the volumes of the wells in one mixing box mix step may be, in percent of the
+// smallest: the largest may be at most this much above the smallest, judged on the whole mix step
+// (Andy, 2026-11-11, decision A; transfer-designer.md, "About the same volume"). 10 (Andy,
+// 2026-11-11). A number above 0 and below 100, so a well holding twice another's volume is always
+// out of tolerance with it.
+export const MIX_VOLUME_TOLERANCE = 10;
