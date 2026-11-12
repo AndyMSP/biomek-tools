@@ -19,6 +19,7 @@ import { DEFAULT_TRANSFER_VOLUME, DEFAULT_FILL_VOLUME } from "../../../config/de
 import { SOURCES_SHOWN } from "../../../config/randomizations.js";
 import { TIP_TYPES, MIX_VOLUME_LIMITS } from "../../../config/tip-types.js";
 import { MIN_MIX_VOLUME } from "../../../config/mixing.js";
+import { DELETE_ANIMATION_MS } from "../../../config/animations.js";
 import { BASE_FOLDER, BASE_FOLDER_PICKER_START } from "../../../config/paths.js";
 import { RECORDS_FOLDER, WELL_MAP_SUFFIX, PLAN_FILE_SUFFIX } from "../../../config/records.js";
 import { replay } from "../../shared/contents-tracking/contents-tracking.js";
@@ -40,6 +41,18 @@ import { PlanHistory } from "./plan-history.js";
 import { planToText, planFromText } from "./plan-file.js";
 import { labwareSheet } from "./labware-sheet.js";
 import { wellMaps } from "./well-maps.js";
+import {
+  emptyTrash,
+  addDeleted,
+  pasteEntry,
+  clearTrash,
+  undoTrashChange,
+  redoTrashChange,
+  trashToText,
+  trashFromText,
+  trashTextProblem,
+  TRASH_LIMIT,
+} from "./trash.js";
 import {
   START,
   DEFAULT_MIX,
@@ -66,6 +79,7 @@ import {
   stagesWithMixProblem,
   addTransfers,
   changeVolume,
+  changeStageVolumes,
   removeTransfer,
   transfersIn,
   tipChangeAt,
@@ -117,6 +131,7 @@ import {
   copyOf,
   copyItems,
   pasteItems,
+  deleteItems,
   COPIED_ITEMS_FORMAT,
   copyDeck,
   pasteDeck,
@@ -209,6 +224,20 @@ const COPIED_ITEMS_KEY = `${STORAGE_PREFIX}: copied items`;
 // The key the page's deck copy is stored under, in the browser's local storage, shared by every tab
 // of the designer, as copied items are (section 6, "Copying the deck").
 const COPIED_DECK_KEY = `${STORAGE_PREFIX}: copied deck`;
+
+// Where the trash is kept in the browser's local storage, shared by every tab of the designer
+// (section 4, "the trash"; trash.md).
+const TRASH_KEY = `${STORAGE_PREFIX}: trash`;
+
+// The notes about the trash's storage (section 4), each shown once per tab.
+const TRASH_NOT_KEPT_NOTE = "The trash can't be kept by this browser, so it will be empty after a reload.";
+const TRASH_NEWER_NOTE =
+  "The stored trash was saved by a newer version of the transfer designer, so this tab keeps a trash of its own and leaves that one as it is.";
+const TRASH_DAMAGED_NOTE =
+  "The stored trash is damaged, so this tab keeps a trash of its own, from what could be read, and leaves the stored one as it is.";
+
+// The share of DELETE_ANIMATION_MS for which deleted rows show red before they shrink (section 15).
+const DELETE_FLASH_SHARE = 0.4;
 
 // Paste deck's tooltip when it can be pressed (section 6, "Copying the deck"). Written only here:
 // refreshMovingWellsControls sets it on every redraw, so the HTML doesn't repeat it.
@@ -488,6 +517,38 @@ const openBoxes = new Set();
 // by its heading.
 let openEntrySeen = null;
 
+// The state of deleting and the trash (section 7).
+
+// Whether the last press on the page was in the Stages column (or the keyboard focus moved into it
+// since), so the Delete key and Ctrl+X act (section 7, "Deleting and cutting"). A press elsewhere
+// and a delete end it.
+let deleteKeyArmed = false;
+
+// A delete whose animation is playing (section 7, "What it shows"), or null: { before, result,
+// items, cut, animations, timer }. It's recorded when the animation ends.
+let pendingDelete = null;
+
+// The trash as this tab last read or wrote it (section 4), drawn in the column.
+let shownTrash = emptyTrash();
+
+// Whether the tab reads and writes the trash in local storage; false once storage has failed, or
+// when the stored trash is newer or damaged, after which the tab keeps its trash in memory only.
+let trashStorageUsed = true;
+
+// A note about the trash's storage still to be shown after the next change's message (section 4),
+// or null; and whether it has been shown, so it shows once per tab.
+let trashStorageNote = null;
+let trashStorageNoteShown = false;
+
+// Whether the trash's list is open (section 7, "The trash"): closed at first.
+let trashListOpen = false;
+
+// A press on a trash entry, until it moves DRAG_START_DISTANCE or is released: { entryId, x, y }.
+let trashPress = null;
+
+// A drag out of the trash: { entry, place, pointer }, or null.
+let trashDrag = null;
+
 // The page's elements that transfer-designer.html gives an id, looked up once.
 const elements = {
   experimentHeading: byId("experiment-heading"),
@@ -536,6 +597,9 @@ const elements = {
   dragLabel: byId("drag-label"),
   dropLine: byId("drop-line"),
   columnMenu: byId("column-menu"),
+  trash: byId("trash"),
+  trashList: byId("trash-list"),
+  trashLine: byId("trash-line"),
   cursorLabel: byId("cursor-label"),
   contentsCard: byId("contents-card"),
   pageVersion: byId("page-version"),
@@ -554,6 +618,7 @@ setUpPage();
 function setUpPage() {
   elements.pageVersion.textContent = PAGE_VERSION;
   startFromBrowserCopy();
+  startTrash();
   connectHeader();
   connectDeckBars();
   connectDeck();
@@ -561,6 +626,8 @@ function setUpPage() {
   connectWellNaming();
   connectKeys();
   connectMovingAndCopying();
+  connectDeleting();
+  connectTrash();
   connectEditingBoxGuard();
   connectInlineBoxGuard();
   connectHeaderBoxGuard();
@@ -581,13 +648,13 @@ function setUpPage() {
 function startFromBrowserCopy() {
   const copy = readBrowserCopy();
   if (copy.status === "ok") {
-    history = new PlanHistory({ plan: copy.plan, open: stageOrder(copy.plan).at(-1) });
+    history = new PlanHistory({ plan: copy.plan, open: stageOrder(copy.plan).at(-1), trashChange: null });
     bringOutUsedLabware(copy.plan);
     pickFirstComponent(copy.plan);
     showMessage("Brought back the plan you were working on in this browser.", "note");
     return;
   }
-  history = new PlanHistory({ plan: emptyPlan().plan, open: START });
+  history = new PlanHistory({ plan: emptyPlan().plan, open: START, trashChange: null });
   if (copy.status === "failed") {
     showMessage(
       "The plan kept in this browser couldn't be brought back, so here's an empty plan instead. " +
@@ -681,10 +748,11 @@ function currentOpen() {
   return history.present.open;
 }
 
-// Records an edit of the plan as one undo (section 4), with `open` as what's open afterwards, then
+// Records an edit of the plan as one undo (section 4), with `open` as what's open afterwards and
+// `trashChange` the change the edit made to the trash (trash.md, "Undo and redo"), or null, then
 // updates everything.
-function recordEdit(plan, open = currentOpen()) {
-  history = history.record({ plan, open });
+function recordEdit(plan, open = currentOpen(), trashChange = null) {
+  history = history.record({ plan, open, trashChange });
   afterPlanChange();
 }
 
@@ -722,7 +790,7 @@ function openEntry(key) {
   if (isRandomization(currentPlan(), key)) {
     card = newCard(currentPlan(), key, before);
   }
-  history = history.replacePresent({ plan: currentPlan(), open: key });
+  history = history.replacePresent({ ...history.present, plan: currentPlan(), open: key });
   refresh();
   scrollIntoColumnView(elements.stagesList.querySelector(`[data-entry="${cssEscape(key)}"]`));
 }
@@ -751,26 +819,48 @@ function allEntries(plan) {
   return [START, ...stageOrder(plan), END];
 }
 
-// Undoes the last edit (section 6). Not while a randomization's card is open (section 12).
+// Undoes the last edit (section 6), the trash's change with it (section 4, "The history"). Not
+// while a randomization's card is open (section 12). While a delete's animation plays, it cancels
+// that delete instead, undoing nothing (section 7, "Deleting and cutting").
 function undo() {
+  if (pendingDelete !== null) {
+    cancelPendingDelete();
+    return;
+  }
   if (!history.canUndo() || card !== null) {
     return;
   }
+  const leaving = history.present.trashChange;
   history = history.undo();
+  if (leaving !== null) {
+    changeTrash((trash) => undoTrashChange(trash, leaving));
+  }
   clearSourceOutsideTransferStage();
   afterPlanChange();
   showMessage("Undone.", "note");
+  // The storage note follows only a change to the trash (section 4).
+  if (leaving !== null) {
+    showTrashStorageNote();
+  }
 }
 
-// Redoes the last undone edit (section 6). Not while a randomization's card is open (section 12).
+// Redoes the last undone edit (section 6), the trash's change with it. Not while a randomization's
+// card is open (section 12), nor while a delete's animation plays.
 function redo() {
-  if (!history.canRedo() || card !== null) {
+  if (pendingDelete !== null || !history.canRedo() || card !== null) {
     return;
   }
   history = history.redo();
+  const entering = history.present.trashChange;
+  if (entering !== null) {
+    changeTrash((trash) => redoTrashChange(trash, entering));
+  }
   clearSourceOutsideTransferStage();
   afterPlanChange();
   showMessage("Redone.", "note");
+  if (entering !== null) {
+    showTrashStorageNote();
+  }
 }
 
 // After an Undo or Redo, clears a chosen source if what's open is no longer a transfer stage (a
@@ -796,7 +886,7 @@ function refresh() {
   // redo back to one shows the point it sits at instead.
   if (movingWells && isRandomization(plan, currentOpen())) {
     const place = randomizationPlace(plan, currentOpen()) ?? END;
-    history = history.replacePresent({ plan, open: place });
+    history = history.replacePresent({ ...history.present, plan, open: place });
   }
   syncCard(plan, currentOpen());
   openBoxOfNewlyOpenEntry(plan);
@@ -819,6 +909,7 @@ function refresh() {
   refreshHeading();
   refreshDeck();
   refreshStages();
+  refreshTrash();
   keepVolumeBoxTransferHighlighted();
   updateCursorLabel();
   requestAnimationFrame(fitStagesColumn);
@@ -1025,7 +1116,8 @@ function closeHeaderBoxesPressedOutside(event) {
 }
 
 // Replaces the plan with an empty one as one undoable edit, with Start open and all labware put
-// away. It ends moving wells, as Done does, without its message (section 6).
+// away, and empties the trash as part of it. It ends moving wells, as Done does, without its
+// message (section 6).
 function resetEverything() {
   closeResetBox();
   movingWells = false;
@@ -1036,11 +1128,19 @@ function resetEverything() {
   addingComponent = null;
   labwareOut.clear();
   brush.pick = { kind: "none" };
-  recordEdit(emptyPlan().plan, START);
+  // Reset empties the trash as part of its edit, so Undo brings the trash back with the plan
+  // (section 5).
+  let emptied = null;
+  changeTrash((trash) => {
+    emptied = clearTrash(trash);
+    return emptied.trash;
+  });
+  recordEdit(emptyPlan().plan, START, emptied.change);
   showMessage(
     "Reset. Bring out the labware you need, then fill wells from the Start card. Undo brings the plan back.",
     "note",
   );
+  showTrashStorageNote();
 }
 
 // Makes exactly the labware `plan` uses the labware that's out.
@@ -1151,7 +1251,7 @@ function checkNameAsTyped(box) {
     showMessage(problem, "error");
     nameCheckMessage = problem;
   } else if (nameCheckMessage !== null) {
-    if (elements.messageBar.textContent === nameCheckMessage) {
+    if (messageText() === nameCheckMessage) {
       hideMessage();
     }
     nameCheckMessage = null;
@@ -2742,8 +2842,13 @@ function createTransferSection(plan, id) {
     return [createElement("p", "No transfers yet. Add some on the deck.", "note")];
   }
   const toggle = createListToggle(id, "transfers");
-  const shown = expandedStages.has(id);
-  return shown ? [toggle, createTransferList(plan, id, transfers)] : [toggle];
+  if (!expandedStages.has(id)) {
+    return [toggle];
+  }
+  const list = createTransferList(plan, id, transfers);
+  // A randomization's or a transfer table's stage takes its volumes from its owner, so it has no
+  // All transfers box (section 7).
+  return isOwnedStage(plan, id) ? [toggle, list] : [toggle, createAllTransfersRow(id, transfers), list];
 }
 
 // The button that shows or hides an open stage's list, "Show transfers ▸" / "Hide transfers ▾" (or
@@ -2838,6 +2943,240 @@ function createTransferList(plan, id, transfers) {
     ...transfers.map((transfer) => createTransferRow(plan, id, transfer, problems.get(transfer.position), owned)),
   );
   return list;
+}
+
+// --- The All transfers box (section 7) ---
+
+// The All transfers row at the top of a transfer stage's shown list (section 7): "All transfers", a
+// text box and "µL". The box shows the volume the stage's `transfers` share, or nothing with the
+// placeholder "Mixed" when they differ, worked out afresh each time the list is drawn. Enter or
+// leaving the box saves it (saveAllTransfers) when its text was edited since it got the focus.
+function createAllTransfersRow(id, transfers) {
+  const shared = sharedVolume(transfers);
+  const shown = shared === null ? "" : formatVolume(shared);
+  const box = document.createElement("input");
+  box.type = "text";
+  box.inputMode = "decimal";
+  box.id = "all-transfers-box";
+  box.className = "all-transfers-box";
+  box.dataset.stage = id;
+  box.dataset.shown = shown;
+  box.value = shown;
+  box.spellcheck = false;
+  box.autocomplete = "off";
+  box.setAttribute("aria-label", "Volume of every transfer in this stage, in µL");
+  if (shared === null) {
+    box.placeholder = "Mixed";
+    box.title = "The transfers have different volumes: type one to give them all.";
+  } else {
+    box.title = "Type a volume to give every transfer in this stage.";
+  }
+  if (movingWells) {
+    // While moving wells it can't be typed in; a click on it is caught by the column's handler
+    // (clickInColumnWhileMoving), which says why.
+    box.readOnly = true;
+    box.setAttribute("aria-disabled", "true");
+  }
+  connectAllTransfersBox(box);
+  const label = createElement("label", "All transfers", "all-transfers-name");
+  label.htmlFor = box.id;
+  const row = createElement("div", "", "all-transfers-row");
+  row.append(label, box, createElement("span", "µL", "all-transfers-unit"));
+  return row;
+}
+
+// The volume every one of `transfers` has, compared exactly (===, as changeStageVolumes compares
+// them, so 33.3333 and 33.33 differ), or null when they differ, e.g. [{ volume: 50 }, { volume: 50 }]
+// → 50.
+function sharedVolume(transfers) {
+  const first = transfers[0].volume;
+  return transfers.every((transfer) => transfer.volume === first) ? first : null;
+}
+
+// Whether the All transfers box's text has been edited since it last got the focus (section 7):
+// set by its input event, cleared only when it gets the focus (anew, as after the redraw that
+// follows a save). While it's set, Ctrl+Z and Ctrl+Y are the text box's own.
+let allTransfersEdited = false;
+
+// Whether the All transfers box holds an edit not yet saved: set by its input event, cleared once
+// it's saved or put back, so a box is saved at most once per change.
+let allTransfersUnsaved = false;
+
+// Connects the All transfers box's events (section 7): selecting its text when it gets the focus,
+// noting edits, its keys (Enter, Tab, Escape, Ctrl+Z and Ctrl+Y) and saving when it's left.
+function connectAllTransfersBox(box) {
+  // A press that focuses the box would place the caret on release, undoing the selection the focus
+  // made, so that release is stopped.
+  let selectOnRelease = false;
+  box.addEventListener("pointerdown", () => {
+    selectOnRelease = document.activeElement !== box;
+  });
+  box.addEventListener("mouseup", (event) => {
+    if (selectOnRelease) {
+      selectOnRelease = false;
+      event.preventDefault();
+    }
+  });
+  box.addEventListener("focus", () => {
+    allTransfersEdited = false;
+    allTransfersUnsaved = false;
+    box.select();
+  });
+  // A click passed on by another box's saving (guardInlineBox) doesn't focus a text box by itself.
+  box.addEventListener("click", () => {
+    if (document.activeElement !== box) {
+      box.focus();
+    }
+  });
+  box.addEventListener("input", () => {
+    allTransfersEdited = true;
+    allTransfersUnsaved = true;
+    // While edited, it's the open inline box, so a press outside saves it first and passes the
+    // click on (guardInlineBox).
+    inlineBox = { box, finish: (how) => saveAllTransfers(box, how) };
+  });
+  box.addEventListener("keydown", (event) => pressKeyInAllTransfers(box, event));
+  box.addEventListener("blur", () => {
+    // A box taken out of the page while it has the focus (the redraw after a save) saves nothing:
+    // what was to be saved already was, at most once.
+    if (box.isConnected) {
+      saveAllTransfers(box, "away");
+    }
+  });
+}
+
+// One key pressed in the All transfers box (section 7). Enter saves, the focus staying in the box.
+// Tab and Shift+Tab with edited text save, then move the focus themselves, since the save redraws
+// the list. Escape puts the shown value back and leaves the box, doing nothing else. Ctrl+Z and
+// Ctrl+Y (Cmd on a Mac; also Ctrl+Shift+Z) are the page's Undo and Redo until the text is edited.
+function pressKeyInAllTransfers(box, event) {
+  const withCtrl = event.ctrlKey || event.metaKey;
+  const key = event.key.toLowerCase();
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveAllTransfers(box, "enter");
+  } else if (event.key === "Tab" && !withCtrl && !event.altKey && allTransfersUnsaved && box.value.trim() !== "") {
+    event.preventDefault();
+    saveAllTransfers(box, event.shiftKey ? "back" : "next");
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    putBackAllTransfers(box);
+    box.blur();
+  } else if (withCtrl && !allTransfersEdited && (key === "z" || key === "y")) {
+    event.preventDefault();
+    event.stopPropagation();
+    undoOrRedoFromAllTransfers(box.dataset.stage, key === "y" || event.shiftKey);
+  }
+}
+
+// The page's Undo (or Redo, when `isRedo`) from the All transfers box of stage `stage`, as the
+// page's keys do it, then the focus back in that stage's box, if it's still shown.
+function undoOrRedoFromAllTransfers(stage, isRedo) {
+  if (editingBox !== null) {
+    return;
+  }
+  if (isRedo) {
+    redo();
+  } else {
+    undo();
+  }
+  focusAllTransfersBox(stage);
+}
+
+// Puts the value the All transfers box showed back, with nothing left to save; it's no longer the
+// open inline box. Whether it was edited since it got the focus stays as it was (for Ctrl+Z).
+function putBackAllTransfers(box) {
+  allTransfersUnsaved = false;
+  box.value = box.dataset.shown;
+  if (inlineBox !== null && inlineBox.box === box) {
+    inlineBox = null;
+  }
+}
+
+// Saves the All transfers box (section 7), at most once per change, `how` being "enter", "next"
+// (Tab), "back" (Shift+Tab) or "away" (a press outside, or the focus leaving any other way).
+// Nothing is saved unless its text was edited, nor for blank text (the box shows its value again).
+// Otherwise the text, trimmed, goes to changeStageVolumes as one edit; the same plan back records
+// nothing and shows no message. Returns what became of the box, as an inline box's saving does:
+// "closed", "kept-open" (refused after Enter: the text stays, selected, to fix it) or "refused"
+// (refused after leaving: the box shows its value again, and a press outside does nothing else).
+function saveAllTransfers(box, how) {
+  if (inlineBox !== null && inlineBox.box === box) {
+    inlineBox = null;
+  }
+  const text = box.value.trim();
+  if (!allTransfersUnsaved || text === "") {
+    putBackAllTransfers(box);
+    return "closed";
+  }
+  const stage = box.dataset.stage;
+  const plan = currentPlan();
+  const changed = tryLogic(() => changeStageVolumes(plan, stage, volumeValue(text)));
+  if (changed === false) {
+    return refuseAllTransfers(box, how);
+  }
+  putBackAllTransfers(box);
+  if (changed !== plan) {
+    recordEdit(changed);
+    showMessage(allTransfersMessage(changed, stage), "ok");
+  }
+  focusAfterAllTransfers(stage, how);
+  return "closed";
+}
+
+// After the logic refused the All transfers box's text (its message is shown already): after
+// Enter, the text stays, selected, to fix it; otherwise the box shows its value again and nothing
+// is redrawn, Tab and Shift+Tab moving the focus on as they would, and a press outside leaving it.
+function refuseAllTransfers(box, how) {
+  if (how === "enter") {
+    inlineBox = { box, finish: (next) => saveAllTransfers(box, next) };
+    box.select();
+    return "kept-open";
+  }
+  putBackAllTransfers(box);
+  const stage = box.dataset.stage;
+  if (how === "next" || how === "back") {
+    focusAfterAllTransfers(stage, how);
+  } else if (document.activeElement === box) {
+    // A press outside was stopped before it could move the focus: the box is left all the same.
+    box.blur();
+  }
+  return "refused";
+}
+
+// The ok message for a save of the All transfers box of `stage` (section 7), e.g. 'Set all 6
+// transfers in stage 1, “S01 Media row A”, to 75 µL.', or 'Set the only transfer in stage 1, …'.
+function allTransfersMessage(plan, stage) {
+  const transfers = transfersIn(plan, stage);
+  const volume = formatVolume(transfers[0].volume);
+  const which = transfers.length === 1 ? "the only transfer" : `all ${transfers.length} transfers`;
+  return `Set ${which} in ${stageLabel(plan, stage)}, to ${volume} µL.`;
+}
+
+// Puts the focus where it goes after the All transfers box of `stage` is saved (section 7), each
+// found again in the stage's card, as the save may have redrawn the list: after Enter, back in the
+// box, its value selected; after Tab, on the first transfer's volume button; after Shift+Tab, on
+// Hide transfers. After a press outside ("away"), the press decides.
+function focusAfterAllTransfers(stage, how) {
+  if (how === "enter") {
+    focusAllTransfersBox(stage);
+    return;
+  }
+  const card = elements.stagesList.querySelector(`[data-entry="${cssEscape(stage)}"]`);
+  if (card === null || how === "away") {
+    return;
+  }
+  const target = card.querySelector(how === "next" ? ".transfer-row .volume-button" : ".toggle-list");
+  target?.focus();
+}
+
+// Focuses the All transfers box of `stage`, if its list is shown, selecting its text. (A box that
+// has the focus already, when nothing was redrawn, gets no focus event, so it's selected here too.)
+function focusAllTransfersBox(stage) {
+  const box = elements.stagesList.querySelector(`.all-transfers-box[data-stage="${cssEscape(stage)}"]`);
+  box?.focus();
+  box?.select();
 }
 
 // Each transfer's own contents problem over the whole run (`contents-tracking.md`), keyed by its
@@ -4360,7 +4699,7 @@ function saveCardName(box, how, next = null) {
 // recorded with the card open, which Close, Randomize, Update and Remove rewrite the same way; so
 // once the card has closed, Undo takes the rename back and Redo puts it back without reopening it.
 function recordCardRename(plan, renamed) {
-  history = history.replacePresent({ plan, open: validOpen(plan, card.returnTo) });
+  history = history.replacePresent({ ...history.present, plan, open: validOpen(plan, card.returnTo) });
   recordEdit(renamed, card.id);
 }
 
@@ -4552,7 +4891,7 @@ function closeRandomizationCard({ discard = false } = {}) {
   cardTabs.set(card.id, card.draft.tab);
   card = null;
   // Undo goes back to the plan as it was with the card closed, not to the card.
-  history = history.replacePresent({ plan, open: returnTo });
+  history = history.replacePresent({ ...history.present, plan, open: returnTo });
   if (saved === plan) {
     refresh();
   } else {
@@ -4604,7 +4943,7 @@ function runOpenRandomization() {
   const returnTo = validOpen(plan, card.returnTo);
   cardTabs.set(id, card.draft.tab);
   card = null;
-  history = history.replacePresent({ plan, open: returnTo });
+  history = history.replacePresent({ ...history.present, plan, open: returnTo });
   recordEdit(run, first);
   showMessage(
     `${hadRun ? "Updated" : "Randomized"}: ${countOf(randomization.stages.length, "stage")} with ` +
@@ -4626,14 +4965,16 @@ function removeOpenRandomization() {
   }
   const returnTo = validOpen(removed, card.returnTo);
   card = null;
-  history = history.replacePresent({ plan, open: returnTo });
-  recordEdit(removed, returnTo);
+  history = history.replacePresent({ ...history.present, plan, open: returnTo });
+  // It goes into the trash as part of the same edit (section 7, "The trash").
+  const { change } = putInTrash(plan, [{ kind: "randomization", id }]);
+  recordEdit(removed, returnTo, change);
   showMessage(
-    stages === 0
-      ? "Removed the randomization."
-      : `Removed the randomization and its ${countOf(stages, "stage")}. Undo brings them back.`,
+    stages === 0 ? "Removed the randomization." : `Removed the randomization and its ${countOf(stages, "stage")}.`,
     "note",
+    { undoButton: true },
   );
+  showTrashStorageNote();
 }
 
 // `key` if it can be open in `plan` (Start, End, a stage or a randomization), otherwise Start.
@@ -5812,8 +6153,11 @@ function removeFromWizard() {
   }
   closeWizard();
   const open = owned.includes(currentOpen()) ? stageOrder(removed)[0] : currentOpen();
-  recordEdit(removed, open);
-  showMessage(`Removed the transfer table and its ${countOf(owned.length, "stage")}. Undo brings them back.`, "ok");
+  // It goes into the trash as part of the same edit (section 7, "The trash").
+  const { change } = putInTrash(plan, [{ kind: "transferTable", id }]);
+  recordEdit(removed, open, change);
+  showMessage(`Removed the transfer table and its ${countOf(owned.length, "stage")}.`, "ok", { undoButton: true });
+  showTrashStorageNote();
 }
 
 // --- Mixing boxes (section 7, "Mixing boxes") ---
@@ -6816,19 +7160,41 @@ function randomizationStageDragged(plan) {
   });
 }
 
-// Redraws the drag's label and drop line for where the pointer is now.
+// Redraws the drag's label and drop line for where the pointer is now. Over the trash, the trash
+// turns red, no seam is marked, and the label reads "Delete …" on red (section 7, "Dragging onto
+// the trash deletes").
 function updateColumnDrag() {
+  const overTrash = isOverTrash(columnDrag.pointer);
+  columnDrag.overTrash = overTrash;
+  elements.trash.classList.toggle("drop-target", overTrash);
+  if (overTrash) {
+    columnDrag.refused = false;
+    columnDrag.place = null;
+    showDropLine(null);
+    showDragLabel(`Delete ${describeItems(currentPlan(), columnDrag.items)}`, "deleting");
+    return;
+  }
   const refused = dragIsRefused();
   columnDrag.refused = refused;
   const ownTable = columnDrag.copying ? null : draggedTable(currentPlan(), columnDrag.items);
   const seam = refused ? null : seamNearestPointer(columnDrag.pointer, holdsContainerItem(columnDrag.items), ownTable);
   columnDrag.place = seam === null ? null : JSON.parse(seam.dataset.dropPlace);
   showDropLine(seam);
+  showDragLabel(
+    refused
+      ? refusedDragLabel()
+      : `${columnDrag.copying ? "+ Copy" : "Move"} ${describeItems(currentPlan(), columnDrag.items)}`,
+    refused ? "refused" : null,
+  );
+}
+
+// Shows the drag's label, `text`, beside the pointer, in the look `look` gives: "refused" (gray),
+// "deleting" (red), or null (blue).
+function showDragLabel(text, look) {
   const label = elements.dragLabel;
-  label.textContent = refused
-    ? refusedDragLabel()
-    : `${columnDrag.copying ? "+ Copy" : "Move"} ${describeItems(currentPlan(), columnDrag.items)}`;
-  label.classList.toggle("refused", refused);
+  label.textContent = text;
+  label.classList.toggle("refused", look === "refused");
+  label.classList.toggle("deleting", look === "deleting");
   label.style.left = `${columnDrag.pointer.x + DRAG_LABEL_OFFSET.x}px`;
   label.style.top = `${columnDrag.pointer.y + DRAG_LABEL_OFFSET.y}px`;
   label.hidden = false;
@@ -6971,6 +7337,7 @@ function endColumnDrag() {
   columnDrag = null;
   elements.dragLabel.hidden = true;
   elements.dropLine.hidden = true;
+  elements.trash.classList.remove("drop-target");
   document.body.classList.remove("column-dragging");
   elements.stagesList.classList.remove("dragging");
   for (const element of elements.stagesList.querySelectorAll(".dragged")) {
@@ -6978,10 +7345,15 @@ function endColumnDrag() {
   }
 }
 
-// Drops a finished drag (section 7, "Dragging"): a refused one shows the logic's message; one with
-// no place marked says where to drop it; otherwise it moves (moveItems) or, with Ctrl (Cmd) held,
-// copies (copyItems) to its place, as one edit.
-function dropColumnDrag({ items, copying, refused, place }) {
+// Drops a finished drag (section 7, "Dragging"): on the trash, it deletes what's dragged as Delete
+// does, Ctrl or not; a refused one shows the logic's message; one with no place marked says where
+// to drop it; otherwise it moves (moveItems) or, with Ctrl (Cmd) held, copies (copyItems) to its
+// place, as one edit.
+function dropColumnDrag({ items, copying, refused, place, overTrash }) {
+  if (overTrash) {
+    deleteSelection(items);
+    return;
+  }
   if (refused) {
     // The logic gives the message: moving a randomization's stage alone is refused wherever it goes.
     tryLogic(() => moveItems(currentPlan(), items, betweenBoxes(0)));
@@ -7004,8 +7376,10 @@ function dropColumnDrag({ items, copying, refused, place }) {
 // with changes refuses it, one without closes; an open randomization's card closes first as Close
 // would, or nothing happens. `place` runs the logic on the plan and gives { plan, placed }. What was
 // placed becomes the selection, glows, and is scrolled into view; the first stage among it opens.
-// `verb` starts the message, e.g. "Moved".
-function placeItems(place, verb) {
+// `verb` starts the message, e.g. "Moved", and `ending` goes before its full stop, e.g. " from the
+// trash". When `place` also gives `trashAfter` and `trashChange` (a drag out of the trash), the
+// trash becomes `trashAfter`, and the change is kept with the edit (section 4).
+function placeItems(place, verb, ending = "") {
   if (editingBox !== null) {
     if (isBoxDirty()) {
       refuseOutsideClick();
@@ -7032,11 +7406,14 @@ function placeItems(place, verb) {
     glowsToStart.add(key);
   }
   source = null;
-  recordEdit(result.plan, open);
+  if (result.trashAfter !== undefined) {
+    writeTrash(result.trashAfter);
+  }
+  recordEdit(result.plan, open, result.trashChange ?? null);
   pickedSet = result.placed;
   selectionAnchor = result.placed[0];
   markSelection(selectedItems());
-  showMessage(`${verb} ${describeItems(result.plan, result.placed)}.`, "ok");
+  showMessage(`${verb} ${describeItems(result.plan, result.placed)}${ending}.`, "ok");
   scrollIntoColumnView(elements.stagesList.querySelector(`[data-item="${cssEscape(itemKey(result.placed[0]))}"]`));
 }
 
@@ -7285,8 +7662,10 @@ function openColumnMenuFromKey(event) {
   return true;
 }
 
-// The item menu for `item`, at `at` ({ x, y }): Copy, Paste above, Paste below. Right-clicking
-// something not selected selects it first, as in PowerPoint.
+// The item menu for `item`, at `at` ({ x, y }): Cut, Copy, Paste above, Paste below, then, on an
+// ordinary tip group's heading when that tip group alone is selected, Join with the group above,
+// and last Delete, in red (section 7, "The right-click menu"). Right-clicking something not
+// selected selects it first, as in PowerPoint.
 function openItemMenu(item, at) {
   if (!selectedItems().some((other) => itemKey(other) === itemKey(item))) {
     pickedSet = [item];
@@ -7302,15 +7681,45 @@ function openItemMenu(item, at) {
     const place = pastePlaceBeside(plan, item, side, copiedHoldsContainer(copied));
     placeItems((current) => pasteItems(current, copied, place), "Pasted");
   };
+  const selection = selectedItems();
+  const joinable = item.kind === "tipGroup" && selection.length === 1 && itemKey(selection[0]) === itemKey(item);
   showColumnMenu(
     [
+      { label: "Cut", action: () => deleteSelection(selectedItems(), { cut: true }) },
       { label: "Copy", action: copySelectionWithClipboard },
       { label: "Paste above", action: pasteBeside("above"), blocked: pasteBlocked },
       { label: "Paste below", action: pasteBeside("below"), blocked: pasteBlocked },
+      ...(joinable
+        ? [{ label: "Join with the group above", action: () => joinGroupAbove(item.id), blocked: joinBlocked(currentPlan(), item.id) }]
+        : []),
+      { label: "Delete", action: () => deleteSelection(selectedItems()), danger: true },
     ],
     at,
     null,
   );
+}
+
+// Why tip group `firstStage` (its first stage's ID) can't join the group above, or null if it can:
+// the plan's first tip group has none above it; otherwise the logic's refusal (removeTipChange),
+// e.g. a tip group just after a randomization or transfer table, which keeps tips of its own.
+function joinBlocked(plan, firstStage) {
+  if (stageOrder(plan)[0] === firstStage) {
+    return "It's the first tip group: there's none above it.";
+  }
+  try {
+    removeTipChange(plan, firstStage);
+    return null;
+  } catch (error) {
+    return error.message;
+  }
+}
+
+// Joins the tip group starting with stage `firstStage` to the one above (removeTipChange), as one
+// edit, so its stages use the tips before; nothing goes in the trash (section 10).
+function joinGroupAbove(firstStage) {
+  if (tryEdit(() => removeTipChange(currentPlan(), firstStage)) !== false) {
+    showMessage("Joined the tip group to the one above: its stages now use the tips before.", "ok");
+  }
 }
 
 // The menu's Copy: copies as Ctrl+C does, and puts the text on the system clipboard if the browser
@@ -7364,9 +7773,9 @@ function showColumnMenu(entries, at, seam) {
 }
 
 // One item of the column's menu: a button (role menuitem) that runs its action after closing the
-// menu, or, greyed out, its reason under it.
-function createColumnMenuItem({ label, action, blocked = null }) {
-  const item = createElement("button", "", "column-menu-item");
+// menu, or, greyed out, its reason under it; `danger` gives it red text (Delete).
+function createColumnMenuItem({ label, action, blocked = null, danger = false }) {
+  const item = createElement("button", "", danger ? "column-menu-item danger-item" : "column-menu-item");
   item.type = "button";
   item.setAttribute("role", "menuitem");
   item.append(createElement("span", label, "column-menu-label"));
@@ -7422,6 +7831,606 @@ function closeColumnMenuPressedOutside(event) {
   }
   if (columnMenu !== null && !elements.columnMenu.contains(event.target)) {
     closeColumnMenu();
+  }
+}
+
+// --- Deleting and cutting (section 7, "Deleting and cutting") ---
+
+// Connects the Delete key's condition (a press in the Stages column, or the keyboard focus moved
+// into it; ended by a press elsewhere or the focus leaving it) and Ctrl+X (the cut event, so the
+// copy reaches the system clipboard as Ctrl+C's does).
+function connectDeleting() {
+  document.addEventListener("pointerdown", noteWherePressed, true);
+  elements.stagesColumn.addEventListener("focusin", (event) => {
+    // The trash's own buttons and entries never arm Delete (section 7).
+    if (!elements.trash.contains(event.target)) {
+      deleteKeyArmed = true;
+    }
+  });
+  elements.stagesColumn.addEventListener("focusout", (event) => {
+    // The focus moving to another part of the page ends it, as a press there does (section 7).
+    // Focus lost to nothing (a redrawn row, or a press on something that takes no focus) leaves
+    // it to the press; the column's own right-click menu, which floats outside it, counts as in it.
+    const to = event.relatedTarget;
+    if (to instanceof Element && !elements.stagesColumn.contains(to) && !elements.columnMenu.contains(to)) {
+      deleteKeyArmed = false;
+    }
+  });
+  document.addEventListener("cut", cutFromClipboardEvent);
+}
+
+// Notes whether a press was in the Stages column (the trash included), for the Delete key and
+// Ctrl+X. Presses on the tutorial's panel don't count (section 17).
+function noteWherePressed(event) {
+  if (isTutorialPanelPress(event)) {
+    return;
+  }
+  deleteKeyArmed = event.target instanceof Element && elements.stagesColumn.contains(event.target);
+}
+
+// True if the Delete key and Ctrl+X act now (section 7): right after a press in the column or with
+// the focus moved into it, not while moving wells or a dialog is open, and not with the focus on one
+// of the trash's own buttons or entries.
+function deleteKeysAct() {
+  const focused = document.activeElement;
+  const onTrash = focused instanceof Element && elements.trash.contains(focused);
+  return deleteKeyArmed && !movingWells && !isDialogOpen() && !onTrash;
+}
+
+// The Delete key (section 12): deletes what's selected when the Delete key acts; otherwise nothing.
+// Returns true if the key was the Delete key.
+function pressDeleteKey(event) {
+  if (event.key !== "Delete" || event.ctrlKey || event.metaKey || event.altKey) {
+    return false;
+  }
+  if (deleteKeysAct()) {
+    event.preventDefault();
+    deleteSelection(selectedItems());
+  }
+  return true;
+}
+
+// Ctrl+X (Cmd+X) on the page (section 7): cuts what's selected when the Delete key would act, the
+// copy going onto the system clipboard through the event, as Ctrl+C's does. Otherwise, and in a text
+// box or menu or with text selected, the browser's own cut.
+function cutFromClipboardEvent(event) {
+  if (keepsOwnClipboard(event.target) || !window.getSelection().isCollapsed || !deleteKeysAct()) {
+    return;
+  }
+  event.preventDefault();
+  deleteSelection(selectedItems(), { cut: true, clipboardData: event.clipboardData });
+}
+
+// Deletes `items` (section 7, "Deleting and cutting"), or with `cut`, copies them as Ctrl+C does
+// (onto `clipboardData` if given, else through the browser's clipboard if it lets the page) and
+// then deletes them, as one edit. Nothing selected gives a note; an editing box with changes, a
+// card that can't close or the logic's refusal stops it, nothing copied. Otherwise the rows play
+// the delete animation, and the edit is recorded when it ends (finishDelete). Ignored while another
+// delete's animation plays.
+function deleteSelection(items, { cut = false, clipboardData = null } = {}) {
+  if (pendingDelete !== null) {
+    return;
+  }
+  if (items.length === 0) {
+    showMessage("Select a stage, a tip group (click its heading), a randomization or a transfer table to delete it.", "note");
+    return;
+  }
+  if (editingBox !== null) {
+    if (isBoxDirty()) {
+      refuseOutsideClick();
+      return;
+    }
+    closeEditingBox();
+  }
+  if (!closeRandomizationCard()) {
+    return;
+  }
+  const before = currentPlan();
+  const result = tryLogic(() => deleteItems(before, items));
+  if (result === false) {
+    return;
+  }
+  // A deleting delete ends the Delete key's condition, by any route (section 7).
+  deleteKeyArmed = false;
+  if (cut) {
+    copyForCut(before, items, clipboardData);
+  }
+  startDeleteAnimation({ before, result, items, cut });
+}
+
+// Copies `items` of `plan` for Cut, exactly as Ctrl+C copies (the page's copy, and the system
+// clipboard), without Ctrl+C's message: Cut's message says what happened.
+function copyForCut(plan, items, clipboardData) {
+  const copied = copyOf(plan, items);
+  keepPageCopy(copied);
+  const text = JSON.stringify(copied);
+  if (clipboardData !== null) {
+    clipboardData.setData("text/plain", text);
+  } else {
+    navigator.clipboard?.writeText(text).catch(() => {
+      // Not allowed here: the page's copy still holds it, for the menu and Ctrl+V.
+    });
+  }
+}
+
+// Plays the delete animation on the rows of what's deleted (section 15), then records the delete
+// (finishDelete); with "reduce motion", records it at once.
+function startDeleteAnimation(pending) {
+  pendingDelete = { ...pending, animations: [], timer: null };
+  if (reduceMotion.matches) {
+    finishDelete();
+    return;
+  }
+  for (const element of deletedRowElements(pending.result.deleted)) {
+    pendingDelete.animations.push(animateDeletedRow(element));
+  }
+  pendingDelete.timer = setTimeout(finishDelete, DELETE_ANIMATION_MS);
+}
+
+// The column's elements for the deleted items: a stage's card or row, or a tip group's,
+// randomization's or transfer table's whole box.
+function deletedRowElements(deleted) {
+  return deleted
+    .map((item) => elements.stagesList.querySelector(`[data-item="${cssEscape(itemKey(item))}"]`))
+    .filter((element) => element !== null);
+}
+
+// Flashes `element` red for the first DELETE_FLASH_SHARE of DELETE_ANIMATION_MS, then shrinks it to
+// no height (its padding, margins and borders with it) and fades it out, easing in, so the rows
+// below move up (section 15). Returns the animation.
+function animateDeletedRow(element) {
+  const height = `${element.offsetHeight}px`;
+  element.classList.add("deleting");
+  const gone = {
+    height: "0px",
+    paddingTop: "0px",
+    paddingBottom: "0px",
+    marginTop: "0px",
+    marginBottom: "0px",
+    borderTopWidth: "0px",
+    borderBottomWidth: "0px",
+    opacity: 0,
+  };
+  return element.animate(
+    [
+      { offset: 0, height, opacity: 1 },
+      { offset: DELETE_FLASH_SHARE, height, opacity: 1 },
+      { offset: 1, ...gone },
+    ],
+    { duration: DELETE_ANIMATION_MS, easing: "ease-in", fill: "forwards" },
+  );
+}
+
+// Ctrl+Z, or a message's Undo, while a delete's animation plays (section 7): the rows come back as
+// they were, nothing is recorded or undone, and the note says so.
+function cancelPendingDelete() {
+  const pending = pendingDelete;
+  pendingDelete = null;
+  clearTimeout(pending.timer);
+  for (const animation of pending.animations) {
+    animation.cancel();
+  }
+  for (const element of elements.stagesList.querySelectorAll(".deleting")) {
+    element.classList.remove("deleting");
+  }
+  showMessage("Delete canceled.", "note");
+}
+
+// Records a delete once its animation has ended (section 7, "Then"): unless the plan changed
+// meanwhile, the plan without what's deleted, with every deleted thing put in the trash (addDeleted)
+// as part of the same edit, what was open still open if it's there, and the message with its Undo
+// button, a note if the trash couldn't keep them all, and the storage note if due.
+function finishDelete() {
+  const pending = pendingDelete;
+  pendingDelete = null;
+  clearTimeout(pending.timer);
+  if (currentPlan() !== pending.before) {
+    for (const animation of pending.animations) {
+      animation.cancel();
+    }
+    refresh();
+    showMessage("Nothing was deleted: the plan changed while deleting. Try again.", "note");
+    return;
+  }
+  const { before, result, items, cut } = pending;
+  const added = putInTrash(before, items);
+  const open = openAfterDelete(before, result.plan, currentOpen());
+  if (open !== currentOpen()) {
+    source = null;
+  }
+  recordEdit(result.plan, open, added.change);
+  const left = result.deleted.length - added.change.added.length;
+  const notes =
+    left > 0
+      ? [
+          `The trash holds at most ${TRASH_LIMIT} things, so the last ${left} deleted here aren't in it. ` +
+            "Undo still brings them all back.",
+        ]
+      : [];
+  showMessage(deleteMessage(before, items, result.removed, cut), "ok", { undoButton: true, notes });
+  showTrashStorageNote();
+}
+
+// The message after a delete or cut (section 7, "Messages"), e.g. "Deleted “S2”.", "Deleted a tip
+// group (2 stages).", "Deleted 2 items (3 stages).", "Cut 2 stages.": the things as a drag's label
+// describes them, then, unless they're all stages or no stage went, the number of stages.
+function deleteMessage(plan, items, removed, cut) {
+  const verb = cut ? "Cut" : "Deleted";
+  const allStages = itemsInColumnOrder(plan, items).every((item) => item.kind === "stage");
+  const stages = allStages || removed === 0 ? "" : ` (${countOf(removed, "stage")})`;
+  return `${verb} ${describeItems(plan, items)}${stages}.`;
+}
+
+// What opens after a delete (section 7, "Then"): what was open (`open`) if it's still there;
+// otherwise the stage now where the first deleted stage was, or else the stage before it, or else
+// Start.
+function openAfterDelete(before, after, open) {
+  if (open === START || open === END || after.stageList.has(open) || randomizationAt(after, open) !== null) {
+    return open;
+  }
+  const order = stageOrder(before);
+  const first = order.findIndex((id) => !after.stageList.has(id));
+  if (first === -1) {
+    return START;
+  }
+  const afterOrder = stageOrder(after);
+  return afterOrder[first] ?? afterOrder[first - 1] ?? START;
+}
+
+// --- The trash (section 7, "The trash"; section 4) ---
+
+// Starts the tab's trash when the page opens (section 4): the stored trash, read in full; one a
+// newer version wrote, or a damaged one, is never written over, the tab keeping a trash of its own
+// from what can be read, and the note shows now; storage that can't be read waits for the first
+// change to the trash to say so.
+function startTrash() {
+  let text;
+  try {
+    text = window.localStorage.getItem(TRASH_KEY);
+  } catch {
+    stopKeepingTrash(TRASH_NOT_KEPT_NOTE);
+    return;
+  }
+  if (text === null) {
+    shownTrash = emptyTrash();
+    return;
+  }
+  const problem = trashTextProblem(text);
+  shownTrash = trashFromText(text);
+  if (problem !== null) {
+    stopKeepingTrash(problem === "newer" ? TRASH_NEWER_NOTE : TRASH_DAMAGED_NOTE);
+    showTrashStorageNote();
+  }
+}
+
+// From now on this tab keeps its trash in memory only, and `note` is due to be shown once.
+function stopKeepingTrash(note) {
+  trashStorageUsed = false;
+  if (!trashStorageNoteShown && trashStorageNote === null) {
+    trashStorageNote = note;
+  }
+}
+
+// Shows the storage note, if one is due and hasn't been shown in this tab: after the message the bar
+// shows, on a line of its own, or as a note of its own if the bar is empty.
+function showTrashStorageNote() {
+  if (trashStorageNote === null || trashStorageNoteShown) {
+    return;
+  }
+  if (elements.messageBar.hidden || messageText() === "") {
+    showMessage(trashStorageNote, "note");
+  } else {
+    addMessageLine(trashStorageNote);
+  }
+  trashStorageNoteShown = true;
+  trashStorageNote = null;
+}
+
+// The trash as stored now (another tab may have changed it), or this tab's own when it keeps its
+// trash in memory. A stored trash that can't be read in full is never used or written over.
+function readTrash() {
+  if (!trashStorageUsed) {
+    return shownTrash;
+  }
+  let text;
+  try {
+    text = window.localStorage.getItem(TRASH_KEY);
+  } catch {
+    stopKeepingTrash(TRASH_NOT_KEPT_NOTE);
+    return shownTrash;
+  }
+  if (text === null) {
+    return emptyTrash();
+  }
+  const problem = trashTextProblem(text);
+  if (problem !== null) {
+    stopKeepingTrash(problem === "newer" ? TRASH_NEWER_NOTE : TRASH_DAMAGED_NOTE);
+    return trashFromText(text);
+  }
+  return trashFromText(text);
+}
+
+// Keeps `trash` as the tab's trash and, while the tab keeps it in storage, writes it there; a write
+// that fails switches the tab to its own memory (section 4).
+function writeTrash(trash) {
+  shownTrash = trash;
+  if (!trashStorageUsed) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(TRASH_KEY, trashToText(trash));
+  } catch {
+    stopKeepingTrash(TRASH_NOT_KEPT_NOTE);
+  }
+}
+
+// Changes the trash (section 4): reads the stored trash first, makes the change (`change`, given
+// the trash, gives the new one) and writes it back, then redraws it.
+function changeTrash(change) {
+  writeTrash(change(readTrash()));
+  refreshTrash();
+}
+
+// Puts the items deleted from `plan` (the plan before the delete) in the trash, one entry each
+// (addDeleted), and returns { trash, change }.
+function putInTrash(plan, items) {
+  let added = null;
+  changeTrash((trash) => {
+    added = addDeleted(trash, plan, items, new Date().toISOString());
+    return added.trash;
+  });
+  return added;
+}
+
+// Connects the trash: its line opens and closes the list; Empty trash; pressing an entry, which a
+// 5px move turns into a drag out; and Escape cancels a drag (handleKey).
+function connectTrash() {
+  elements.trashLine.addEventListener("click", () => {
+    trashListOpen = !trashListOpen;
+    refreshTrash();
+  });
+  elements.trashList.addEventListener("click", clickInTrashList);
+  elements.trashList.addEventListener("pointerdown", pressTrashEntry);
+  document.addEventListener("pointermove", moveTrashDrag);
+  document.addEventListener("pointerup", releaseTrashDrag);
+  document.addEventListener("pointercancel", cancelTrashDrag);
+}
+
+// A click in the trash's list: Empty trash empties it at once (clearTrash), with no question, and
+// says so; it isn't an edit of the plan (section 7). A click on an entry is handled by its press.
+function clickInTrashList(event) {
+  if (!(event.target instanceof Element) || event.target.closest(".trash-empty") === null) {
+    return;
+  }
+  if (movingWells) {
+    showChangesRefusedWhileMoving();
+    return;
+  }
+  changeTrash((trash) => clearTrash(trash).trash);
+  showMessage("Emptied the trash.", "note");
+  showTrashStorageNote();
+}
+
+// Redraws the trash from the trash this tab last read: its closed line and, if open, its list.
+function refreshTrash() {
+  const count = shownTrash.entries.length;
+  const line = elements.trashLine;
+  const end =
+    count === 0 ? createElement("span", "Drag here to delete", "trash-hint") : createElement("span", trashListOpen ? "▾" : "▴", "trash-arrow");
+  line.replaceChildren(
+    createElement("span", "🗑", "trash-icon"),
+    createElement("span", count === 0 ? "Trash" : `Trash (${count})`, "trash-title"),
+    end,
+  );
+  line.setAttribute("aria-expanded", String(trashListOpen));
+  elements.trashList.hidden = !trashListOpen;
+  if (trashListOpen) {
+    elements.trashList.replaceChildren(...trashListContents(shownTrash));
+  } else {
+    elements.trashList.replaceChildren();
+  }
+}
+
+// The open list's contents: a row per entry, newest first, then the hint and Empty trash; or the
+// note that the trash is empty.
+function trashListContents(trash) {
+  if (trash.entries.length === 0) {
+    return [createElement("p", "The trash is empty. Deleted stages and tip groups come here.", "trash-note")];
+  }
+  const empty = createElement("button", "Empty trash", "danger trash-empty");
+  empty.type = "button";
+  const foot = createElement("div", "", "trash-foot");
+  foot.append(createElement("span", "Drag one to a gap to put it there", "trash-note"), empty);
+  return [...trash.entries.map(createTrashRow), foot];
+}
+
+// One entry's row: its name in semibold, then its details in gray (section 7, "The list").
+function createTrashRow(entry) {
+  const row = createElement("div", "", "trash-entry");
+  row.dataset.trashEntry = String(entry.id);
+  // A click gives it the focus, so Delete then does nothing (section 7); it isn't in the tab order,
+  // as there's no keyboard way to drag it out yet (roadmap, "Technical debt").
+  row.tabIndex = -1;
+  row.append(createElement("div", trashEntryName(entry), "trash-entry-name"), createElement("div", trashEntryDetails(entry), "trash-entry-details"));
+  return row;
+}
+
+// An entry's name as the list shows it, e.g. "“S03 Drug A”", "Randomization “Randomization1”",
+// "Tip group", "Transfer table".
+function trashEntryName(entry) {
+  if (entry.kind === "stage") {
+    return `“${entry.name}”`;
+  }
+  if (entry.kind === "randomization") {
+    return `Randomization “${entry.name}”`;
+  }
+  return entry.kind === "tipGroup" ? "Tip group" : "Transfer table";
+}
+
+// An entry's details, e.g. "3 transfers · deleted 12:28 AM" for a stage, "2 stages · 5 transfers ·
+// deleted Nov 10, 12:28 AM" for the others.
+function trashEntryDetails(entry) {
+  const transfers = countOf(entry.transferCount, "transfer");
+  const counts = entry.kind === "stage" ? transfers : `${countOf(entry.stageCount, "stage")} · ${transfers}`;
+  return `${counts} · deleted ${deletedWhen(entry.deletedAt)}`;
+}
+
+// When an entry was deleted, in the browser's own short forms (section 7): the time today, e.g.
+// "12:28 AM"; the month and day before it on an earlier day, "Nov 10, 12:28 AM"; and the year too
+// for another year, "Nov 10, 2025, 12:28 AM".
+function deletedWhen(deletedAt) {
+  const when = new Date(deletedAt);
+  const now = new Date();
+  const time = when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  if (when.toDateString() === now.toDateString()) {
+    return time;
+  }
+  const withYear = when.getFullYear() !== now.getFullYear();
+  const date = when.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(withYear ? { year: "numeric" } : {}) });
+  return `${date}, ${time}`;
+}
+
+// A press on an entry's row with the main button: noted, so a 5px move starts a drag out
+// (moveTrashDrag) and a release without one shows the note (releaseTrashDrag). Off while moving
+// wells (section 7, "While moving wells").
+function pressTrashEntry(event) {
+  const row = event.target instanceof Element ? event.target.closest("[data-trash-entry]") : null;
+  if (row === null || event.button !== 0) {
+    return;
+  }
+  if (movingWells) {
+    showChangesRefusedWhileMoving();
+    return;
+  }
+  // No text is selected while pressing: the row's CSS (user-select: none) sees to that, so the
+  // press still gives the row the focus.
+  trashPress = { entryId: Number(row.dataset.trashEntry), x: event.clientX, y: event.clientY };
+}
+
+// Follows the pointer for the trash: a press that has moved far enough becomes a drag out, which
+// closes the list (so the seams it covered can be reached); a drag moves its label, marks the
+// nearest seam, and scrolls the column near its edges.
+function moveTrashDrag(event) {
+  if (trashPress !== null && trashDrag === null) {
+    const distance = Math.hypot(event.clientX - trashPress.x, event.clientY - trashPress.y);
+    if (distance < DRAG_START_DISTANCE) {
+      return;
+    }
+    const entry = shownTrash.entries.find((candidate) => candidate.id === trashPress.entryId);
+    if (entry === undefined) {
+      trashPress = null;
+      return;
+    }
+    trashDrag = { entry, place: null, pointer: null };
+    trashListOpen = false;
+    refreshTrash();
+    hideContentsCard();
+    document.body.classList.add("column-dragging");
+    elements.stagesList.classList.add("dragging");
+  }
+  if (trashDrag === null) {
+    return;
+  }
+  trashDrag.pointer = { x: event.clientX, y: event.clientY };
+  scrollColumnNearEdges(event.clientY);
+  updateTrashDrag();
+}
+
+// Redraws a drag out of the trash: the drop line on the nearest seam (only seams between tip groups
+// for a tip group, randomization or transfer table), none over the trash itself, and the label
+// "Paste …" (section 7, "Dragging an entry out").
+function updateTrashDrag() {
+  const overTrash = isOverTrash(trashDrag.pointer);
+  const seam = overTrash ? null : seamNearestPointer(trashDrag.pointer, trashDrag.entry.kind !== "stage");
+  trashDrag.place = seam === null ? null : JSON.parse(seam.dataset.dropPlace);
+  showDropLine(seam);
+  const label = elements.dragLabel;
+  label.textContent = `Paste ${trashEntryDescribed(trashDrag.entry)}`;
+  label.classList.remove("refused", "deleting");
+  label.style.left = `${trashDrag.pointer.x + DRAG_LABEL_OFFSET.x}px`;
+  label.style.top = `${trashDrag.pointer.y + DRAG_LABEL_OFFSET.y}px`;
+  label.hidden = false;
+}
+
+// A trash entry described as a drag's label describes what it holds, e.g. "“S03 Drug A”", "a tip
+// group", "a randomization", "a transfer table".
+function trashEntryDescribed(entry) {
+  if (entry.kind === "stage") {
+    return `“${entry.name}”`;
+  }
+  return { tipGroup: "a tip group", randomization: "a randomization", transferTable: "a transfer table" }[entry.kind];
+}
+
+// True if `pointer` is over the trash's band.
+function isOverTrash(pointer) {
+  const rect = elements.trash.getBoundingClientRect();
+  return pointer.x >= rect.left && pointer.x <= rect.right && pointer.y >= rect.top && pointer.y <= rect.bottom;
+}
+
+// Ends a press or drag on a trash entry: a press that never moved shows its note; a drag dropped on
+// a marked seam pastes the entry there (pasteFromTrash); with nothing marked, or on the trash,
+// nothing happens. The click that follows the release is ignored.
+function releaseTrashDrag() {
+  if (trashDrag === null) {
+    if (trashPress !== null) {
+      trashPress = null;
+      showMessage("Drag it to a gap to put it there.", "note");
+    }
+    return;
+  }
+  const { entry, place } = trashDrag;
+  endTrashDrag();
+  swallowNextClick = true;
+  setTimeout(() => {
+    swallowNextClick = false;
+  }, 0);
+  if (place !== null) {
+    pasteFromTrash(entry.id, place);
+  }
+}
+
+// Cancels a press or drag on a trash entry (Escape, or the browser interrupting it): nothing changes.
+function cancelTrashDrag() {
+  if (trashPress === null && trashDrag === null) {
+    return;
+  }
+  endTrashDrag();
+}
+
+// Takes away a trash drag's label and drop line, and forgets the press and drag.
+function endTrashDrag() {
+  trashPress = null;
+  trashDrag = null;
+  elements.dragLabel.hidden = true;
+  elements.dropLine.hidden = true;
+  document.body.classList.remove("column-dragging");
+  elements.stagesList.classList.remove("dragging");
+}
+
+// Pastes trash entry `entryId` at `place` (pasteEntry), as one edit, the entry leaving the trash
+// (section 7). The entry is looked up in the stored trash now: if another tab has used it, a note
+// says so, nothing is pasted, and the list is redrawn. A refused paste shows the logic's message and
+// leaves the entry in the trash.
+function pasteFromTrash(entryId, place) {
+  const trash = readTrash();
+  if (!trash.entries.some((entry) => entry.id === entryId)) {
+    shownTrash = trash;
+    refreshTrash();
+    showMessage("That item has left the trash (another tab used it).", "note");
+    return;
+  }
+  const before = history;
+  placeItems(
+    (plan) => {
+      const pasted = pasteEntry(plan, trash, entryId, place);
+      return { plan: pasted.plan, placed: pasted.placed, trashAfter: pasted.trash, trashChange: pasted.change };
+    },
+    "Pasted",
+    " from the trash",
+  );
+  // The storage note follows only a paste that happened, which changed the trash (section 4).
+  if (history !== before) {
+    showTrashStorageNote();
   }
 }
 
@@ -10185,11 +11194,15 @@ function createBoxButtons(plan) {
   const buttons = createElement("div", "", "box-buttons");
   const removal = removalFor(plan);
   if (removal.kind === "button") {
-    const remove = createElement("button", "Remove", "danger-outline");
+    // A tip change's box joins its group to the one above, in Remove's place and look (section 10).
+    const joins = editingBox.kind === "tip";
+    const remove = createElement("button", joins ? "Join with the group above" : "Remove", "danger-outline");
     remove.type = "button";
     remove.disabled = removal.disabled;
     if (removal.disabled) {
       remove.title = removal.reason;
+    } else if (joins) {
+      remove.title = "Its stages join the group above and use its tips.";
     }
     remove.addEventListener("click", removeFromEditingBox);
     buttons.append(remove);
@@ -10249,9 +11262,7 @@ function removeFromEditingBox() {
     removeStageFromBox(plan, key);
   } else {
     closeEditingBox();
-    if (tryEdit(() => removeTipChange(plan, key)) !== false) {
-      showMessage("Removed the new tips: the stages after them keep the tips before.", "note");
-    }
+    joinGroupAbove(key);
   }
 }
 
@@ -10279,7 +11290,8 @@ function transfersWord(plan, id, count) {
   return isMixStep(plan, id) ? countOf(count, "mixed well") : countOf(count, "transfer");
 }
 
-// Removes a stage (section 10). If it was open, the first stage in the stage order opens.
+// Removes a stage (section 10), putting it in the trash as part of the same edit (section 7, "The
+// trash"). If it was open, the first stage in the stage order opens. Its message has an Undo button.
 function removeStageFromBox(plan, id) {
   const transfers = transfersIn(plan, id).length;
   const label = stageLabel(plan, id);
@@ -10289,9 +11301,11 @@ function removeStageFromBox(plan, id) {
   }
   closeEditingBox();
   const open = currentOpen() === id ? stageOrder(removed)[0] : currentOpen();
-  recordEdit(removed, open);
+  const { change } = putInTrash(plan, [{ kind: "stage", id }]);
+  recordEdit(removed, open, change);
   const andTransfers = transfers === 0 ? "" : ` and its ${transfersWord(plan, id, transfers)}`;
-  showMessage(`Removed ${label}${andTransfers}. Undo brings it back.`, "note");
+  showMessage(`Removed ${label}${andTransfers}.`, "note", { undoButton: true });
+  showTrashStorageNote();
 }
 
 // Saves the open box's changes as one undoable edit and closes it. If the logic refuses, its message
@@ -10538,8 +11552,8 @@ function restartAnimation(element, className) {
 
 // --- Keys (section 12) ---
 
-// Connects the page's keys: volumes, Escape, undo and redo. None while typing in a text box or
-// menu.
+// Connects the page's keys: volumes, Escape, Delete, undo and redo. None while typing in a text box
+// or menu. (Ctrl+X is the cut event: connectDeleting.)
 function connectKeys() {
   document.addEventListener("keydown", handleKey);
 }
@@ -10566,6 +11580,12 @@ function handleKey(event) {
       return;
     }
   }
+  // While a drag out of the trash is on, Escape cancels it; Ctrl does nothing special (section 7).
+  if ((trashDrag !== null || trashPress !== null) && event.key === "Escape") {
+    event.preventDefault();
+    cancelTrashDrag();
+    return;
+  }
   if (event.target.matches("input, select, textarea, [contenteditable]")) {
     return;
   }
@@ -10578,6 +11598,11 @@ function handleKey(event) {
     return;
   }
   if (clickWellWithCtrlEnter(event)) {
+    return;
+  }
+  // Delete deletes what's selected in the Stages column, only right after a press in the column or
+  // with the focus in it (section 12); Backspace stays a volume key.
+  if (pressDeleteKey(event)) {
     return;
   }
   const key = event.key.toLowerCase();
@@ -10833,18 +11858,44 @@ function wellNameWithLabel(plan, end) {
 
 // --- The message bar (section 12) ---
 
-// Shows a message of a kind ("ok", "note" or "error") in the message bar, replacing the last.
-function showMessage(text, kind) {
+// Shows a message of a kind ("ok", "note" or "error") in the message bar, replacing the last. With
+// `undoButton`, an Undo button follows the text, doing what Ctrl+Z does (section 12, "A message with
+// an Undo button"); `notes` are lines of their own after it, in the same bar (sections 4 and 7).
+function showMessage(text, kind, { undoButton = false, notes = [] } = {}) {
   const bar = elements.messageBar;
-  bar.textContent = text;
+  bar.replaceChildren(createElement("span", text, "message-text"));
+  if (undoButton) {
+    const undoButtonElement = createElement("button", "Undo", "message-undo");
+    undoButtonElement.type = "button";
+    undoButtonElement.addEventListener("click", undoFromMessage);
+    bar.append(undoButtonElement);
+  }
+  for (const note of notes) {
+    addMessageLine(note);
+  }
   bar.className = `message-bar ${kind}`;
   bar.hidden = false;
+}
+
+// Adds `text` to the message bar on a line of its own, after what it shows (section 4), keeping the
+// message's kind and its Undo button.
+function addMessageLine(text) {
+  elements.messageBar.append(createElement("div", text, "message-line"));
+  elements.messageBar.hidden = false;
+}
+
+// The message's Undo button: what Ctrl+Z does (section 12), which isn't done while an editing box
+// is open.
+function undoFromMessage() {
+  if (editingBox === null) {
+    undo();
+  }
 }
 
 // Takes the message away: the bar is hidden when empty (section 12).
 function hideMessage() {
   const bar = elements.messageBar;
-  bar.textContent = "";
+  bar.replaceChildren();
   bar.hidden = true;
 }
 
@@ -11024,14 +12075,20 @@ export function tutorialView() {
   };
 }
 
-// The message bar's { text, kind } ("ok", "note" or "error"), or null while it's empty.
+// The message bar's { text, kind } ("ok", "note" or "error"), or null while it's empty. The text is
+// the message's own, without its Undo button or the lines after it.
 function shownMessage() {
   const bar = elements.messageBar;
-  if (bar.hidden || bar.textContent === "") {
+  if (bar.hidden || messageText() === "") {
     return null;
   }
   const kind = ["ok", "note", "error"].find((name) => bar.classList.contains(name)) ?? null;
-  return { text: bar.textContent, kind };
+  return { text: messageText(), kind };
+}
+
+// The text of the message the bar shows, without its Undo button or extra lines; "" for none.
+function messageText() {
+  return elements.messageBar.querySelector(".message-text")?.textContent ?? "";
 }
 
 // Which header box is open: "biomek", "reset" or null.

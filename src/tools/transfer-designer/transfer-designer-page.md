@@ -236,6 +236,25 @@
 > hands-off workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull
 > request. They become Final once built and tested by Andy.
 
+> **Draft changes (2026-11-11, deleting and the trash, item 32 of v0.2.0; ADR 0024; sections 2, 4,
+> 5, 7, 10, 12, 14, 15, 16 and 17):** **Delete** and **Cut** (the Delete key, Ctrl+X and the right-click
+> menu) of what's selected in the Stages column, with a short red animation and an **Undo** button
+> in the message; **Join with the group above** in place of a tip change's Remove; and **the trash**
+> at the bottom of the Stages column, which keeps everything deleted, so it can be dragged out to
+> any gap (`trash.md`; ADR 0024). From the preview Andy shaped on 2026-11-11. Plan files don't
+> change; what a plan writes for the Biomek changes only after a tip group's first stage is
+> removed, which now keeps the group's tips (`transfer-designer.md`, "Stages"). Written in the hands-off workflow (CLAUDE.md, "Workflows"),
+> so the choices made for Andy are listed in its pull request. They become Final once built and
+> tested by Andy.
+
+> **Draft changes (2026-11-11, every transfer's volume at once, item 33 of v0.2.0):** a transfer
+> stage's shown transfer list starts with an **All transfers** box, showing the volume its transfers
+> share or `Mixed`, which sets every transfer's volume as one edit (`changeStageVolumes`; sections
+> 7, 9, 12, 15 and 16), from a preview Andy approved on 2026-11-11. Written in the hands-off
+> workflow (CLAUDE.md, "Workflows"), so the choices made for Andy are listed in its pull request.
+> Still to review: the new messages and tooltips, and where the focus goes after a save. They
+> become Final once built and tested by Andy.
+
 > **Draft changes (2026-11-11, mixing boxes, item 34 of v0.2.0; ADR 0025; sections 2, 4, 5, 6, 7,
 > 11, 12, 15 and 16):** seams between tip groups gain a fifth button, ⟳⟳ (`Add mixing here`), which
 > opens the **mixing wizard** in its spot in the Stages column: wells picked on the deck, a way to
@@ -280,7 +299,6 @@ Not in version 1 (see `docs/roadmap.md`):
 - **A guided start** for an empty plan (Andy considered it, 2026-10-26: not now).
 - **Collapsing tip groups** in the Stages column.
 - **Moving a transfer** to another stage, or within its stage (`transfer-designer.md`).
-- **Cut and Delete** (Ctrl+X, the Delete key) of what's selected (ADR 0014).
 - **Concentrations on the deck.** A well shows its volume (or its label); its concentrations are on
   the contents card only. A toggle showing one constituent's concentration on every well may come
   with use (`docs/roadmap.md`, "Later").
@@ -318,11 +336,22 @@ tall as its contents.
 
 ## 4. What the page keeps
 **The history.** A `PlanHistory` (`plan-history.md`) whose states are each
-`{ plan, open }`: the plan, and what's **open** in the Stages column: `"start"`, a stage's ID, or
-`"end"`. So undo goes back to the plan and to where the edit was made.
-- An edit of the plan is **recorded** (one undo each).
+`{ plan, open, trashChange }`: the plan; what's **open** in the Stages column: `"start"`, a stage's
+ID, or `"end"`; and **the trash's change** made by the edit that led to this state (`trash.md`,
+"Undo and redo": a delete adds entries, a drag-out from the trash takes one out, Reset empties it),
+or `null` when that edit didn't change the trash (and for the first state). So undo goes back to the
+plan, to where the edit was made, and to the trash as that edit found it (2026-11-11).
+- An edit of the plan is **recorded** (one undo each), with its trash change.
 - Opening something else (Start, a stage, End) **replaces** the current state, so it isn't an undo
-  of its own (`replacePresent`).
+  of its own (`replacePresent`); the replacing state keeps the current state's `trashChange`.
+- **Undo** out of a state applies `undoTrashChange` with that state's `trashChange`, and **Redo**
+  into a state applies `redoTrashChange` with its `trashChange` (when it isn't `null`), to the
+  trash as stored: like every change to the trash, each first reads the stored trash (another tab
+  may have changed it), makes the change to it and writes it back (below, "the trash"). So Undo of
+  a delete takes its entries out of the trash even when another tab added entries since. **Redo
+  after another tab pasted the entry** (dragged it out of its own trash) puts the entry back in
+  the trash, so the thing may be in a plan and in the trash at once; that's accepted (Claude's
+  choice, 2026-11-11: rare, harmless, and the entry is only a copy).
 
 **When the page opens**, it brings back the browser copy (section 5) and opens the last stage in the
 stage order. With no copy, or one that can't be read, it starts with `emptyPlan()`, with Start open and no
@@ -351,7 +380,35 @@ data everyone has to clear first).
   so not kept by the browser copy;
 - the **selection** in the Stages column, the last thing clicked there (for Shift-click), and the
   **copied items** (section 7, "Moving and copying"); the copied items are also kept in the
-  browser's local storage, for other tabs.
+  browser's local storage, for other tabs;
+- whether **the last press** on the page was in the Stages column, for the Delete key and Ctrl+X
+  (section 7, "Deleting and cutting");
+- **the trash** (section 7, "The trash"; `trash.md`), kept in the browser's local storage under
+  `biomek-tools transfer designer: trash` (`trashToText`, read back with `trashFromText` when the
+  page opens), shared by every tab of the designer in that browser. Every change to the trash
+  **reads the stored trash first, makes the change to it, and writes it back** (from the review,
+  2026-11-11), so a change in one tab never undoes another tab's; the list a tab shows is redrawn
+  from what it read. A tab doesn't follow another tab's changes while it's left alone (it isn't
+  told of them; roadmap, "Technical debt"). No stored trash reads as an empty one (`emptyTrash`).
+  **When storage can't be used, the tab keeps the trash in its own memory only**, for as long as
+  it's open, reading and writing local storage no more (2026-11-11):
+  - **writing fails** (`setItem` throws: storage full or switched off), or **reading fails**
+    (`getItem` throws), when the page opens or at any change: the note `The trash can't be kept by
+    this browser, so it will be empty after a reload.`, once per tab. It shows **after the message
+    of the change** it happened in (only a change to the trash: an Undo or Redo that doesn't change
+    the trash never shows it), on a line of its own in the same message bar, the message
+    keeping its kind and its `Undo` button (so a delete still says what it deleted); a failure when
+    the page opens waits for the first change to the trash;
+  - **the stored trash was written by a newer version, or is damaged** (`trashTextProblem`,
+    `trash.md`, "Keeping the trash as text"): it's **never written over** (another version or a
+    repair may still read it); the tab starts from what `trashFromText` reads of it (for a newer
+    one, an empty trash), and the note shows once, when the page opens: `The stored trash was saved
+    by a newer version of the transfer designer, so this tab keeps a trash of its own and leaves
+    that one as it is.` or `The stored trash is damaged, so this tab keeps a trash of its own, from
+    what could be read, and leaves the stored one as it is.` (roadmap, "Technical debt").
+  Not in plan files, not tied to a plan, and not part of the browser copy; and whether its list is
+  open (closed at first). Its changes are undone and redone with the edits that made them (above, "The history").
+  In a private window, the trash lasts only until the window closes.
 
 The experiment's name and the well labels aren't the page's own: they're part of the plan
 (`transfer-designer.md`), so they're undone, kept in the browser copy and saved like any edit.
@@ -548,11 +605,13 @@ editing box, clears any source, and picks the plan's first component (or nothing
 ` and `planFromText`'s message (`This file can't be opened: …`); nothing changes.
 
 **Reset** (red outline) opens a small box under it, focused on Cancel: **Reset the whole plan?**
-`This clears the starting contents, every transfer, every stage and every well's name. Undo can bring them back.` with
+`This clears the starting contents, every transfer, every stage and every well's name, and empties the trash. Undo can bring them back.` with
 `Cancel` and `Reset everything` (solid red). Reset everything replaces the plan with `emptyPlan()` as
 one undoable edit, opens Start, puts all labware away, closes any editing box, clears any source,
-and picks no component. Message `Reset. Bring out the labware you need, then fill wells from the
-Start card. Undo brings the plan back.`
+and picks no component. It also **empties the trash** (section 7, "The trash"; `clearTrash`), as
+part of the same edit, so Undo brings the trash back with the plan (Andy, 2026-11-11). Message
+`Reset. Bring out the labware you need, then fill wells from the Start card. Undo brings the plan
+back.`
 
 **The browser copy** (ADR 0010). After every change to the plan, including undo and redo, the page
 stores `planToText(plan, savedBy)` in the browser's local storage, under the key
@@ -955,6 +1014,68 @@ holds:
   that removes it (`removeTransfer`; message `Removed Assay plate A1 → Drug plate B2 from stage 2,
   “Drugs”.`). No `·` separates the route from the volume: the volume sits at the right, so a dot
   after the route was left hanging (Andy, 2026-10-30).
+- **The All transfers box** (Andy, 2026-11-11): a transfer stage's shown list starts with a row
+  holding `All transfers`, a text box and `µL`, which sets **every transfer's volume at once**.
+  It's shown whenever the list is, even for a stage with one transfer (as in the preview Andy
+  approved). A randomization's or a transfer table's stage has no such row (its volumes come from
+  its owner, and its rows' volumes aren't buttons), and neither has a mix step (its list is its
+  mixed wells).
+  - **What it shows**, worked out afresh each time the list is drawn, so it follows every edit
+    (a single transfer's volume, a transfer added or removed, Undo, Redo): the volume all the
+    stage's transfers share, written as volumes are (section 13, e.g. `33.33`); or, when they
+    differ, **nothing, with the placeholder `Mixed`** (as a randomization's card shows `Mixed` where
+    its stages differ; section 7, "Randomizations"). **Share** means the stored volumes are equal
+    exactly (`===`), as `changeStageVolumes` compares them, so 33.3333 and 33.33 µL show `Mixed`
+    though both are written `33.33`. Its tooltip: `Type a volume to give every transfer in this
+    stage.`, or, when they differ, `The transfers have different volumes: type one to give them
+    all.`
+  - **Its names:** the visible `All transfers` is a `<label>` for the box, so clicking it focuses
+    the box; the box's accessible name is its `aria-label`, `Volume of every transfer in this stage,
+    in µL`.
+  - **Typing:** an ordinary text box. While it has the focus, keys go to it, not to the next
+    transfer's volume (section 13), as in any text box. A click or Tab into it selects its text.
+    The page notes whether the text has been **edited** since the box got the focus (set by the
+    box's `input` event, cleared each time it gets the focus).
+  - **Pointing at rows** while it has the focus works as usual (a row singles out its transfer);
+    the box itself singles out no transfer.
+  - **Saving**, **on Enter** or **on leaving the box** (clicking elsewhere or Tab), through the same
+    mechanism as a transfer's volume box (below, "A transfer's volume"): the page saves as the press
+    starts, then passes a main-button click on to whatever is now under the pointer, once. So a
+    press on a header button right after typing saves first, then acts (Undo then undoes that
+    save), and a click on another stage's row saves, then opens that stage. **Nothing is saved
+    unless the text was edited**, and nothing is saved for **blank** text (the box shows its value
+    again, with no message). Otherwise, what's typed, with spaces at its ends removed (this box
+    trims them on purpose; a single transfer's volume box doesn't), is passed on as a typed volume
+    is (section 13: a number when it's one, otherwise as typed, so the logic's message says what's
+    wrong) to **`changeStageVolumes`**, as **one edit** (one Undo). Message (ok): `Set all 6
+    transfers in stage 1, “S01 Media row A”, to 75 µL.` (`Set the only transfer in stage 1, “S01
+    Media row A”, to 75 µL.` for one), the volume written as volumes are. When `changeStageVolumes`
+    gives the same plan back (every transfer had that volume already), nothing is recorded and no
+    message is shown. Like a single transfer's volume, a volume that makes a contents problem is
+    saved, and the problem shows as usual (red volumes, the red stage, the problem count). The box
+    is saved **at most once** per change: a box removed while it has focus (the redraw after Enter
+    or after a save by leaving) saves nothing more.
+  - **Where the focus goes after a save:** after Enter, the list is redrawn with the focus back in
+    the box, found again by its stage, its new value selected. After Tab, the focus goes to the
+    redrawn list's first transfer's volume button; after Shift+Tab, to the redrawn `Hide transfers
+    ▾` (each found again in the open stage's card after the redraw). After a click, the focus goes
+    where the click puts it.
+  - **A refused volume**: the logic's message is shown (error), and nothing changes. After Enter
+    the box stays with what was typed, selected, to fix it. After Tab or a click away, the box shows
+    its value again, nothing is redrawn, and the focus moves on as Tab would; a click does nothing
+    else, so the message stays in view, as for a transfer's volume.
+  - **Escape** puts the value it showed back, then takes the focus out of the box (that blur saves
+    nothing), and does nothing else: no box or card closes, and a chosen source stays.
+  - **Ctrl+Z and Ctrl+Y** (Cmd on a Mac; also Ctrl+Shift+Z) in the box act as the page's Undo and
+    Redo while its text hasn't been edited since it got the focus (so Enter, then Ctrl+Z, undoes the
+    save); once edited, they're the text box's own.
+  - **A chosen source stays** when the box is saved (section 9, "What keeps it").
+  - **While a transfer's volume box is open**, a click in the All transfers box first saves that
+    box (as any click away does), then focuses this one.
+  - **While moving wells** (below), the box is `readonly` with `aria-disabled="true"` and the
+    disabled look, so it can't be typed in, and a click on it is caught by the column's handler
+    and says `Stages can't be changed while moving wells. Press Done first.` (note), as for a
+    transfer's volume.
 - **A transfer with a contents problem** (`contents-tracking.md`; the transfer's own problem, the
   first if it has two) shows its volume in red and semibold, with the tooltip `Only 450 µL is
   reachable.` (a draw into the dead volume or an overdraw: `available`) or `Overfills the well by
@@ -1412,9 +1533,10 @@ From the top:
   stage's own mode can't mix), the message shows as an error and nothing changes. Otherwise the card closes and its first stage opens (message
   `Randomized: 12 stages with 96 transfers (seed 37). Undo takes the change out again.`). After
   Update the message is `Updated: 12 stages with 96 transfers (seed 37). Undo takes the change out
-  again.`. `Remove` acts at once (`removeRandomization`), as every Remove does: `Removed the
-  randomization.` or, once run, `Removed the randomization and its 12 stages. Undo brings them
-  back.`, with the tooltip `Removes it and its 12 stages. Tips it added stay.`; disabled when its
+  again.`. `Remove` acts at once (`removeRandomization`), as every Remove does, and the
+  randomization goes into the trash (section 7, "The trash"): `Removed the
+  randomization.` or, once run, `Removed the randomization and its 12 stages.`, each with an
+  `Undo` button, as a delete's message has (section 12), with the tooltip `Removes it and its 12 stages. Tips it added stay.`; disabled when its
   stages are all the plan's (`canRemoveRandomization`), with the tooltip `Its stages are all the
   plan's stages. Add a stage outside it first.` (A `Turn into ordinary stages` button was tried and
   dropped for now; Andy, 2026-11-01.)
@@ -1609,8 +1731,9 @@ change nothing (`updateTransferTable` gives back the same plan), nothing is reco
 closes, and the note `Nothing to update: the transfer table already matches.` shows. The new stages glow (section 7,
 "What changed glows"). If the logic refuses, its message is shown and the wizard stays open.
 
-**Remove** acts at once (`removeTransferTable`), as every Remove does: closes the wizard; message
-`Removed the transfer table and its 4 stages. Undo brings them back.` (ok); if one of its stages was
+**Remove** acts at once (`removeTransferTable`), as every Remove does, and the transfer table goes
+into the trash (section 7, "The trash"): closes the wizard; message
+`Removed the transfer table and its 4 stages.` (ok), with an `Undo` button (section 12); if one of its stages was
 open, the first stage in the stage order opens. Disabled when `canRemoveTransferTable` is `false`,
 with the tooltip `Its stages are all the plan's stages. Add a stage outside it first.`
 
@@ -1870,7 +1993,8 @@ drag. It takes the selection, if the pressed thing is in it, or else the pressed
 becomes the selection).
 - What's dragged fades to half and gets a 2px dashed blue outline, 2px out.
 - A **label** follows the pointer (14px right, 10px down): `Move “Drugs”`, `Move 2 stages`, `Move a
-  tip group`, `Move 2 tip groups`, `Move a randomization`, or `Move 3 items` for a mix; with Ctrl
+  tip group`, `Move 2 tip groups`, `Move a randomization`, `Move 2 randomizations`, `Move a
+  transfer table`, `Move 2 transfer tables` (2026-11-11), or `Move 3 items` for a mix; with Ctrl
   (Cmd) held, `+ Copy` in place of `Move`. White semibold 13px text on blue, 6px corners, a soft
   shadow.
 - **Where it would land**: the seam nearest the pointer, up and down, while the pointer is over the
@@ -1913,10 +2037,94 @@ becomes the selection).
 - Ctrl+C and Ctrl+V keep their usual meaning in text boxes and menus, and Ctrl+C copies text that's
   selected on the page.
 
+*Deleting and cutting* (Andy, 2026-11-11; `transfer-designer.md`, "Deleting").
+- **Delete** deletes what's selected (`deleteItems`), as one edit: stages (mix steps included),
+  tip groups, randomizations and transfer tables, with every stage in them, in any mix (Andy,
+  2026-11-11: "anything that is a stage or a container can be deleted"). No question first: Undo
+  brings it back, as for every Remove. It's the **Delete key**, the right-click menu's `Delete`
+  (below), and dropping on the trash (section 7, "The trash").
+- **The Delete key acts only right after a press in the Stages column** (anywhere in it, the trash
+  included, though Delete with the focus on one of the trash's own buttons or entries does
+  nothing), or while the keyboard focus is in the column (Andy, 2026-11-11: so that working on
+  the deck and pressing Delete never deletes the open stage). A press anywhere else on the page
+  ends that, until the next press in the column, and so does **the keyboard focus leaving the
+  column** for another part of the page (from the review, 2026-11-11: Tab into the column, then
+  Shift+Tab back to the deck, then Delete, deleted the open stage). **A delete ends it too**, by any route (Claude's
+  choice, 2026-11-11: Andy's rule is meant to stop deletes he didn't pick, and after a delete what's
+  open or selected is something he didn't pick): a second Delete needs a new press in the column,
+  or the focus moved to a row or heading with the keyboard. So clicking a stage's row and pressing
+  Delete deletes it, and pressing Delete again does nothing; clicking a well on the deck and
+  pressing Delete does nothing. Not while typing in a text box or menu, which keeps its own Delete.
+- **Ctrl+X** (Cmd+X) **cuts**: it copies what's selected exactly as Ctrl+C does (the system
+  clipboard and the page's copy, section 7, "Copying and pasting"), then deletes it as Delete does,
+  as one edit. It acts under the same condition as the Delete key (Claude's choice, 2026-11-11: the
+  preview cut whatever was open from anywhere on the page, which would let Ctrl+X on the deck cut
+  the open stage, the very thing Andy's Delete rule prevents); elsewhere, the browser's own Ctrl+X.
+  A text box or menu, or text selected on the page, keeps the browser's own.
+- **With nothing selected** (Start or End open with no picked set, or an empty picked set):
+  `Select a stage, a tip group (click its heading), a randomization or a transfer table to delete
+  it.` (note), and nothing else.
+- **Refused** by the logic (a randomization's or transfer table's stage without its owner, every
+  stage of the plan): its message (error), and nothing changes; for Cut, nothing is copied either
+  (the refusal is checked first).
+- An open editing box or randomization card is handled as for a paste (section 7, "After a move,
+  copy or paste"): one without changes closes first; one with changes refuses, and nothing is
+  deleted.
+- **What it shows.** The rows of what's deleted (a stage's card or row, a tip group's,
+  randomization's or transfer table's whole box) **flash red and shrink away** (section 15), and
+  the rows below slide up into the space; only then is the edit recorded and the column redrawn
+  (Andy, 2026-11-11: "It's hard to see that something is deleted since it's immediately
+  replaced"). The edit is worked out at once, from the plan as it is, and is **pending** until the
+  animation ends.
+  - **Ctrl+Z, or a message's `Undo` button, while it plays cancels only the pending delete**
+    (Claude's choice, 2026-11-11: the user is taking back what they just did, which hasn't been
+    recorded yet, so undoing the edit before it too would surprise them): the animation stops, the
+    rows come back as they were, nothing is recorded or undone, the history and the trash are
+    unchanged, and the note `Delete canceled.` is shown. Redo (Ctrl+Y, Ctrl+Shift+Z) while it plays
+    is ignored. **A canceled Cut keeps its copy** (here, or when the plan changed meanwhile, below),
+    as a Copy would (Claude's choice, 2026-11-11: the copy is made at once, and taking it off the
+    clipboard again would surprise more than leaving it).
+  - **A second Delete, Ctrl+X, menu `Delete` or `Cut`, or drop on the trash while it plays is
+    ignored** (Claude's choice, 2026-11-11: one delete at a time; the first is already under way).
+  - If the plan has changed otherwise by the time the animation ends, nothing is deleted and the
+    note `Nothing was deleted: the plan changed while deleting. Try again.` is shown.
+  With the system's "reduce motion" setting, there's no animation: the edit is recorded at once.
+- **Then**: everything deleted goes into the trash (section 7, "The trash"), one entry per thing
+  deleted, as part of the same edit (`addDeleted`, with `new Date().toISOString()` as `deletedAt`).
+  When one delete holds more than `TRASH_LIMIT` things, the trash keeps only the first
+  `TRASH_LIMIT` of them (`trash.md`, "Adding"), and a note says so after the message, on a line of
+  its own (as the storage note does, section 4): `The trash holds at most 20 things, so the last 3
+  deleted here aren't in it. Undo still brings them all back.` (20 being `TRASH_LIMIT`, and 3 the
+  number left out). What was open stays open if it's still there; otherwise the
+  stage now where the first deleted stage was opens, or else the stage before it, or else Start
+  (Claude's choice, from the preview). The selection is forgotten, as after any edit.
+- **Messages** (ok), with an **`Undo` button** after the text (below): `Deleted “S2”.`,
+  `Deleted 2 stages.`, `Deleted a tip group (2 stages).`, `Deleted a tip group (1 stage).`,
+  `Deleted a randomization (3 stages).`, `Deleted a randomization.` (one that hasn't run: no
+  stages, so no count), `Deleted a transfer table (2 stages).`, `Deleted 2 items (3 stages).`; the
+  things described as in a drag's label (section 7, "Dragging"), then, unless they're all stages,
+  the number of stages in brackets (`1 stage`, singular, for one). Cut says `Cut`
+  in place of `Deleted`. (Until 2026-11-11 messages ended `Undo brings it back.`; the button says
+  it now.)
+- **The message's `Undo` button** does what Ctrl+Z does (section 12), the trash's change with it. It stays until the next
+  message replaces it; after another edit, it undoes that edit, as Ctrl+Z would (Claude's choice:
+  one Undo, never a special one). Its look: section 15.
+
 *The right-click menu.* Right-clicking (or the menu key, or Shift+F10, on a focused row or heading)
 opens a small menu at the pointer (kept inside the window), instead of the browser's:
-- **On a stage's row, a tip group's heading or a randomization's heading**: `Copy`, `Paste above`,
-  `Paste below`. Right-clicking something not selected selects it first, as in PowerPoint.
+- **On a stage's row, a tip group's heading, a randomization's heading or a transfer table's
+  heading**: `Cut`, `Copy`, `Paste above`, `Paste below`, then, on an ordinary tip group's heading
+  when that tip group alone is selected (after the right-click's own selecting), `Join with the
+  group above`, and last `Delete` (red text; section
+  15). Right-clicking something not selected selects it first, as in PowerPoint. (Andy,
+  2026-11-11: `Cut` and `Delete` added, and `Join with the group above`.)
+  - `Cut` does what Ctrl+X does, and `Delete` what the Delete key does, on the selection, from the
+    menu wherever the last press was (choosing from the menu is a press in the column).
+  - `Join with the group above` does what a tip change's box's `Join with the group above` does
+    (section 10), for that tip group (its first stage's tip change). Grayed out, with the reason
+    under it: on the plan's first tip group, `It's the first tip group: there's none above it.`;
+    where the logic refuses (`removeTipChange`: a tip group just after a randomization or transfer
+    table, which keeps tips of its own), the logic's message.
   - `Copy` does what Ctrl+C does.
   - `Paste above` and `Paste below` paste the page's copy (the latest in any tab; the browser's
     clipboard can't be read until the user pastes) just above or below what was right-clicked: for a stage of an ordinary tip group,
@@ -1925,7 +2133,7 @@ opens a small menu at the pointer (kept inside the window), instead of the brows
 - **On a gap** (a seam, anywhere in its band but its buttons): `Paste here`, pasting at that seam.
   While the menu is open, the seam's line shows as the drop line does (4px, with dots), without its
   buttons.
-- A Paste that can't be done is shown greyed out, with the reason under it in 12px gray: `Copy
+- A Paste (or `Join with the group above`) that can't be done is shown grayed out, with the reason under it in 12px gray: `Copy
   something first.` with nothing copied, or `A tip group or randomization goes between tip groups.`
   on a gap inside a tip group (or `Paste above`/`below` on such a stage, which then pastes between
   boxes, so it isn't greyed out).
@@ -1947,6 +2155,88 @@ with `Save or discard your changes first.`, and nothing happens). An open random
 closes first as `Close` would; if it can't (it has run, with changes), it shakes, the message bar
 says `Update or discard your changes first.`, and nothing moves or is pasted.
 
+**The trash** (Andy, 2026-11-11; `trash.md`; ADR 0024). Everything deleted from the plan is kept in
+the trash, from where it can be **dragged out** to any gap, in this plan or another. It doesn't put
+anything back where it was by itself (Andy, 2026-11-11: dropped after two reviews showed it couldn't
+be made reliable); Undo is the exact way to bring back a recent delete.
+- **Where.** Pinned at the bottom of the Stages column, so it's always in view, also while
+  dragging: a band the column's width, under a 1px border, above the column's contents as they
+  scroll under it. Closed, it's one line: a 🗑, then `Trash` and, at the right, `Drag here to delete`
+  (gray, 12px) while it's empty; or `Trash (3)` and `▴` once it holds something. Clicking it opens
+  and closes its **list**, which opens above that line, inside the band (`▾` while open), at most
+  260px tall, scrolling. **The column's contents end with bottom padding** of the closed band's
+  height plus 12px (2026-11-11), so End and the seam above it can scroll fully above the closed
+  band, and a drop on that seam is never under it.
+- **What goes in.** Everything deleted, by any route (Andy, 2026-11-11): the Delete key, the menu's
+  `Delete`, Ctrl+X and the menu's `Cut`, dropping on the trash, a stage's or mix step's box's
+  `Remove`, a randomization's card's `Remove` and a transfer table's wizard's `Remove`: **one entry
+  per thing deleted** (`addDeleted`, with the plan before the edit and `new Date().toISOString()`
+  as `deletedAt`), as part of the same edit.
+  Joining a tip group to the one above deletes nothing, so nothing goes in. At most `TRASH_LIMIT`
+  entries; older ones drop off.
+- **The list**, newest first (`trash.md`, "Order"), one row per entry: its **name** in semibold
+  14px (a stage: its name in quotes, `“S03 Drug A”`; a randomization: `Randomization` and its
+  name, `Randomization “Randomization1”`; a tip group: `Tip group`; a transfer table: `Transfer
+  table`); under it, in 12px gray, `3 transfers · deleted 12:28 AM` for a stage (a mix step's
+  mixed wells counted as transfers, as `trash.md` counts them), or `2 stages · 5 transfers ·
+  deleted 12:28 AM` for the others, singular for one (`1 stage · 1 transfer`), and `0 stages ·
+  0 transfers` for a randomization that hasn't run. **When**: the time in the browser's own short
+  form, hours and minutes, for an entry deleted today (in the browser's time zone); for an earlier
+  day, the date before it, month and day, in the browser's short form (`deleted Nov 10, 12:28 AM`),
+  with the year too for another year (`deleted Nov 10, 2025, 12:28 AM`) (2026-11-11).
+  Below the rows: `Drag one to a gap to put it there` (12px gray) and **`Empty trash`** (danger).
+  Empty, the list says `The trash is empty. Deleted stages and tip groups come here.` (12px gray).
+- **Dragging an entry out.** A press on an entry's row and a 5px move (`DRAG_START_DISTANCE`)
+  starts a drag, as for the column's items: the label reads `Paste “S03 Drug A”`, `Paste a tip
+  group`, `Paste a randomization` or `Paste a transfer table` (the thing described as in a drag's
+  label, section 7, "Dragging"), and the nearest seam is marked with the
+  drop line, as for any drag (only seams between tip groups for a tip group, randomization or
+  transfer table). Dropped on a marked seam, the entry is pasted there (`pasteEntry`, with that
+  place), as one edit, and leaves the trash; the message `Pasted “S03 Drug A” from the trash.` (ok),
+  and what was pasted is selected, glows, scrolls into view and its first stage opens, as after a
+  paste (section 7, "After a move, copy or paste"). **The entry is looked up at the drop**, in
+  the stored trash read then (section 4): if it's no longer there (another tab pasted it, emptied
+  the trash or undid its delete), the note `That item has left the trash (another tab used it).`
+  shows, nothing is pasted, and the list is redrawn from what was read. If the logic refuses (`pasteItems`' message,
+  such as a tip group dropped inside one, or an entry whose stored copy is damaged), its message
+  is shown (error), nothing changes, and the entry stays in the trash. Dropped with nothing
+  marked, or back on the trash, nothing happens. The column scrolls near its edges, and Escape
+  cancels, as for any drag. An open editing box or randomization card is handled as for a paste:
+  one without changes closes first; one with changes refuses the press, as for any drag (section
+  7, "Dragging").
+  - **The list closes when the drag starts**, so the seams it covered can be reached; the band is
+    its closed line again until the list is opened again.
+  - **Ctrl does nothing special** (2026-11-11): dragging out is always a paste, the label never
+    says `Copy`, and Ctrl held at the drop pastes as without it.
+  - **A click on an entry** (a press and release without a 5px move) does nothing but show the
+    note `Drag it to a gap to put it there.`.
+  - **Right-clicking an entry** gives the browser's own menu (the column's menu isn't for entries).
+  - **There's no keyboard way to drag an entry out yet** (roadmap, "Technical debt"): entries
+    aren't in the tab order.
+- **Dragging onto the trash deletes.** While a drag from the column is over the trash, the trash
+  turns red (section 15), no seam is marked, and the label reads `Delete “S04 Drug B”` (or `Delete
+  a transfer table`, and so on, as a drag's label describes it) on red.
+  Dropping there deletes the dragged things, exactly as Delete does (the same refusals, animation,
+  message and Undo). With Ctrl held, it still deletes (Claude's choice: a copy dropped on the trash
+  would do nothing).
+- **Undo and Redo.** Each edit that changed the trash (a delete adds entries, a drag-out takes one
+  out, Reset empties it) keeps its change in its history state (section 4, "The history"), and Undo
+  and Redo apply it: undoing a delete takes its entries out of the trash, undoing a drag-out puts
+  the entry back in the trash, and undoing Reset brings back the trash with the plan.
+- **`Empty trash`** empties it at once (`clearTrash`), with no question, and the note `Emptied the
+  trash.` (from the review, 2026-11-11: so the storage note, section 4, follows a message of its
+  own change, never an older one); it isn't
+  an edit of the plan, so Undo doesn't bring it back (Claude's choice: it's the trash's own button,
+  like emptying a computer's recycle bin). Reset empties it too, as part of its edit, so Undo of
+  Reset does bring it back (section 5).
+- **Not tied to a plan.** Opening a plan file keeps the trash as it is (Andy, 2026-11-11, asked and
+  kept it); dragging an entry into the plan that's open is pasting into it.
+- **Delete with the focus on `Empty trash`** (or on an entry, if a click gave it the focus) does
+  nothing.
+- **While a randomization's card or the transfer table wizard is open**, the trash works as the
+  rest of the column does then (a drag closes the card as a paste does, or is refused with the
+  card's message).
+
 **Keeping things in view.** When a different entry opens, the column scrolls just enough to show
 all of it; when an editing box opens, it scrolls just enough to show the box. When `Show
 transfers` opens a stage's list, the column scrolls smoothly (the browser's own smooth scrolling)
@@ -1964,8 +2254,10 @@ wells. Press Done first.` (note); a click on plain text or empty space does noth
 nothing. An undo or redo that would open a randomization's card while moving wells opens instead
 the point it sits at (its first stage, or the stage it sits before, or End), so no card opens. A
 transfer table's or run randomization's heading opens and closes its box as usual (it only shows or
-hides); its ✎ is hidden with the others. Selecting, dragging, the right-click menu (and the menu key), and Ctrl+C and Ctrl+V
-are off.
+hides); its ✎ is hidden with the others. Selecting, dragging, the right-click menu (and the menu key), Ctrl+C, Ctrl+V,
+Ctrl+X and the Delete key are off, and so is the trash: its list can be opened and read, but
+dragging out, `Empty trash` and dropping on it don't work (a click on `Empty trash` or a press on
+an entry says `Stages can't be changed while moving wells. Press Done first.`).
 
 ## 8. Starting contents (Start open)
 While Start is open, clicking a well fills it, and dragging from one well to another across one
@@ -2165,7 +2457,8 @@ wells that don't form a box: each click is its own edit (its own Undo step), as 
   Stages column; Open; Reset; putting away the source's labware; starting moving wells.
 - **What keeps it:** Undo and Redo; typing a volume; opening a transfer's volume box or the open
   stage's ✎ (a click on a deck well while an editing box with changes is open shakes the box, as
-  for any click, and adds nothing); selecting in the Stages column.
+  for any click, and adds nothing); selecting in the Stages column; saving the All transfers box
+  (section 7; 2026-11-11).
 - **After an Undo or Redo** during a kept run (Andy, 2026-11-05), or with a source just chosen,
   if what's open is no longer a transfer stage (a mix step, Start, End, or a stage of a
   randomization or transfer table), the source is cleared, as opening it would.
@@ -2286,8 +2579,8 @@ Contains rows fit; section 15), so its menus show their whole names, such as `No
   MIX         [✓]            [ ]
   ```
 - **Remove**, which takes it out at once (`removeStage`; message `Removed stage 2, “Drugs” and
-  its 4 transfers. Undo brings it back.`, or without "and its …"); if it was open, the first stage
-  in the stage order opens. When it's the only stage, Remove is disabled, with the tooltip `Keep at
+  its 4 transfers.`, or without "and its …", with an `Undo` button, section 12), and puts it in the trash
+  (section 7, "The trash"); if it was open, the first stage in the stage order opens. When it's the only stage, Remove is disabled, with the tooltip `Keep at
   least one stage.`
 
 - **A transfer table's stage** (2026-11-05): its box is the same, except that **Name** is disabled
@@ -2305,20 +2598,25 @@ Contains rows fit; section 15), so its menus show their whole names, such as `No
 **A mix step's box** (280px): **Name**; then a note saying how it mixes, from its `destinationMix`:
 `Mixes each well: 90% of the well (≈ 108 µL), 3 times, at 400 µL/s.`, with the volume as for a
 transfer stage's Mix tooltip (section 10, above), or `(no wells yet)` while it has none; then
-**Remove**, as for a stage (message `Removed stage 2, “Mix plate” and its 4 mixed wells. Undo
-brings it back.`). No modes:
+**Remove**, as for a stage (message `Removed stage 2, “Mix plate” and its 4 mixed wells.`, with
+an `Undo` button). No modes:
 a mix step's settings are its own (`transfer-designer.md`, "Mix steps"). (Andy, 2026-10-29: mixing
 has no options for now.)
 
 **A tip change's box**: **Tip type**, a button per tip type (`TIP_TYPES`), one chosen; **Probes**,
 buttons `1` to `8`, choosing how many probes get tips (`probesFor`), with every probe the tip change
 loads highlighted (picking 4 lights up 1 to 4; Andy, 2026-10-30: moved here from the stage's box,
-since every stage uses all its tips' probes); **Remove**, which removes it at once
-(`removeTipChange`; message `Removed the new tips: the stages after them keep the tips
-before.`). The first tip change has no Remove, and says `The run always starts by loading tips, so
-these can't be removed.` A transfer table's tip change (2026-11-05) has no Remove either, and says
+since every stage uses all its tips' probes); **`Join with the group above`** (in the place and
+look of a box's Remove; Andy, 2026-11-11: "Remove" now always means the whole thing goes, so the
+button says what it does), which removes the tip change at once (`removeTipChange`), so its stages
+use the tips of the group above; message `Joined the tip group to the one above: its stages now
+use the tips before.` (ok). The same is on a tip group's right-click menu (section 7, "The
+right-click menu"). Its tooltip: `Its stages join the group above and use its tips.` The first tip
+change has no `Join with the group above` (until 2026-11-11, no Remove), and says `The run always
+starts by loading tips, so these can't be removed.` A transfer table's tip change (2026-11-05) has
+none either, and says
 `Every stage of a transfer table starts on new tips, so these can't be removed.` A randomization's
-tip change (one starting one of its boxes of sources; 2026-11-05, item 20) has no Remove either,
+tip change (one starting one of its boxes of sources; 2026-11-05, item 20) has none either,
 and says `Which of its sources share tips is set in the randomization's card.` (the first stage's,
 when it's the plan's first, says the first tip change's line). **Save** sets the
 tip type and probes as one edit (`setTipType`,
@@ -2368,15 +2666,20 @@ and the deck shows its point again.
   a transfer stage open and a source chosen, keeps the source chosen (section 9, "Keeping the
   source", which says where it applies). On a focused well, **Ctrl+Enter** or **Cmd+Enter** does
   what a Ctrl-click would (not Ctrl+Space or Cmd+Space, which systems take for themselves).
-- **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac). Not while an editing
+- **Ctrl+Z** undoes; **Ctrl+Y** or **Ctrl+Shift+Z** redoes (**Cmd** on a Mac), the trash's change
+  with each (section 4, "The history"). Not while an editing
   box, a randomization's card or the mixing wizard is open, since their changes aren't in the plan
-  yet. While the mixing wizard is open they act as its `Undo` and `Redo` buttons do (section 7,
+  yet. While a delete's animation plays, Ctrl+Z cancels the delete instead, and Redo is ignored
+  (section 7, "Deleting and cutting"). While the mixing wizard is open they act as its `Undo` and `Redo` buttons do (section 7,
   "Mixing boxes"): the wizard shakes and the message bar shows the same message, `Make the mix
   steps, or cancel the mixing, first.` (editing: `Update the mixing box, or cancel, first.`). While the mixing wizard is open, Ctrl+C and Ctrl+V of stages and the menu key are refused as
   section 7 says ("Mixing boxes").
 - **While the transfer table wizard is open** (section 7), none of these keys act on the page: the
   wizard's own keys apply (Enter, Tab and Escape in its cells; Escape elsewhere in it closes it, as
   Cancel), and Ctrl+V pastes only into its paste zone or a cell.
+- **Delete** deletes, and **Ctrl+X** (Cmd+X) cuts, what's selected in the Stages column, only right
+  after a press in the column or with the focus in it (section 7, "Deleting and cutting"; Andy,
+  2026-11-11). Backspace stays a volume key (above). Neither works while moving wells.
 - **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups, randomizations and transfer tables
   (section 7, "Moving and copying"); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
   right-click menu. While a drag is on, **Escape** cancels it, and **Ctrl** switches it between
@@ -2393,8 +2696,16 @@ latest message until the next replaces it; it's hidden when empty. It's announce
 Each message has a kind: **ok** (green on pale green), **note** (gray on white, with a border) or
 **error** (dark red on pale red, with a border). Messages are listed with what causes them in
 sections 5 to 10. The kinds: errors from the logic, contents problems after adding or filling, a file that can't be
-opened, a browser copy that can't be read, and `All 30 colors are in use…` are **error**; `Added…`, `Saved…`, `Renamed…`, `Named…`, `Opened…`, `Volume changed…`, `New
-tips…`, `Moved…`, `Copied…` (after Ctrl+drag) and `Pasted…` are **ok**; the rest are **note**.
+opened, a browser copy that can't be read, and `All 30 colors are in use…` are **error**; `Added…`, `Saved…`, `Renamed…`, `Named…`, `Opened…`, `Volume changed…`, `Set all…` and `Set the only…` (2026-11-11), `New
+tips…`, `Moved…`, `Copied…` (after Ctrl+drag), `Pasted…`, `Deleted…`, `Cut…` and `Joined…` are
+**ok**; the rest are **note**.
+
+**A message with an Undo button** (2026-11-11): a delete's or cut's message (section 7, "Deleting
+and cutting"), and the message of a `Remove` that puts something in the trash (a stage's, a mix
+step's, a randomization's card's and the transfer table wizard's; Claude's choice, 2026-11-11: they
+delete as Delete does, so they offer the same way back), has an `Undo` button after its text, which
+undoes as Ctrl+Z does; it goes with the message. These messages no longer end `Undo brings it
+back.` (or `them`): the button says it. Other messages that mention Undo keep their words.
 
 **Stages in messages** are named by place and name, e.g. `stage 3, “New stage”`, so two stages with
 the same name can't be confused. **Wells** are named by the labware's label and the well, e.g. `Assay
@@ -2456,7 +2767,7 @@ A row's amount box shows a saved amount as JavaScript writes the number, e.g. `1
 - **Counts** take a plural `s` except for 1: `1 well`, `3 wells`.
 
 ## 14. Configuration
-Two files in `config/` (ADR 0009), each data only, with comments saying where the values come from:
+Files in `config/` (ADR 0009), each data only, with comments saying where the values come from:
 - **`config/component-colors.js`** exports `COMPONENT_COLORS`: the 30 colors components can have
   (Andy, 2026-10-25), as `#RRGGBB` text, ordered so the most distinct come first (a new component
   takes the first free one, so similar colors only appear once there are many components):
@@ -2470,6 +2781,11 @@ Two files in `config/` (ADR 0009), each data only, with comments saying where th
   offered units (cells/mL among them, from 2026-11-05) and `DEFAULT_CONCENTRATION_UNIT` for a new
   row; the page doesn't check it (the
   concentrations module's tests do).
+- **`config/animations.js`** (2026-11-11) exports `DELETE_ANIMATION_MS` (`450`): how long, in
+  milliseconds, deleted rows take to flash red and shrink away (section 7, "Deleting and cutting";
+  section 15), from the preview Andy shaped on 2026-11-11. A whole number of at least 1; the page's
+  tests check it, as the page is what uses it, and the browser walk-through reads it to know how
+  long to wait.
 - **`config/default-volumes.js`** exports `DEFAULT_TRANSFER_VOLUME` (`50`) and `DEFAULT_FILL_VOLUME`
   (`1000`), in µL: the volumes the next transfer and the brush start with when the page opens.
 
@@ -2535,6 +2851,17 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
   - **disabled** buttons: gray text and border on a light gray background, whatever their group;
   - buttons with a look of their own keep it: `Show transfers`, a transfer's volume and `×`, a
     labware's label, the seams, and the Stages column's rows.
+- **The All transfers box** (section 7; 2026-11-11): a row above the transfer rows, with a 6px
+  margin above it (from `Hide transfers ▾`) and a 4px margin below it (to the first transfer row),
+  6px × 8px padding, a 1px dashed border (`#E2E0D8`, the panels' border) with 6px
+  corners, on the page's background (`#F6F5F1`); its items 8px apart, centered on one line.
+  `All transfers` at the left, taking the spare width, in the style of a box's field names (12px,
+  semibold, gray, capitals, letter spacing 0.03em); then the box, 80px wide, at least 26px tall,
+  6px side padding, a 1px border (`#CFCDC4`) with 4px corners, the transfers' monospace font at
+  12px, right-aligned, as a transfer's volume box is; its placeholder `Mixed` gray and italic;
+  then `µL`, 12px gray. Disabled while moving wells, it takes the page's disabled look. It differs
+  on purpose from a randomization card's All sources row: it's the look Andy approved in the
+  preview (2026-11-11).
 - **Wells:** 36px, 4px apart; an empty well white with a gray border (`#BDBDB5`), its name 10px.
   Grid headings 12px gray.
 - **The open entry** (section 7): a 2px solid border in the text color (`#1C1C1A`) in place of the
@@ -2624,7 +2951,23 @@ Small text is kept soft: gray where it's secondary, and no bigger than it needs 
 - **The Mix row** in a stage's box: the checkboxes centered in their columns; `Can't mix` 13px gray.
 - **Moving and copying** (section 7): the selection, drag, drop line, label and right-click menu as
   section 7 gives them.
-- **Motion:** with the system's "reduce motion" setting, no fades, glows or smooth scrolling.
+- **Deleting** (section 7, from the preview of 2026-11-11): the right-click menu's `Delete` in red
+  text (`#B3261E`); the **animation**: each deleted row or box first shows a pale red background
+  (`#FBE3E0`) and a red border (`#C4362A`), held for the first 40% of `DELETE_ANIMATION_MS`
+  (section 14), then shrinks to no height
+  (its padding, margins and borders with it) and fades out, easing in, while the rows below move
+  up; the **message's `Undo`** button 8px after the text, in the message's own text color, with a
+  1px border of that color, 6px corners, 2px by 10px padding, semibold, transparent, lightening on
+  hover and focus.
+- **The trash** (section 7): its band white, with a 1px `#E2E0D8` border above, reaching the
+  column's edges (under its padding), stuck to the column's bottom; its line 14px gray (`Trash`
+  semibold), darker on hover; the list's rows on the page background (`#F6F5F1`) with a 1px
+  `#E2E0D8` border, 8px corners, 8px by 10px padding, 6px apart, the grab pointer, no text
+  selected while pressing; `Empty trash` a danger button made small (13px, 4px by 10px). **While a drag is over it** (to delete): pale red
+  (`#FBE3E0`) with a 2px red (`#C4362A`) ring inside, its text red; the drag's label red
+  (`#B3261E`) in place of blue.
+- **Motion:** with the system's "reduce motion" setting, no fades, glows, smooth scrolling or
+  delete animation.
 - **Headings** `Deck` and `Stages` are there for screen readers but not shown.
 - **The version line:** 12px in the monospace font, gray (`--muted-text`), right-aligned across the
   page's width (at most `--page-width`), 12px below the panels, as in the preview of 2026-11-02.
@@ -2642,6 +2985,94 @@ page's configuration (ADR 0009):
   another record's.
 - `BASE_FOLDER_PICKER_START` (2026-11-10): one of `"desktop"`, `"documents"`, `"downloads"`,
   `"music"`, `"pictures"` or `"videos"`.
+
+**Deleting and the trash in the browser** (2026-11-11; Andy asked for thorough tests, as the preview
+showed this to be easy to get wrong). `tests/browser/delete.walk.js`, with Playwright, as
+`tests/browser/tutorial.walk.js` is (`tutorial-page.md`, section 9: Chrome if installed, else
+Playwright's Chromium; against the built Transfer Designer in `dist/`, built first if there's none),
+at 1500 × 950. `npm run test:browser` runs every `*.walk.js` file in `tests/browser/` (it ran only
+the tutorial's), and takes the same arguments for the tutorial's as before. It opens the **test plan
+with a bit of everything** (`tests/fixtures/delete-test-plan.js`, `trash.md` section 6, saved as a
+plan file with `planToText` and opened with Open), with an empty trash, before each check, and
+compares the column, read from the page (each box in order, each stage by its name, each tip
+group's tip type and probes from its heading), with what's expected. It checks:
+- **The Delete key**: a stage's row clicked, then Delete: deleted, its message with `Undo`; a stage
+  opened, then a well on the deck clicked, then Delete: nothing; Delete before any press: nothing;
+  Delete typed in the experiment's name box: the box's own; the focus moved to a row with Tab,
+  then Delete: deleted; a stage's row clicked, a well clicked, Tab until the focus is in the
+  column, then Shift+Tab back out to the deck, then Delete: nothing.
+- **Ctrl+X**: a stage cut after a click in the column (deleted, and Ctrl+V pastes it back below the
+  selection); Ctrl+X after a click on the deck: nothing deleted.
+- **The menu**: on a stage, a tip group's heading, a randomization's and a transfer table's: its
+  items in order, `Delete` red; `Join with the group above` only on an ordinary tip group's heading
+  when that group alone is selected, grayed with its
+  reason on the first; `Delete` and `Cut` from it; `Join` from it (the group joined, its message).
+- **The tip change's box**: its button reads `Join with the group above` and joins.
+- **Each kind deleted**, and the refusals (a randomization's stage alone, a transfer table's stage
+  alone, every stage selected): the logic's message, nothing changed. **A mixed selection** (S02,
+  S03's tip group by its heading with Ctrl-click, and the transfer table's heading) deleted with
+  the Delete key: the column as expected, the message `Deleted 3 items (7 stages).` with `Undo`,
+  and three entries in the trash, in column order.
+- **A group's first stage removed with its box's `Remove`** (S03, opened, then `Remove`): S04 to
+  S06 keep the group's tip type and probes, read from the group's heading.
+- **Join refused just after a randomization**: the right-click menu on S10's tip group heading
+  shows `Join with the group above` grayed out, with the logic's message under it.
+- **The animation**: right after Delete the deleted rows are still drawn, red; after
+  `DELETE_ANIMATION_MS` they're gone; with reduced motion (Playwright's `reducedMotion: "reduce"`)
+  they're gone at once; Ctrl+Z pressed during the animation: `Delete canceled.`, nothing deleted,
+  and the edit before it not undone (the column, the trash and Undo's next step as before the
+  Delete); a second Delete pressed during the animation: ignored (deleted once, one set of
+  entries).
+- **A delete ends the last press**: a stage's row clicked, Delete (deleted), Delete again
+  (nothing); then a click on a row and Delete: deleted.
+- **The message's Undo**: brings back what was deleted, the trash losing its entries.
+- **The trash**: its closed line empty and with entries (`Trash (2)`); opening it; one entry per
+  thing deleted, newest first, column order within a delete, each row's name and details, and no
+  button on a row; a stage's box's `Remove`, a randomization's card's `Remove` and the wizard's
+  `Remove` each adding an entry, its message with an `Undo` button that brings it back and takes
+  the entry out; Reset's question saying it empties the trash; dragging a stage onto the trash (red trash, red label, deleted), and again with Ctrl held while
+  dropping (still deleted, not copied); the trash after a reload; `TRASH_LIMIT` + 1 entries put in
+  local storage before the page opens (`trashToText` of a trash built for it, the limit read from
+  `config/trash.js`): `Trash (N)`, N being `TRASH_LIMIT`, the oldest not listed, and no note; an
+  entry put in storage with a `deletedAt` of the day before: its row shows the date before the
+  time; `Empty trash` (emptied, its note); Reset emptying it and Undo bringing it back; the trash
+  off while moving wells (its message); Delete with the focus on a trash entry (nothing).
+- **Dragging out**: an entry dragged to a gap (the drop line, the label, pasted there, the entry
+  gone from the trash, the message, the pasted thing selected); dragged back to where it was, for
+  S03 (into group 2 at its top) and S07 with S08 deleted separately (each to its own gap, in
+  reverse order): the column equal to the test plan's; a tip group dropped where only seams
+  between tip groups are marked; a refused paste (an entry whose `copied` was damaged in local
+  storage before the page opened, which reading back keeps, `trash.md`): the logic's message,
+  nothing changed, the entry still in the trash; dropped with
+  nothing marked: nothing; Escape canceling; an entry dragged into another plan opened from a
+  file; the open list closing when the drag starts; Ctrl held while dropping (pasted, the label
+  without `Copy`); a click on an entry (its note, nothing else); the column scrolled to its end
+  with the trash closed (End's card and the seam above it wholly above the band).
+- **Edits around the trash**: Undo and Redo of a delete and of a drag-out moving entries in and
+  out; a drag-out with a stage's editing box with changes open (the list opened first, then the
+  box changed, then an entry dragged: refused, shaking, `Save or discard your changes first.`,
+  the trash and the plan unchanged); Ctrl+Z pressed during the animation, then
+  a click on the row and Delete again (`Delete canceled.`, then deleted once, with one entry); the message's `Undo` pressed after a
+  later edit (it undoes the later edit, as Ctrl+Z would; the later edit is closing the card of a
+  randomization that hasn't run, after changing its seed, which saves its draft with no message
+  of its own: every other edit shows one, replacing the button); a second tab changing the trash, then
+  this tab deleting: both tabs' entries kept; this tab deleting, a second tab deleting, then this
+  tab's Undo and Redo: only this tab's entries go out and come back, the other tab's kept;
+  a delete, then a change of what's open (a stage clicked), then Undo: the delete's entries leave
+  the trash (the replaced state kept its change).
+- **Storage**: local storage switched off (`setItem` and `getItem` throwing, set up with
+  Playwright's `addInitScript` before the page opens): a delete shows its message with `Undo`, then
+  the note on its own line; the trash lists the entry; a second delete shows no note; dragging the
+  entry out works. A stored trash of version 2: its note when the page opens, a delete working in
+  memory, and the stored text unchanged afterwards (read back with `page.evaluate`); the same for a
+  damaged stored trash (an entry with `kind` `"box"`), the tab starting from the entries it could
+  read. An entry another tab dragged out (a second page in the same context) dropped on a gap in
+  this tab: `That item has left the trash (another tab used it).`, nothing pasted, the list
+  redrawn without it.
+- **The tutorial build's own trash**: the built tutorial file opened, a stage deleted there: its
+  entry is under `biomek-tools transfer designer tutorial: trash` (section 17), and the designer's
+  `biomek-tools transfer designer: trash` is unchanged.
+- **No errors** on the page throughout (Playwright's `pageerror`).
 
 **By hand**, before each release, in Edge and Chrome, opening the built file:
 - writing the run as a folder (section 5; 2026-11-10): the box opens with Folder chosen the first
@@ -2710,6 +3141,34 @@ page's configuration (ADR 0009):
   stage, with a randomization's card open and while moving wells, Ctrl-click acts as a click; on a
   Mac, Cmd-click keeps the source, and Ctrl-click on a well with a source chosen opens its name box,
   adds nothing and keeps the source;
+- the All transfers box (section 7; 2026-11-11), on a stage with six transfers of one volume:
+  - **what it shows:** that volume; changing one transfer's volume makes it blank with `Mixed`
+    (and the tooltip saying so), and changing it back shows the volume again; transfers of 33.3333
+    and 33.33 µL show `Mixed`; adding and removing a transfer, Undo and Redo each keep it right; it
+    shows after Hide transfers then Show transfers; a stage with one transfer has the box;
+  - **its names:** clicking `All transfers` focuses the box; a screen reader (or the accessibility
+    tree) names it `Volume of every transfer in this stage, in µL`; a click or Tab into it selects
+    its text;
+  - **saving:** `75` and Enter sets all six (one message, `Set all 6 transfers in stage 1, …, to
+    75 µL.`), the focus back in the box with `75` selected, and one Undo puts every volume back
+    (and the box with them); Enter then Ctrl+Z undoes the save, and Ctrl+Y redoes it; with text
+    edited, Ctrl+Z undoes the typing, not the plan; a volume then a click on a transfer's `×` saves
+    it and removes that transfer; a volume then a click on another stage's row saves, then opens
+    that stage; a volume then a press on the header's Undo saves, then undoes that save; a volume
+    then Tab saves, the focus on the first transfer's volume button, and Shift+Tab saves, the focus
+    on `Hide transfers ▾`; blank, or focusing and leaving without typing, saves nothing and shows no
+    message; all at 33.3333 then `33.33` typed saves; typing the volume they all have records no
+    Undo step and shows no message; `  75  ` saves 75; with one transfer, the message says `Set the
+    only transfer …`; a volume that overdraws a source turns the stage and the volumes red, as a
+    single volume does; a chosen source stays after a save;
+  - **refusals and Escape:** `abc` and `-5` show the logic's message, the box staying with the
+    text after Enter, and showing its value again after Tab (the focus moving on) or a click away;
+    Escape puts the value back and saves nothing, keeping the stage open and a chosen source;
+  - **elsewhere:** while a transfer's volume box is open, a click in the box saves that one first;
+    pointing at rows while the box has focus singles out their transfers; a mix step, a
+    randomization's stage and a transfer table's stage have no box; while moving wells it can't be
+    typed in and a click says so; the digits typed in the box never reach the next transfer's
+    volume (section 13);
 - every editing box: Save, Discard, Escape, a click outside with and without changes, Remove;
 - a stage's ✎ beside its name: it opens the stage's box under the card's heading, its menus show
   `Non-Contact` whole, and a stage whose settings aren't one of the modes shows `(not one of the
@@ -2889,6 +3348,11 @@ page's configuration (ADR 0009):
   one that fills its source; with an editing box with changes open, and with a run randomization's
   card with changes open (refused, shaking, its message); a picked set made empty by Ctrl-click
   (nothing selected, Ctrl+C's note);
+- deleting and the trash (2026-11-11), beyond what `delete.walk.js` checks: the animation and the
+  trash's look by eye, in both browsers; the trash shared by two tabs (each change keeping the
+  other tab's entries; a tab showing the other's only after its own next change or a reload); a
+  private window starting with an empty trash; dragging an entry out near the column's edges
+  (scrolling); the menu key on a heading showing `Delete`;
 - moving wells: `Move wells` and `Done`; the bar's two texts; a trough moved to a free trough by a
   click and by a drag, its label, contents and transfers following it, then another move without
   pressing Move wells again; a well a later stage fills, moved from Start, where it shows empty; a
@@ -3060,8 +3524,9 @@ guide panel over it (`tutorial-page.md`, section 3). The page knows it's the tut
 
 **Storage names.** Built as the tutorial, the page uses, in place of the names in sections 5, 6 and
 7, `biomek-tools transfer designer tutorial: plan`, `biomek-tools transfer designer tutorial: copied
-items` and `biomek-tools transfer designer tutorial: copied deck`. So practice never reads or writes
-a real plan, copied items or copied deck, and the reverse. The names live together in the page
+items`, `biomek-tools transfer designer tutorial: copied deck` and (2026-11-11) `biomek-tools
+transfer designer tutorial: trash`. So practice never reads or writes
+a real plan, copied items, copied deck or trash, and the reverse. The names live together in the page
 script, chosen once from the attribute. Its `savedBy` (section 5) becomes `transfer designer
 tutorial v` and the version.
 

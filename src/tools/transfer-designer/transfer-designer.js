@@ -422,10 +422,11 @@ export function canRemoveStage(plan, id) {
   return plan.stageList.has(id) && plan.stageList.listStages().length > 1;
 }
 
-// Returns the plan without stage `id`, its transfers, or a tip change before it. It's taken out of
-// the stage order, which keeps the other stages in their order. Throws if canRemoveStage is false,
-// or the stage is a transfer table's, a mixing box's or a randomization's, which change only through
-// their owner.
+// Returns the plan without stage `id` or its transfers; a tip change before it moves to the next
+// stage when that has none, so the rest of its tip group keeps its tips, and otherwise goes. It's
+// taken out of the stage order, which keeps the other stages in their order. Throws if canRemoveStage
+// is false, or the stage is a transfer table's, a mixing box's or a randomization's, which change only
+// through their owner.
 export function removeStage(plan, id) {
   if (!plan.stageList.has(id)) {
     // get() throws the stage list's own message for a stage that isn't there.
@@ -480,9 +481,24 @@ function removeStageOfAnyOwner(plan, id) {
     operationList,
     stageList: plan.stageList.remove(id),
     stageOrder: order.filter((stage) => stage !== id),
-    tipChanges: withoutKey(plan.tipChanges, id),
+    tipChanges: tipChangesAfterRemove(plan.tipChanges, id, nextId),
   });
   return withRandomizationsAfterRemove(withStartTipsFirst(removed), id, nextId, keptTips);
+}
+
+// The tip changes after stage `id` is removed, `nextId` being the stage after it (or null): a tip
+// change keyed by `id` moves to `nextId` when that stage has none of its own, so the rest of its
+// tip group keeps the group's tips (section 3, "Stages"); otherwise it goes with the stage,
+// e.g. { start: …, 3: bc1070 } with 3 removed and 4 next → { start: …, 4: bc1070 }.
+function tipChangesAfterRemove(tipChanges, id, nextId) {
+  if (!Object.hasOwn(tipChanges, id)) {
+    return tipChanges;
+  }
+  const without = withoutKey(tipChanges, id);
+  if (nextId === null || Object.hasOwn(tipChanges, nextId)) {
+    return without;
+  }
+  return withKey(without, nextId, tipChanges[id]);
 }
 
 // For each stage with transfers, in run order, how many transfers have run when it ends,
@@ -567,6 +583,11 @@ export function addTransfers(plan, transfers) {
   return transfers.reduce((planSoFar, transfer) => addTransfer(planSoFar, transfer), plan);
 }
 
+// What changeVolume and changeStageVolumes say for a mix step's mixed wells, whose volume is a
+// placeholder (transfer-designer.md, "Mix steps").
+const MIX_STEP_VOLUME_FIXED =
+  "A mix step's wells are mixed with its own settings, so their volume can't be changed.";
+
 // Returns the plan with the transfer at `position` (counting from 0) given `volume`, keeping its
 // place and stage, e.g. changeVolume(plan, 3, 25). The operation list checks both. Throws for a
 // transfer table's or a randomization's stage, and for a mix step's mixed well, whose volume is a
@@ -580,15 +601,53 @@ export function changeVolume(plan, position, volume) {
     checkNotRandomizationTransfers(plan, operation.stage);
   }
   if (operation !== undefined && isMixStep(plan, operation.stage)) {
-    throw new Error(
-      "A mix step's wells are mixed with its own settings, so their volume can't be changed.",
-    );
+    throw new Error(MIX_STEP_VOLUME_FIXED);
   }
   // replace() checks the position before anything else, so a bad position is reported even though
   // `operation` is then undefined (spreading undefined gives nothing).
   return withParts(plan, {
     operationList: plan.operationList.replace(position, { ...operation, volume }),
   });
+}
+
+// Returns the plan with every transfer of stage `id` given `volume`, as one edit, each keeping its
+// position, stage, source and destination, e.g. changeStageVolumes(plan, "2", 25). Gives back the
+// very same plan if every transfer's volume is `volume` already, compared exactly (===, so 33.3333
+// and 33.33 differ), so a caller can tell nothing changed. Throws, in this order, if `id` isn't a
+// stage, it's a transfer table's or a randomization's stage, it's a mix step, it has no transfers,
+// or the operation list refuses `volume` (transfer-designer.md, section 5).
+export function changeStageVolumes(plan, id, volume) {
+  checkStageVolumesCanChange(plan, id);
+  const positions = positionsInStage(plan, id);
+  const operations = plan.operationList.listOperations();
+  if (positions.every((position) => operations[position].volume === volume)) {
+    return plan;
+  }
+  // replace() checks the volume, so a refused one throws at the first position, before any plan is
+  // made: the plan given is never touched.
+  const operationList = positions.reduce(
+    (listSoFar, position) => listSoFar.replace(position, { ...operations[position], volume }),
+    plan.operationList,
+  );
+  return withParts(plan, { operationList });
+}
+
+// Throws, in changeStageVolumes' order, unless stage `id`'s transfers can all be given one volume:
+// 'There's no stage "9" in the plan.' for an ID that isn't a stage; a transfer table's or a
+// randomization's stage (their owners' messages); a mix step (changeVolume's message); or a stage
+// with no transfers yet.
+function checkStageVolumesCanChange(plan, id) {
+  if (!plan.stageList.has(id)) {
+    throw new Error(`There's no stage ${describeValue(id)} in the plan.`);
+  }
+  checkNotTransferTableAmounts(plan, id);
+  checkNotRandomizationTransfers(plan, id);
+  if (isMixStep(plan, id)) {
+    throw new Error(MIX_STEP_VOLUME_FIXED);
+  }
+  if (positionsInStage(plan, id).length === 0) {
+    throw new Error(`${stageNamed(plan, id)}, has no transfers yet, so there's no volume to change.`);
+  }
 }
 
 // Returns the plan without the transfer at `position` (counting from 0). The operation list checks
@@ -4396,13 +4455,92 @@ export function pasteItems(plan, copied, place) {
   return { plan: withOperationsInStageOrder(pasted), placed: pieces.map(placedItemOf) };
 }
 
+// --- Deleting ---
+
+// Returns { plan, removed, deleted }: the plan without `items` (stages, tip groups, randomizations
+// and transfer tables, in any mix, each { kind, id }), as one edit (section 3, "Deleting");
+// `removed`, how many stages were taken out; `deleted`, the items deleted, in column order, a stage
+// of a listed container left out and an item listed twice once. Randomizations and transfer tables
+// go first, in column order, then the stages left, in column order, each as removeStage removes it,
+// so a tip group whose first stage goes keeps its tips. Throws, in section 5's order: the list and
+// each item (as moveItems), then a randomization's or transfer table's stage without its owner,
+// then every stage of the plan, e.g. deleteItems(plan, [{ kind: "tipGroup", id: "3" }]).
+export function deleteItems(plan, items) {
+  const entries = checkedItemsToDelete(plan, items);
+  let deleting = plan;
+  // Randomizations and transfer tables first, together, in column order (entries are in it).
+  for (const entry of entries.filter((candidate) => candidate.kind === "randomization" || candidate.kind === "transferTable")) {
+    deleting =
+      entry.kind === "randomization" ? removeRandomization(deleting, entry.id) : removeTransferTable(deleting, entry.id);
+  }
+  for (const id of ordinaryStagesOf(plan, entries)) {
+    deleting = removeStage(deleting, id);
+  }
+  return {
+    plan: deleting,
+    removed: plan.stageOrder.length - deleting.stageOrder.length,
+    deleted: entries.map(({ kind, id }) => ({ kind, id })),
+  };
+}
+
+// The items in `items`, checked for deleting from `plan` and in column order, as checkedItems gives
+// them. Throws as checkedItems does (with "delete"), then if a randomization's or transfer table's
+// stage is listed without its owner (the first in column order), then if they're every stage of the
+// plan, which needs at least one.
+function checkedItemsToDelete(plan, items) {
+  const boxes = columnBoxes(plan);
+  const entries = checkedItems(plan, items, "delete", boxes);
+  // A stage of a listed owner was left out by checkedItems, so any stage with an owner is alone.
+  const ownedAlone = entries.find((entry) => entry.kind === "stage" && ownerOf(plan, entry.id) !== null);
+  if (ownedAlone !== undefined) {
+    throw new Error(ownedStageDeleteMessage(plan, ownedAlone.id));
+  }
+  const stageCount = entries.reduce((count, entry) => count + stagesOfEntry(plan, boxes, entry).length, 0);
+  if (stageCount === plan.stageOrder.length) {
+    throw new Error(
+      "That's every stage in the plan, and a plan needs at least one. Leave one stage, or add a new one first.",
+    );
+  }
+  return entries;
+}
+
+// The message refusing to delete stage `id`, a randomization's or transfer table's, without its
+// owner, e.g. "Stage 5, “Drug A”, belongs to a randomization: delete the whole randomization, or
+// change it in its card."
+function ownedStageDeleteMessage(plan, id) {
+  if (ownerOf(plan, id).kind === "randomization") {
+    return `${stageNamed(plan, id)}, belongs to a randomization: delete the whole randomization, or change it in its card.`;
+  }
+  return `${stageNamed(plan, id)}, belongs to a transfer table: delete the whole transfer table, or change it in its wizard.`;
+}
+
+// The IDs of the stages a checked entry (from checkedItems) holds, in stage order: a stage's own;
+// every stage of a tip group, randomization or transfer table box (none for a randomization that
+// hasn't run).
+function stagesOfEntry(plan, boxes, entry) {
+  if (entry.kind === "stage") {
+    return [entry.id];
+  }
+  const box = boxes[entry.boxIndex];
+  return box.kind === "tipGroup" ? [...box.stages] : box.tipGroups.flatMap((group) => group.stages);
+}
+
+// The IDs of the ordinary stages the checked `entries` delete (listed stages, and every stage of a
+// listed tip group), in column order.
+function ordinaryStagesOf(plan, entries) {
+  const boxes = columnBoxes(plan);
+  return entries
+    .filter((entry) => entry.kind === "stage" || entry.kind === "tipGroup")
+    .flatMap((entry) => stagesOfEntry(plan, boxes, entry));
+}
+
 // --- Moving and copying: helpers ---
 
 // The items in `items`, checked and in column order, each as { kind, id, boxIndex, order }: its
 // box's index in `boxes` and its place for sorting. A stage inside a listed tip group or randomization
 // is left out, and an item listed twice counts once. Throws, in section 5's order: the list, then each
 // item in turn (its form, that it's in the plan, a tip group's ID starting one). `verb` is "move" or
-// "copy", for the message about the list.
+// "copy" or "delete", for the message about the list.
 function checkedItems(plan, items, verb, boxes) {
   if (!Array.isArray(items) || items.length === 0) {
     const got = Array.isArray(items) ? "an empty list" : describeValue(items);

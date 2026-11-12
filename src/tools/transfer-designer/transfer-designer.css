@@ -28,6 +28,8 @@
   --green-tint: #edf5ef;
   --disabled-background: #d9d7cf;
   --disabled-text: #6b6b66;
+  /* What a disabled button or box is filled with. */
+  --disabled-field: #f1f0ec;
 
   --sand-tint: #f5f1e8;
   --pill-gray: #eceae3;
@@ -232,7 +234,7 @@ button[aria-pressed="true"]:not(.color-swatch) {
 /* Disabled buttons look the same whatever their group, so this comes after the groups. */
 button:disabled {
   border-color: var(--disabled-background);
-  background: #f1f0ec;
+  background: var(--disabled-field);
   color: var(--disabled-text);
   cursor: not-allowed;
 }
@@ -1424,6 +1426,63 @@ button.entry-row {
   min-height: 26px;
   padding: 0 6px;
   font-family: var(--mono-font);
+  font-size: 12px;
+}
+
+/* The All transfers row above a transfer stage's rows (sections 7 and 15). The card's body spaces
+   its parts 10px apart, so these margins bring the row to 6px below Hide transfers and 4px above
+   the first transfer row. */
+.all-transfers-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 -6px;
+  padding: 6px 8px;
+  border: 1px dashed var(--panel-border);
+  border-radius: 6px;
+  background: var(--page-background);
+}
+
+/* In the style of a box's field names (.field-name), taking the spare width. */
+.all-transfers-name {
+  flex: 1 1 auto;
+  color: var(--muted-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Selected as input.all-transfers-box so it outweighs the general input[type="text"] rule. */
+input.all-transfers-box {
+  flex: none;
+  box-sizing: border-box;
+  width: 80px;
+  min-height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  font-family: var(--mono-font);
+  font-size: 12px;
+  text-align: right;
+}
+
+input.all-transfers-box::placeholder {
+  color: var(--muted-text);
+  font-style: italic;
+}
+
+/* While moving wells it can't be typed in, and takes the page's disabled look. */
+input.all-transfers-box[aria-disabled="true"] {
+  border-color: var(--disabled-background);
+  background: var(--disabled-field);
+  color: var(--disabled-text);
+  cursor: not-allowed;
+}
+
+.all-transfers-unit {
+  flex: none;
+  color: var(--muted-text);
   font-size: 12px;
 }
 
@@ -3485,6 +3544,178 @@ body.column-dragging * {
 .column-menu-reason {
   color: var(--muted-text);
   font-size: 12px;
+}
+
+/* --- Deleting and the trash (sections 7 and 15) --- */
+
+/* The right-click menu's Delete: red text. */
+.column-menu-item.danger-item:not([disabled]) {
+  color: #b3261e;
+}
+
+/* Rows being deleted show a pale red background and a red border while they shrink away (the
+   shrinking is the page script's animation, DELETE_ANIMATION_MS long). */
+.stages-list .deleting {
+  overflow: hidden;
+  border-color: #c4362a !important;
+  background: #fbe3e0 !important;
+}
+
+/* The drag's label over the trash: red in place of blue. */
+.drag-label.deleting {
+  background: #b3261e;
+}
+
+/* The column's contents end 12px above the trash's closed band, so End and the seam above it can
+   scroll fully above it. */
+.stages-list {
+  padding-bottom: 12px;
+}
+
+/* Scrolling something into view in the column keeps it above the trash's closed band. */
+.stages-column {
+  scroll-padding-bottom: 56px;
+}
+
+/* The trash: a white band the column's width, under a 1px border, pinned at the bottom of the
+   column so it's always in view, above the column's contents as they scroll under it. The column
+   has 14px padding, which the band reaches across. */
+.trash {
+  position: sticky;
+  bottom: -14px;
+  z-index: 5;
+  margin: 0 -14px -14px;
+  padding: 0 14px;
+  border-top: 1px solid var(--panel-border);
+  background: var(--panel-background);
+}
+
+/* Stacked, the column isn't a scroll area of its own, so the band is pinned to the window. */
+@media (max-width: 1000px) {
+  .trash {
+    bottom: 0;
+  }
+}
+
+/* Its line: a 🗑, Trash (semibold) and, at the right, the hint or ▴/▾, 14px gray, darker on hover. */
+.trash-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-text);
+  font-size: 14px;
+  text-align: left;
+}
+
+.trash-line:hover,
+.trash-line:focus-visible {
+  color: var(--text);
+}
+
+.trash-title {
+  font-weight: 600;
+}
+
+.trash-hint,
+.trash-arrow {
+  margin-left: auto;
+}
+
+.trash-hint {
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+/* The list, above the line, inside the band: at most 260px tall, scrolling. */
+.trash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  padding-top: 10px;
+  overflow-y: auto;
+}
+
+.trash-list[hidden] {
+  display: none;
+}
+
+/* An entry: on the page background with a 1px border, 8px corners, 8px by 10px padding, the grab
+   pointer, and no text selected while pressing. */
+.trash-entry {
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--page-background);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.trash-entry-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.trash-entry-details,
+.trash-note {
+  color: var(--muted-text);
+  font-size: 12px;
+}
+
+.trash-note {
+  margin: 0;
+}
+
+.trash-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* Empty trash: a danger button made small. */
+button.trash-empty {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+/* While a drag is over it, to delete: pale red with a 2px red ring inside, its text red. */
+.trash.drop-target {
+  background: #fbe3e0;
+  box-shadow: inset 0 0 0 2px #c4362a;
+}
+
+.trash.drop-target .trash-line {
+  color: #c4362a;
+}
+
+/* The message's Undo button: 8px after the text, in the message's own color with a 1px border of it,
+   6px corners, semibold, transparent, lightening on hover and focus. */
+.message-undo {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-weight: 600;
+}
+
+.message-undo:hover,
+.message-undo:focus-visible {
+  background: color-mix(in srgb, #ffffff 45%, transparent);
+}
+
+/* A line of its own after the message, such as the trash's storage note. */
+.message-line {
+  margin-top: 4px;
 }
 
 /* --- Motion: none with the system's "reduce motion" setting (section 15) --- */
