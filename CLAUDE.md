@@ -56,6 +56,9 @@ Andy is learning, so explanations matter as much as the code.
   For larger changes, Claude also has a separate agent review the work, given only the changes and
   the specifications, not Claude's conclusions; Claude checks what it finds and passes on what
   matters.
+- **Claude may have a background agent write a topic's specifications** (Andy, 2026-11-11), so the
+  chat can go on with the next topic. Claude briefs it with everything Andy approved, reads what it
+  writes, and has the specifications reviewed by a separate agent as usual.
 - **Claude Code** writes the code and tests, from the specifications only, in a new session each
   time, so the specifications must say everything it needs. **Claude starts it** (Andy,
   2026-10-30): once Andy approves a PR's specifications, Claude starts the build as a background
@@ -99,6 +102,11 @@ hands-off workflow is used only when Andy asks for it.
   what goes into the Biomek files. For these, Claude does the preparatory work, sets out the
   decision and stops. The decisions Claude made stand as proposals until Andy merges the pull
   request.
+
+  **A builder sees only the specifications** (Andy, 2026-11-11). Claude never hands a build or fix
+  agent code from elsewhere (a preview, a scratch branch, Claude's own patch), nor tells it to copy
+  what such code does. A fix found later goes into the specifications first, then to a builder that
+  hasn't seen the other code.
 
 ## Code
 - **Readability first.** Use clear, descriptive names. Prefer simple code to clever code.
@@ -197,6 +205,12 @@ biomek-tools/
   any choices made where a specification left room, for whoever reviews it. A review starts from the
   description, then checks the changes against it and against the specifications.
 - Start the next task's branch only after the previous one is merged, unless Andy says otherwise.
+- **Trying several pull requests together** (Andy, 2026-11-11): Claude merges them into a separate
+  branch (e.g. `combined-preview`) that is never merged and has no pull request, and builds it for
+  Andy. A fix needed only because they meet is made there to try them, and goes into one of the pull
+  requests properly (specification first) before it is merged. The branch is deleted afterwards.
+- **Squash and merge** a pull request whose history has false starts (e.g. a design that was
+  dropped), so `main` gets one commit with the final result (Andy, 2026-11-11).
 - Never commit secrets (passwords, keys) or personal data.
 
 ## Releases
