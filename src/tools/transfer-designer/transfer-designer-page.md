@@ -1775,8 +1775,9 @@ It's a panel the column's width (section 15), and the column scrolls just enough
   experiment work as usual (they don't change what the wizard makes). **Everything else that would
   change the plan or what's open is refused**: clicking an entry, a heading, a ✎ or a seam's button
   in the column, `‹` and `›`, `Move wells`, `Undo`, `Redo`, `Save`, `Open`, `Reset`, `Biomek files`,
-  `Copy deck`, `Paste deck`, `Paste table` and `Copy table`, dragging, the right-click menu, Ctrl+C
-  and Ctrl+V: the wizard shakes, as an editing box with unsaved changes does (section 10), and the
+  `Copy deck`, `Paste deck`, `Paste table` and `Copy table`, dragging (into the column, onto the
+  trash or out of it), any press on the trash, the right-click menu, Ctrl+C, Ctrl+V, Ctrl+X and the
+  Delete key: the wizard shakes, as an editing box with unsaved changes does (section 10), and the
   message bar says `Make the mix steps, or cancel the mixing, first.` (editing: `Update the mixing
   box, or cancel, first.`) (note). (Decided in the hands-off workflow, 2026-11-11: picking many wells
   is work a stray click shouldn't lose, and saving or copying while a draft is open would leave it
@@ -2044,7 +2045,7 @@ becomes the selection).
 
 *Deleting and cutting* (Andy, 2026-11-11; `transfer-designer.md`, "Deleting").
 - **Delete** deletes what's selected (`deleteItems`), as one edit: stages (mix steps included),
-  tip groups, randomizations and transfer tables, with every stage in them, in any mix (Andy,
+  tip groups, randomizations, transfer tables and mixing boxes, with every stage in them, in any mix (Andy,
   2026-11-11: "anything that is a stage or a container can be deleted"). No question first: Undo
   brings it back, as for every Remove. It's the **Delete key**, the right-click menu's `Delete`
   (below), and dropping on the trash (section 7, "The trash").
@@ -2242,7 +2243,9 @@ be made reliable); Undo is the exact way to bring back a recent delete.
   nothing.
 - **While a randomization's card or the transfer table wizard is open**, the trash works as the
   rest of the column does then (a drag closes the card as a paste does, or is refused with the
-  card's message).
+  card's message). **While the mixing wizard is open**, a press on the trash (its line, an entry,
+  `Empty trash`) and a drop on it are refused as the column's are: the wizard shakes with its
+  message, and the trash and plan don't change (code review, 2026-11-11).
 
 **Keeping things in view.** When a different entry opens, the column scrolls just enough to show
 all of it; when an editing box opens, it scrolls just enough to show the box. When `Show
@@ -2686,8 +2689,10 @@ and the deck shows its point again.
   Cancel), and Ctrl+V pastes only into its paste zone or a cell.
 - **Delete** deletes, and **Ctrl+X** (Cmd+X) cuts, what's selected in the Stages column, only right
   after a press in the column or with the focus in it (section 7, "Deleting and cutting"; Andy,
-  2026-11-11). Backspace stays a volume key (above). Neither works while moving wells.
-- **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups, randomizations and transfer tables
+  2026-11-11). Backspace stays a volume key (above). Neither works while moving wells; while the
+  mixing wizard is open, both are refused as its other edits are (the wizard shakes with its
+  message; nothing is deleted or copied), whatever the last press was (code review, 2026-11-11).
+- **Ctrl+C** copies and **Ctrl+V** pastes stages, tip groups, randomizations, transfer tables and mixing boxes
   (section 7, "Moving and copying"); the **menu key** or **Shift+F10** on a focused row or heading opens the column's
   right-click menu. While a drag is on, **Escape** cancels it, and **Ctrl** switches it between
   moving and copying. Escape, when nothing above uses it, forgets the selection.
@@ -3028,6 +3033,12 @@ group's tip type and probes from its heading), with what's expected. It checks:
   dragged out to the seam where the box was (the label `Paste a mixing box`): the column equal to
   the plan as opened, the trash empty; then the box's ✎ and the wizard's `Remove`: the message
   `Removed the mixing box and its 5 mix steps.` with `Undo`, and the trash entry `Mixing box`.
+  (The mix step's refusal may be checked before the box is deleted, while it's there to open.)
+- **The mixing wizard refuses deleting and the trash** (code review, 2026-11-11): with the wizard
+  open on the box (its ✎) and on a new mixing (a seam's ⟳⟳ after a click on a stage), Delete and
+  Ctrl+X each shake the wizard with its message and change nothing (no page error); with an entry in
+  the trash, a press on the trash line, a drag of the entry onto the column and a drop of a stage
+  on the trash are each refused the same way, the trash and plan unchanged.
 - **A group's first stage removed with its box's `Remove`** (S03, opened, then `Remove`): S04 to
   S06 keep the group's tip type and probes, read from the group's heading.
 - **Join refused just after a randomization**: the right-click menu on S10's tip group heading

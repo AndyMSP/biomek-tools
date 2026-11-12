@@ -233,7 +233,7 @@ Beside it in this tool are two other logic modules, `plan-history` (undo and red
 
 ## 2. Scope
 Version 1 creates an empty plan; adds, removes, changes, moves, copies and deletes stages (and
-moves, copies and deletes tip groups, randomizations and transfer tables, several at once); adds, removes and changes transfers, tip changes,
+moves, copies and deletes tip groups, randomizations, transfer tables and mixing boxes, several at once); adds, removes and changes transfers, tip changes,
 components (with their constituents and osmolality), starting contents, labware labels, well
 labels and the experiment name; adds, updates and removes transfer tables and mixing boxes; and answers questions about a plan: its stage order, its tip
 groups, the tips it uses, the stages with a contents problem or a mix problem, where each stage
