@@ -38,6 +38,7 @@ import {
 import { planToText, planFromText } from "./plan-file.js";
 import {
   deleteTestPlan,
+  mixingBoxTestPlan,
   stageIdOf,
   planOutline,
   biomekOutput,
@@ -149,15 +150,22 @@ function frameText(trash, changes) {
   return JSON.stringify(data);
 }
 
+// The item of the plan's (only) mixing box.
+function mb(plan) {
+  return { kind: "mixingBox", id: plan.mixingBoxes[0].id };
+}
+
 // A trash with one entry of each kind: a stage (S04), a tip group (group 2), the run randomization,
-// an unrun one and the transfer table, each its own delete, in that order.
+// an unrun one and the transfer table, each its own delete, in that order; then the mixing box of
+// the test plan with a mixing box, a delete of its own.
 function trashOfEachKind() {
   const plan = withUnrunBefore("S07");
   let trash = emptyTrash();
   for (const item of [st(plan, "S04"), tg(plan, "S03"), rz(plan), unrun(plan), tt(plan)]) {
     trash = addDeleted(trash, plan, [item], NOW).trash;
   }
-  return trash;
+  const withMixingBox = mixingBoxTestPlan();
+  return addDeleted(trash, withMixingBox, [mb(withMixingBox)], NOW).trash;
 }
 
 // Runs a delete-then-paste case: from `start`, each of `deletes` (functions giving the items, from
@@ -238,6 +246,19 @@ const ONE_DELETE_CASES = [
     deleteTestPlan,
     (p) => [st(p, "S06"), st(p, "S11"), tt(p)],
     [inGroup(1, 3), inGroup(5, 1), between(6)],
+  ],
+];
+
+// The delete-then-paste cases of a mixing box, from the test plan with a mixing box: its boxes are 0
+// group 1, 1 group 2, 2 group 3, 3 the mixing box, 4 group 4, 5 the randomization, 6 group 6, 7 the
+// transfer table.
+const MIXING_BOX_DELETE_CASES = [
+  ["the mixing box alone", mixingBoxTestPlan, (p) => [mb(p)], [between(3)]],
+  [
+    "the mixing box with S07 and S08",
+    mixingBoxTestPlan,
+    (p) => [st(p, "S08"), mb(p), st(p, "S07")],
+    [between(2), between(3), inGroup(4, 0)],
   ],
 ];
 
@@ -396,6 +417,31 @@ describe("trash", () => {
     assert.deepEqual([table.kind, table.name, table.stageCount, table.transferCount], ["transferTable", null, 2, 6]);
   });
 
+  test("addDeleted of a mixing box: no name, its five mix steps, their mixed wells as transfers, and its copied items, of version 6", () => {
+    const plan = mixingBoxTestPlan();
+    const item = mb(plan);
+    const [entry] = addDeleted(emptyTrash(), plan, [item], NOW).trash.entries;
+    assert.deepEqual([entry.kind, entry.name, entry.stageCount, entry.transferCount], ["mixingBox", null, 5, 5]);
+    assert.deepEqual(entry.copied, copyOf(plan, [item]));
+    assert.equal(entry.copied.version, 6);
+  });
+
+  test("addDeleted refuses a mixing box's mix step alone with deleteItems' mixing box message, the trash unchanged", () => {
+    const plan = mixingBoxTestPlan();
+    const trash = emptyTrash();
+    const before = snapshot(trash);
+    const mixStep = { kind: "stage", id: plan.mixingBoxes[0].stages[0] };
+    let message = null;
+    try {
+      deleteItems(plan, [mixStep]);
+    } catch (error) {
+      message = error.message;
+    }
+    assert.match(message, /belongs to a mixing box: delete the whole mixing box, or change it in its wizard\.$/);
+    assert.throws(() => addDeleted(trash, plan, [mixStep], NOW), { message });
+    assert.equal(snapshot(trash), before);
+  });
+
   test("addDeleted of several items: one entry each, in column order though given out of order; a stage of a listed tip group left out; an item listed twice once (needs TRASH_LIMIT ≥ 3)", { skip: needsLimit(3) }, () => {
     const plan = deleteTestPlan();
     const { trash } = addDeleted(
@@ -500,6 +546,12 @@ describe("trash", () => {
 
   for (const [name, start, itemsOf, pastes] of ONE_DELETE_CASES) {
     test(`delete then paste where it was, one delete: ${name} (needs TRASH_LIMIT ≥ ${pastes.length})`, { skip: needsLimit(pastes.length) }, () => {
+      assertRoundTrip(start(), [itemsOf], pastes);
+    });
+  }
+
+  for (const [name, start, itemsOf, pastes] of MIXING_BOX_DELETE_CASES) {
+    test(`delete then paste where it was, a mixing box: ${name} (needs TRASH_LIMIT ≥ ${pastes.length})`, { skip: needsLimit(pastes.length) }, () => {
       assertRoundTrip(start(), [itemsOf], pastes);
     });
   }
@@ -784,7 +836,7 @@ describe("trash", () => {
     const trash = trashOfEachKind();
     const text = trashToText(trash);
     assert.deepEqual(Object.keys(JSON.parse(text)), ["format", "version", "entries", "nextEntryId", "nextDeletion"]);
-    assert.deepEqual(trashFromText(text), TRASH_LIMIT >= 5 ? trash : { ...trash, entries: trash.entries.slice(0, TRASH_LIMIT) });
+    assert.deepEqual(trashFromText(text), TRASH_LIMIT >= 6 ? trash : { ...trash, entries: trash.entries.slice(0, TRASH_LIMIT) });
   });
 
   // The frame cases trashFromText can't read, each a name and text.
@@ -846,6 +898,7 @@ describe("trash", () => {
     ["name null for a randomization", (entry) => ({ ...entry, kind: "randomization", name: null })],
     ["name text for a tip group", (entry) => ({ ...entry, kind: "tipGroup", name: "Group" })],
     ["name text for a transfer table", (entry) => ({ ...entry, kind: "transferTable", name: "Table" })],
+    ["name text for a mixing box", (entry) => ({ ...entry, kind: "mixingBox", name: "Box" })],
   ];
 
   // A trash of two deletes, S04's then S07's, whose older entry (S04's, id 1, deletion 1) is

@@ -166,6 +166,7 @@ import {
 import { COMPONENT_COLORS } from "../../../config/component-colors.js";
 import {
   deleteTestPlan,
+  mixingBoxTestPlan,
   stageIdOf,
   planOutline,
   biomekOutput,
@@ -7037,6 +7038,87 @@ describe("transfer-designer", () => {
     assert.equal(unrunOnly.removed, 0);
   });
 
+  // --- Deleting a mixing box (section 3, "Deleting"; mixingBoxTestPlan in the fixture) ---
+
+  // The item of the plan's (only) mixing box.
+  function mb(plan) {
+    return { kind: "mixingBox", id: plan.mixingBoxes[0].id };
+  }
+
+  // The item of the mixing box's mix step at `index` (from 0, in its order), e.g. 0 for Mix 1 of 5.
+  function mixingBoxStage(plan, index) {
+    return { kind: "stage", id: plan.mixingBoxes[0].stages[index] };
+  }
+
+  // The refusal message for one of the mixing box's mix steps alone: S01 to S07 come before the
+  // box, so Mix 1 of 5 is stage 8 and Mix 3 of 5 stage 10.
+  const MIX_1_REFUSAL = "Stage 8, “Mix 1 of 5”, belongs to a mixing box: delete the whole mixing box, or change it in its wizard.";
+  const MIX_3_REFUSAL = "Stage 10, “Mix 3 of 5”, belongs to a mixing box: delete the whole mixing box, or change it in its wizard.";
+
+  test("deleteItems: the mixing box test plan has its five mix steps, each on new tips, before S08's tip group", () => {
+    const plan = mixingBoxTestPlan();
+    const mixTips = { tipType: TIP_TYPES[0], probes: probesFor(4) };
+    assert.deepEqual(deleteGroupsOf(plan), [
+      g(T1, "S01", "S02"), g(T2, "S03", "S04", "S05", "S06"), g(T3, "S07"),
+      ...[1, 2, 3, 4, 5].map((number) => g(mixTips, `Mix ${number} of 5`)),
+      g(T4, "S08", "S09"), ...RANDOMIZATION_GROUPS, g(T6, "S10", "S11"), ...TABLE_GROUPS,
+    ]);
+    assert.equal(plan.mixingBoxes[0].way, "freshTip");
+    assert.doesNotThrow(() => biomekOutput(plan));
+  });
+
+  test("deleteItems: a mixing box alone goes with its five mix steps, as removeMixingBox gives, as one edit", () => {
+    const plan = mixingBoxTestPlan();
+    const before = snapshot(plan);
+    const { plan: after, removed, deleted } = deleteItems(plan, [mb(plan)]);
+    const removedByItsRemove = removeMixingBox(plan, mb(plan).id);
+    assertSamePlan(after, removedByItsRemove);
+    assert.deepEqual(planOutline(after), planOutline(removedByItsRemove));
+    assert.deepEqual(biomekOutput(after), biomekOutput(removedByItsRemove));
+    assert.equal(removed, 5);
+    assert.deepEqual(deleted, [mb(plan)]);
+    const history = new PlanHistory({ plan }).record({ plan: after });
+    assert.equal(history.undo().present.plan, plan);
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("deleteItems: S02, the mixing box and the transfer table, given out of order, go in column order, as removing them one by one", () => {
+    const plan = mixingBoxTestPlan();
+    const items = [tt(plan), mb(plan), st(plan, "S02")];
+    const { plan: after, removed, deleted } = deleteItems(plan, items);
+    assert.deepEqual(deleted, [st(plan, "S02"), mb(plan), tt(plan)]);
+    assert.equal(removed, 8);
+    let oneByOne = removeMixingBox(plan, mb(plan).id);
+    oneByOne = removeTransferTable(oneByOne, tt(plan).id);
+    oneByOne = removeStage(oneByOne, stageIdOf(plan, "S02"));
+    assert.deepEqual(planOutline(after), planOutline(oneByOne));
+    assert.deepEqual(biomekOutput(after), biomekOutput(oneByOne));
+  });
+
+  test("deleteItems: a mix step listed with its mixing box is left out of deleted and not counted twice", () => {
+    const plan = mixingBoxTestPlan();
+    const { deleted, removed } = deleteItems(plan, [mixingBoxStage(plan, 2), mb(plan)]);
+    assert.deepEqual(deleted, [mb(plan)]);
+    assert.equal(removed, 5);
+  });
+
+  test("deleteItems refuses a mixing box's mix step alone, or with other things but not its box, the plan unchanged", () => {
+    const plan = mixingBoxTestPlan();
+    const before = snapshot(plan);
+    assert.throws(() => deleteItems(plan, [mixingBoxStage(plan, 0)]), { message: MIX_1_REFUSAL });
+    assert.throws(() => deleteItems(plan, [st(plan, "S02"), mixingBoxStage(plan, 2), tt(plan)]), {
+      message: MIX_3_REFUSAL,
+    });
+    assert.equal(snapshot(plan), before);
+  });
+
+  test("deleteItems with a randomization's stage and a mix step names the mix step, first in column order", () => {
+    const plan = mixingBoxTestPlan();
+    assert.throws(() => deleteItems(plan, [randomizationStage(plan, 0), mixingBoxStage(plan, 0)]), {
+      message: MIX_1_REFUSAL,
+    });
+  });
+
   // --- Immutability and sharing ---
 
   // Each edit, made on a plan with something in every part, and the parts it may change.
@@ -7134,7 +7216,7 @@ describe("transfer-designer", () => {
     [
       "deleteItems",
       (plan) => deleteItems(plan, [{ kind: "stage", id: "3" }, { kind: "randomization", id: "r1" }]).plan,
-      ["operationList", "stageList", "stageOrder", "tipChanges", "randomizations", "transferTables"],
+      ["operationList", "stageList", "stageOrder", "tipChanges", "randomizations", "transferTables", "mixingBoxes"],
     ],
     [
       "moveWell",

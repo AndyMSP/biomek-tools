@@ -4457,21 +4457,29 @@ export function pasteItems(plan, copied, place) {
 
 // --- Deleting ---
 
-// Returns { plan, removed, deleted }: the plan without `items` (stages, tip groups, randomizations
-// and transfer tables, in any mix, each { kind, id }), as one edit (section 3, "Deleting");
-// `removed`, how many stages were taken out; `deleted`, the items deleted, in column order, a stage
-// of a listed container left out and an item listed twice once. Randomizations and transfer tables
-// go first, in column order, then the stages left, in column order, each as removeStage removes it,
-// so a tip group whose first stage goes keeps its tips. Throws, in section 5's order: the list and
-// each item (as moveItems), then a randomization's or transfer table's stage without its owner,
-// then every stage of the plan, e.g. deleteItems(plan, [{ kind: "tipGroup", id: "3" }]).
+// How deleteItems removes each kind of owner (a container with stages of its own), by its kind:
+// as its own Remove does.
+const OWNER_REMOVERS = Object.freeze({
+  randomization: (plan, id) => removeRandomization(plan, id),
+  transferTable: (plan, id) => removeTransferTable(plan, id),
+  mixingBox: (plan, id) => removeMixingBox(plan, id),
+});
+
+// Returns { plan, removed, deleted }: the plan without `items` (stages, tip groups, randomizations,
+// transfer tables and mixing boxes, in any mix, each { kind, id }), as one edit (section 3,
+// "Deleting"); `removed`, how many stages were taken out; `deleted`, the items deleted, in column
+// order, a stage of a listed container left out and an item listed twice once. Randomizations,
+// transfer tables and mixing boxes go first, in column order, each as its own Remove removes it,
+// then the stages left, in column order, each as removeStage removes it, so a tip group whose first
+// stage goes keeps its tips. Throws, in section 5's order: the list and each item (as moveItems),
+// then a randomization's, transfer table's or mixing box's stage without its owner, then every
+// stage of the plan, e.g. deleteItems(plan, [{ kind: "tipGroup", id: "3" }]).
 export function deleteItems(plan, items) {
   const entries = checkedItemsToDelete(plan, items);
   let deleting = plan;
-  // Randomizations and transfer tables first, together, in column order (entries are in it).
-  for (const entry of entries.filter((candidate) => candidate.kind === "randomization" || candidate.kind === "transferTable")) {
-    deleting =
-      entry.kind === "randomization" ? removeRandomization(deleting, entry.id) : removeTransferTable(deleting, entry.id);
+  // Randomizations, transfer tables and mixing boxes first, together, in column order (entries are in it).
+  for (const entry of entries.filter((candidate) => OWNER_REMOVERS[candidate.kind] !== undefined)) {
+    deleting = OWNER_REMOVERS[entry.kind](deleting, entry.id);
   }
   for (const id of ordinaryStagesOf(plan, entries)) {
     deleting = removeStage(deleting, id);
@@ -4484,8 +4492,8 @@ export function deleteItems(plan, items) {
 }
 
 // The items in `items`, checked for deleting from `plan` and in column order, as checkedItems gives
-// them. Throws as checkedItems does (with "delete"), then if a randomization's or transfer table's
-// stage is listed without its owner (the first in column order), then if they're every stage of the
+// them. Throws as checkedItems does (with "delete"), then if a randomization's, transfer table's or
+// mixing box's stage is listed without its owner (the first in column order), then if they're every stage of the
 // plan, which needs at least one.
 function checkedItemsToDelete(plan, items) {
   const boxes = columnBoxes(plan);
@@ -4504,19 +4512,23 @@ function checkedItemsToDelete(plan, items) {
   return entries;
 }
 
-// The message refusing to delete stage `id`, a randomization's or transfer table's, without its
-// owner, e.g. "Stage 5, “Drug A”, belongs to a randomization: delete the whole randomization, or
-// change it in its card."
+// The message refusing to delete stage `id`, a randomization's, transfer table's or mixing box's,
+// without its owner, e.g. "Stage 5, “Drug A”, belongs to a randomization: delete the whole
+// randomization, or change it in its card."
 function ownedStageDeleteMessage(plan, id) {
-  if (ownerOf(plan, id).kind === "randomization") {
+  const kind = ownerOf(plan, id).kind;
+  if (kind === "randomization") {
     return `${stageNamed(plan, id)}, belongs to a randomization: delete the whole randomization, or change it in its card.`;
+  }
+  if (kind === "mixingBox") {
+    return `${stageNamed(plan, id)}, belongs to a mixing box: delete the whole mixing box, or change it in its wizard.`;
   }
   return `${stageNamed(plan, id)}, belongs to a transfer table: delete the whole transfer table, or change it in its wizard.`;
 }
 
 // The IDs of the stages a checked entry (from checkedItems) holds, in stage order: a stage's own;
-// every stage of a tip group, randomization or transfer table box (none for a randomization that
-// hasn't run).
+// every stage of a tip group, randomization, transfer table or mixing box box (none for a
+// randomization that hasn't run).
 function stagesOfEntry(plan, boxes, entry) {
   if (entry.kind === "stage") {
     return [entry.id];
