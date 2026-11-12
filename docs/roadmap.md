@@ -581,7 +581,7 @@ Last updated: 2026-11-11
   **Decided by Andy** (2026-11-11, item 34): grouping by volume too, fresh-tip batches of one
   column, reservoir troughs refused for a fresh tip until checked in simulation, empty wells
   allowed. Deleting a mixing box follows #153's container rules (deleted whole, into the trash,
-  dragged back out): specified after `main` was merged into the branch, not yet built.
+  dragged back out): specified after `main` was merged into the branch, and built (#155).
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1380,7 +1380,7 @@ added on 2026-10-28 (Andy).
       deleted whole (`deleteItems`, with the Delete key, the menu, Ctrl+X, dropping on the trash,
       or its wizard's `Remove`), into the trash as one entry, from where dragging it out pastes it;
       one of its mix steps alone is refused. Added here, after merging `main` (#153 and #154) into
-      this branch (2026-11-11); specified, not yet built.
+      this branch (2026-11-11); specified and built (#155).
     Specified (Draft, 2026-11-11; the specification review's points fixed the same day, and the
     second review's after decision E).
 
