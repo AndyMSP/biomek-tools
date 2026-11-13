@@ -582,6 +582,12 @@ Last updated: 2026-11-11
   column, reservoir troughs refused for a fresh tip until checked in simulation, empty wells
   allowed. Deleting a mixing box follows #153's container rules (deleted whole, into the trash,
   dragged back out): specified after `main` was merged into the branch, and built (#155).
+- **Decided: the flat plate holds 400 µL** (Andy, 2026-11-12): a BCFlat96 well holds up to about
+  380 µL with the liquid bulging above the rim, so its capacity in `config/labware-types.js` is
+  400 µL (was a 360 µL stand-in), and Andy sets the same in the plate's labware type in Biomek
+  Software. Wanted for the open house artwork, whose raised parts fill wells to 380 µL. A config
+  change only: no code or file format changes; a plan that filled a flat well to 361-400 µL was
+  refused before and is accepted now.
 - **Working towards v0.2.0**, the transfer designer's first lab use, for Exp36: see below.
 
 ## v0.2.0: the transfer designer, for Exp36
@@ -1643,7 +1649,8 @@ Shortcuts taken knowingly, each with what doing it properly would mean.
   Properly: collect every message a user can meet and reword those into the page's terms.
 - **Capacities and dead volumes are stand-ins** (2026-10-30): `config/labware-types.js` has
   measured dead volumes for the deep well and the trough (`exp37.md`) but a guessed one for the
-  flat plate, and guessed capacities for all three. Properly: each capacity copied from the
+  flat plate, and guessed capacities for the deep well and the trough (the flat plate's, 400 µL,
+  is Andy's, 2026-11-12, set to match Biomek Software). Properly: each capacity copied from the
   Biomek's Labware Type Editor, and the flat plate's dead volume measured, with sources in the
   file's comments.
 - **The flat plate's growth area is a stand-in** (2026-11-05, cell density): `growthArea` of

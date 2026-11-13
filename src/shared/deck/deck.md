@@ -53,7 +53,7 @@ same order every time.
 **The labware types** (`config/labware-types.js`) export `LABWARE_TYPES`, an object with one entry
 per labware type the deck uses, keyed by the type's name:
 ```js
-BCFlat96: { grid: "GRID_96", capacity: 360, deadVolume: 20, growthArea: 0.32 }
+BCFlat96: { grid: "GRID_96", capacity: 400, deadVolume: 20, growthArea: 0.32 }
 ```
 - `grid`: the name of the type's well grid in `well-grid.js`, as text: `"GRID_96"` or
   `"GRID_1X12_NUMBERED"` (text, because configuration imports nothing but other configuration,
@@ -109,7 +109,7 @@ The module exports nine functions. None changes anything; each reads the configu
 | `hasLabware(name)` | any value | `true` if a labware on the deck has that name, else `false`: `"Res"` → `true`, `"Bench"` → `false`, `5` → `false` | never |
 | `gridOf(name)` | a labware's name | its labware type's well grid, a `WellGrid`: `"Res"` → `GRID_1X12_NUMBERED` | if the labware isn't on the deck |
 | `labwareTypeOf(name)` | a labware's name | its labware type: `"Plate"` → `"BCFlat96"` | if the labware isn't on the deck |
-| `capacityOf(name)` | a labware's name | its labware type's capacity in µL: `"Plate"` → `360` | if the labware isn't on the deck |
+| `capacityOf(name)` | a labware's name | its labware type's capacity in µL: `"Plate"` → `400` | if the labware isn't on the deck |
 | `deadVolumeOf(name)` | a labware's name | its labware type's dead volume in µL: `"Plate"` → `20` | if the labware isn't on the deck |
 | `growthAreaOf(name)` | a labware's name | its labware type's growth area in cm², or `null` if the type has none: `"Plate"` → `0.32`, `"Res"` → `null` | if the labware isn't on the deck |
 | `checkWell(end)` | a well on the deck, `{ labware, well }` | nothing | if `end` isn't an object with a labware on the deck and a well on that labware's grid |
