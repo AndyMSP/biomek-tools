@@ -19,10 +19,11 @@
 
 export const LABWARE_TYPES = {
   // The 96-well flat-bottom plate.
-  // capacity: stand-in (2026-10-30), to be copied from the Labware Type Editor.
+  // capacity: Andy, 2026-11-12: a well holds up to about 380 µL with the liquid bulging above the
+  // rim; 400 is set here and in the plate's labware type in Biomek Software, so the two agree.
   // deadVolume: stand-in (2026-10-30), to be measured.
   // growthArea: Andy's stand-in (2026-11-05), not checked; to be confirmed against the plate's datasheet.
-  BCFlat96: { grid: "GRID_96", capacity: 360, deadVolume: 20, growthArea: 0.32 },
+  BCFlat96: { grid: "GRID_96", capacity: 400, deadVolume: 20, growthArea: 0.32 },
 
   // The 96 deep-well plate, about 2.2 mL per well (docs/domain/exp37.md).
   // capacity: stand-in (2026-10-30), to be copied from the Labware Type Editor.

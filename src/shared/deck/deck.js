@@ -43,7 +43,7 @@ export function labwareTypeOf(name) {
   return findEntry(name).labwareType;
 }
 
-// The capacity of the labware called `name`, in µL, from its labware type, e.g. "Plate" → 360.
+// The capacity of the labware called `name`, in µL, from its labware type, e.g. "Plate" → 400.
 // Throws if the labware isn't on the deck.
 export function capacityOf(name) {
   return findType(name).capacity;
@@ -105,7 +105,7 @@ export function wellsInBox(corner, opposite) {
 // --- Helpers used only inside this module ---
 
 // The labware type of the labware called `name`, e.g. "Plate" →
-// { grid: "GRID_96", capacity: 360, deadVolume: 20 }. Throws if the labware isn't on the deck. A
+// { grid: "GRID_96", capacity: 400, deadVolume: 20 }. Throws if the labware isn't on the deck. A
 // type the deck names but config/labware-types.js doesn't define is caught by the tests, not here.
 function findType(name) {
   return LABWARE_TYPES[findEntry(name).labwareType];
